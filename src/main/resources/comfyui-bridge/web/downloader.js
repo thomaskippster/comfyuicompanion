@@ -22,11 +22,11 @@ const initializeExtension = async () => {
     await loadConfig();
 
     // Event Listener for UI Refresh
-    api.addEventListener("cmfd-refresh-ui", async (event) => {
+    api.addEventListener("cmfc-refresh-ui", async (event) => {
         const data = event.detail || {};
         const forceReload = data.force_reload === true;
 
-        console.log(`%c🔥 [CMFD] Refresh Signal Received. Force Reload: ${forceReload}`, "background: #ff0000; color: #fff; font-size: 14px;");
+        console.log(`%c🔥 [CMFC] Refresh Signal Received. Force Reload: ${forceReload}`, "background: #ff0000; color: #fff; font-size: 14px;");
         
         if (forceReload) {
             window.location.reload();
@@ -60,22 +60,22 @@ const initializeExtension = async () => {
                     node.setDirtyCanvas(true, true);
                 }
             }
-            console.log("[CMFD] UI Sync Complete.");
+            console.log("[CMFC] UI Sync Complete.");
         } catch (e) {
-            console.error("[CMFD] UI Refresh Failed:", e);
+            console.error("[CMFC] UI Refresh Failed:", e);
         }
     });
 
     // Event Listener for WebSocket Reconnection (e.g., after server restart)
     api.addEventListener("reconnected", () => {
-        console.log("%c🔄 [CMFD] WebSocket reconnected. Reloading ComfyUI to refresh state...", "background: #0077ff; color: #fff; font-size: 14px;");
+        console.log("%c🔄 [CMFC] WebSocket reconnected. Reloading ComfyUI to refresh state...", "background: #0077ff; color: #fff; font-size: 14px;");
         window.location.reload();
     });
 
     const addUI = () => {
-        if (document.getElementById("tki-downloader-fab")) return;
+        if (document.getElementById("tki-companion-fab")) return;
         const fab = document.createElement("div");
-        fab.id = "tki-downloader-fab";
+        fab.id = "tki-companion-fab";
         fab.innerHTML = "🚀";
         fab.style = "position:fixed; bottom:30px; right:30px; z-index:10000; cursor:pointer; font-size:30px; background:#ffcc00; border-radius:50%; width:60px; height:60px; display:flex; align-items:center; justify-content:center; box-shadow:0 0 20px rgba(0,0,0,0.5); border: 2px solid white; transition: transform 0.2s;";
         fab.onclick = async () => {
@@ -95,7 +95,7 @@ const initializeExtension = async () => {
 
 const register = () => {
     if (window.app && window.app.registerExtension) {
-        window.app.registerExtension({ name: "TKI.ModelDownloader", async setup() { await initializeExtension(); } });
+        window.app.registerExtension({ name: "TKI.ComfyUICompanion", async setup() { await initializeExtension(); } });
     } else {
         if (document.readyState === "complete") initializeExtension();
         else window.addEventListener("load", initializeExtension);

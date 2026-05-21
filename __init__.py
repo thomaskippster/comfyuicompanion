@@ -6,14 +6,14 @@ import asyncio
 import importlib
 from aiohttp import web
 
-print("\033[95m[CMFD] UI Extension Bridge active\033[0m")
+print("\033[95m[CMFC] UI Extension Bridge active\033[0m")
 
-@server.PromptServer.instance.routes.post("/cmfd/refresh-models")
+@server.PromptServer.instance.routes.post("/cmfc/refresh-models")
 async def refresh_models(request):
     data = await request.json() if request.has_body else {}
     force_reload = data.get("force_reload", False)
     
-    print(f"\033[92m🔥 [CMFD] Refresh signal received (Force Reload: {force_reload})\033[0m")
+    print(f"\033[92m🔥 [CMFC] Refresh signal received (Force Reload: {force_reload})\033[0m")
     
     # Wait for OS
     await asyncio.sleep(1)
@@ -35,10 +35,10 @@ async def refresh_models(request):
         server.PromptServer.instance.object_info = None
         
     except Exception as e:
-        print(f"[CMFD] Error: {e}")
+        print(f"[CMFC] Error: {e}")
     
     # One-way broadcast to frontend
-    server.PromptServer.instance.send_sync("cmfd-refresh-ui", {
+    server.PromptServer.instance.send_sync("cmfc-refresh-ui", {
         "status": "ok", 
         "force_reload": force_reload
     })

@@ -133,14 +133,14 @@ public class DefaultDownloadManager implements IDownloadManager {
         }
 
         // Auto-Discovery: If configured URL fails, search for ComfyUI on common ports
-        System.out.println("🔍 [Model-Downloader] ComfyUI unter " + comfyUrl + " nicht erreicht. Suche automatisch...");
+        System.out.println("🔍 [Companion] ComfyUI unter " + comfyUrl + " nicht erreicht. Suche automatisch...");
         String discoveredUrl = discoverComfyUrl();
         if (discoveredUrl != null) {
-            System.out.println("✨ [Model-Downloader] ComfyUI automatisch gefunden unter: " + discoveredUrl);
+            System.out.println("✨ [Companion] ComfyUI automatisch gefunden unter: " + discoveredUrl);
             configService.setComfyUIUrl(discoveredUrl);
             sendRefreshPing(discoveredUrl, forceReload);
         } else {
-            System.err.println("❌ [Model-Downloader] ComfyUI konnte nicht automatisch gefunden werden. Bitte stelle sicher, dass es läuft.");
+            System.err.println("❌ [Companion] ComfyUI konnte nicht automatisch gefunden werden. Bitte stelle sicher, dass es läuft.");
         }
     }
 
@@ -148,7 +148,7 @@ public class DefaultDownloadManager implements IDownloadManager {
         try {
             String json = "{\"force_reload\": " + forceReload + "}";
             HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(url + "/cmfd/refresh-models"))
+                .uri(URI.create(url + "/cmfc/refresh-models"))
                 .timeout(java.time.Duration.ofSeconds(2))
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(json))
@@ -156,7 +156,7 @@ public class DefaultDownloadManager implements IDownloadManager {
             
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() == 200) {
-                System.out.println("✅ [Model-Downloader] ComfyUI (" + url + ") erfolgreich benachrichtigt (Force: " + forceReload + ").");
+                System.out.println("✅ [Companion] ComfyUI (" + url + ") erfolgreich benachrichtigt (Force: " + forceReload + ").");
                 return true;
             }
         } catch (Exception ignored) {}

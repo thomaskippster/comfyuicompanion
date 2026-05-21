@@ -1,5 +1,5 @@
 #!/bin/bash
-echo "=== Building ComfyUI Model Downloader ==="
+echo "=== Building ComfyUI Companion ==="
 mvn clean package -DskipTests
 if [ $? -ne 0 ]; then
     echo "[ERROR] Build failed!"
@@ -8,4 +8,4 @@ fi
 
 echo ""
 echo "=== Starting Application ==="
-java --enable-native-access=ALL-UNNAMED -jar target/ComfyUIModelDownloader.jar "$@"
+java --enable-native-access=ALL-UNNAMED -jar target/comfyuicompanion.jar "$@"

@@ -72,11 +72,12 @@ public class StabilityEdgeCaseTest {
         ReflectionTestUtils.setField(downloadManager, "pathResolver", new PathResolver());
 
         Path targetFile = tempDir.resolve("checkpoints").resolve("resume.safetensors");
+        Path partFile = targetFile.resolveSibling(targetFile.getFileName().toString() + ".cmfd");
         Files.createDirectories(targetFile.getParent());
         
         byte[] existingData = new byte[20000];
         for (int i = 0; i < 20000; i++) existingData[i] = (byte) (i % 256);
-        Files.write(targetFile, existingData);
+        Files.write(partFile, existingData);
 
         HttpClient mockClient = new HttpClientStub() {
             @Override

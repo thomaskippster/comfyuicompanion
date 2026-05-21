@@ -1,4 +1,4 @@
-package de.tki.comfymodels.service;
+package de.tki.comfymodels;
 
 import com.sun.net.httpserver.HttpServer;
 import de.tki.comfymodels.domain.ModelInfo;

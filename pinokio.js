@@ -1,9 +1,9 @@
 module.exports = {
-  title: "ComfyUI Model Downloader",
+  title: "ComfyUI Companion",
   description: "Identify and download missing models for ComfyUI workflows automatically.",
   icon: "icon.png",
   menu: async (kernel) => {
-    let installed = await kernel.exists("target/ComfyUIModelDownloader.jar")
+    let installed = await kernel.exists("target/comfyuicompanion.jar")
     let results = [
       { icon: "fa-solid fa-play", text: "Start", href: "start.json" },
       { icon: "fa-solid fa-rotate", text: "Update", href: "update.json" },

@@ -62,7 +62,12 @@ public class ModelStatusLogicIntegrationTest {
             Mockito.mock(RestBridgeService.class),
             archiveService,
             Mockito.mock(ComfyLifecycleService.class),
-            Mockito.mock(ComfyDiagnosticService.class)
+            Mockito.mock(ComfyDiagnosticService.class),
+            Mockito.mock(ProfileManager.class),
+            Mockito.mock(EnvironmentBootstrapperImpl.class),
+            Mockito.mock(ComfyProcessController.class),
+            Mockito.mock(CivitaiService.class),
+            Mockito.mock(HuggingFaceService.class)
         );
 
         // Inject dependencies via reflection since they are @Autowired in Main

@@ -1,4 +1,4 @@
-package de.tki.comfymodels.service;
+package de.tki.comfymodels;
 
 import de.tki.comfymodels.domain.ModelInfo;
 import de.tki.comfymodels.service.impl.ComfyModelAnalyzer;

@@ -14,6 +14,7 @@ public class ModelInfo {
     private String description;
     private String reference;
     private String filename;
+    private String previewPath;
 
     public ModelInfo() {}
 
@@ -46,6 +47,8 @@ public class ModelInfo {
     public void setReference(String reference) { this.reference = reference; }
     public String getFilename() { return filename; }
     public void setFilename(String filename) { this.filename = filename; }
+    public String getPreviewPath() { return previewPath; }
+    public void setPreviewPath(String previewPath) { this.previewPath = previewPath; }
 
     @Override
     public boolean equals(Object o) {

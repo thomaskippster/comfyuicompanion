@@ -164,8 +164,8 @@ public class DefaultDownloadManager implements IDownloadManager {
     }
 
     private String discoverComfyUrl() {
-        // Scan typical ComfyUI ports, including common alternatives like 8000
-        int[] commonPorts = {8188, 8000, 8189, 8190, 3000, 8080};
+        // Scan typical ComfyUI ports, prioritizing 8188
+        int[] commonPorts = {8188, 8189, 8190, 8000, 3000, 8080};
         for (int port : commonPorts) {
             if (checkPort(port)) return "http://127.0.0.1:" + port;
         }
@@ -200,6 +200,20 @@ public class DefaultDownloadManager implements IDownloadManager {
         this.currentSelection = selectedIndices;
     }
 
+    private String appendCivitaiTokenIfNeeded(String url) {
+        if (url != null && url.contains("civitai.com")) {
+            String apiKey = configService != null ? configService.getCivitaiApiKey() : null;
+            if (apiKey != null && !apiKey.trim().isEmpty()) {
+                if (url.contains("?")) {
+                    return url + "&token=" + apiKey.trim();
+                } else {
+                    return url + "?token=" + apiKey.trim();
+                }
+            }
+        }
+        return url;
+    }
+
     private void downloadWithResume(ModelInfo info, Path targetFile, int index, BiConsumer<Integer, String> statusUpdater) {
         downloadWithResumeInternal(info, targetFile, index, statusUpdater, 0);
     }
@@ -214,6 +228,7 @@ public class DefaultDownloadManager implements IDownloadManager {
                                          file.getAbsolutePath().toLowerCase().startsWith(new File(archivePath).getAbsolutePath().toLowerCase());
 
             String hfToken = configService.getHfToken();
+            String downloadUrl = appendCivitaiTokenIfNeeded(info.getUrl());
 
             // Check disk space before starting
             try {
@@ -237,11 +252,11 @@ public class DefaultDownloadManager implements IDownloadManager {
             if (waitForPauseAndCheckSelection(index, statusUpdater)) return;
             
             HttpRequest.Builder headBuilder = HttpRequest.newBuilder()
-                .uri(URI.create(info.getUrl()))
+                .uri(URI.create(downloadUrl))
                 .header("User-Agent", "Mozilla/5.0")
                 .method("HEAD", HttpRequest.BodyPublishers.noBody());
                 
-            if (info.getUrl().contains("huggingface.co") && hfToken != null && !hfToken.isEmpty()) {
+            if (downloadUrl.contains("huggingface.co") && hfToken != null && !hfToken.isEmpty()) {
                 headBuilder.header("Authorization", "Bearer " + hfToken);
             }
 
@@ -280,10 +295,10 @@ public class DefaultDownloadManager implements IDownloadManager {
             if (waitForPauseAndCheckSelection(index, statusUpdater)) return;
 
             HttpRequest.Builder downloadBuilder = HttpRequest.newBuilder()
-                .uri(URI.create(info.getUrl()))
+                .uri(URI.create(downloadUrl))
                 .header("User-Agent", "Mozilla/5.0");
 
-            if (info.getUrl().contains("huggingface.co") && hfToken != null && !hfToken.isEmpty()) {
+            if (downloadUrl.contains("huggingface.co") && hfToken != null && !hfToken.isEmpty()) {
                 downloadBuilder.header("Authorization", "Bearer " + hfToken);
             }
 

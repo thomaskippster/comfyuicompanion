@@ -44,3 +44,5 @@ model_hashes.json
 uploaded_models.json
 config.json
 !src/main/resources/known_good_urls.json
+.antigravitycli/
+

@@ -26,6 +26,7 @@ public class RestorationStatusTest {
     private ConfigService configService;
     private Path tempModelsDir;
     private Path tempArchiveDir;
+    private Path tempAppDataDir;
 
     // Status Constants (as used in Main.java)
     public static final String STATUS_ARCHIVED = "📦 Archived";
@@ -37,6 +38,8 @@ public class RestorationStatusTest {
     public void setup() throws IOException {
         tempModelsDir = Files.createTempDirectory("models_root");
         tempArchiveDir = Files.createTempDirectory("archive_root");
+        tempAppDataDir = Files.createTempDirectory("appdata_root");
+        System.setProperty("comfyuicompanion.appdata", tempAppDataDir.toString());
 
         PathResolver pathResolver = new PathResolver();
         configService = new ConfigService(new EncryptionUtils(), pathResolver);
@@ -50,6 +53,8 @@ public class RestorationStatusTest {
     public void tearDown() throws IOException {
         deleteDirectory(tempModelsDir);
         deleteDirectory(tempArchiveDir);
+        deleteDirectory(tempAppDataDir);
+        System.clearProperty("comfyuicompanion.appdata");
     }
 
     private void deleteDirectory(Path path) throws IOException {

@@ -27,7 +27,17 @@ public interface IComfyLifecycleService {
     boolean isRunning();
     
     /**
+     * Returns true if the managed process is physically alive.
+     */
+    boolean isProcessAlive();
+    
+    /**
      * Performs a health check by pinging the ComfyUI API.
      */
     boolean isHealthy();
+
+    /**
+     * Resets the ComfyUI installation by cleaning up the existing directory and re-running the bootstrap setup.
+     */
+    void fixSetup();
 }

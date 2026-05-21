@@ -1,4 +1,4 @@
-package de.tki.comfymodels.service;
+package de.tki.comfymodels;
 
 import de.tki.comfymodels.service.impl.WorkflowService;
 import org.junit.jupiter.api.Test;

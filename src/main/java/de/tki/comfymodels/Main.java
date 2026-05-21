@@ -10,7 +10,6 @@ import de.tki.comfymodels.service.impl.ConfigService;
 import de.tki.comfymodels.service.impl.GeminiAIService;
 import de.tki.comfymodels.service.impl.ModelListService;
 import de.tki.comfymodels.service.impl.ModelHashRegistry;
-import de.tki.comfymodels.ui.DotGridPanel;
 import de.tki.comfymodels.ui.ComfyWebPanel;
 import com.formdev.flatlaf.FlatDarkLaf;
 import com.formdev.flatlaf.FlatLightLaf;
@@ -58,7 +57,15 @@ public class Main extends JFrame {
     private final de.tki.comfymodels.service.impl.ArchiveService archiveService;
     private final de.tki.comfymodels.service.IComfyLifecycleService lifecycleService;
     private final de.tki.comfymodels.service.impl.ComfyDiagnosticService diagnosticService;
+    private final de.tki.comfymodels.service.impl.ProfileManager profileManager;
+    private final de.tki.comfymodels.service.impl.EnvironmentBootstrapperImpl bootstrapper;
+    private final de.tki.comfymodels.service.impl.ComfyProcessController processController;
+    private final de.tki.comfymodels.service.impl.CivitaiService civitaiService;
+    private final de.tki.comfymodels.service.impl.HuggingFaceService huggingFaceService;
+    private JLabel lblComfyVersion;
+    private JLabel lblPythonVersion;
     private de.tki.comfymodels.ui.ComfyWebPanel comfyWebPanel;
+    private JLabel lifecycleStatusLabel;
 
     @Autowired
     private ConfigService configService;
@@ -78,13 +85,17 @@ public class Main extends JFrame {
     @Autowired
     private de.tki.comfymodels.service.impl.PathResolver pathResolver;
 
+    @Autowired
+    private de.tki.comfymodels.service.impl.VersionService versionService;
+
     private JCheckBox backgroundCheck;
     private JCheckBox shutdownCheck;
     private JCheckBox restartCheck;
     private JCheckBox darkCheck;
+    private JCheckBox fastHashCheck;
     private JLabel activeAiModelLabel;
-    private JLabel lifecycleStatusLabel;
     private JTextArea jsonInputArea;
+    private JTextArea consoleOutput; 
     private DefaultTableModel tableModel;
     private JLabel statusLabel;
     private JButton downloadButton, pauseButton, stopButton;
@@ -94,10 +105,15 @@ public class Main extends JFrame {
 
     public Main(IModelAnalyzer analyzer, IDownloadManager downloadManager,
                 IWorkflowService workflowService, IModelSearchService searchService,
-                IModelValidator modelValidator, de.tki.comfymodels.service.impl.RestBridgeService restBridge,
+                IModelValidator modelValidator, de.tki.comfymodels.service.impl.RestBridgeService restBridge,   
                 de.tki.comfymodels.service.impl.ArchiveService archiveService,
                 de.tki.comfymodels.service.IComfyLifecycleService lifecycleService,
-                de.tki.comfymodels.service.impl.ComfyDiagnosticService diagnosticService) {
+                de.tki.comfymodels.service.impl.ComfyDiagnosticService diagnosticService,
+                de.tki.comfymodels.service.impl.ProfileManager profileManager,
+                de.tki.comfymodels.service.impl.EnvironmentBootstrapperImpl bootstrapper,
+                de.tki.comfymodels.service.impl.ComfyProcessController processController,
+                de.tki.comfymodels.service.impl.CivitaiService civitaiService,
+                de.tki.comfymodels.service.impl.HuggingFaceService huggingFaceService) {
         this.analyzer = analyzer;
         this.downloadManager = downloadManager;
         this.workflowService = workflowService;
@@ -107,25 +123,36 @@ public class Main extends JFrame {
         this.archiveService = archiveService;
         this.lifecycleService = lifecycleService;
         this.diagnosticService = diagnosticService;
+        this.profileManager = profileManager;
+        this.bootstrapper = bootstrapper;
+        this.processController = processController;
+        this.civitaiService = civitaiService;
+        this.huggingFaceService = huggingFaceService;
     }
-
     public void launch(String[] args) {
+        // Initialize ProfileManager with app storage directory
+        Path appData = Paths.get(System.getProperty("user.home"), ".comfyui-companion");
+        try { Files.createDirectories(appData); } catch (Exception ignored) {}
+        profileManager.init(appData);
+
         if (de.tki.comfymodels.util.PlatformUtils.isMac()) {
             System.setProperty("apple.laf.useScreenMenuBar", "true");
-            System.setProperty("apple.awt.application.name", "ComfyUI Model Downloader");
+            System.setProperty("apple.awt.application.name", "ComfyUI Companion");
             System.setProperty("apple.awt.application.appearance", "system");
         }
 
         // Initialize REST Bridge consumer EARLY
         restBridge.setWorkflowConsumer(workflowJson -> {
             SwingUtilities.invokeLater(() -> {
+                System.out.println("[Main] WorkflowConsumer triggered - bringing to front.");
                 if (jsonInputArea != null) {
                     jsonInputArea.setText(workflowJson);
                     currentFileName = "remote_workflow.json";
                     analyzeJsonContent();
-                    searchMissingOnline(); // NEW: Automatically perform Deep Search to verify sizes/links
+                    searchMissingOnline();
                 }
                 setVisible(true);
+                setExtendedState(JFrame.NORMAL);
                 toFront();
                 requestFocus();
             });
@@ -136,6 +163,12 @@ public class Main extends JFrame {
             restBridge.setApiToken(configService.getApiToken());
         }
         restBridge.startServer();
+
+        // Ensure server stops on exit
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            processController.stop();
+            downloadManager.stop();
+        }));
 
         if (!promptForPassword()) {
             System.exit(0);
@@ -158,7 +191,7 @@ public class Main extends JFrame {
                         if (configService.isBackgroundModeEnabled()) {
                             setVisible(false);
                         } else {
-                            lifecycleService.stop();
+                            processController.stop();
                             downloadManager.stop();
                             System.exit(0);
                         }
@@ -216,8 +249,8 @@ public class Main extends JFrame {
                 UIManager.put("ScrollBar.track", comfySurface);
                 UIManager.put("ScrollBar.thumb", new javax.swing.plaf.ColorUIResource(70, 70, 70));
                 
-                UIManager.put("TabbedPane.selectedBackground", comfyAccent);
-                UIManager.put("TabbedPane.selectedForeground", Color.BLACK);
+                UIManager.put("TabbedPane.selectedBackground", new javax.swing.plaf.ColorUIResource(58, 117, 196));
+                UIManager.put("TabbedPane.selectedForeground", Color.WHITE);
                 
                 UIManager.setLookAndFeel(new FlatDarkLaf());
             } else {
@@ -299,7 +332,7 @@ public class Main extends JFrame {
         popup.addSeparator();
         popup.add(exitItem);
 
-        TrayIcon trayIcon = new TrayIcon(trayImage, "ComfyUI Model Downloader", popup);
+        TrayIcon trayIcon = new TrayIcon(trayImage, "ComfyUI Companion", popup);
         trayIcon.setImageAutoSize(true);
         trayIcon.addActionListener(e -> setVisible(true));
 
@@ -311,58 +344,90 @@ public class Main extends JFrame {
     }
 
     private boolean promptForPassword() {
+        // Read theme before applying
+        setupTheme(configService.isDarkMode());
+
         while (true) {
             boolean vaultExists = configService.hasVault();
             String title = vaultExists ? "Vault Unlock" : "Vault Setup";
-            String prompt = vaultExists ? "Enter Vault Password (to unlock API Keys):" : "Set Vault Password (to protect API Keys):";
+            String promptText = vaultExists ? "Enter Vault Password (to unlock API Keys):" : "Set Vault Password (to protect API Keys):";
 
-            JPanel panel = new JPanel(new BorderLayout(5, 5));
-            panel.add(new JLabel(prompt), BorderLayout.NORTH);
+            de.tki.comfymodels.ui.StandardDialog dialog = new de.tki.comfymodels.ui.StandardDialog(this, title);
+            JPanel content = dialog.createContentPanel();
+            
+            GridBagConstraints gbc = new GridBagConstraints();
+            gbc.fill = GridBagConstraints.HORIZONTAL;
+            gbc.gridx = 0; gbc.gridy = 0; gbc.weightx = 1.0;
+            
+            content.add(new JLabel(promptText), gbc);
+            
             JPasswordField pf = new JPasswordField();
-            panel.add(pf, BorderLayout.CENTER);
+            gbc.gridy++;
+            gbc.insets = new Insets(10, 0, 10, 0);
+            content.add(pf, gbc);
+
+            JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+            JButton btnAction = new JButton(vaultExists ? "Unlock" : "Set Password");
+            JButton btnCancel = new JButton("Cancel");
+            buttonPanel.add(btnAction);
+            buttonPanel.add(btnCancel);
+            
+            final String[] resultAction = {"CANCEL"};
+
+            if (vaultExists) {
+                JButton btnReset = new JButton("Reset Vault");
+                buttonPanel.add(btnReset);
+                btnReset.addActionListener(e -> {
+                    resultAction[0] = "RESET";
+                    dialog.dispose();
+                });
+            }
+            
+            // Action to perform on unlock/set
+            Runnable doAction = () -> {
+                resultAction[0] = "OK";
+                dialog.setVisible(false);
+            };
+            
+            btnAction.addActionListener(e -> doAction.run());
+            pf.addActionListener(e -> doAction.run()); // This handles 'Enter' key
+            btnCancel.addActionListener(e -> {
+                resultAction[0] = "CANCEL";
+                dialog.dispose();
+            });
+
+            dialog.add(content, BorderLayout.CENTER);
+            dialog.add(buttonPanel, BorderLayout.SOUTH);
+            dialog.pack();
+            dialog.setLocationRelativeTo(null); 
             
             SwingUtilities.invokeLater(() -> pf.requestFocusInWindow());
-            
-            Object[] options;
-            if (vaultExists) {
-                options = new Object[]{"Unlock", "Cancel", "Reset Vault (Forgot Password?)"};
-            } else {
-                options = new Object[]{"Set Password", "Cancel"};
+            dialog.setVisible(true);
+
+            if ("CANCEL".equals(resultAction[0])) {
+                return false;
             }
 
-            int choice = JOptionPane.showOptionDialog(null, panel, title,
-                    JOptionPane.YES_NO_CANCEL_OPTION, JOptionPane.QUESTION_MESSAGE,
-                    null, options, options[0]);
-
-            if (choice == 1 || choice == JOptionPane.CLOSED_OPTION) return false; // Cancel or Closed
-
-            if (vaultExists && choice == 2) { // Reset Vault
-                int confirm = JOptionPane.showConfirmDialog(null,
-                    "Warning: Resetting the vault will delete all your stored API keys.\n" +
-                    "This action cannot be undone. Do you want to proceed?",
-                    "Confirm Vault Reset", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
-
-                if (confirm == JOptionPane.YES_OPTION) {
-                    configService.resetVault();
-                    continue; // Restart loop for fresh setup
-                } else {
-                    continue; // Back to prompt
-                }
+            if ("RESET".equals(resultAction[0])) {
+                handleVaultReset();
+                continue;
             }
 
+            // If it is "OK"
             String pass = new String(pf.getPassword());
+            dialog.dispose();
+
             if (pass.trim().isEmpty()) {
-                JOptionPane.showMessageDialog(null, "Password cannot be empty.", "Validation", JOptionPane.WARNING_MESSAGE);
+                JOptionPane.showMessageDialog(this, "Password cannot be empty.", "Validation", JOptionPane.WARNING_MESSAGE);
                 continue;
             }
 
             try {
                 configService.unlock(pass);
-                configService.autoDiscoverPaths(); // Ensure paths are discovered after unlock
+                configService.autoDiscoverPaths();
                 restBridge.setApiToken(configService.getApiToken());
-                syncBridgeFiles(); // NEW: Automatically sync code & token on every unlock
+                syncBridgeFiles();
                 
-                // NEW: Auto-import model list on first start or vault reset
                 if (configService.isVaultFresh()) {
                     String url = "https://raw.githubusercontent.com/Comfy-Org/ComfyUI-Manager/main/model-list.json";
                     modelListService.importFromUrl(url);
@@ -370,19 +435,40 @@ public class Main extends JFrame {
                 
                 return true;
             } catch (Exception e) {
-                JOptionPane.showMessageDialog(null, "Unlock Failed: " + e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);        
+                JOptionPane.showMessageDialog(this, "Unlock Failed: " + e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);        
             }
         }
     }
 
-    private void showLifecycleDialog() {
-        JDialog dialog = new JDialog(this, "ComfyUI Control", true);
+    private void handleVaultReset() {
+        int confirm = JOptionPane.showConfirmDialog(this,
+            "Warning: Resetting the vault will delete all your stored API keys.\n" +
+            "This action cannot be undone. Do you want to proceed?",
+            "Confirm Vault Reset", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
+
+        if (confirm == JOptionPane.YES_OPTION) {
+            configService.resetVault();
+        }
+    }
+
+    private JDialog createDialog(String title) {
+        JDialog dialog = new JDialog(this, title, true);
         dialog.setLayout(new BorderLayout());
+        return dialog;
+    }
+
+    private JPanel createContentPanel() {
+        JPanel panel = new JPanel(new GridBagLayout());
+        panel.setBorder(BorderFactory.createEmptyBorder(25, 25, 25, 25));
+        return panel;
+    }
+
+    private void showLifecycleDialog() {
+        JDialog dialog = createDialog("ComfyUI Control");
         dialog.setSize(880, 420);
         dialog.setLocationRelativeTo(this);
 
-        JPanel content = new JPanel(new GridBagLayout());
-        content.setBorder(BorderFactory.createEmptyBorder(25, 25, 25, 25));
+        JPanel content = createContentPanel();
         GridBagConstraints gbc = new GridBagConstraints();
         gbc.fill = GridBagConstraints.HORIZONTAL;
         gbc.gridx = 0; gbc.gridy = 0; gbc.weightx = 1.0;
@@ -480,6 +566,7 @@ public class Main extends JFrame {
         if (shutdownCheck != null) shutdownCheck.setSelected(configService.isShutdownAfterDownloadEnabled());
         if (restartCheck != null) restartCheck.setSelected(configService.isRestartAfterDownloadEnabled());
         if (darkCheck != null) darkCheck.setSelected(configService.isDarkMode());
+        if (fastHashCheck != null) fastHashCheck.setSelected(configService.isFastHashEnabled());
     }
 
     private void updateAiModelDisplay() {
@@ -491,231 +578,304 @@ public class Main extends JFrame {
 
     private void initUI() {
         loadIcon();
-        setTitle("ComfyUIModel-Downloader");
+        setTitle("ComfyUI Companion");
         setSize(1450, 950);
         setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
 
         getRootPane().putClientProperty("flatlaf.useWindowDecorations", true);
         
-        // --- PREPARE TABBED INTERFACE ---
         JTabbedPane mainTabs = new JTabbedPane();
         mainTabs.setFont(new Font("SansSerif", Font.BOLD, 13));
-
-        comfyWebPanel = new de.tki.comfymodels.ui.ComfyWebPanel(configService.getComfyUIUrl());
-
-        // --- TAB 1: Model Manager (Original UI) ---
-        JPanel managerPanel = new JPanel(new BorderLayout(10, 10));
-        managerPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
-
-        // --- TOOLBAR ---
-        JPanel toolbar = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
-        toolbar.setBorder(BorderFactory.createEtchedBorder());
-
-        JButton settingsBtn = new JButton("⚙ Settings...");
-        settingsBtn.addActionListener(e -> showSettingsMenu(settingsBtn));
+        mainTabs.putClientProperty("JTabbedPane.tabType", "card");
+        mainTabs.putClientProperty("JTabbedPane.showTabSeparators", true);
+        mainTabs.putClientProperty("JTabbedPane.tabSeparatorsFullHeight", true);
         
-        JButton lifecycleBtn = new JButton("🔌 Comfy Control...");
-        lifecycleBtn.addActionListener(e -> showLifecycleDialog());
+        // Soften the tab accent color globally for this component
+        UIManager.put("TabbedPane.selectedBackground", new Color(58, 117, 196, 40)); 
+        UIManager.put("TabbedPane.underlineColor", new Color(58, 117, 196));
 
-        JButton startServerBtn = new JButton("▶ Start ComfyUI");
-        startServerBtn.setToolTipText("Starts the ComfyUI server in the background");
-        startServerBtn.addActionListener(e -> {
-            if (lifecycleService.isRunning()) {
-                JOptionPane.showMessageDialog(this, "ComfyUI is already running.", "Info", JOptionPane.INFORMATION_MESSAGE);
-            } else {
-                startComfyAndReload();
-                updateComfyTabVisibility(mainTabs);
+        // TAB 1: DASHBOARD
+        mainTabs.addTab("🏠 Dashboard", createDashboardPanel(mainTabs));
+
+        // TAB 2: MODEL MANAGER
+        mainTabs.addTab("📥 Model Manager", createManagerPanel(mainTabs));
+
+        // TAB 3: GALLERY
+        String outputDir = Paths.get(configService.getComfyUIPath(), "output").toString();
+        mainTabs.addTab("🖼️ Output Gallery", new de.tki.comfymodels.ui.OutputGalleryPanel(outputDir));
+
+        // TAB 4: SETTINGS
+        mainTabs.addTab("⚙️ Settings", createSettingsPanel());
+
+        setContentPane(mainTabs);
+    }
+
+    private JPanel createDashboardPanel(JTabbedPane tabs) {
+        JPanel panel = new JPanel(new BorderLayout(20, 20));
+        panel.setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
+
+        // LEFT: Profile List (Card-like)
+        JPanel leftPanel = new JPanel(new BorderLayout(10, 10));
+        leftPanel.setPreferredSize(new Dimension(320, 0));
+        leftPanel.putClientProperty("FlatLaf.style", "arc: 15; background: lighten($Panel.background, 2%)");
+        leftPanel.setBorder(BorderFactory.createEmptyBorder(15, 15, 15, 15));
+
+        JLabel profilesHeader = new JLabel("Launch Profiles");
+        profilesHeader.putClientProperty("FlatLaf.styleClass", "h3");
+        leftPanel.add(profilesHeader, BorderLayout.NORTH);
+
+        DefaultListModel<de.tki.comfymodels.domain.LaunchProfile> profileListModel = new DefaultListModel<>();
+        JList<de.tki.comfymodels.domain.LaunchProfile> profileList = new JList<>(profileListModel);
+        profileList.setCellRenderer(new DefaultListCellRenderer() {
+            @Override public java.awt.Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
+                de.tki.comfymodels.domain.LaunchProfile p = (de.tki.comfymodels.domain.LaunchProfile) value;
+                java.awt.Component c = super.getListCellRendererComponent(list, " " + p.name(), index, isSelected, cellHasFocus);
+                if (c instanceof JLabel) {
+                    ((JLabel) c).setPreferredSize(new Dimension(0, 35));
+                    ((JLabel) c).setFont(new Font("SansSerif", isSelected ? Font.BOLD : Font.PLAIN, 14));
+                }
+                return c;
+            }
+        });
+        refreshProfileList(profileListModel);
+
+        JScrollPane profileScroll = new JScrollPane(profileList);
+        profileScroll.setBorder(BorderFactory.createEmptyBorder());
+        profileScroll.setViewportBorder(BorderFactory.createEmptyBorder());
+        leftPanel.add(profileScroll, BorderLayout.CENTER);
+
+        JPanel profileButtons = new JPanel(new GridLayout(1, 2, 8, 0));
+        profileButtons.setOpaque(false);
+        JButton addProfileBtn = new JButton("➕ Add");
+        JButton removeProfileBtn = new JButton("➖ Remove");
+        profileButtons.add(addProfileBtn);
+        profileButtons.add(removeProfileBtn);
+        leftPanel.add(profileButtons, BorderLayout.SOUTH);
+
+        addProfileBtn.addActionListener(e -> {
+            JTextField nameField = new JTextField();
+            JTextField argsField = new JTextField("--listen, --port, 8188");
+            Object[] message = { "Profile Name:", nameField, "Arguments (comma separated):", argsField };
+            int option = JOptionPane.showConfirmDialog(this, message, "Add Launch Profile", JOptionPane.OK_CANCEL_OPTION);
+            if (option == JOptionPane.OK_OPTION && !nameField.getText().trim().isEmpty()) {
+                List<String> args = java.util.Arrays.stream(argsField.getText().split(",")).map(String::trim).filter(s -> !s.isEmpty()).collect(Collectors.toList());
+                de.tki.comfymodels.domain.LaunchProfile newProfile = new de.tki.comfymodels.domain.LaunchProfile(
+                    java.util.UUID.randomUUID().toString(), nameField.getText().trim(), "Custom user profile.",
+                    false, "python", args, new HashMap<>()
+                );
+                List<de.tki.comfymodels.domain.LaunchProfile> profiles = profileManager.loadProfiles();
+                profiles.add(newProfile);
+                try { profileManager.saveProfiles(profiles); refreshProfileList(profileListModel); } 
+                catch (IOException ex) { JOptionPane.showMessageDialog(this, "Error: " + ex.getMessage()); }
             }
         });
 
-        JButton verifyBtn = new JButton("🔍 Fast Verify");
-        verifyBtn.addActionListener(e -> verifyLocalModels(false));
+        removeProfileBtn.addActionListener(e -> {
+            de.tki.comfymodels.domain.LaunchProfile selected = profileList.getSelectedValue();
+            if (selected != null) {
+                int confirm = JOptionPane.showConfirmDialog(this, "Remove profile '" + selected.name() + "'?", "Confirm", JOptionPane.YES_NO_OPTION);
+                if (confirm == JOptionPane.YES_OPTION) {
+                    List<de.tki.comfymodels.domain.LaunchProfile> profiles = profileManager.loadProfiles();
+                    profiles.removeIf(p -> p.id().equals(selected.id()));
+                    try { profileManager.saveProfiles(profiles); refreshProfileList(profileListModel); } 
+                    catch (IOException ex) { JOptionPane.showMessageDialog(this, "Error: " + ex.getMessage()); }
+                }
+            }
+        });
+
+        // RIGHT: Control Center
+        JPanel rightPanel = new JPanel(new GridBagLayout());
+        rightPanel.putClientProperty("FlatLaf.style", "arc: 15; background: lighten($Panel.background, 2%)");
+        rightPanel.setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
         
-        JButton optimizeBtn = new JButton("👯 Storage Optimizer");
-        optimizeBtn.addActionListener(e -> {
-            int confirm = JOptionPane.showConfirmDialog(this, 
-                "The Storage Optimizer calculates SHA-256 hashes for all local models.\n" +
-                "This is EXTREMELY slow and resource-intensive for large libraries.\n\n" +
-                "Do you want to proceed?", "Performance Warning", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.fill = GridBagConstraints.BOTH;
+        gbc.insets = new Insets(5, 5, 15, 5);
+        gbc.weightx = 1.0;
+
+        JLabel titleLabel = new JLabel("Dashboard");
+        titleLabel.putClientProperty("FlatLaf.styleClass", "h1");
+        gbc.gridx = 0; gbc.gridy = 0; gbc.gridwidth = 2;
+        rightPanel.add(titleLabel, gbc);
+
+        JLabel statusDisplay = new JLabel("Status: Offline");
+        statusDisplay.setFont(new Font("SansSerif", Font.BOLD, 18));
+        statusDisplay.setForeground(Color.GRAY);
+        gbc.gridy = 1;
+        rightPanel.add(statusDisplay, gbc);
+
+        JLabel descLabel = new JLabel("Select a profile to see details.");
+        descLabel.setFont(new Font("SansSerif", Font.ITALIC, 14));
+        descLabel.setForeground(Color.LIGHT_GRAY);
+        gbc.gridy = 2;
+        rightPanel.add(descLabel, gbc);
+
+        profileList.addListSelectionListener(e -> {
+            de.tki.comfymodels.domain.LaunchProfile selected = profileList.getSelectedValue();
+            if (selected != null) {
+                descLabel.setText("<html><body style='width: 500px;'>" + selected.description() + "</body></html>");
+            } else {
+                descLabel.setText("Select a profile to see details.");
+            }
+        });
+
+        // One-row clean button layout (5 buttons)
+        JPanel actionPanel = new JPanel(new GridLayout(1, 5, 12, 12));
+        actionPanel.setOpaque(false);
+        
+        JButton launchBtn = new JButton("🚀 Launch");
+        launchBtn.putClientProperty("JButton.buttonType", "accent");
+        launchBtn.setFont(new Font("SansSerif", Font.BOLD, 14));
+        
+        JButton restartBtn = new JButton("🔄 Restart");
+        restartBtn.putClientProperty("JButton.buttonType", "roundRect");
+        restartBtn.setFont(new Font("SansSerif", Font.BOLD, 14));
+        restartBtn.setEnabled(false);
+
+        JButton stopBtn = new JButton("⏹ Stop");
+        stopBtn.putClientProperty("JButton.buttonType", "roundRect");
+        stopBtn.setFont(new Font("SansSerif", Font.BOLD, 14));
+        stopBtn.setEnabled(false);
+
+        JButton browserBtn = new JButton("🌐 Browser");
+        browserBtn.putClientProperty("JButton.buttonType", "roundRect");
+        browserBtn.setFont(new Font("SansSerif", Font.BOLD, 14));
+        browserBtn.setEnabled(false);
+        browserBtn.addActionListener(e -> {
+            try {
+                Desktop.getDesktop().browse(new java.net.URI(configService.getComfyUIUrl()));
+            } catch (Exception ex) {
+                JOptionPane.showMessageDialog(this, "Could not open browser: " + ex.getMessage());
+            }
+        });
+
+        JButton bootstrapBtn = new JButton("🛠️ Setup");
+        bootstrapBtn.putClientProperty("JButton.buttonType", "roundRect");
+        bootstrapBtn.setFont(new Font("SansSerif", Font.BOLD, 14));
+
+        actionPanel.add(launchBtn);
+        actionPanel.add(restartBtn);
+        actionPanel.add(stopBtn);
+        actionPanel.add(browserBtn);
+        actionPanel.add(bootstrapBtn);
+        
+        gbc.gridy = 3; gbc.gridheight = 1; gbc.insets = new Insets(20, 0, 20, 0);
+        rightPanel.add(actionPanel, gbc);
+
+        // Environment Versions section
+        JPanel versionPanel = new JPanel();
+        versionPanel.setOpaque(false);
+        versionPanel.setLayout(new BoxLayout(versionPanel, BoxLayout.Y_AXIS));
+        
+        JLabel versionHeader = new JLabel("Environment Versions");
+        versionHeader.putClientProperty("FlatLaf.styleClass", "h4");
+        
+        lblComfyVersion = new JLabel("ComfyUI: Fetching...");
+        lblPythonVersion = new JLabel("Python: Fetching...");
+
+        versionPanel.add(versionHeader);
+        versionPanel.add(Box.createRigidArea(new Dimension(0, 8)));
+        versionPanel.add(lblComfyVersion);
+        versionPanel.add(Box.createRigidArea(new Dimension(0, 4)));
+        versionPanel.add(lblPythonVersion);
+        
+        gbc.gridy = 5; gbc.insets = new Insets(10, 5, 15, 5);
+        rightPanel.add(versionPanel, gbc);
+
+        refreshVersions();
+
+        // Console Output
+        consoleOutput = new JTextArea();
+        consoleOutput.setBackground(new Color(25, 25, 25));
+        consoleOutput.setForeground(new Color(0, 220, 0));
+        consoleOutput.setFont(new Font("Monospaced", Font.PLAIN, 13));
+        consoleOutput.setEditable(false);
+        consoleOutput.setMargin(new Insets(10, 10, 10, 10));
+        
+        JScrollPane consoleScroll = new JScrollPane(consoleOutput);
+        consoleScroll.setBorder(BorderFactory.createLineBorder(new Color(60, 60, 60), 1));
+        gbc.gridy = 6; gbc.weighty = 1.0; gbc.insets = new Insets(5, 5, 5, 5);
+        rightPanel.add(consoleScroll, gbc);
+
+        // Timer for status updates
+        Timer statusTimer = new Timer(1000, e -> {
+            boolean running = processController.isRunning();
+            if (running) {
+                statusDisplay.setText("Status: Running");
+                statusDisplay.setForeground(new Color(0, 180, 0));
+                launchBtn.setEnabled(false);
+                restartBtn.setEnabled(true);
+                stopBtn.setEnabled(true);
+                browserBtn.setEnabled(true);
+            } else {
+                statusDisplay.setText("Status: Offline");
+                statusDisplay.setForeground(Color.GRAY);
+                launchBtn.setEnabled(true);
+                restartBtn.setEnabled(false);
+                stopBtn.setEnabled(false);
+                browserBtn.setEnabled(false);
+            }
+            boolean needsSetup = configService.getComfyUIPath().isEmpty() || !new File(configService.getComfyUIPath(), "main.py").exists();
+            bootstrapBtn.putClientProperty("FlatLaf.style", needsSetup ? "background: #646400; foreground: #fff" : "");
+        });
+        statusTimer.start();
+
+        restartBtn.addActionListener(e -> {
+            de.tki.comfymodels.domain.LaunchProfile selected = profileList.getSelectedValue();
+            if (selected == null) { JOptionPane.showMessageDialog(this, "Please select a profile first."); return; }
+            restartBtn.setEnabled(false);
+            consoleOutput.append("\n🔄 Restarting ComfyUI...\n");
+            new Thread(() -> {
+                processController.stop();
+                try { Thread.sleep(1500); } catch (InterruptedException ignored) {}
+                SwingUtilities.invokeLater(() -> {
+                    processController.start(selected, Paths.get(configService.getComfyUIPath()), configService.getPythonPath(), log -> {
+                        SwingUtilities.invokeLater(() -> { consoleOutput.append(log + "\n"); consoleOutput.setCaretPosition(consoleOutput.getDocument().getLength()); });
+                    });
+                });
+            }).start();
+        });
+
+        bootstrapBtn.addActionListener(e -> {
+            int confirm = JOptionPane.showConfirmDialog(this, "This will clone ComfyUI and download Python. Proceed?", "Bootstrap", JOptionPane.YES_NO_OPTION);
             if (confirm == JOptionPane.YES_OPTION) {
-                verifyLocalModels(true);
+                bootstrapBtn.setEnabled(false); launchBtn.setEnabled(false);
+                consoleOutput.setText("⚙️ Starting Environment Bootstrap...\n");
+                Path appRoot = Paths.get(System.getProperty("user.home"), ".comfyui-companion");
+                Path comfyTarget = appRoot.resolve("ComfyUI");
+                bootstrapper.downloadAndExtractPortablePython(appRoot, log -> SwingUtilities.invokeLater(() -> consoleOutput.append(log + "\n")))
+                    .thenCompose(pythonPath -> {
+                        configService.setPythonPath(pythonPath.toString());
+                        return bootstrapper.installPip(pythonPath, log -> SwingUtilities.invokeLater(() -> consoleOutput.append(log + "\n")))
+                            .thenCompose(v -> bootstrapper.cloneComfyUI(comfyTarget, log -> SwingUtilities.invokeLater(() -> consoleOutput.append(log + "\n"))))
+                            .thenCompose(v -> bootstrapper.installRequirements(pythonPath, comfyTarget, log -> SwingUtilities.invokeLater(() -> consoleOutput.append(log + "\n"))));
+                    }).thenRun(() -> SwingUtilities.invokeLater(() -> {
+                        configService.setComfyUIPath(comfyTarget.toString()); configService.autoDiscoverPaths();
+                        consoleOutput.append("✅ Environment ready!\n");
+                        bootstrapBtn.setEnabled(true); launchBtn.setEnabled(true);
+                        refreshVersions(); JOptionPane.showMessageDialog(this, "Setup complete!");
+                    })).exceptionally(ex -> {
+                        SwingUtilities.invokeLater(() -> { consoleOutput.append("❌ Bootstrap failed: " + ex.getMessage() + "\n"); bootstrapBtn.setEnabled(true); });
+                        return null;
+                    });
             }
         });
 
-        JButton archiveBtn = new JButton("📦 Archive...");
-        archiveBtn.addActionListener(e -> showArchiveDialog());
-
-        JButton helpBtn = new JButton("ℹ Help");
-        helpBtn.addActionListener(e -> showHelpDialog());
-
-        JButton diagnosticBtn = new JButton("🩺 Diagnostic");
-        diagnosticBtn.addActionListener(e -> {
-            if (modelsToDownload == null || modelsToDownload.isEmpty()) {
-                JOptionPane.showMessageDialog(this, "Load a workflow first to perform a diagnostic check.");
-                return;
-            }
-            List<String> missing = diagnosticService.getMissingModels(modelsToDownload);
-            if (missing.isEmpty()) {
-                JOptionPane.showMessageDialog(this, "✅ All workflow models are visible to ComfyUI!", "Diagnostic Passed", JOptionPane.INFORMATION_MESSAGE);
-            } else {
-                String list = String.join("\n- ", missing);
-                
-                List<Object> optionsList = new ArrayList<>();
-                optionsList.add("🚀 Restart ComfyUI (Full Service Restart)");
-                
-                boolean canStart = !lifecycleService.isRunning() && 
-                                  configService.getComfyLaunchCommand() != null && 
-                                  !configService.getComfyLaunchCommand().trim().isEmpty();
-                
-                if (canStart) {
-                    optionsList.add("▶ Start ComfyUI");
-                }
-                optionsList.add("Ignore");
-                
-                Object[] options = optionsList.toArray();
-                int choice = JOptionPane.showOptionDialog(this, 
-                    "❌ ComfyUI still reports these models as missing:\n- " + list + "\n\n" +
-                    "A restart is required for ComfyUI to detect new models.", 
-                    "Diagnostic Failed", JOptionPane.YES_NO_CANCEL_OPTION, JOptionPane.WARNING_MESSAGE, null, options, options[0]);
-                
-                if (choice == 0) {
-                    performFullServiceRestart();
-                } else if (canStart && choice == 1) {
-                    lifecycleService.start();
-                    JOptionPane.showMessageDialog(this, "ComfyUI is being started. Please wait a few moments for it to initialize.", "Starting Service", JOptionPane.INFORMATION_MESSAGE);
-                }
-            }
+        launchBtn.addActionListener(e -> {
+            de.tki.comfymodels.domain.LaunchProfile selected = profileList.getSelectedValue();
+            if (selected == null) { JOptionPane.showMessageDialog(this, "Please select a launch profile."); return; }
+            launchBtn.setEnabled(false); consoleOutput.setText("");
+            processController.start(selected, Paths.get(configService.getComfyUIPath()), configService.getPythonPath(), log -> {
+                SwingUtilities.invokeLater(() -> { consoleOutput.append(log + "\n"); consoleOutput.setCaretPosition(consoleOutput.getDocument().getLength()); });
+            });
         });
 
-        backgroundCheck = new JCheckBox("Stay in Background");
-        backgroundCheck.addActionListener(e -> configService.setBackgroundModeEnabled(backgroundCheck.isSelected()));
-        shutdownCheck = new JCheckBox("Shutdown after Queue");
-        shutdownCheck.addActionListener(e -> configService.setShutdownAfterDownloadEnabled(shutdownCheck.isSelected()));
-        restartCheck = new JCheckBox("Full Restart after Queue");
-        restartCheck.addActionListener(e -> configService.setRestartAfterDownloadEnabled(restartCheck.isSelected()));
-        darkCheck = new JCheckBox("Dark Mode");
-        darkCheck.addActionListener(e -> {
-            boolean isDark = darkCheck.isSelected();
-            configService.setDarkMode(isDark);
-            FlatAnimatedLafChange.showSnapshot();
-            setupTheme(isDark);
-            revalidate();
-            repaint();
-            FlatAnimatedLafChange.hideSnapshotWithAnimation();
-        });
+        stopBtn.addActionListener(e -> { consoleOutput.append("\n⏹ Stopping ComfyUI process...\n"); processController.stop(); });
 
-        toolbar.add(settingsBtn);
-        toolbar.add(lifecycleBtn);
-        toolbar.add(new JSeparator(JSeparator.VERTICAL));
-        toolbar.add(verifyBtn);
-        toolbar.add(optimizeBtn);
-        toolbar.add(archiveBtn);
-        toolbar.add(new JSeparator(JSeparator.VERTICAL));
-        toolbar.add(backgroundCheck);
-        toolbar.add(shutdownCheck);
-        toolbar.add(restartCheck);
-        toolbar.add(darkCheck);
+        panel.add(leftPanel, BorderLayout.WEST);
+        panel.add(rightPanel, BorderLayout.CENTER);
 
-        JSplitPane splitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
-        JPanel jsonPanel = new JPanel(new BorderLayout());
-        jsonPanel.setBorder(BorderFactory.createTitledBorder("Workflow (Drag & Drop JSON/PNG)"));
-        jsonInputArea = new JTextArea();
-        setupDragAndDrop(jsonInputArea);
-        JScrollPane jsonScroll = new JScrollPane(jsonInputArea);
-        JPanel jsonButtons = new JPanel(new FlowLayout(FlowLayout.RIGHT));
-        JButton loadJsonBtn = new JButton("Load Workflow...");
-        loadJsonBtn.addActionListener(e -> {
-            FileDialog fd = new FileDialog(this, "Select Workflow", FileDialog.LOAD);
-            fd.setVisible(true);
-            if (fd.getFile() != null) loadFile(new File(fd.getDirectory(), fd.getFile()));
-        });
-
-        JButton importModelListBtn = new JButton("Import Model List...");
-        importModelListBtn.addActionListener(e -> {
-            FileDialog fd = new FileDialog(this, "Select Model List JSON", FileDialog.LOAD);
-            fd.setVisible(true);
-            if (fd.getFile() != null) {
-                try {
-                    modelListService.importJson(new File(fd.getDirectory(), fd.getFile()));
-                    JOptionPane.showMessageDialog(this, "Model list imported successfully! (" + modelListService.getModels().size() + " models)");
-                    analyzeJsonContent();
-                } catch (Exception ex) {
-                    JOptionPane.showMessageDialog(this, "Error: " + ex.getMessage());
-                }
-            }
-        });
-
-        JButton analyzeBtn = new JButton("Deep Search");
-        analyzeBtn.addActionListener(e -> { analyzeJsonContent(); searchMissingOnline(); });
-        jsonButtons.add(loadJsonBtn);
-        jsonButtons.add(importModelListBtn);
-        jsonButtons.add(analyzeBtn);
-        jsonPanel.add(jsonScroll, BorderLayout.CENTER);
-        jsonPanel.add(jsonButtons, BorderLayout.SOUTH);
-
-        String[] columnNames = {"Select", "Type", "Name", "Size", "AI Source", "Target Path", "URL", "Status"}; 
-        tableModel = new DefaultTableModel(columnNames, 0) {
-            @Override public Class<?> getColumnClass(int c) { return c == 0 ? Boolean.class : String.class; }   
-            @Override public boolean isCellEditable(int r, int c) { 
-                if (c == 0) {
-                    String status = (String) getValueAt(r, 7);
-                    return status != null && !status.contains("Already exists");
-                }
-                return false; 
-            }
-        };
-        tableModel.addTableModelListener(e -> {
-            if (e.getType() == TableModelEvent.UPDATE && e.getColumn() == 0) updateDownloadManagerSelection();
-        });
-        JTable modelTable = new JTable(tableModel);
-        modelTable.putClientProperty("terminateEditOnFocusLost", Boolean.TRUE);
-        JScrollPane tableScroll = new JScrollPane(modelTable);
-        JPanel tablePanel = new JPanel(new BorderLayout());
-        tablePanel.setBorder(BorderFactory.createTitledBorder("Identified Models"));
-        tablePanel.add(tableScroll, BorderLayout.CENTER);
-
-        splitPane.setTopComponent(jsonPanel);
-        splitPane.setBottomComponent(tablePanel);
-        splitPane.setDividerLocation(350);
-
-        JPanel bottomPanel = new JPanel(new BorderLayout());
-        statusLabel = new JLabel("Ready");
-        statusLabel.setName("statusLabel");
-        
-        JPanel progressPanel = new JPanel(new GridLayout(2, 1));
-        activeAiModelLabel = new JLabel("Active AI: Loading...");
-        activeAiModelLabel.setName("activeAiModelLabel");
-        activeAiModelLabel.setFont(new Font("SansSerif", Font.ITALIC, 11));
-        activeAiModelLabel.setForeground(Color.GRAY);
-        progressPanel.add(statusLabel);
-        progressPanel.add(activeAiModelLabel);
-        
-        JPanel actionButtons = new JPanel(new FlowLayout(FlowLayout.RIGHT));
-        downloadButton = new JButton("Start Queue");
-        downloadButton.setName("downloadButton");
-        downloadButton.setEnabled(false);
-        downloadButton.addActionListener(e -> startDownloadQueue());
-        pauseButton = new JButton("Pause");
-        pauseButton.setName("pauseButton");
-        pauseButton.addActionListener(e -> {
-            downloadManager.togglePause();
-            pauseButton.setText(downloadManager.isPaused() ? "Resume" : "Pause");
-        });
-        stopButton = new JButton("Stop");
-        stopButton.setName("stopButton");
-        stopButton.addActionListener(e -> downloadManager.stop());
-        actionButtons.add(downloadButton);
-        actionButtons.add(pauseButton);
-        actionButtons.add(stopButton);
-        
-        bottomPanel.add(progressPanel, BorderLayout.CENTER);
-        bottomPanel.add(actionButtons, BorderLayout.EAST);
-
-        managerPanel.add(toolbar, BorderLayout.NORTH);
-        managerPanel.add(splitPane, BorderLayout.CENTER);
-        managerPanel.add(bottomPanel, BorderLayout.SOUTH);
-
-        setContentPane(managerPanel);
+        return panel;
     }
 
     private void startComfyAndReload() {
@@ -794,13 +954,11 @@ public class Main extends JFrame {
     }
 
     private void showPathsDialog() {
-        JDialog dialog = new JDialog(this, "Directory Settings", true);
-        dialog.setLayout(new BorderLayout());
+        de.tki.comfymodels.ui.StandardDialog dialog = new de.tki.comfymodels.ui.StandardDialog(this, "Directory Settings");
         dialog.setSize(600, 480);
         dialog.setLocationRelativeTo(this);
 
-        JPanel panel = new JPanel(new GridBagLayout());
-        panel.setBorder(BorderFactory.createEmptyBorder(15, 15, 15, 15));
+        JPanel panel = dialog.createContentPanel();
         GridBagConstraints gbc = new GridBagConstraints();
         gbc.fill = GridBagConstraints.HORIZONTAL;
         gbc.gridx = 0; gbc.gridy = 0; gbc.weightx = 1.0;
@@ -876,7 +1034,6 @@ public class Main extends JFrame {
                 String path = chooser.getSelectedFile().getAbsolutePath();
                 field3.setText(path);
                 
-                // Auto-fill Python Path if possible
                 String discoveredPython = configService.discoverPython(path);
                 if (discoveredPython != null && !discoveredPython.equals("python") && !discoveredPython.equals("python3")) {
                     field4.setText(discoveredPython);
@@ -894,7 +1051,9 @@ public class Main extends JFrame {
 
         gbc.gridy++;
         gbc.weighty = 1.0;
-        panel.add(new JPanel(), gbc);
+        JPanel spacer = new JPanel();
+        spacer.setOpaque(false);
+        panel.add(spacer, gbc);
 
         JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT));
         JButton cancel = new JButton("Cancel");
@@ -905,11 +1064,8 @@ public class Main extends JFrame {
             configService.setArchivePath(field2.getText().trim());
             configService.setComfyUIPath(field3.getText().trim());
             configService.setPythonPath(field4.getText().trim());
-            
-            // Re-generate launch command with new paths
             configService.setComfyLaunchCommand(""); 
             configService.autoDiscoverPaths();
-            
             statusLabel.setText("Settings updated.");
             analyzeJsonContent();
             dialog.dispose();
@@ -923,13 +1079,11 @@ public class Main extends JFrame {
     }
 
     private void showApiKeysDialog() {
-        JDialog dialog = new JDialog(this, "AI & API Keys", true);
-        dialog.setLayout(new BorderLayout());
-        dialog.setSize(600, 320);
+        de.tki.comfymodels.ui.StandardDialog dialog = new de.tki.comfymodels.ui.StandardDialog(this, "AI & API Keys");
+        dialog.setSize(600, 380);
         dialog.setLocationRelativeTo(this);
 
-        JPanel panel = new JPanel(new GridBagLayout());
-        panel.setBorder(BorderFactory.createEmptyBorder(15, 15, 15, 15));
+        JPanel panel = dialog.createContentPanel();
         GridBagConstraints gbc = new GridBagConstraints();
         gbc.fill = GridBagConstraints.HORIZONTAL;
         gbc.gridx = 0; gbc.gridy = 0; gbc.weightx = 1.0;
@@ -944,13 +1098,23 @@ public class Main extends JFrame {
         gbc.insets = new Insets(0, 0, 0, 0);
         panel.add(new JLabel("Hugging Face Access Token:"), gbc);
         gbc.gridy++;
-        gbc.insets = new Insets(5, 0, 5, 0);
+        gbc.insets = new Insets(5, 0, 15, 0);
         JPasswordField hfField = new JPasswordField(configService.getHfToken());
         panel.add(hfField, gbc);
 
         gbc.gridy++;
+        gbc.insets = new Insets(0, 0, 0, 0);
+        panel.add(new JLabel("Civitai API Key:"), gbc);
+        gbc.gridy++;
+        gbc.insets = new Insets(5, 0, 5, 0);
+        JPasswordField civitaiField = new JPasswordField(configService.getCivitaiApiKey());
+        panel.add(civitaiField, gbc);
+
+        gbc.gridy++;
         gbc.weighty = 1.0;
-        panel.add(new JPanel(), gbc);
+        JPanel spacer = new JPanel();
+        spacer.setOpaque(false);
+        panel.add(spacer, gbc);
 
         JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT));
         JButton cancel = new JButton("Cancel");
@@ -959,9 +1123,10 @@ public class Main extends JFrame {
         save.addActionListener(e -> {
             configService.setGeminiApiKey(new String(geminiField.getPassword()).trim());
             configService.setHfToken(new String(hfField.getPassword()).trim());
+            configService.setCivitaiApiKey(new String(civitaiField.getPassword()).trim());
             statusLabel.setText("API keys updated.");
             updateAiModelDisplay();
-            analyzeJsonContent(); // Re-scout with new keys/tokens if needed
+            analyzeJsonContent();
             dialog.dispose();
         });
         buttons.add(cancel);
@@ -1035,7 +1200,7 @@ public class Main extends JFrame {
                 downloadManager.startQueue(modelsToDownload, selected, configService.getModelsPath(),
                     (idx, status) -> SwingUtilities.invokeLater(() -> {
                         String current = (String) tableModel.getValueAt(idx, 7);
-                        if (status.startsWith("Skipped") && current != null && current.contains("✅")) {
+                        if (status.startsWith("Skipped") && current != null && (current.equals("✅ Already exists") || current.equals("✅ Finished"))) {
                             return; // Don't overwrite success with skip
                         }
                         tableModel.setValueAt(status, idx, 7);
@@ -1066,7 +1231,7 @@ public class Main extends JFrame {
 
         // Explanation text
         JTextArea infoArea = new JTextArea(
-            "This installer will set up the ComfyUI-Model-Downloader bridge.\n\n" +
+            "This installer will set up the ComfyUI Companion bridge.\n\n" +
             "1. Select your ComfyUI main directory.\n" +
             "2. Old or conflicting bridge files will be cleaned up.\n" +
             "3. A link or copy of the UI extension will be created.\n\n" +
@@ -1175,7 +1340,13 @@ public class Main extends JFrame {
         // 2. Search for and remove ANY folder named 'comfyui-model-downloader' to ensure a clean slate
         try (java.util.stream.Stream<Path> walk = Files.walk(customNodesDir, 2)) {
             List<Path> oldDirs = walk
-                .filter(p -> Files.isDirectory(p) && p.getFileName().toString().equalsIgnoreCase("comfyui-model-downloader"))
+                .filter(p -> Files.isDirectory(p) && (
+                    p.getFileName().toString().equalsIgnoreCase("comfyui-model-downloader") || 
+                    p.getFileName().toString().equalsIgnoreCase("comfyui-companion") ||
+                    p.getFileName().toString().equalsIgnoreCase("comfyuicompanion") ||
+                    p.getFileName().toString().equalsIgnoreCase("comfyuidownloader") ||
+                    p.getFileName().toString().equalsIgnoreCase("comfymodeldownloader")
+                ))
                 .collect(Collectors.toList());
             
             for (Path oldDir : oldDirs) {
@@ -1188,7 +1359,7 @@ public class Main extends JFrame {
 
         configService.setComfyUIPath(comfyPath);
         
-        Path targetDir = customNodesDir.resolve("comfyui-model-downloader");
+        Path targetDir = customNodesDir.resolve("comfyuicompanion");
         
         try {
             Files.createDirectories(targetDir);
@@ -1864,56 +2035,371 @@ public class Main extends JFrame {
         ArchiveWorkItem(int i, String f, String n, String s) { index = i; folder = f; name = n; size = s; }
     }
 
+    private JPanel createManagerPanel(JTabbedPane tabs) {
+        JPanel managerPanel = new JPanel(new BorderLayout(10, 10));
+        managerPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+
+        JPanel toolbar = new JPanel(new FlowLayout(FlowLayout.LEFT, 12, 8));
+        toolbar.putClientProperty("FlatLaf.style", "background: lighten($Panel.background, 1%)");
+        toolbar.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, UIManager.getColor("Separator.foreground")));
+
+        JButton verifyBtn = new JButton("🔍 Fast Verify");
+        verifyBtn.putClientProperty("JButton.buttonType", "roundRect");
+        verifyBtn.addActionListener(e -> verifyLocalModels(false));
+        
+        JButton optimizeBtn = new JButton("👯 Storage Optimizer");
+        optimizeBtn.putClientProperty("JButton.buttonType", "roundRect");
+        optimizeBtn.addActionListener(e -> {
+            int confirm = JOptionPane.showConfirmDialog(this, 
+                "The Storage Optimizer calculates SHA-256 hashes for all local models.\n" +
+                "This is EXTREMELY slow and resource-intensive for large libraries.\n\n" +
+                "Do you want to proceed?", "Performance Warning", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
+            if (confirm == JOptionPane.YES_OPTION) {
+                verifyLocalModels(true);
+            }
+        });
+
+        JButton archiveBtn = new JButton("📦 Archive...");
+        archiveBtn.putClientProperty("JButton.buttonType", "roundRect");
+        archiveBtn.addActionListener(e -> showArchiveDialog());
+
+        JButton diagnosticBtn = new JButton("🩺 Diagnostic");
+        diagnosticBtn.putClientProperty("JButton.buttonType", "roundRect");
+        diagnosticBtn.addActionListener(e -> {
+            if (modelsToDownload == null || modelsToDownload.isEmpty()) {
+                JOptionPane.showMessageDialog(this, "Load a workflow first to perform a diagnostic check.");
+                return;
+            }
+            List<String> missing = diagnosticService.getMissingModels(modelsToDownload);
+            if (missing.isEmpty()) {
+                JOptionPane.showMessageDialog(this, "✅ All workflow models are visible to ComfyUI!", "Diagnostic Passed", JOptionPane.INFORMATION_MESSAGE);
+            } else {
+                String list = String.join("\n- ", missing);
+                Object[] options = {"Go to Dashboard (Restart)", "Ignore"};
+                int choice = JOptionPane.showOptionDialog(this, 
+                    "❌ ComfyUI still reports these models as missing:\n- " + list + "\n\n" +
+                    "A restart is required for ComfyUI to detect new models.", 
+                    "Diagnostic Failed", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE, null, options, options[0]);
+                
+                if (choice == 0) tabs.setSelectedIndex(0);
+            }
+        });
+
+        JLabel toolsLabel = new JLabel("Storage Tools: ");
+        toolsLabel.setFont(new Font("SansSerif", Font.BOLD, 12));
+        toolbar.add(toolsLabel);
+        toolbar.add(verifyBtn);
+        toolbar.add(optimizeBtn);
+        toolbar.add(archiveBtn);
+        
+        JSeparator sep = new JSeparator(JSeparator.VERTICAL);
+        sep.setPreferredSize(new Dimension(2, 20));
+        toolbar.add(sep);
+        
+        toolbar.add(diagnosticBtn);
+
+        JSplitPane splitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
+        JPanel jsonPanel = new JPanel(new BorderLayout());
+        jsonPanel.setBorder(BorderFactory.createTitledBorder("Workflow (Drag & Drop JSON/PNG)"));
+        jsonInputArea = new JTextArea();
+        setupDragAndDrop(jsonInputArea);
+        JScrollPane jsonScroll = new JScrollPane(jsonInputArea);
+        JPanel jsonButtons = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+        JButton loadJsonBtn = new JButton("Load Workflow...");
+        loadJsonBtn.addActionListener(e -> {
+            FileDialog fd = new FileDialog(this, "Select Workflow", FileDialog.LOAD);
+            fd.setVisible(true);
+            if (fd.getFile() != null) loadFile(new File(fd.getDirectory(), fd.getFile()));
+        });
+
+        JButton importModelListBtn = new JButton("Import Model List...");
+        importModelListBtn.addActionListener(e -> {
+            FileDialog fd = new FileDialog(this, "Select Model List JSON", FileDialog.LOAD);
+            fd.setVisible(true);
+            if (fd.getFile() != null) {
+                try {
+                    modelListService.importJson(new File(fd.getDirectory(), fd.getFile()));
+                    JOptionPane.showMessageDialog(this, "Model list imported successfully! (" + modelListService.getModels().size() + " models)");
+                    analyzeJsonContent();
+                } catch (Exception ex) {
+                    JOptionPane.showMessageDialog(this, "Error: " + ex.getMessage());
+                }
+            }
+        });
+
+        JButton analyzeBtn = new JButton("Deep Search");
+        analyzeBtn.addActionListener(e -> { analyzeJsonContent(); searchMissingOnline(); });
+        jsonButtons.add(loadJsonBtn);
+        jsonButtons.add(importModelListBtn);
+        jsonButtons.add(analyzeBtn);
+        jsonPanel.add(jsonScroll, BorderLayout.CENTER);
+        jsonPanel.add(jsonButtons, BorderLayout.SOUTH);
+
+        String[] columnNames = {"Select", "Type", "Name", "Size", "AI Source", "Target Path", "URL", "Status"}; 
+        tableModel = new DefaultTableModel(columnNames, 0) {
+            @Override public Class<?> getColumnClass(int c) { return c == 0 ? Boolean.class : String.class; }   
+            @Override public boolean isCellEditable(int r, int c) { 
+                if (c == 0) {
+                    String status = (String) getValueAt(r, 7);
+                    return status != null && !status.contains("Already exists");
+                }
+                return false; 
+            }
+        };
+        tableModel.addTableModelListener(e -> {
+            if (e.getType() == TableModelEvent.UPDATE && e.getColumn() == 0) updateDownloadManagerSelection();
+        });
+        JTable modelTable = new JTable(tableModel);
+        modelTable.putClientProperty("terminateEditOnFocusLost", Boolean.TRUE);
+        JScrollPane tableScroll = new JScrollPane(modelTable);
+        JPanel tablePanel = new JPanel(new BorderLayout());
+        tablePanel.setBorder(BorderFactory.createTitledBorder("Identified Models"));
+        tablePanel.add(tableScroll, BorderLayout.CENTER);
+
+        splitPane.setTopComponent(jsonPanel);
+        splitPane.setBottomComponent(tablePanel);
+        splitPane.setDividerLocation(350);
+
+        JPanel bottomPanel = new JPanel(new BorderLayout());
+        statusLabel = new JLabel("Ready");
+        
+        JPanel progressPanel = new JPanel(new GridLayout(2, 1));
+        activeAiModelLabel = new JLabel("Active AI: Loading...");
+        activeAiModelLabel.setFont(new Font("SansSerif", Font.ITALIC, 11));
+        activeAiModelLabel.setForeground(Color.GRAY);
+        progressPanel.add(statusLabel);
+        progressPanel.add(activeAiModelLabel);
+        
+        JPanel actionButtons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 5));
+        downloadButton = new JButton("Start Queue");
+        downloadButton.putClientProperty("JButton.buttonType", "accent");
+        downloadButton.setFont(new Font("SansSerif", Font.BOLD, 13));
+        downloadButton.setEnabled(false);
+        downloadButton.addActionListener(e -> startDownloadQueue());
+        
+        pauseButton = new JButton("Pause");
+        pauseButton.putClientProperty("JButton.buttonType", "roundRect");
+        pauseButton.setFont(new Font("SansSerif", Font.BOLD, 13));
+        pauseButton.addActionListener(e -> {
+            downloadManager.togglePause();
+            SwingUtilities.invokeLater(() -> pauseButton.setText(downloadManager.isPaused() ? "Resume" : "Pause"));
+        });
+        
+        stopButton = new JButton("Stop");
+        stopButton.putClientProperty("JButton.buttonType", "roundRect");
+        stopButton.setFont(new Font("SansSerif", Font.BOLD, 13));
+        stopButton.addActionListener(e -> downloadManager.stop());
+        
+        actionButtons.add(downloadButton);
+        actionButtons.add(pauseButton);
+        actionButtons.add(stopButton);
+        
+        bottomPanel.add(progressPanel, BorderLayout.CENTER);
+        bottomPanel.add(actionButtons, BorderLayout.EAST);
+
+        managerPanel.add(toolbar, BorderLayout.NORTH);
+        managerPanel.add(splitPane, BorderLayout.CENTER);
+        managerPanel.add(bottomPanel, BorderLayout.SOUTH);
+        
+        return managerPanel;
+    }
+
+    private JPanel createSettingsPanel() {
+        JPanel panel = new JPanel(new BorderLayout(15, 15));
+        panel.setBorder(BorderFactory.createEmptyBorder(25, 25, 25, 25));
+
+        JPanel grid = new JPanel(new GridLayout(1, 2, 25, 0));
+        grid.setOpaque(false);
+        
+        // Left Column: General & Paths
+        JPanel left = new JPanel();
+        left.setLayout(new BoxLayout(left, BoxLayout.Y_AXIS));
+        left.putClientProperty("FlatLaf.style", "arc: 15; background: lighten($Panel.background, 2%)");
+        left.setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
+
+        JLabel pathsHeader = new JLabel("General & Paths");
+        pathsHeader.putClientProperty("FlatLaf.styleClass", "h3");
+        pathsHeader.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+
+        JButton pathsBtn = new JButton("📁 Configure Directories...");
+        pathsBtn.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        pathsBtn.setMaximumSize(new Dimension(300, 40));
+        pathsBtn.addActionListener(e -> showPathsDialog());
+
+        JButton bridgeBtn = new JButton("🚀 ComfyUI Bridge Installer...");
+        bridgeBtn.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        bridgeBtn.setMaximumSize(new Dimension(300, 40));
+        bridgeBtn.addActionListener(e -> showInstallationDialog());
+
+        JPanel checksPanel = new JPanel();
+        checksPanel.setOpaque(false);
+        checksPanel.setLayout(new BoxLayout(checksPanel, BoxLayout.Y_AXIS));
+        checksPanel.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+
+        backgroundCheck = new JCheckBox("Stay in Background");
+        backgroundCheck.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        backgroundCheck.addActionListener(e -> configService.setBackgroundModeEnabled(backgroundCheck.isSelected()));
+        
+        shutdownCheck = new JCheckBox("Shutdown after Queue");
+        shutdownCheck.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        shutdownCheck.addActionListener(e -> configService.setShutdownAfterDownloadEnabled(shutdownCheck.isSelected()));
+        
+        restartCheck = new JCheckBox("Full Restart after Queue");
+        restartCheck.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        restartCheck.addActionListener(e -> configService.setRestartAfterDownloadEnabled(restartCheck.isSelected()));
+        
+        darkCheck = new JCheckBox("Dark Mode");
+        darkCheck.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        darkCheck.addActionListener(e -> {
+            boolean isDark = darkCheck.isSelected();
+            configService.setDarkMode(isDark);
+            FlatAnimatedLafChange.showSnapshot();
+            setupTheme(isDark);
+            revalidate();
+            repaint();
+            FlatAnimatedLafChange.hideSnapshotWithAnimation();
+        });
+
+        fastHashCheck = new JCheckBox("Fast Hashing (AutoV1)");
+        fastHashCheck.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        fastHashCheck.addActionListener(e -> configService.setFastHashEnabled(fastHashCheck.isSelected()));
+
+        checksPanel.add(backgroundCheck);
+        checksPanel.add(Box.createVerticalStrut(8));
+        checksPanel.add(shutdownCheck);
+        checksPanel.add(Box.createVerticalStrut(8));
+        checksPanel.add(restartCheck);
+        checksPanel.add(Box.createVerticalStrut(8));
+        checksPanel.add(darkCheck);
+        checksPanel.add(Box.createVerticalStrut(8));
+        checksPanel.add(fastHashCheck);
+
+        left.add(pathsHeader);
+        left.add(Box.createVerticalStrut(20));
+        left.add(pathsBtn);
+        left.add(Box.createVerticalStrut(10));
+        left.add(bridgeBtn);
+        left.add(Box.createVerticalStrut(25));
+        left.add(checksPanel);
+        left.add(Box.createVerticalGlue());
+
+        // Right Column: AI & Help
+        JPanel right = new JPanel();
+        right.setLayout(new BoxLayout(right, BoxLayout.Y_AXIS));
+        right.putClientProperty("FlatLaf.style", "arc: 15; background: lighten($Panel.background, 2%)");
+        right.setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
+
+        JLabel aiHeader = new JLabel("AI & Support");
+        aiHeader.putClientProperty("FlatLaf.styleClass", "h3");
+        aiHeader.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+
+        JButton apiBtn = new JButton("🔑 AI & API Keys...");
+        apiBtn.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        apiBtn.setMaximumSize(new Dimension(300, 40));
+        apiBtn.addActionListener(e -> showApiKeysDialog());
+
+        JButton helpBtn = new JButton("ℹ View Help & Guide");
+        helpBtn.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        helpBtn.setMaximumSize(new Dimension(300, 40));
+        helpBtn.addActionListener(e -> showHelpDialog());
+
+        JButton resetVaultBtn = new JButton("🔒 Reset Security Vault...");
+        resetVaultBtn.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        resetVaultBtn.setMaximumSize(new Dimension(300, 40));
+        resetVaultBtn.addActionListener(e -> {
+            int confirm = JOptionPane.showConfirmDialog(this, "This will delete all stored API keys. Continue?", "Vault Reset", JOptionPane.YES_NO_OPTION);
+            if (confirm == JOptionPane.YES_OPTION) configService.resetVault();
+        });
+
+        right.add(aiHeader);
+        right.add(Box.createVerticalStrut(20));
+        right.add(apiBtn);
+        right.add(Box.createVerticalStrut(10));
+        right.add(resetVaultBtn);
+        right.add(Box.createVerticalStrut(25));
+        right.add(helpBtn);
+        right.add(Box.createVerticalGlue());
+
+        grid.add(left);
+        grid.add(right);
+        panel.add(grid, BorderLayout.CENTER);
+        
+        return panel;
+    }
+
     private void performFullServiceRestart() {
         new Thread(() -> {
             SwingUtilities.invokeLater(() -> {
-                statusLabel.setText("🚀 Triggering Full Service Restart...");
-                if (tableModel != null) {
-                    statusLabel.setText("🚀 Refreshing local library & Restarting ComfyUI...");
-                }
+                statusLabel.setText("🚀 Requesting restart via Dashboard...");
             });
             
-            // 1. Core logic: Stop -> Discover -> Reload Config -> Start
-            configService.autoDiscoverPaths();
-            lifecycleService.restart();
+            // Core logic: Stop via process controller
+            processController.stop();
             
-            // 2. Wait for health and notify user in status label
-            for (int i = 0; i < 45; i++) {
-                if (lifecycleService.isHealthy()) {
-                    SwingUtilities.invokeLater(() -> {
-                        statusLabel.setText("🔄 Syncing interface...");
-                        
-                        // 3. Reload integrated browser
-                        if (comfyWebPanel != null) {
-                            comfyWebPanel.reload();
-                        }
-
-                        // 4. Trigger external browser reload via Bridge (with a small delay for reconnect)
-                        new Thread(() -> {
-                            try { Thread.sleep(3000); } catch (InterruptedException ignored) {}
-                            downloadManager.notifyComfyUI(true);
-                        }).start();
-                        
-                        // 5. Refresh Model Table (Local existence checks)
-                        analyzeJsonContent();
-                        
-                        statusLabel.setText("✅ Ready");
-                    });
-                    return;
+            // Switch to Dashboard so user can pick profile and start again
+            SwingUtilities.invokeLater(() -> {
+                if (getContentPane() instanceof JTabbedPane) {
+                    ((JTabbedPane) getContentPane()).setSelectedIndex(0);
                 }
-                try { Thread.sleep(1000); } catch (InterruptedException ignored) {}
-            }
-            SwingUtilities.invokeLater(() -> statusLabel.setText("⚠️ ComfyUI restart taking longer than expected. Check Control Panel."));
+                statusLabel.setText("✅ ComfyUI stopped. Please restart via Dashboard.");
+            });
         }).start();
     }
 
     private void triggerPostOperationActions() {
         SwingUtilities.invokeLater(() -> {
-            // Standardized Full Reload (replacing all soft reloads)
-            performFullServiceRestart();
+            int choice = JOptionPane.showConfirmDialog(this, 
+                "Operation finished successfully.\nDo you want to restart ComfyUI now?", 
+                "Restart ComfyUI?", JOptionPane.YES_NO_OPTION, JOptionPane.QUESTION_MESSAGE);
             
-            // Shutdown (only if enabled)
+            if (choice == JOptionPane.YES_OPTION) {
+                performFullServiceRestart();
+            }
+            
             if (configService.isShutdownAfterDownloadEnabled()) performSystemShutdown();
+        });
+    }
+
+    private void refreshProfileList(DefaultListModel<de.tki.comfymodels.domain.LaunchProfile> model) {
+        model.clear();
+        List<de.tki.comfymodels.domain.LaunchProfile> profiles = profileManager.loadProfiles();
+        
+        // Add a default local profile if none exist
+        if (profiles.isEmpty()) {
+            de.tki.comfymodels.domain.LaunchProfile def = new de.tki.comfymodels.domain.LaunchProfile(
+                "default",
+                "Default (Local)",
+                "Starts ComfyUI with standard local settings (--listen 127.0.0.1).",
+                false, "python", 
+                List.of("--listen", "127.0.0.1", "--port", "8188"), new HashMap<>()
+            );
+            profiles.add(def);
+            try {
+                profileManager.saveProfiles(profiles);
+            } catch (IOException ignored) {}
+        }
+
+        for (de.tki.comfymodels.domain.LaunchProfile p : profiles) {
+            model.addElement(p);
+        }
+    }
+
+    private void refreshVersions() {
+        // Local checks (fast)
+        String localComfy = versionService.getInstalledComfyVersion(configService.getComfyUIPath());
+        String localPython = versionService.getInstalledPythonVersion(configService.getPythonPath());
+        String remotePython = versionService.getRemotePythonVersion();
+
+        lblComfyVersion.setText("ComfyUI: " + localComfy + " (Remote: Fetching...)");
+        lblPythonVersion.setText("Python: " + localPython + " (Latest: " + remotePython + ")");
+
+        // Remote async check
+        versionService.getRemoteComfyVersionAsync().thenAccept(remoteComfy -> {
+            SwingUtilities.invokeLater(() -> {
+                if (lblComfyVersion != null) {
+                    lblComfyVersion.setText("ComfyUI: " + localComfy + " (Remote: " + remoteComfy + ")");
+                }
+            });
         });
     }
 
@@ -2058,7 +2544,7 @@ public class Main extends JFrame {
 
         StringBuilder sb = new StringBuilder();
         sb.append("<html><body style='padding: 25px; font-family: sans-serif; background-color: ").append(bgColor).append("; color: ").append(textColor).append(";'>");
-        sb.append("<h1 style='color: ").append(accentColor).append("; text-align: center; margin-bottom: 25px;'>🚀 ComfyUI Model Downloader</h1>");
+        sb.append("<h1 style='color: ").append(accentColor).append("; text-align: center; margin-bottom: 25px;'>🚀 ComfyUI Companion</h1>");
         
         sb.append("<div style='background-color: ").append(boxBg).append("; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 1px solid ").append(boxBorder).append(";'>");
         sb.append("<h2 style='color: ").append(accentColor).append("; margin-top: 0;'>🛠️ Getting Started (Setup)</h2>");
@@ -2120,7 +2606,7 @@ public class Main extends JFrame {
         Path customNodesDir = pathResolver.findCustomNodes(comfyDir);
         if (customNodesDir == null) return;
 
-        Path targetDir = customNodesDir.resolve("comfyui-model-downloader");
+        Path targetDir = customNodesDir.resolve("comfyuicompanion");
         if (Files.exists(targetDir) && Files.isDirectory(targetDir)) {
             try {
                 // Always sync latest code files from resources to target

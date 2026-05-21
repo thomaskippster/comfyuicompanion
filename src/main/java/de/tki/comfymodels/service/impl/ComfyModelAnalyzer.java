@@ -23,7 +23,7 @@ public class ComfyModelAnalyzer implements IModelAnalyzer {
     @Autowired(required = false)
     private GeminiAIService geminiService;
 
-    private final Pattern FILE_PATTERN = Pattern.compile("([a-zA-Z0-9_\\-\\.\\/]+\\.(?:safetensors|sft|ckpt|pth|pt|bin|onnx|yaml))", Pattern.CASE_INSENSITIVE);
+    private final Pattern FILE_PATTERN = Pattern.compile("([a-zA-Z0-9_\\-\\.\\/\\\\\\:]+\\.(?:safetensors|sft|ckpt|pth|pt|bin|onnx|yaml))", Pattern.CASE_INSENSITIVE);
     private final Pattern COMP_VAE_PATTERN = Pattern.compile("(vae|tokenizer|autoencoder|encoder|decoder)", Pattern.CASE_INSENSITIVE);
     private final Pattern COMP_CLIP_PATTERN = Pattern.compile("(clip|text.encoder|t5|llama|gemma|mistral|qwen|bert|vit|embed)", Pattern.CASE_INSENSITIVE);
     private final Pattern COMP_UNET_PATTERN = Pattern.compile("(unet|diffusion|transformer|dit|model|upscale|esrgan|resnet|sampling)", Pattern.CASE_INSENSITIVE);
@@ -52,12 +52,23 @@ public class ComfyModelAnalyzer implements IModelAnalyzer {
                 Optional<ModelInfo> listMatch = (modelListService != null) ? modelListService.findByFilename(name) : Optional.empty();
                 if (listMatch.isPresent()) {
                     ModelInfo match = listMatch.get();
-                    info.setUrl(match.getUrl());
-                    info.setSave_path(match.getSave_path());
+                    
+                    // Prefer URL from workflow if present
+                    if (info.getUrl() == null || info.getUrl().equals("MISSING")) {
+                        info.setUrl(match.getUrl());
+                    }
+                    
+                    // Priority: If the workflow already has a specific subfolder (e.g. Wan2.2/model), 
+                    // and the model list just says 'diffusion_models', keep the workflow's subfolder.
+                    if (info.getSave_path() != null && info.getSave_path().contains("/") && match.getSave_path() != null && !match.getSave_path().contains("/")) {
+                        // Keep info.save_path
+                    } else {
+                        info.setSave_path(match.getSave_path());
+                    }
+                    
                     info.setSize(match.getSize());
                     info.setByteSize(match.getByteSize());
                     info.setPopularity("📂 MODEL LIST MATCH");
-
                 } else {
                     String popularity = null;
                     if (geminiService != null) {
@@ -69,6 +80,14 @@ public class ComfyModelAnalyzer implements IModelAnalyzer {
                     if (popularity == null && aiService != null) {
                         LocalAIService.Prediction prediction = aiService.predictProvider(info.getName());
                         popularity = prediction.getLabel();
+                    }
+                    
+                    // NEW: Better source detection from URL if available
+                    if (info.getUrl() != null && !info.getUrl().equals("MISSING") && aiService != null) {
+                        LocalAIService.Prediction urlPrediction = aiService.predictFromUrl(info.getUrl());
+                        if (urlPrediction.confidence > 0.4) {
+                            popularity = urlPrediction.getLabel();
+                        }
                     }
                     
                     if (popularity != null) {
@@ -227,8 +246,15 @@ public class ComfyModelAnalyzer implements IModelAnalyzer {
             if (match.startsWith("http") || match.startsWith("//")) continue;
 
             String f = match;
-            if (f.contains("/")) f = f.substring(f.lastIndexOf("/") + 1);
-            if (f.contains("\\")) f = f.substring(f.lastIndexOf("\\") + 1);
+            String subfolder = null;
+            if (f.contains("/")) {
+                subfolder = f.substring(0, f.lastIndexOf("/")).replace("\\", "/");
+                f = f.substring(f.lastIndexOf("/") + 1);
+            }
+            if (f.contains("\\")) {
+                subfolder = f.substring(0, f.lastIndexOf("\\")).replace("\\", "/");
+                f = f.substring(f.lastIndexOf("\\") + 1);
+            }
 
             if (f.length() > 3) {
                 String fLow = f.toLowerCase();
@@ -242,7 +268,11 @@ public class ComfyModelAnalyzer implements IModelAnalyzer {
                 else if (COMP_CLIP_PATTERN.matcher(fLow).find() && (type == null || type.equals(de.tki.comfymodels.domain.ModelFolder.CHECKPOINTS.getDefaultFolderName()))) type = "clip";
                 else if (COMP_UNET_PATTERN.matcher(fLow).find() && (type == null || type.equals(de.tki.comfymodels.domain.ModelFolder.CHECKPOINTS.getDefaultFolderName()) || (type.equals("clip") && !fLow.contains("clip_l") && !fLow.contains("clip_g")))) type = "unet";
                 
-                addModelInfo(res, new ModelInfo(type != null ? type : de.tki.comfymodels.domain.ModelFolder.CHECKPOINTS.getDefaultFolderName(), f, "MISSING"));
+                ModelInfo info = new ModelInfo(type != null ? type : de.tki.comfymodels.domain.ModelFolder.CHECKPOINTS.getDefaultFolderName(), f, "MISSING");
+                if (subfolder != null && type != null) {
+                    info.setSave_path(type + "/" + subfolder);
+                }
+                addModelInfo(res, info);
             }
         }
     }
@@ -295,17 +325,30 @@ public class ComfyModelAnalyzer implements IModelAnalyzer {
     private void addModelInfo(List<ModelInfo> res, ModelInfo info) {
         for (ModelInfo e : res) {
             if (e.getName().equalsIgnoreCase(info.getName())) {
-                // If the existing entry is generic de.tki.comfymodels.domain.ModelFolder.CHECKPOINTS.getDefaultFolderName() but we found a more specific type
+                // Priority 1: If the new info has a deeper save_path (contains subfolders), prefer it
+                if (info.getSave_path() != null && info.getSave_path().contains("/")) {
+                    if (e.getSave_path() == null || !e.getSave_path().contains("/") || info.getSave_path().length() > e.getSave_path().length()) {
+                        e.setSave_path(info.getSave_path());
+                    }
+                }
+
+                // Priority 2: If the existing entry is generic 'checkpoints' but we found a more specific type
                 if (de.tki.comfymodels.domain.ModelFolder.CHECKPOINTS.getDefaultFolderName().equals(e.getType()) && !de.tki.comfymodels.domain.ModelFolder.CHECKPOINTS.getDefaultFolderName().equals(info.getType())) {
                     e.setType(info.getType());
-                    if (info.getSave_path() != null) e.setSave_path(info.getSave_path());
+                    if (e.getSave_path() == null || !e.getSave_path().contains("/")) {
+                        e.setSave_path(info.getSave_path());
+                    }
                 }
                 
-                // Always take URL if the current one is MISSING
+                // Priority 3: Always take URL if the current one is MISSING
                 if (e.getUrl().equals("MISSING") && !info.getUrl().equals("MISSING")) {
                     e.setUrl(info.getUrl());
-                    if (info.getSave_path() != null) e.setSave_path(info.getSave_path());
-                    if (info.getType() != null && !de.tki.comfymodels.domain.ModelFolder.CHECKPOINTS.getDefaultFolderName().equals(info.getType())) e.setType(info.getType());
+                    if (e.getSave_path() == null || !e.getSave_path().contains("/")) {
+                        e.setSave_path(info.getSave_path());
+                    }
+                    if (info.getType() != null && !de.tki.comfymodels.domain.ModelFolder.CHECKPOINTS.getDefaultFolderName().equals(info.getType())) {
+                        e.setType(info.getType());
+                    }
                 }
                 return;
             }

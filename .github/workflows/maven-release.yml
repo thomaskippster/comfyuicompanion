@@ -69,18 +69,17 @@ jobs:
       - name: Upload to SourceForge
         run: |
           REL_VERSION="v${{ env.VERSION }}"
-          PROJECT_NAME="comfymodeldownloader"
-          
+          PROJECT_NAME="comfyuicompanion"
+
           echo "Uploading version $REL_VERSION to project $PROJECT_NAME..."
-          
+
           # Wir nutzen sftp, da es in der restricted shell von SourceForge oft zuverlässiger ist als rsync
           # und wir damit gezielt das Verzeichnis anlegen können.
           # Das Minus vor mkdir ignoriert Fehler, falls das Verzeichnis bereits existiert.
-          
+
           cat <<EOF > sftp_batch
           -mkdir /home/frs/project/$PROJECT_NAME/$REL_VERSION
-          put target/ComfyUIModelDownloader.jar /home/frs/project/$PROJECT_NAME/$REL_VERSION/
+          put target/comfyuicompanion.jar /home/frs/project/$PROJECT_NAME/$REL_VERSION/
           quit
-          EOF
-          
+          EOF          
           sftp -b sftp_batch -o StrictHostKeyChecking=no thomaskifree@frs.sourceforge.net

@@ -20,6 +20,7 @@ public class ConfigService {
     private final String CONFIG_FILE = "app_settings.json";
     private final String VAULT_FILE = "settings.vault";
     private JSONObject settings = new JSONObject();
+    private JSONObject persistentSettings = new JSONObject(); // Plain settings (not in vault)
     private String masterPassword = null;
     private boolean vaultFresh = false;
 
@@ -30,6 +31,27 @@ public class ConfigService {
     public ConfigService(EncryptionUtils encryptionUtils, PathResolver pathResolver) {
         this.encryptionUtils = encryptionUtils;
         this.pathResolver = pathResolver;
+        loadPersistentSettings();
+    }
+
+    private void loadPersistentSettings() {
+        File file = getFileInAppData(CONFIG_FILE);
+        if (file.exists()) {
+            try {
+                String content = Files.readString(file.toPath(), StandardCharsets.UTF_8);
+                persistentSettings = new JSONObject(content);
+            } catch (Exception e) {
+                System.err.println("Error loading persistent settings: " + e.getMessage());
+            }
+        }
+    }
+
+    private void savePersistentSettings() {
+        try {
+            Files.writeString(getFileInAppData(CONFIG_FILE).toPath(), persistentSettings.toString(4), StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            System.err.println("Error saving persistent settings: " + e.getMessage());
+        }
     }
 
     @jakarta.annotation.PostConstruct
@@ -234,7 +256,14 @@ public class ConfigService {
             File mainPy = new File(root, "main.py");
             
             if (mainPy.exists()) {
-                int port = getComfyUIUrl().contains(":8000") ? 8000 : 8188;
+                int port = 8188;
+                try {
+                    String url = getComfyUIUrl();
+                    int colonIndex = url.lastIndexOf(":");
+                    if (colonIndex != -1) {
+                        port = Integer.parseInt(url.substring(colonIndex + 1));
+                    }
+                } catch (Exception ignored) {}
                 String cmd = String.format("\"%s\" \"%s\" --listen 127.0.0.1 --port %d --enable-manager", 
                     python, mainPy.getAbsolutePath(), port);
                 setComfyLaunchCommand(cmd);
@@ -306,9 +335,13 @@ public class ConfigService {
     }
 
     /**
-     * Use the current working directory for application data.
+     * Use the current working directory for application data, or override via system property for tests.
      */
     public String getAppDataPath() {
+        String override = System.getProperty("comfyuicompanion.appdata");
+        if (override != null && !override.isEmpty()) {
+            return override;
+        }
         return System.getProperty("user.dir");
     }
 
@@ -335,17 +368,44 @@ public class ConfigService {
         } else {
             this.masterPassword = password;
             File oldFile = getFileInAppData(CONFIG_FILE);
+            boolean migrated = false;
             if (oldFile.exists()) {
                 try {
                     String content = Files.readString(oldFile.toPath(), StandardCharsets.UTF_8);
-                    this.settings = new JSONObject(content);
-                    save();
-                    oldFile.delete();
-                    System.out.println("Migrated old settings to encrypted vault.");
+                    JSONObject oldJson = new JSONObject(content);
+                    
+                    JSONObject legacyVaultSettings = new JSONObject();
+                    String[] vaultKeys = {
+                        "gemini_api_key", "hf_token", "models_path", "archive_path",
+                        "background_mode", "shutdown_after_download", "comfyui_path",
+                        "python_path", "comfy_launch_command", "comfy_working_dir",
+                        "restart_after_download", "comfyui_url", "api_token"
+                    };
+                    
+                    for (String key : vaultKeys) {
+                        if (oldJson.has(key)) {
+                            legacyVaultSettings.put(key, oldJson.get(key));
+                            oldJson.remove(key);
+                        }
+                    }
+                    
+                    if (!legacyVaultSettings.keySet().isEmpty()) {
+                        this.settings = legacyVaultSettings;
+                        save();
+                        if (oldJson.keySet().isEmpty()) {
+                            oldFile.delete();
+                        } else {
+                            Files.writeString(oldFile.toPath(), oldJson.toString(4), StandardCharsets.UTF_8);
+                        }
+                        System.out.println("Migrated old settings to encrypted vault.");
+                        migrated = true;
+                    }
                 } catch (Exception e) {
                     System.err.println("Failed to migrate old settings: " + e.getMessage());
                 }
-            } else {
+            }
+            
+            if (!migrated) {
                 System.out.println("No vault found, initialized new empty vault at: " + vault.getAbsolutePath());
                 this.vaultFresh = true;
                 save();
@@ -378,6 +438,12 @@ public class ConfigService {
     public String getHfToken() { return settings.optString("hf_token", ""); }
     public void setHfToken(String token) { settings.put("hf_token", token); save(); }
 
+    public String getCivitaiApiKey() { return settings.optString("civitai_api_key", ""); }
+    public void setCivitaiApiKey(String key) { settings.put("civitai_api_key", key); save(); }
+
+    public boolean isFastHashEnabled() { return settings.optBoolean("fast_hash", false); }
+    public void setFastHashEnabled(boolean enabled) { settings.put("fast_hash", enabled); save(); }
+
     public String getModelsPath() { 
         String path = settings.optString("models_path", PathResolver.MODELS_DIR);
         return pathResolver.resolveModelsPath(path).toString();
@@ -397,8 +463,11 @@ public class ConfigService {
     public boolean isShutdownAfterDownloadEnabled() { return settings.optBoolean("shutdown_after_download", false); }
     public void setShutdownAfterDownloadEnabled(boolean enabled) { settings.put("shutdown_after_download", enabled); save(); }
 
-    public boolean isDarkMode() { return settings.optBoolean("dark_mode", false); }
-    public void setDarkMode(boolean enabled) { settings.put("dark_mode", enabled); save(); }
+    public boolean isDarkMode() { return persistentSettings.optBoolean("dark_mode", true); }
+    public void setDarkMode(boolean enabled) { 
+        persistentSettings.put("dark_mode", enabled); 
+        savePersistentSettings();
+    }
 
     public void savePendingDownloads(String json) {
         try {
@@ -441,7 +510,18 @@ public class ConfigService {
     public boolean isRestartAfterDownloadEnabled() { return settings.optBoolean("restart_after_download", false); }
     public void setRestartAfterDownloadEnabled(boolean enabled) { settings.put("restart_after_download", enabled); save(); }
 
-    public String getComfyUIUrl() { return settings.optString("comfyui_url", "http://127.0.0.1:8000"); }
+    public String getComfyUIUrl() {
+        String url = settings.optString("comfyui_url", "http://127.0.0.1:8188");
+        
+        // Force upgrade legacy 8000 port to 8188
+        if (url.contains(":8000")) {
+            System.out.println("🔧 [Config] Upgrading legacy ComfyUI port 8000 to 8188.");
+            url = url.replace(":8000", ":8188");
+            setComfyUIUrl(url);
+        }
+        
+        return url.endsWith("/") ? url.substring(0, url.length() - 1) : url;
+    }
     public void setComfyUIUrl(String url) { 
         if (url != null && !url.isEmpty()) {
             String sanitized = url.endsWith("/") ? url.substring(0, url.length() - 1) : url;

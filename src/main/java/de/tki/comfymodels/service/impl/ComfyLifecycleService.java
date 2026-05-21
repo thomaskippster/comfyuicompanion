@@ -19,8 +19,21 @@ public class ComfyLifecycleService implements IComfyLifecycleService {
     @Autowired
     private ConfigService configService;
 
+    @Autowired
+    private EnvironmentBootstrapperImpl bootstrapper;
+
+    @Autowired
+    @org.springframework.context.annotation.Lazy
+    private ComfyProcessController processController;
+
+    @Autowired
+    @org.springframework.context.annotation.Lazy
+    private de.tki.comfymodels.service.IDownloadManager downloadManager;
+
     private Process comfyProcess;
     private final AtomicReference<String> status = new AtomicReference<>("Stopped");
+    private final java.util.concurrent.atomic.AtomicBoolean stopping = new java.util.concurrent.atomic.AtomicBoolean(false);
+    private final java.util.concurrent.atomic.AtomicBoolean browserLaunched = new java.util.concurrent.atomic.AtomicBoolean(false);
     private final HttpClient httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofMillis(500)).build();
 
     @Override
@@ -71,6 +84,40 @@ public class ComfyLifecycleService implements IComfyLifecycleService {
                     }
                 } catch (java.io.IOException ignored) {}
             }).start();
+
+            // Monitor for readiness and launch browser
+            new Thread(() -> {
+                try { Thread.sleep(3000); } catch (InterruptedException ignored) {}
+                boolean launched = false;
+                while (!launched && isRunning()) {
+                    if (isHealthy()) {
+                        String url = configService.getComfyUIUrl();
+                        if (browserLaunched.compareAndSet(false, true)) {
+                            System.out.println("🌐 [Lifecycle] Health check passed. Launching browser: " + url);
+                            try {
+                                if (java.awt.Desktop.isDesktopSupported() && java.awt.Desktop.getDesktop().isSupported(java.awt.Desktop.Action.BROWSE)) {
+                                    java.awt.Desktop.getDesktop().browse(new java.net.URI(url));
+                                } else {
+                                    String cmd = de.tki.comfymodels.util.PlatformUtils.isWindows() ? "cmd /c start " + url : "xdg-open " + url;
+                                    System.out.println("🌐 [Lifecycle] Desktop API not supported. Executing: " + cmd);
+                                    Process p = Runtime.getRuntime().exec(cmd);
+                                    if (p.waitFor() != 0) {
+                                        System.err.println("⚠️ [Lifecycle] Browser launch process failed with exit code: " + p.exitValue());
+                                    }
+                                }
+                            } catch (Exception e) {
+                                System.err.println("❌ [Lifecycle] Failed to open browser: " + e.getMessage());
+                                e.printStackTrace();
+                            }
+                        } else {
+                            System.out.println("🌐 [Lifecycle] Health check passed. Browser already launched during this application run.");
+                        }
+                        launched = true;
+                        triggerBrowserRefresh();
+                    }
+                    try { Thread.sleep(2000); } catch (InterruptedException e) { break; }
+                }
+            }).start();
             status.set("Running (PID: " + comfyProcess.pid() + ")");
             
             // Background thread to wait for exit
@@ -91,30 +138,44 @@ public class ComfyLifecycleService implements IComfyLifecycleService {
 
     @Override
     public synchronized void stop() {
-        status.set("Stopping...");
-        
-        // 1. Kill internal process if managed
-        if (comfyProcess != null) {
-            try {
-                comfyProcess.descendants().forEach(ProcessHandle::destroyForcibly);
-                comfyProcess.destroyForcibly();
-                comfyProcess.waitFor();
-            } catch (Exception ignored) {}
-            comfyProcess = null;
+        if (stopping.getAndSet(true)) {
+            return;
         }
+        try {
+            status.set("Stopping...");
+            
+            // 1. Kill internal process if managed
+            if (comfyProcess != null) {
+                try {
+                    comfyProcess.descendants().forEach(ProcessHandle::destroyForcibly);
+                    comfyProcess.destroyForcibly();
+                    comfyProcess.waitFor();
+                } catch (Exception ignored) {}
+                comfyProcess = null;
+            }
 
-        // 2. Kill by port fallback (for external/orphaned instances)
-        if (isHealthy()) {
-            killProcessOnPort();
+            // 2. Kill the other controller if running
+            try {
+                processController.stop();
+            } catch (Exception e) {
+                System.err.println("Failed to stop processController: " + e.getMessage());
+            }
+
+            // 3. Kill by port fallback (for external/orphaned instances)
+            if (isHealthy()) {
+                killProcessOnPort();
+            }
+            
+            status.set("Stopped");
+        } finally {
+            stopping.set(false);
         }
-        
-        status.set("Stopped");
     }
 
     private void killProcessOnPort() {
         try {
             String url = configService.getComfyUIUrl();
-            int port = 8000;
+            int port = 8188;
             try {
                 port = Integer.parseInt(url.substring(url.lastIndexOf(":") + 1));
             } catch (Exception ignored) {}
@@ -174,8 +235,13 @@ public class ComfyLifecycleService implements IComfyLifecycleService {
     }
 
     @Override
+    public boolean isProcessAlive() {
+        return comfyProcess != null && comfyProcess.isAlive();
+    }
+
+    @Override
     public boolean isRunning() {
-        return (comfyProcess != null && comfyProcess.isAlive()) || isHealthy();
+        return isProcessAlive() || processController.isProcessAlive() || isHealthy();
     }
 
     @Override
@@ -190,11 +256,63 @@ public class ComfyLifecycleService implements IComfyLifecycleService {
                     .GET().build();
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             boolean ok = response.statusCode() == 200;
-            if (!ok) System.err.println("⚠️ [Lifecycle] Health check failed for " + url + " - Status: " + response.statusCode());
+            if (!ok) System.out.println("⚠️ [Lifecycle] Health check returned code " + response.statusCode() + " for " + url);
             return ok;
         } catch (Exception e) {
-            // Silently fail for regular polling, but keep diagnostic info ready if needed
             return false;
         }
+    }
+
+    @Override
+    public synchronized void fixSetup() {
+        status.set("Fixing setup...");
+        stop();
+        
+        String workingDir = configService.getComfyWorkingDir();
+        if (workingDir == null || workingDir.isEmpty()) {
+            status.set("Error: No working dir defined for fix");
+            return;
+        }
+
+        try {
+            java.nio.file.Path path = java.nio.file.Paths.get(workingDir);
+            java.nio.file.Path backup = java.nio.file.Paths.get(workingDir + "_backup_" + System.currentTimeMillis());
+            
+            if (java.nio.file.Files.exists(path)) {
+                java.nio.file.Files.move(path, backup);
+                System.out.println("🔧 [Lifecycle] Moved old installation to " + backup);
+            }
+
+            // Re-bootstrap
+            java.nio.file.Files.createDirectories(path);
+            bootstrapper.cloneComfyUI(path, System.out::println)
+                .thenCompose(v -> bootstrapper.downloadAndExtractPortablePython(path, System.out::println))
+                .thenCompose(py -> bootstrapper.installPip(py, System.out::println)
+                    .thenCompose(v2 -> bootstrapper.installRequirements(py, path, System.out::println)))
+                .thenRun(() -> {
+                    status.set("Fix completed, restarting...");
+                    start();
+                })
+                .exceptionally(e -> {
+                    status.set("Error during fix: " + e.getMessage());
+                    e.printStackTrace();
+                    return null;
+                });
+
+        } catch (IOException e) {
+            status.set("Error: " + e.getMessage());
+        }
+    }
+
+    private void triggerBrowserRefresh() {
+        new Thread(() -> {
+            try {
+                Thread.sleep(1500);
+                System.out.println("🔄 [Lifecycle] Forcing browser refresh via ComfyUI bridge...");
+                downloadManager.notifyComfyUI(true);
+            } catch (Exception e) {
+                System.err.println("⚠️ [Lifecycle] Failed to force browser refresh: " + e.getMessage());
+            }
+        }).start();
     }
 }

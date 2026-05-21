@@ -49,12 +49,21 @@ public class LocalAIService {
     }
 
     public Prediction predictProvider(String fileName) {
-        String name = fileName.toLowerCase();
-        // Special check for complex filenames
-        if (name.contains("mistral") && name.contains("flux2")) return new Prediction("black-forest-labs", 0.95);
-        if (name.contains("pony") || name.contains("v6")) return new Prediction("PonyDiffusion", 0.85);
+        return predict(fileName, false);
+    }
 
-        List<String> queryTokens = Arrays.asList(name.split("[_\\- \\.]"));
+    public Prediction predictFromUrl(String url) {
+        return predict(url, true);
+    }
+
+    private Prediction predict(String input, boolean isUrl) {
+        String name = input.toLowerCase();
+        if (!isUrl) {
+            if (name.contains("mistral") && name.contains("flux2")) return new Prediction("black-forest-labs", 0.95);
+            if (name.contains("pony") || name.contains("v6")) return new Prediction("PonyDiffusion", 0.85);
+        }
+
+        List<String> queryTokens = Arrays.asList(name.split("[_\\- \\.\\/\\?=\\&]"));
         Map<String, Double> similarityScores = new HashMap<>();
 
         for (Map.Entry<String, String[]> entry : KNOWLEDGE_BASE.entrySet()) {
@@ -65,6 +74,7 @@ public class LocalAIService {
                 for (String docTerm : entry.getValue()) {
                     if (token.equals(docTerm) || (token.contains(docTerm) && docTerm.length() > 3)) {
                         score += GLOBAL_IDF.getOrDefault(docTerm, 1.0) * (docTerm.length() / 4.0);
+                        if (isUrl && provider.toLowerCase().contains(token)) score += 2.0; // Bonus for provider name in URL
                     }
                 }
             }
@@ -77,7 +87,10 @@ public class LocalAIService {
             if (entry.getValue() > maxScore) { maxScore = entry.getValue(); bestProvider = entry.getKey(); }
         }
 
-        return new Prediction(bestProvider, Math.min(0.99, maxScore / 3.5));
+        double confidence = Math.min(0.99, maxScore / 3.5);
+        if (isUrl && maxScore > 1.5) confidence = Math.max(confidence, 0.8); // Higher confidence from URLs
+
+        return new Prediction(bestProvider, confidence);
     }
 
     public class Prediction {

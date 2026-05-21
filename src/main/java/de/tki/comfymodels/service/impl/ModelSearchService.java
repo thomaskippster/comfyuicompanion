@@ -178,7 +178,7 @@ public class ModelSearchService implements IModelSearchService {
 
         try {
             String hashUrl = getCivitaiApiBaseUrl() + "/model-versions/by-hash/" + hash;
-            HttpResponse<String> hashRes = httpClient.send(HttpRequest.newBuilder().uri(URI.create(hashUrl)).build(), HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> hashRes = httpClient.send(createCivitaiRequestBuilder(hashUrl).GET().build(), HttpResponse.BodyHandlers.ofString());
             if (hashRes.statusCode() != 200) return Optional.empty();
 
             JSONObject currentVersion = new JSONObject(hashRes.body());
@@ -187,7 +187,7 @@ public class ModelSearchService implements IModelSearchService {
             if (modelId == -1 || currentVersionId == -1) return Optional.empty();
 
             String modelUrl = getCivitaiApiBaseUrl() + "/models/" + modelId;
-            HttpResponse<String> modelRes = httpClient.send(HttpRequest.newBuilder().uri(URI.create(modelUrl)).build(), HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> modelRes = httpClient.send(createCivitaiRequestBuilder(modelUrl).GET().build(), HttpResponse.BodyHandlers.ofString());
             if (modelRes.statusCode() != 200) return Optional.empty();
 
             JSONObject modelData = new JSONObject(modelRes.body());
@@ -340,7 +340,7 @@ public class ModelSearchService implements IModelSearchService {
                                          BiConsumer<Integer, ModelInfo> onModelFound) {
         try {
             String searchUrl = getCivitaiApiBaseUrl() + "/model-versions/by-hash/" + hash;
-            HttpResponse<String> response = httpClient.send(HttpRequest.newBuilder().uri(URI.create(searchUrl)).build(), HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response = httpClient.send(createCivitaiRequestBuilder(searchUrl).GET().build(), HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() == 200) {
                 JSONObject version = new JSONObject(response.body());
                 JSONArray files = version.optJSONArray("files");
@@ -362,7 +362,7 @@ public class ModelSearchService implements IModelSearchService {
                                      BiConsumer<Integer, ModelInfo> onModelFound) {
         try {
             String searchUrl = getCivitaiApiBaseUrl() + "/models?query=" + URLEncoder.encode(query, StandardCharsets.UTF_8) + "&sort=Most+Downloaded&limit=20";
-            HttpResponse<String> response = httpClient.send(HttpRequest.newBuilder().uri(URI.create(searchUrl)).build(), HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response = httpClient.send(createCivitaiRequestBuilder(searchUrl).GET().build(), HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() == 200) {
                 JSONObject json = new JSONObject(response.body());
                 JSONArray items = json.optJSONArray("items");
@@ -387,5 +387,16 @@ public class ModelSearchService implements IModelSearchService {
             }
         } catch (Exception e) {}
         return false;
+    }
+
+    private HttpRequest.Builder createCivitaiRequestBuilder(String url) {
+        HttpRequest.Builder builder = HttpRequest.newBuilder()
+            .uri(URI.create(url))
+            .header("User-Agent", "Mozilla/5.0");
+        String apiKey = configService != null ? configService.getCivitaiApiKey() : null;
+        if (apiKey != null && !apiKey.trim().isEmpty()) {
+            builder.header("Authorization", "Bearer " + apiKey.trim());
+        }
+        return builder;
     }
 }

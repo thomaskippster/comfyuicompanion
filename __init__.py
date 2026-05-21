@@ -1,4 +1,4 @@
-# ComfyUI Model Downloader Bridge
+# ComfyUI Companion Bridge
 import server
 import folder_paths
 import os

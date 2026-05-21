@@ -210,6 +210,17 @@ public class LocalModelScanner {
         
         info.setFilename(fileName);
         
+        // Find sibling preview images
+        String nameWithoutExt = fileName.contains(".") ? fileName.substring(0, fileName.lastIndexOf('.')) : fileName;
+        String[] previewExts = {".png", ".jpg", ".jpeg", ".preview.png"};
+        for (String ext : previewExts) {
+            Path preview = file.getParent().resolve(nameWithoutExt + ext);
+            if (Files.exists(preview) && Files.isRegularFile(preview)) {
+                info.setPreviewPath(preview.toAbsolutePath().toString());
+                break;
+            }
+        }
+        
         // Calculate size in MB
         try {
             long bytes = Files.size(file);

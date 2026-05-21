@@ -1,4 +1,4 @@
-# ComfyUI Model Downloader 🚀
+# ComfyUI Companion 🚀
 
 Stop wasting time manually moving files! This tool automates your model management so you can stay in the creative flow. It analyzes your workflows, identifies missing models, and downloads them directly into the correct ComfyUI directories.
 
@@ -27,7 +27,7 @@ The "Bridge" is a small extension for ComfyUI that adds a "Send to Downloader" b
 
 ### Manual Installation
 1.  Copy the folder `src/main/resources/comfyui-bridge` into your `ComfyUI/custom_nodes/` directory.
-2.  Rename it to `comfyui-model-downloader`.
+2.  Rename it to `comfyuicompanion`.
 3.  Restart ComfyUI.
 
 ## ⚙️ ComfyUI Process Control (Dynamic Discovery)
@@ -47,7 +47,7 @@ While usually not required, here is what the app typically discovers on differen
 #### 🪟 Windows (Pinokio)
 *   **Python:** `...\comfyuidata\.venv\Scripts\python.exe`
 *   **Main:** `...\ComfyUI\resources\ComfyUI\main.py`
-*   **Default Port:** `8000`
+*   **Default Port:** `8188`
 
 #### 🐧 Linux (Manual Venv)
 *   **Python:** `./venv/bin/python3`
@@ -68,12 +68,12 @@ Choose one of the following three ways to install and run the application:
 
 ### 1. 📥 Direct Download (SourceForge) - Recommended for most users
 The fastest way to get the latest stable version.
-*   Download the latest release from [SourceForge](https://sourceforge.net/projects/comfymodeldownloader/).
+*   Download the latest release from [SourceForge](https://sourceforge.net/projects/comfyuicompanion/).
 
 ### 2. ⚡ Quick Install (Pinokio)
 If you use [Pinokio](https://pinokio.computer), you can install this app with one click:
 1. Open Pinokio and click **Discover**.
-2. Search for `ComfyUI Model Downloader`.
+2. Search for `ComfyUI Companion`.
 3. Click **Download** and then **Install**.
 
 ### 3. 🛠️ Manual Install (GitHub) - For developers
@@ -86,7 +86,7 @@ Download the source code and build it yourself.
 **Steps:**
 1.  Clone the repository:
     ```bash
-    git clone https://github.com/thomaskippster/comfymodeldownloader
+    git clone https://github.com/thomaskippster/comfyuicompanion
     ```
 2.  Build the application:
     ```bash
@@ -94,7 +94,7 @@ Download the source code and build it yourself.
     ```
 3. Run the application:
     ```bash
-    java -jar target/ComfyUIModelDownloader.jar
+    java -jar target/comfyuicompanion.jar
     ```
 
 

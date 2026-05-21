@@ -1,5 +1,5 @@
 {
-  "title": "ComfyUI Model Downloader",
+  "title": "ComfyUI Companion",
   "description": "Identify and download missing models for ComfyUI workflows automatically.",
   "icon": "icon.png"
 }

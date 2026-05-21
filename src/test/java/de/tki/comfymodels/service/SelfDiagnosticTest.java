@@ -36,13 +36,9 @@ public class SelfDiagnosticTest {
 
     @BeforeEach
     public void setup() throws Exception {
+        System.setProperty("comfyuicompanion.appdata", tempDir.toString());
         configService = new ConfigService(new EncryptionUtils(), new PathResolver());
-        // Set a temporary user.dir to isolate the test from the real app settings
         ReflectionTestUtils.setField(configService, "masterPassword", "test-pass"); 
-        
-        // Mocking the getAppDataPath or ensuring it uses the tempDir
-        File tempVault = tempDir.resolve("settings.vault").toFile();
-        // Since getFileInAppData uses user.dir, we might need a different approach or just set the fields directly
         ReflectionTestUtils.setField(configService, "settings", new JSONObject());
         
         configService.setModelsPath(tempDir.resolve("models").toString());

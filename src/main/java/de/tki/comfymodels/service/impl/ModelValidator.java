@@ -45,15 +45,35 @@ public class ModelValidator implements IModelValidator {
         return new ValidationResult(true, "OK", path);
     }
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private ConfigService configService;
+
+    public void setConfigService(ConfigService configService) {
+        this.configService = configService;
+    }
+
     @Override
     public String calculateHash(File file) {
         if (!file.exists() || !file.isFile()) return null;
+        
+        boolean useFastHash = configService != null && configService.isFastHashEnabled();
+        long limit = useFastHash ? 100L * 1024 * 1024 : -1L; // 100MB limit if fast hash enabled
+        
         try (java.io.InputStream is = new java.io.BufferedInputStream(new java.io.FileInputStream(file), 1024 * 1024)) {
             java.security.MessageDigest digest = java.security.MessageDigest.getInstance("SHA-256");
             byte[] buffer = new byte[1024 * 1024];
             int read;
+            long totalRead = 0;
             while ((read = is.read(buffer)) != -1) {
+                if (limit > 0 && totalRead + read > limit) {
+                    int remaining = (int) (limit - totalRead);
+                    if (remaining > 0) {
+                        digest.update(buffer, 0, remaining);
+                    }
+                    break;
+                }
                 digest.update(buffer, 0, read);
+                totalRead += read;
             }
             byte[] hash = digest.digest();
             StringBuilder hexString = new StringBuilder();
@@ -62,7 +82,12 @@ public class ModelValidator implements IModelValidator {
                 if (hex.length() == 1) hexString.append('0');
                 hexString.append(hex);
             }
-            return hexString.toString();
+            
+            String fullHash = hexString.toString();
+            if (useFastHash) {
+                return fullHash.substring(0, Math.min(8, fullHash.length()));
+            }
+            return fullHash;
         } catch (Exception e) {
             return null;
         }

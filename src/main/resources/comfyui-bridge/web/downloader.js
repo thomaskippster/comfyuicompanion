@@ -1,4 +1,4 @@
-// ComfyUI Model Downloader - Bridge Extension
+// ComfyUI Companion - Bridge Extension
 let app = null;
 let api = null;
 
@@ -64,6 +64,12 @@ const initializeExtension = async () => {
         } catch (e) {
             console.error("[CMFD] UI Refresh Failed:", e);
         }
+    });
+
+    // Event Listener for WebSocket Reconnection (e.g., after server restart)
+    api.addEventListener("reconnected", () => {
+        console.log("%c🔄 [CMFD] WebSocket reconnected. Reloading ComfyUI to refresh state...", "background: #0077ff; color: #fff; font-size: 14px;");
+        window.location.reload();
     });
 
     const addUI = () => {

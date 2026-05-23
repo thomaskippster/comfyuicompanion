@@ -81,6 +81,24 @@ public class ComfyLifecycleService implements IComfyLifecycleService {
                 }
             }
 
+            boolean hasExtraPathsConfig = false;
+            for (String arg : commandList) {
+                if (arg.equals("--extra-model-paths-config")) {
+                    hasExtraPathsConfig = true;
+                    break;
+                }
+            }
+            if (!hasExtraPathsConfig) {
+                String comfyPath = configService.getComfyUIPath();
+                if (comfyPath != null && !comfyPath.isEmpty()) {
+                    java.io.File extraPathsFile = new java.io.File(comfyPath, "extra_model_paths.yaml");
+                    if (extraPathsFile.exists()) {
+                        commandList.add("--extra-model-paths-config");
+                        commandList.add(extraPathsFile.getAbsolutePath());
+                    }
+                }
+            }
+
             System.out.println("🚀 [Lifecycle] Starting command: " + String.join(" ", commandList));
             if (workingDir != null) System.out.println("📁 [Lifecycle] In directory: " + workingDir);
 

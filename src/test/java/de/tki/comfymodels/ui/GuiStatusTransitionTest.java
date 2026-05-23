@@ -62,6 +62,7 @@ public class GuiStatusTransitionTest {
         when(configService.getModelsPath()).thenReturn("C:\\models");
         when(configService.getComfyUIPath()).thenReturn("C:\\ComfyUI");
         when(configService.getComfyUIUrl()).thenReturn("http://localhost:8188");
+        when(configService.getResolvedOutputDir()).thenReturn("C:\\ComfyUI\\output");
         when(archiveService.normalizeFolder(anyString())).thenAnswer(inv -> inv.getArgument(0));
 
         // Mock VersionService behavior

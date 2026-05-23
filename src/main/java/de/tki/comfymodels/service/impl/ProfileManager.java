@@ -84,7 +84,7 @@ public class ProfileManager {
             "standard_mode",
             "Standard Mode (Default)",
             "Startet ComfyUI im normalen Modus mit ausgewogener VRAM-Nutzung. Empfohlen für den täglichen Gebrauch.",
-            false, "python", List.of("--normal-vram"), new java.util.HashMap<>()
+            false, "python", List.of(), new java.util.HashMap<>()
         ));
 
         profiles.add(new LaunchProfile(
@@ -147,7 +147,7 @@ public class ProfileManager {
             "safe_mode",
             "Safe Mode (Troubleshooting)",
             "Deaktiviert alle Custom Nodes temporär. Perfekt, um nach fehlerhaften Updates die Web-UI wieder lauffähig zu machen.",
-            false, "python", List.of("--disable-custom-nodes"), new java.util.HashMap<>()
+            false, "python", List.of("--disable-all-custom-nodes"), new java.util.HashMap<>()
         ));
 
         return profiles;

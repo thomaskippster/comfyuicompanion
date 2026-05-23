@@ -68,4 +68,31 @@ public class PlatformUtils {
             return false;
         }
     }
+
+    public static java.util.List<String> parseCommandLine(String commandLine) {
+        java.util.List<String> args = new java.util.ArrayList<>();
+        if (commandLine == null || commandLine.trim().isEmpty()) {
+            return args;
+        }
+        boolean inQuotes = false;
+        StringBuilder current = new StringBuilder();
+        int len = commandLine.length();
+        for (int i = 0; i < len; i++) {
+            char c = commandLine.charAt(i);
+            if (c == '\"') {
+                inQuotes = !inQuotes;
+            } else if (Character.isWhitespace(c) && !inQuotes) {
+                if (current.length() > 0) {
+                    args.add(current.toString());
+                    current.setLength(0);
+                }
+            } else {
+                current.append(c);
+            }
+        }
+        if (current.length() > 0) {
+            args.add(current.toString());
+        }
+        return args;
+    }
 }

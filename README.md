@@ -52,7 +52,7 @@ The app comes with **10 pre-configured launch profiles**, ordered logically by u
 
 | Profile Name | Launch Arguments | Purpose / Use Case |
 | :--- | :--- | :--- |
-| **Standard Mode (Default)** | `--normal-vram` | Balanced performance and memory usage for general generation. |
+| **Standard Mode (Default)** | `--normalvram` | Balanced performance and memory usage for general generation. |
 | **Beast Mode (High VRAM)** | `--highvram` | Maximizes performance and caching. Ideal for GPUs with 24GB+ VRAM (RTX 3090/4090). |
 | **Background / Gaming Mode** | `--lowvram` | Minimizes VRAM usage and aggressively unloads models. Perfect for multitasking or gaming while generating. |
 | **Flux & SD3 Optimization** | `--fp8_e4m3fn-text-enc --fp8_e4m3fn-unet` | Forces FP8 precision on UNet and Text Encoders. Saves massive VRAM for heavy modern models (Flux, SD3). |
@@ -61,7 +61,7 @@ The app comes with **10 pre-configured launch profiles**, ordered logically by u
 | **Network Hub (LAN Mode)** | `--listen 0.0.0.0` | Allows other devices on your local network to access your ComfyUI server instance. |
 | **AMD / Intel GPU Mode** | `--directml` | Enables DirectML acceleration. Required for AMD Radeon and Intel Arc GPUs on Windows. |
 | **WSL / Linux Subsystem** | *WSL command tunnel* | Executes the ComfyUI server within a Windows Subsystem for Linux environment. |
-| **Safe Mode (Troubleshooting)**| `--disable-custom-nodes` | Starts ComfyUI without loading any custom nodes. Perfect for debugging startup crashes. |
+| **Safe Mode (Troubleshooting)**| `--disable-all-custom-nodes` | Starts ComfyUI without loading any custom nodes. Perfect for debugging startup crashes. |
 
 ---
 

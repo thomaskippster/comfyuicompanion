@@ -40,4 +40,9 @@ public interface IComfyLifecycleService {
      * Resets the ComfyUI installation by cleaning up the existing directory and re-running the bootstrap setup.
      */
     void fixSetup();
+
+    /**
+     * Registers a callback to be run when the browser is automatically launched by the service.
+     */
+    void setOnBrowserLaunched(Runnable callback);
 }

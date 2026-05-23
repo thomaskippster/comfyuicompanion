@@ -154,6 +154,18 @@ public class Main extends JFrame {
         this.restBridge = restBridge;
         this.archiveService = archiveService;
         this.lifecycleService = lifecycleService;
+        this.lifecycleService.setOnBrowserLaunched(() -> {
+            SwingUtilities.invokeLater(() -> {
+                if (mainTabs != null) {
+                    for (int i = 0; i < mainTabs.getTabCount(); i++) {
+                        if (mainTabs.getTitleAt(i).contains("Model Manager")) {
+                            mainTabs.setSelectedIndex(i);
+                            break;
+                        }
+                    }
+                }
+            });
+        });
         this.diagnosticService = diagnosticService;
         this.profileManager = profileManager;
         this.bootstrapper = bootstrapper;
@@ -3490,6 +3502,16 @@ public class Main extends JFrame {
                             System.err.println("Failed to open browser automatically: " + e.getMessage());
                         }
                     }).start();
+                    SwingUtilities.invokeLater(() -> {
+                        if (mainTabs != null) {
+                            for (int i = 0; i < mainTabs.getTabCount(); i++) {
+                                if (mainTabs.getTitleAt(i).contains("Model Manager")) {
+                                    mainTabs.setSelectedIndex(i);
+                                    break;
+                                }
+                            }
+                        }
+                    });
                 }
             }
             SwingUtilities.invokeLater(() -> {

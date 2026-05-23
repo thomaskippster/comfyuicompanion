@@ -657,8 +657,7 @@ public class Main extends JFrame {
 
 
         // TAB 4: GALLERY
-        String outputDir = Paths.get(configService.getComfyUIPath(), "output").toString();
-        mainTabs.addTab("🖼️ Output Gallery", new de.tki.comfymodels.ui.OutputGalleryPanel(outputDir));
+        mainTabs.addTab("🖼️ Output Gallery", new de.tki.comfymodels.ui.OutputGalleryPanel(configService));
 
         // TAB 5: SETTINGS
         mainTabs.addTab("⚙️ Settings", createSettingsPanel());

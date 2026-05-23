@@ -1,5 +1,6 @@
 package de.tki.comfymodels.ui;
 
+import de.tki.comfymodels.service.impl.ConfigService;
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.MouseAdapter;
@@ -43,25 +44,87 @@ class WrapLayout extends FlowLayout {
     }
 }
 
-public class OutputGalleryPanel extends JPanel {
-    private final JPanel galleryPanel;
+class ScrollablePanel extends JPanel implements Scrollable {
+    public ScrollablePanel(LayoutManager layout) {
+        super(layout);
+    }
 
-    public OutputGalleryPanel(String outputDir) {
+    @Override
+    public Dimension getPreferredScrollableViewportSize() {
+        return getPreferredSize();
+    }
+
+    @Override
+    public int getScrollableUnitIncrement(Rectangle visibleRect, int orientation, int direction) {
+        return 20;
+    }
+
+    @Override
+    public int getScrollableBlockIncrement(Rectangle visibleRect, int orientation, int direction) {
+        return 60;
+    }
+
+    @Override
+    public boolean getScrollableTracksViewportWidth() {
+        return true;
+    }
+
+    @Override
+    public boolean getScrollableTracksViewportHeight() {
+        return false;
+    }
+}
+
+public class OutputGalleryPanel extends JPanel {
+    private final ConfigService configService;
+    private final JPanel galleryPanel;
+    private final JLabel pathLabel;
+
+    public OutputGalleryPanel(ConfigService configService) {
+        this.configService = configService;
         setLayout(new BorderLayout());
         
-        galleryPanel = new JPanel(new WrapLayout(FlowLayout.LEFT, 10, 10));
+        JPanel headerPanel = new JPanel(new BorderLayout());
+        headerPanel.setBorder(BorderFactory.createEmptyBorder(5, 10, 5, 10));
+        
+        pathLabel = new JLabel("Output Directory: ");
+        headerPanel.add(pathLabel, BorderLayout.CENTER);
+        
+        JButton refreshBtn = new JButton("Refresh 🔄");
+        refreshBtn.addActionListener(e -> refresh());
+        headerPanel.add(refreshBtn, BorderLayout.EAST);
+        
+        add(headerPanel, BorderLayout.NORTH);
+        
+        galleryPanel = new ScrollablePanel(new WrapLayout(FlowLayout.LEFT, 10, 10));
         
         JScrollPane scrollPane = new JScrollPane(galleryPanel);
+        scrollPane.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
         scrollPane.getVerticalScrollBar().setUnitIncrement(20);
         add(scrollPane, BorderLayout.CENTER);
         
-        loadFiles(outputDir);
+        addComponentListener(new java.awt.event.ComponentAdapter() {
+            @Override
+            public void componentShown(java.awt.event.ComponentEvent e) {
+                refresh();
+            }
+        });
+
+        refresh();
+    }
+
+    public void refresh() {
+        galleryPanel.removeAll();
+        loadFiles(configService.getResolvedOutputDir());
+        galleryPanel.revalidate();
+        galleryPanel.repaint();
     }
 
     private void loadFiles(String outputDir) {
+        pathLabel.setText("Output Directory: " + outputDir);
         File dir = new File(outputDir);
         if (!dir.exists() || !dir.isDirectory()) {
-            add(new JLabel("Output directory not found: " + outputDir), BorderLayout.NORTH);
+            galleryPanel.add(new JLabel("Output directory not found. Generate an image in ComfyUI first."));
             return;
         }
 
@@ -74,11 +137,15 @@ public class OutputGalleryPanel extends JPanel {
                 .sorted((p1, p2) -> Long.compare(p2.toFile().lastModified(), p1.toFile().lastModified()))
                 .collect(Collectors.toList());
 
-            for (Path file : files) {
-                galleryPanel.add(createFileTile(file));
+            if (files.isEmpty()) {
+                galleryPanel.add(new JLabel("No images or videos found in the output directory."));
+            } else {
+                for (Path file : files) {
+                    galleryPanel.add(createFileTile(file));
+                }
             }
         } catch (Exception e) {
-            add(new JLabel("Error loading files: " + e.getMessage()), BorderLayout.NORTH);
+            galleryPanel.add(new JLabel("Error loading files: " + e.getMessage()));
         }
     }
 

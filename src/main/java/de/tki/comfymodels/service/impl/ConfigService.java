@@ -264,8 +264,8 @@ public class ConfigService {
                         port = Integer.parseInt(url.substring(colonIndex + 1));
                     }
                 } catch (Exception ignored) {}
-                String cmd = String.format("\"%s\" \"%s\" --listen 127.0.0.1 --port %d --enable-manager", 
-                    python, mainPy.getAbsolutePath(), port);
+                String cmd = String.format("\"%s\" \"%s\" --listen 127.0.0.1 --port %d --enable-manager --extra-model-paths-config \"%s\"", 
+                    python, mainPy.getAbsolutePath(), port, new File(root, "extra_model_paths.yaml").getAbsolutePath());
                 setComfyLaunchCommand(cmd);
                 System.out.println("🚀 [Config] Generated Launch Command: " + cmd);
             } else {
@@ -458,6 +458,78 @@ public class ConfigService {
     }
     public void setArchivePath(String path) { settings.put("archive_path", path); save(); }
 
+    public String getResolvedOutputDir() {
+        // Candidate 1: Check if specified in CLI launch command via --output-directory
+        String launchCmd = getComfyLaunchCommand();
+        if (launchCmd != null && !launchCmd.isEmpty()) {
+            try {
+                java.util.List<String> parsedCmd = de.tki.comfymodels.util.PlatformUtils.parseCommandLine(launchCmd);
+                for (int i = 0; i < parsedCmd.size() - 1; i++) {
+                    if (parsedCmd.get(i).equals("--output-directory")) {
+                        Path p = Paths.get(parsedCmd.get(i + 1));
+                        if (Files.exists(p) && Files.isDirectory(p)) {
+                            return p.toAbsolutePath().toString();
+                        }
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
+
+        // Candidate 2: Sibling of the configured models directory (e.g. if models is C:\AI\comfyuidata\models, output could be C:\AI\comfyuidata\output)
+        String modelsPathStr = getModelsPath();
+        if (modelsPathStr != null && !modelsPathStr.isEmpty()) {
+            try {
+                Path modelsPath = Paths.get(modelsPathStr);
+                if (modelsPath.getParent() != null) {
+                    Path siblingOutput = modelsPath.getParent().resolve("output");
+                    if (Files.exists(siblingOutput) && Files.isDirectory(siblingOutput)) {
+                        return siblingOutput.toAbsolutePath().toString();
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
+
+        // Candidate 3: Read extra_model_paths.yaml for standard "comfyui" section base_path
+        String comfyRoot = getComfyUIPath();
+        if (comfyRoot != null && !comfyRoot.isEmpty()) {
+            try {
+                Path extraPathsFile = Paths.get(comfyRoot).resolve("extra_model_paths.yaml");
+                if (!Files.exists(extraPathsFile)) {
+                    String userHome = System.getProperty("user.home");
+                    extraPathsFile = Paths.get(userHome, "AppData/Roaming/ComfyUI/extra_models_config.yaml");
+                }
+                if (Files.exists(extraPathsFile)) {
+                    try (InputStream is = new FileInputStream(extraPathsFile.toFile())) {
+                        Yaml yaml = new Yaml();
+                        Map<String, Object> data = yaml.load(is);
+                        if (data != null && data.get("comfyui") instanceof Map) {
+                            @SuppressWarnings("unchecked")
+                            Map<String, Object> comfySec = (Map<String, Object>) data.get("comfyui");
+                            String basePathStr = (String) comfySec.get("base_path");
+                            if (basePathStr != null) {
+                                Path basePath = Paths.get(basePathStr);
+                                if (!basePath.isAbsolute()) {
+                                    basePath = extraPathsFile.getParent().resolve(basePath).toAbsolutePath().normalize();
+                                }
+                                Path yamlOutput = basePath.resolve("output");
+                                if (Files.exists(yamlOutput) && Files.isDirectory(yamlOutput)) {
+                                    return yamlOutput.toAbsolutePath().toString();
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
+
+        // Candidate 4: Default ComfyUI/output folder
+        if (comfyRoot != null && !comfyRoot.isEmpty()) {
+            return Paths.get(comfyRoot).resolve("output").toAbsolutePath().toString();
+        }
+        
+        return Paths.get("output").toAbsolutePath().toString();
+    }
+
     public boolean isBackgroundModeEnabled() { return settings.optBoolean("background_mode", false); }
     public void setBackgroundModeEnabled(boolean enabled) { settings.put("background_mode", enabled); save(); }
 
@@ -586,62 +658,90 @@ public class ConfigService {
 
     public void updateExtraModelPathsYaml() {
         String comfyRoot = getComfyUIPath();
-        if (comfyRoot == null || comfyRoot.isEmpty()) return;
-        
-        File comfyDir = new File(comfyRoot);
-        if (!comfyDir.exists() || !comfyDir.isDirectory()) return;
-
         String modelsPath = getModelsPath();
         if (modelsPath == null || modelsPath.isEmpty()) return;
+        
+        // Normalize backslashes to forward slashes to prevent escape sequence parsing issues in YAML
+        modelsPath = modelsPath.replace("\\", "/");
 
-        Path yamlPath = Paths.get(comfyRoot).resolve("extra_model_paths.yaml");
-        Map<String, Object> data = null;
+        List<Path> targetYamlFiles = new java.util.ArrayList<>();
+        if (comfyRoot != null && !comfyRoot.isEmpty()) {
+            File comfyDir = new File(comfyRoot);
+            if (comfyDir.exists() && comfyDir.isDirectory()) {
+                targetYamlFiles.add(Paths.get(comfyRoot).resolve("extra_model_paths.yaml"));
+            }
+        }
 
-        try {
-            Yaml yaml = new Yaml();
-            if (Files.exists(yamlPath)) {
-                try (InputStream is = new FileInputStream(yamlPath.toFile())) {
-                    data = yaml.load(is);
-                } catch (Exception ex) {
-                    System.err.println("⚠️ [Config] Failed to load existing extra_model_paths.yaml: " + ex.getMessage());
+        // Also check AppData location for ComfyUI Desktop configuration file
+        String userHome = System.getProperty("user.home");
+        if (userHome != null) {
+            Path appDataDir = Paths.get(userHome, "AppData", "Roaming", "ComfyUI");
+            if (Files.exists(appDataDir) && Files.isDirectory(appDataDir)) {
+                targetYamlFiles.add(appDataDir.resolve("extra_models_config.yaml"));
+            }
+        }
+
+        if (targetYamlFiles.isEmpty()) return;
+
+        for (Path yamlPath : targetYamlFiles) {
+            Map<String, Object> data = null;
+            try {
+                Yaml yaml = new Yaml();
+                if (Files.exists(yamlPath)) {
+                    try (InputStream is = new FileInputStream(yamlPath.toFile())) {
+                        data = yaml.load(is);
+                    } catch (Exception ex) {
+                        System.err.println("⚠️ [Config] Failed to load existing YAML at " + yamlPath + ": " + ex.getMessage());
+                    }
                 }
+                
+                if (data == null) {
+                    data = new java.util.LinkedHashMap<>();
+                }
+
+                Map<String, Object> companionSection = new java.util.LinkedHashMap<>();
+                companionSection.put("base_path", modelsPath);
+                companionSection.put("checkpoints", "checkpoints");
+                companionSection.put("configs", "configs");
+                companionSection.put("vae", "vae");
+                companionSection.put("loras", "loras");
+                companionSection.put("upscale_models", "upscale_models");
+                companionSection.put("controlnet", "controlnet");
+                companionSection.put("clip", "clip");
+                companionSection.put("clip_vision", "clip_vision");
+                companionSection.put("style_models", "style_models");
+                companionSection.put("hypernetworks", "hypernetworks");
+                companionSection.put("embeddings", "embeddings");
+                companionSection.put("diffusers", "diffusers");
+                companionSection.put("gligen", "gligen");
+                companionSection.put("unet", "unet");
+                companionSection.put("audio_encoders", "audio_encoders");
+                
+                // Add remaining model folders
+                companionSection.put("vae_approx", "vae_approx");
+                companionSection.put("photomaker", "photomaker");
+                companionSection.put("ipadapter", "ipadapter");
+                companionSection.put("onnx", "onnx");
+                companionSection.put("llm", "llm");
+                companionSection.put("diffusion_models", "diffusion_models");
+                companionSection.put("text_encoders", "text_encoders");
+                companionSection.put("model_patches", "model_patches");
+                companionSection.put("latent_upscale_models", "latent_upscale_models");
+
+                data.put("comfyui_companion", companionSection);
+
+                org.yaml.snakeyaml.DumperOptions options = new org.yaml.snakeyaml.DumperOptions();
+                options.setDefaultFlowStyle(org.yaml.snakeyaml.DumperOptions.FlowStyle.BLOCK);
+                options.setPrettyFlow(true);
+                Yaml yamlDump = new Yaml(options);
+
+                String yamlContent = yamlDump.dump(data);
+                Files.writeString(yamlPath, yamlContent, StandardCharsets.UTF_8);
+                System.out.println("📄 [Config] Successfully updated YAML at: " + yamlPath.toAbsolutePath());
+            } catch (Exception e) {
+                System.err.println("❌ [Config] Failed to update YAML at " + yamlPath + ": " + e.getMessage());
+                e.printStackTrace();
             }
-            
-            if (data == null) {
-                data = new java.util.LinkedHashMap<>();
-            }
-
-            Map<String, Object> companionSection = new java.util.LinkedHashMap<>();
-            companionSection.put("base_path", modelsPath);
-            companionSection.put("checkpoints", "checkpoints");
-            companionSection.put("configs", "configs");
-            companionSection.put("vae", "vae");
-            companionSection.put("loras", "loras");
-            companionSection.put("upscale_models", "upscale_models");
-            companionSection.put("controlnet", "controlnet");
-            companionSection.put("clip", "clip");
-            companionSection.put("clip_vision", "clip_vision");
-            companionSection.put("style_models", "style_models");
-            companionSection.put("hypernetworks", "hypernetworks");
-            companionSection.put("embeddings", "embeddings");
-            companionSection.put("diffusers", "diffusers");
-            companionSection.put("gligen", "gligen");
-            companionSection.put("unet", "unet");
-            companionSection.put("audio_encoders", "audio_encoders");
-
-            data.put("comfyui_companion", companionSection);
-
-            org.yaml.snakeyaml.DumperOptions options = new org.yaml.snakeyaml.DumperOptions();
-            options.setDefaultFlowStyle(org.yaml.snakeyaml.DumperOptions.FlowStyle.BLOCK);
-            options.setPrettyFlow(true);
-            Yaml yamlDump = new Yaml(options);
-
-            String yamlContent = yamlDump.dump(data);
-            Files.writeString(yamlPath, yamlContent, StandardCharsets.UTF_8);
-            System.out.println("📄 [Config] Successfully updated extra_model_paths.yaml at: " + yamlPath.toAbsolutePath());
-        } catch (Exception e) {
-            System.err.println("❌ [Config] Failed to update extra_model_paths.yaml: " + e.getMessage());
-            e.printStackTrace();
         }
     }
 }

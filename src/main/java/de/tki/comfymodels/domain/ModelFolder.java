@@ -17,6 +17,7 @@ public enum ModelFolder {
     ONNX("onnx"),
     LLM("llm"),
     DIFFUSION_MODELS("diffusion_models"),
+    TEXT_ENCODERS("text_encoders"),
     GLIGEN("gligen"),
     EMBEDDINGS("embeddings"),
     AUDIO_ENCODERS("audio_encoders"),
@@ -51,6 +52,7 @@ public enum ModelFolder {
         if (lower.contains("vae")) return VAE;
         if (lower.contains("controlnet")) return CONTROLNET;
         if (lower.contains("embedding")) return EMBEDDINGS;
+        if (lower.contains("text_encoder") || lower.contains("textencoder")) return TEXT_ENCODERS;
         
         return CHECKPOINTS; // Default fallback
     }

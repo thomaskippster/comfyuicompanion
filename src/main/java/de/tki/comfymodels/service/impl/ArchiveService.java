@@ -262,6 +262,17 @@ public class ArchiveService {
         try {
             if (Files.exists(archived) && Files.size(archived) > 0) {
                 Files.createDirectories(target.getParent());
+                if (configService.isUseSymlinksOnRestore()) {
+                    try {
+                        Files.deleteIfExists(target);
+                        Files.createSymbolicLink(target, archived);
+                        System.out.println("🔗 Successfully created symbolic link for: " + filename);
+                        if (progressUpdate != null) progressUpdate.accept(Files.size(target));
+                        return true;
+                    } catch (Exception se) {
+                        System.err.println("⚠️ Symbolic link failed (Missing permissions/Developer Mode?): " + se.getMessage() + ". Falling back to copying.");
+                    }
+                }
                 moveWithProgress(archived, target, progressUpdate);
                 return true;
             }

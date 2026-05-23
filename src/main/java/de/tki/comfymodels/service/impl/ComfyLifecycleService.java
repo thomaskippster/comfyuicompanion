@@ -20,6 +20,9 @@ public class ComfyLifecycleService implements IComfyLifecycleService {
     private ConfigService configService;
 
     @Autowired
+    private ProfileManager profileManager;
+
+    @Autowired
     private EnvironmentBootstrapperImpl bootstrapper;
 
     @Autowired
@@ -54,16 +57,22 @@ public class ComfyLifecycleService implements IComfyLifecycleService {
         try {
             status.set("Starting...");
             
-            java.util.List<String> commandList = new java.util.ArrayList<>();
-            if (de.tki.comfymodels.util.PlatformUtils.isWindows()) {
-                commandList.add("cmd");
-                commandList.add("/c");
-                // Wrap the entire command in extra quotes for Windows cmd /c quirk
-                commandList.add("\"" + command + "\"");
-            } else {
-                commandList.add("sh");
-                commandList.add("-c");
-                commandList.add(command);
+            java.util.List<String> commandList = de.tki.comfymodels.util.PlatformUtils.parseCommandLine(command);
+            
+            // Apply active profile arguments if present
+            String activeProfileId = configService.getActiveProfile();
+            de.tki.comfymodels.domain.LaunchProfile activeProfile = null;
+            if (activeProfileId != null && !activeProfileId.isEmpty()) {
+                activeProfile = profileManager.loadProfiles().stream()
+                        .filter(p -> p.id().equals(activeProfileId))
+                        .findFirst().orElse(null);
+            }
+            if (activeProfile != null && activeProfile.cliArguments() != null) {
+                for (String arg : activeProfile.cliArguments()) {
+                    if (!commandList.contains(arg)) {
+                        commandList.add(arg);
+                    }
+                }
             }
 
             System.out.println("🚀 [Lifecycle] Starting command: " + String.join(" ", commandList));
@@ -74,6 +83,16 @@ public class ComfyLifecycleService implements IComfyLifecycleService {
                 pb.directory(new File(workingDir));
             }
             pb.redirectErrorStream(true);
+
+            // Fix buffering and terminal environment setup
+            pb.environment().put("PYTHONUNBUFFERED", "1");
+            pb.environment().put("PYTHONIOENCODING", "utf-8");
+            pb.environment().put("TERM", "dumb");
+            pb.environment().put("COLUMNS", "120");
+            if (activeProfile != null && activeProfile.envVars() != null) {
+                pb.environment().putAll(activeProfile.envVars());
+            }
+
             comfyProcess = pb.start();
 
             // Quietly consume output to prevent process buffer stalls

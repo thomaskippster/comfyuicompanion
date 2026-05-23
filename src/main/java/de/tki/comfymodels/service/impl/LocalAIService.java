@@ -1,11 +1,58 @@
 package de.tki.comfymodels.service.impl;
 
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.json.JSONObject;
 import jakarta.annotation.PostConstruct;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.time.Duration;
 import java.util.*;
 
 @Service
 public class LocalAIService {
+    @Autowired
+    private ConfigService configService;
+
+    private final HttpClient client = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(10))
+            .build();
+
+    private String queryOllama(String queryText) {
+        if (configService == null || !configService.isUseOllama()) return null;
+        try {
+            String baseUrl = configService.getOllamaUrl();
+            String model = configService.getOllamaModel();
+            String prompt = "You are a model metadata analyzer for ComfyUI. Given a model filename or download URL, identify its creator or architecture. " +
+                            "Respond ONLY with the author or project name (e.g. 'black-forest-labs', 'stabilityai', 'PonyDiffusion', 'city96', 'Kijai', 'lllyasviel', etc.). " +
+                            "If you cannot determine it, respond 'community'. " +
+                            "Input: " + queryText + "\n" +
+                            "Response:";
+            JSONObject payload = new JSONObject();
+            payload.put("model", model);
+            payload.put("prompt", prompt);
+            payload.put("stream", false);
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(baseUrl + "/api/generate"))
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(payload.toString()))
+                    .build();
+            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() == 200) {
+                JSONObject json = new JSONObject(response.body());
+                String resText = json.optString("response", "").trim();
+                resText = resText.replaceAll("[\"'\\.`\\*\\n\\r]", "").trim();
+                if (!resText.isEmpty()) {
+                    return resText;
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("Ollama prediction failed: " + e.getMessage());
+        }
+        return null;
+    }
 
     private final Map<String, String[]> KNOWLEDGE_BASE = new LinkedHashMap<>();
     private final Map<String, Double> GLOBAL_IDF = new HashMap<>();
@@ -57,6 +104,13 @@ public class LocalAIService {
     }
 
     private Prediction predict(String input, boolean isUrl) {
+        if (configService != null && configService.isUseOllama()) {
+            String ollamaRes = queryOllama(input);
+            if (ollamaRes != null && !ollamaRes.equalsIgnoreCase("community") && !ollamaRes.isEmpty()) {
+                return new Prediction(ollamaRes, 0.95);
+            }
+        }
+
         String name = input.toLowerCase();
         if (!isUrl) {
             if (name.contains("mistral") && name.contains("flux2")) return new Prediction("black-forest-labs", 0.95);

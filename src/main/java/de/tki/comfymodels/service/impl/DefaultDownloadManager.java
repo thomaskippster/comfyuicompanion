@@ -12,13 +12,22 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.file.*;
 import java.util.List;
+import java.util.ArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.CompletableFuture;
 import java.util.function.BiConsumer;
 
 @Service
 public class DefaultDownloadManager implements IDownloadManager {
-    private final ExecutorService executor = Executors.newFixedThreadPool(3);
+    private final ThreadPoolExecutor executor = new ThreadPoolExecutor(
+            3, 3, 0L, TimeUnit.MILLISECONDS,
+            new LinkedBlockingQueue<>()
+    );
+    private final ExecutorService segmentExecutor = Executors.newCachedThreadPool();
     private final HttpClient httpClient = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.ALWAYS).build();
     private volatile boolean isPaused = false;
     private volatile boolean isStopped = false;
@@ -31,6 +40,9 @@ public class DefaultDownloadManager implements IDownloadManager {
 
     @Autowired
     private PathResolver pathResolver;
+
+    @Autowired
+    private CivitaiService civitaiService;
 
     private void safeUpdateStatus(int index, String status, BiConsumer<Integer, String> statusUpdater) {
         statusMap.put(index, status);
@@ -59,6 +71,11 @@ public class DefaultDownloadManager implements IDownloadManager {
         this.currentSelection = selectedIndices;
         completedIndices.clear();
         statusMap.clear();
+
+        // Dynamically adjust parallel download thread count
+        int maxParallel = configService != null ? configService.getMaxParallelDownloads() : 3;
+        executor.setCorePoolSize(maxParallel);
+        executor.setMaximumPoolSize(maxParallel);
         
         java.util.concurrent.atomic.AtomicBoolean finishedCalled = new java.util.concurrent.atomic.AtomicBoolean(false);
         
@@ -93,7 +110,7 @@ public class DefaultDownloadManager implements IDownloadManager {
 
                             Path modelsBase = (baseDir != null && !baseDir.isEmpty()) ? 
                                     pathResolver.resolve(baseDir) : 
-                                    pathResolver.resolve(configService.getModelsPath());
+                                    pathResolver.resolve(configService != null ? configService.getModelsPath() : null);
                             Path targetDir = modelsBase.resolve(subPath);
                             Files.createDirectories(targetDir);
                             downloadWithResume(info, targetDir.resolve(info.getName()), index, statusUpdater);  
@@ -127,7 +144,7 @@ public class DefaultDownloadManager implements IDownloadManager {
 
     @Override
     public void notifyComfyUI(boolean forceReload) {
-        String comfyUrl = configService.getComfyUIUrl();
+        String comfyUrl = configService != null ? configService.getComfyUIUrl() : "http://127.0.0.1:8188";
         if (sendRefreshPing(comfyUrl, forceReload)) {
             return;
         }
@@ -137,7 +154,7 @@ public class DefaultDownloadManager implements IDownloadManager {
         String discoveredUrl = discoverComfyUrl();
         if (discoveredUrl != null) {
             System.out.println("✨ [Companion] ComfyUI automatisch gefunden unter: " + discoveredUrl);
-            configService.setComfyUIUrl(discoveredUrl);
+            if (configService != null) configService.setComfyUIUrl(discoveredUrl);
             sendRefreshPing(discoveredUrl, forceReload);
         } else {
             System.err.println("❌ [Companion] ComfyUI konnte nicht automatisch gefunden werden. Bitte stelle sicher, dass es läuft.");
@@ -223,11 +240,11 @@ public class DefaultDownloadManager implements IDownloadManager {
             if (waitForPauseAndCheckSelection(index, statusUpdater)) return;
 
             File file = targetFile.toFile();
-            String archivePath = configService.getArchivePath();
+            String archivePath = configService != null ? configService.getArchivePath() : null;
             boolean isActuallyInArchive = archivePath != null && !archivePath.isEmpty() && 
                                          file.getAbsolutePath().toLowerCase().startsWith(new File(archivePath).getAbsolutePath().toLowerCase());
 
-            String hfToken = configService.getHfToken();
+            String hfToken = configService != null ? configService.getHfToken() : null;
             String downloadUrl = appendCivitaiTokenIfNeeded(info.getUrl());
 
             // Check disk space before starting
@@ -282,10 +299,10 @@ public class DefaultDownloadManager implements IDownloadManager {
                 // Verification of existing file
                 if (info.getName().endsWith(".safetensors") && (existingFileSize % 2 != 0)) {
                      if (retryCount < 1) {
-                         safeUpdateStatus(index, "🔄 Fixing Corrupted File...", statusUpdater);
-                         file.delete();
-                         downloadWithResumeInternal(info, targetFile, index, statusUpdater, retryCount + 1);
-                         return;
+                          safeUpdateStatus(index, "🔄 Fixing Corrupted File...", statusUpdater);
+                          file.delete();
+                          downloadWithResumeInternal(info, targetFile, index, statusUpdater, retryCount + 1);
+                          return;
                      }
                 }
                 safeUpdateStatus(index, "✅ Already exists", statusUpdater);
@@ -294,96 +311,20 @@ public class DefaultDownloadManager implements IDownloadManager {
 
             if (waitForPauseAndCheckSelection(index, statusUpdater)) return;
 
-            HttpRequest.Builder downloadBuilder = HttpRequest.newBuilder()
-                .uri(URI.create(downloadUrl))
-                .header("User-Agent", "Mozilla/5.0");
-
-            if (downloadUrl.contains("huggingface.co") && hfToken != null && !hfToken.isEmpty()) {
-                downloadBuilder.header("Authorization", "Bearer " + hfToken);
-            }
-
-            if (existingPartSize > 0) downloadBuilder.header("Range", "bytes=" + existingPartSize + "-");
-
-            HttpResponse<InputStream> response = httpClient.send(downloadBuilder.build(), HttpResponse.BodyHandlers.ofInputStream());
-            int statusCode = response.statusCode();
-
-            if (statusCode == 416) { 
-                 // Part might be complete but not moved
-                 if (existingPartSize == totalRemoteSize) {
-                     Files.move(partFile, targetFile, StandardCopyOption.REPLACE_EXISTING);
-                     safeUpdateStatus(index, "✅ Finished", statusUpdater);
-                 } else {
-                     safeUpdateStatus(index, "✅ Already exists", statusUpdater);
-                 }
-                 return;
-            }
-
-            if (statusCode == 401 || statusCode == 403) {
-                safeUpdateStatus(index, "❌ Auth Required (Token?)", statusUpdater);
-                return;
-            }
-
-            long contentLen = response.headers().firstValueAsLong("Content-Length").orElse(0L);
-            long totalBytes = (statusCode == 206) ? contentLen + existingPartSize : contentLen;
-
-            if (totalBytes > 0 && totalBytes < 5000 && info.getName().endsWith(".safetensors")) {
-                safeUpdateStatus(index, "❌ LFS Stub detected (Token?)", statusUpdater);
-                return;
-            }
-
-            if (statusCode == 200) existingPartSize = 0;
-
-            try (InputStream is = response.body(); RandomAccessFile raf = new RandomAccessFile(pFile, "rw")) {       
-                raf.seek(existingPartSize);
-                byte[] buffer = new byte[65536];
-                long downloaded = existingPartSize;
-                int read;
-                long lastUpdate = 0;
-                while ((read = is.read(buffer)) != -1) {
-                    if (isStopped || !isSelected(index) || Thread.currentThread().isInterrupted()) {
-                        safeUpdateStatus(index, !isSelected(index) ? "Skipped (Unchecked)" : "Stopped", statusUpdater);
-                        return;
-                    }
-
-                    if (isPaused) {
-                        if (waitForPauseAndCheckSelection(index, statusUpdater)) return;
-                        safeUpdateStatus(index, "Resuming...", statusUpdater);
-                    }
-
-                    raf.write(buffer, 0, read);
-                    downloaded += read;
-                    
-                    long now = System.currentTimeMillis();
-                    if (now - lastUpdate > 800) {
-                        safeUpdateStatus(index, "Downloading: " + (totalBytes > 0 ? (downloaded * 100 / totalBytes) : "?") + "% (" + formatSize(downloaded) + ")", statusUpdater);
-                        lastUpdate = now;
-                    }
+            int segments = configService != null ? configService.getSegmentsPerFile() : 1;
+            // Multi-segment only if segments > 1, size > 100MB, and URL is not a local file URL or unsupported.
+            if (segments > 1 && totalRemoteSize > 100 * 1024 * 1024 && downloadUrl.startsWith("http")) {
+                try {
+                    downloadMultiSegment(info, targetFile, index, statusUpdater, totalRemoteSize, downloadUrl);
+                    return;
+                } catch (Exception e) {
+                    System.err.println("Multi-segment download failed: " + e.getMessage() + ". Falling back to single-segment.");
                 }
             }
-            
-            if (isStopped || !isSelected(index)) {
-                safeUpdateStatus(index, !isSelected(index) ? "Skipped (Unchecked)" : "Stopped", statusUpdater);
-            } else {
-                long finalSize = pFile.length();
-                boolean sizeMismatch = totalBytes > 0 && finalSize < totalBytes;
-                boolean corruptedSafetensor = info.getName().endsWith(".safetensors") && (finalSize % 2 != 0);
 
-                if ((sizeMismatch || corruptedSafetensor) && retryCount < 1) {
-                    safeUpdateStatus(index, "🔄 Verification failed, redownloading...", statusUpdater);
-                    pFile.delete();
-                    downloadWithResumeInternal(info, targetFile, index, statusUpdater, retryCount + 1);
-                } else if (sizeMismatch) {
-                    safeUpdateStatus(index, "❌ Incomplete (" + formatSize(finalSize) + "/" + formatSize(totalBytes) + ")", statusUpdater);
-                } else if (corruptedSafetensor) {
-                    safeUpdateStatus(index, "❌ Corrupted (Odd Size)", statusUpdater);
-                } else {
-                    // Atomic move to final destination
-                    Files.move(partFile, targetFile, StandardCopyOption.REPLACE_EXISTING);
-                    safeUpdateStatus(index, "✅ Finished", statusUpdater);
-                }
-            }
+            downloadSingleSegment(info, targetFile, index, statusUpdater, totalRemoteSize, downloadUrl, retryCount, pFile, partFile, existingPartSize);
+
         } catch (Exception e) {
-            // In case of a timing issue (flag set while exception is thrown)
             try { Thread.sleep(50); } catch (InterruptedException ignored) {}
             
             if (isStopped || !isSelected(index) || Thread.currentThread().isInterrupted()) {
@@ -392,6 +333,285 @@ public class DefaultDownloadManager implements IDownloadManager {
                 String msg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
                 safeUpdateStatus(index, "Error: " + msg, statusUpdater);
             }
+        }
+    }
+
+    private void downloadSingleSegment(ModelInfo info, Path targetFile, int index, BiConsumer<Integer, String> statusUpdater,
+                                       long totalRemoteSize, String downloadUrl, int retryCount, File pFile, Path partFile, long existingPartSize) throws Exception {
+        String hfToken = configService != null ? configService.getHfToken() : null;
+        HttpRequest.Builder downloadBuilder = HttpRequest.newBuilder()
+            .uri(URI.create(downloadUrl))
+            .header("User-Agent", "Mozilla/5.0");
+
+        if (downloadUrl.contains("huggingface.co") && hfToken != null && !hfToken.isEmpty()) {
+            downloadBuilder.header("Authorization", "Bearer " + hfToken);
+        }
+
+        if (existingPartSize > 0) downloadBuilder.header("Range", "bytes=" + existingPartSize + "-");
+
+        HttpResponse<InputStream> response = httpClient.send(downloadBuilder.build(), HttpResponse.BodyHandlers.ofInputStream());
+        int statusCode = response.statusCode();
+
+        if (statusCode == 416) { 
+             if (existingPartSize == totalRemoteSize) {
+                 Files.move(partFile, targetFile, StandardCopyOption.REPLACE_EXISTING);
+                 onDownloadComplete(info, targetFile);
+                 safeUpdateStatus(index, "✅ Finished", statusUpdater);
+             } else {
+                 safeUpdateStatus(index, "✅ Already exists", statusUpdater);
+             }
+             return;
+        }
+
+        if (statusCode == 401 || statusCode == 403) {
+            safeUpdateStatus(index, "❌ Auth Required (Token?)", statusUpdater);
+            return;
+        }
+
+        long contentLen = response.headers().firstValueAsLong("Content-Length").orElse(0L);
+        long totalBytes = (statusCode == 206) ? contentLen + existingPartSize : contentLen;
+
+        if (totalBytes > 0 && totalBytes < 5000 && info.getName().endsWith(".safetensors")) {
+            safeUpdateStatus(index, "❌ LFS Stub detected (Token?)", statusUpdater);
+            return;
+        }
+
+        if (statusCode == 200) existingPartSize = 0;
+
+        long speedLimitKb = configService != null ? configService.getDownloadSpeedLimit() : 0;
+        long limitBytesPerSec = speedLimitKb * 1024L;
+        long startTime = System.currentTimeMillis();
+        long bytesWrittenInWindow = 0;
+
+        try (InputStream is = response.body(); RandomAccessFile raf = new RandomAccessFile(pFile, "rw")) {       
+            raf.seek(existingPartSize);
+            byte[] buffer = new byte[65536];
+            long downloaded = existingPartSize;
+            int read;
+            long lastUpdate = 0;
+            while ((read = is.read(buffer)) != -1) {
+                if (isStopped || !isSelected(index) || Thread.currentThread().isInterrupted()) {
+                    safeUpdateStatus(index, !isSelected(index) ? "Skipped (Unchecked)" : "Stopped", statusUpdater);
+                    return;
+                }
+
+                if (isPaused) {
+                    if (waitForPauseAndCheckSelection(index, statusUpdater)) return;
+                    safeUpdateStatus(index, "Resuming...", statusUpdater);
+                }
+
+                raf.write(buffer, 0, read);
+                downloaded += read;
+                bytesWrittenInWindow += read;
+
+                if (limitBytesPerSec > 0) {
+                    long elapsed = System.currentTimeMillis() - startTime;
+                    long expectedTime = (bytesWrittenInWindow * 1000L) / limitBytesPerSec;
+                    if (expectedTime > elapsed) {
+                        long sleepTime = expectedTime - elapsed;
+                        if (sleepTime > 0) {
+                            try {
+                                Thread.sleep(sleepTime);
+                            } catch (InterruptedException e) {
+                                Thread.currentThread().interrupt();
+                            }
+                        }
+                    }
+                    if (elapsed > 5000) {
+                        startTime = System.currentTimeMillis();
+                        bytesWrittenInWindow = 0;
+                    }
+                }
+                
+                long now = System.currentTimeMillis();
+                if (now - lastUpdate > 800) {
+                    safeUpdateStatus(index, "Downloading: " + (totalBytes > 0 ? (downloaded * 100 / totalBytes) : "?") + "% (" + formatSize(downloaded) + ")", statusUpdater);
+                    lastUpdate = now;
+                }
+            }
+        }
+        
+        if (isStopped || !isSelected(index)) {
+            safeUpdateStatus(index, !isSelected(index) ? "Skipped (Unchecked)" : "Stopped", statusUpdater);
+        } else {
+            long finalSize = pFile.length();
+            boolean sizeMismatch = totalBytes > 0 && finalSize < totalBytes;
+            boolean corruptedSafetensor = info.getName().endsWith(".safetensors") && (finalSize % 2 != 0);
+
+            if ((sizeMismatch || corruptedSafetensor) && retryCount < 1) {
+                safeUpdateStatus(index, "🔄 Verification failed, redownloading...", statusUpdater);
+                pFile.delete();
+                downloadWithResumeInternal(info, targetFile, index, statusUpdater, retryCount + 1);
+            } else if (sizeMismatch) {
+                safeUpdateStatus(index, "❌ Incomplete (" + formatSize(finalSize) + "/" + formatSize(totalBytes) + ")", statusUpdater);
+            } else if (corruptedSafetensor) {
+                safeUpdateStatus(index, "❌ Corrupted (Odd Size)", statusUpdater);
+            } else {
+                Files.move(partFile, targetFile, StandardCopyOption.REPLACE_EXISTING);
+                onDownloadComplete(info, targetFile);
+                safeUpdateStatus(index, "✅ Finished", statusUpdater);
+            }
+        }
+    }
+
+    private void downloadMultiSegment(ModelInfo info, Path targetFile, int index, BiConsumer<Integer, String> statusUpdater, long totalRemoteSize, String downloadUrl) throws Exception {
+        int numSegments = configService != null ? configService.getSegmentsPerFile() : 4;
+        if (numSegments <= 1 || totalRemoteSize <= 100 * 1024 * 1024) {
+            Path partFile = targetFile.resolveSibling(targetFile.getFileName().toString() + ".cmfd");
+            downloadSingleSegment(info, targetFile, index, statusUpdater, totalRemoteSize, downloadUrl, 0, partFile.toFile(), partFile, 0);
+            return;
+        }
+
+        long segmentSize = totalRemoteSize / numSegments;
+        List<CompletableFuture<Void>> segmentFutures = new ArrayList<>();
+        
+        Path[] partFiles = new Path[numSegments];
+        long[] startBytes = new long[numSegments];
+        long[] endBytes = new long[numSegments];
+        
+        long initialDownloaded = 0;
+        for (int i = 0; i < numSegments; i++) {
+            partFiles[i] = targetFile.resolveSibling(targetFile.getFileName().toString() + ".part" + i);
+            startBytes[i] = i * segmentSize;
+            endBytes[i] = (i == numSegments - 1) ? totalRemoteSize - 1 : (startBytes[i] + segmentSize - 1);
+            
+            File pFile = partFiles[i].toFile();
+            if (pFile.exists()) {
+                initialDownloaded += pFile.length();
+            }
+        }
+        
+        java.util.concurrent.atomic.AtomicLong totalDownloadedBytes = new java.util.concurrent.atomic.AtomicLong(initialDownloaded);
+        String hfToken = configService != null ? configService.getHfToken() : null;
+        java.util.concurrent.atomic.AtomicBoolean segmentFailed = new java.util.concurrent.atomic.AtomicBoolean(false);
+        java.util.concurrent.atomic.AtomicReference<String> errorMessage = new java.util.concurrent.atomic.AtomicReference<>("");
+
+        for (int i = 0; i < numSegments; i++) {
+            final int segmentIdx = i;
+            final long start = startBytes[i];
+            final long end = endBytes[i];
+            final Path partFile = partFiles[i];
+            
+            segmentFutures.add(CompletableFuture.runAsync(() -> {
+                try {
+                    File pFile = partFile.toFile();
+                    long existingSize = pFile.exists() ? pFile.length() : 0;
+                    long segmentTotalSize = end - start + 1;
+                    
+                    if (existingSize >= segmentTotalSize) {
+                        return;
+                    }
+                    
+                    if (isStopped || segmentFailed.get()) return;
+                    
+                    long rangeStart = start + existingSize;
+                    
+                    HttpRequest.Builder reqBuilder = HttpRequest.newBuilder()
+                        .uri(URI.create(downloadUrl))
+                        .header("User-Agent", "Mozilla/5.0")
+                        .header("Range", "bytes=" + rangeStart + "-" + end);
+                    
+                    if (downloadUrl.contains("huggingface.co") && hfToken != null && !hfToken.isEmpty()) {
+                        reqBuilder.header("Authorization", "Bearer " + hfToken);
+                    }
+                    
+                    HttpResponse<InputStream> response = httpClient.send(reqBuilder.build(), HttpResponse.BodyHandlers.ofInputStream());
+                    int status = response.statusCode();
+                    
+                    if (status != 206 && (status != 200 || rangeStart != start)) {
+                        throw new IOException("Server returned status " + status + " instead of expected partial content (206) for segment " + segmentIdx);
+                    }
+                    
+                    long speedLimitKb = configService != null ? configService.getDownloadSpeedLimit() : 0;
+                    long segmentSpeedLimitBytesSec = speedLimitKb > 0 ? (speedLimitKb * 1024L) / numSegments : 0;
+                    long startTime = System.currentTimeMillis();
+                    long bytesWrittenInWindow = 0;
+                    
+                    try (InputStream is = response.body(); RandomAccessFile raf = new RandomAccessFile(pFile, "rw")) {
+                        raf.seek(existingSize);
+                        byte[] buffer = new byte[16384];
+                        int read;
+                        while ((read = is.read(buffer)) != -1) {
+                            if (isStopped || segmentFailed.get() || !isSelected(index)) {
+                                return;
+                            }
+                            
+                            while (isPaused && !isStopped && isSelected(index)) {
+                                Thread.sleep(200);
+                            }
+                            
+                            raf.write(buffer, 0, read);
+                            totalDownloadedBytes.addAndGet(read);
+                            bytesWrittenInWindow += read;
+                            
+                            if (segmentSpeedLimitBytesSec > 0) {
+                                long elapsed = System.currentTimeMillis() - startTime;
+                                long expectedTime = (bytesWrittenInWindow * 1000L) / segmentSpeedLimitBytesSec;
+                                if (expectedTime > elapsed) {
+                                    long sleep = expectedTime - elapsed;
+                                    if (sleep > 0) Thread.sleep(sleep);
+                                }
+                                if (elapsed > 5000) {
+                                    startTime = System.currentTimeMillis();
+                                    bytesWrittenInWindow = 0;
+                                }
+                            }
+                        }
+                    }
+                } catch (Exception e) {
+                    segmentFailed.set(true);
+                    errorMessage.set(e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
+                }
+            }, segmentExecutor));
+        }
+        
+        long lastUpdate = 0;
+        while (!segmentFutures.stream().allMatch(CompletableFuture::isDone)) {
+            if (isStopped || !isSelected(index)) {
+                segmentFailed.set(true);
+                break;
+            }
+            
+            long now = System.currentTimeMillis();
+            if (now - lastUpdate > 800) {
+                long currentDownloaded = totalDownloadedBytes.get();
+                if (currentDownloaded > totalRemoteSize) currentDownloaded = totalRemoteSize;
+                safeUpdateStatus(index, "Downloading (Segmented): " + 
+                    (totalRemoteSize > 0 ? (currentDownloaded * 100 / totalRemoteSize) : "?") + 
+                    "% (" + formatSize(currentDownloaded) + ")", statusUpdater);
+                lastUpdate = now;
+            }
+            Thread.sleep(200);
+        }
+        
+        try {
+            CompletableFuture.allOf(segmentFutures.toArray(new CompletableFuture[0])).join();
+        } catch (Exception ignored) {}
+        
+        if (segmentFailed.get()) {
+            throw new IOException("Segment download failed: " + errorMessage.get());
+        }
+        
+        if (isStopped || !isSelected(index)) {
+            safeUpdateStatus(index, !isSelected(index) ? "Skipped (Unchecked)" : "Stopped", statusUpdater);
+            return;
+        }
+        
+        safeUpdateStatus(index, "Merging segments...", statusUpdater);
+        try (java.nio.channels.FileChannel outChannel = new java.io.FileOutputStream(targetFile.toFile()).getChannel()) {
+            for (int i = 0; i < numSegments; i++) {
+                try (java.nio.channels.FileChannel inChannel = new java.io.FileInputStream(partFiles[i].toFile()).getChannel()) {
+                    inChannel.transferTo(0, inChannel.size(), outChannel);
+                }
+                Files.delete(partFiles[i]);
+            }
+            onDownloadComplete(info, targetFile);
+            safeUpdateStatus(index, "✅ Finished", statusUpdater);
+        } catch (Exception e) {
+            for (int i = 0; i < numSegments; i++) {
+                try { Files.deleteIfExists(partFiles[i]); } catch (Exception ignored) {}
+            }
+            throw new IOException("Failed to merge segments: " + e.getMessage(), e);
         }
     }
 
@@ -418,6 +638,16 @@ public class DefaultDownloadManager implements IDownloadManager {
         if (bytes < 1024 * 1024) return (bytes / 1024) + " KB";
         if (bytes < 1024 * 1024 * 1024) return String.format("%.1f MB", bytes / (1024.0 * 1024.0));
         return String.format("%.2f GB", bytes / (1024.0 * 1024.0 * 1024.0));
+    }
+
+    private void onDownloadComplete(ModelInfo info, Path targetFile) {
+        if (civitaiService != null) {
+            try {
+                civitaiService.downloadMetadataAndPreview(info.getUrl(), targetFile);
+            } catch (Exception e) {
+                System.err.println("Error downloading Civitai metadata: " + e.getMessage());
+            }
+        }
     }
 
     @Override public void togglePause() { isPaused = !isPaused; }

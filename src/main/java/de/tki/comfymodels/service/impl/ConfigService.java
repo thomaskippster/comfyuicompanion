@@ -503,6 +503,8 @@ public class ConfigService {
     public String getComfyLaunchCommand() { return settings.optString("comfy_launch_command", ""); }
     public void setComfyLaunchCommand(String cmd) { settings.put("comfy_launch_command", cmd); save(); }
 
+    public String getActiveProfile() { return settings.optString("active_profile", ""); }
+    public void setActiveProfile(String profileId) { settings.put("active_profile", profileId); save(); }
 
     public String getComfyWorkingDir() { return settings.optString("comfy_working_dir", ""); }
     public void setComfyWorkingDir(String dir) { settings.put("comfy_working_dir", dir); save(); }
@@ -547,6 +549,27 @@ public class ConfigService {
     public boolean hasVault() {
         return getFileInAppData(VAULT_FILE).exists();
     }
+
+    public int getMaxParallelDownloads() { return settings.optInt("max_parallel_downloads", 3); }
+    public void setMaxParallelDownloads(int threads) { settings.put("max_parallel_downloads", Math.max(1, Math.min(10, threads))); save(); }
+
+    public int getDownloadSpeedLimit() { return settings.optInt("download_speed_limit", 0); }
+    public void setDownloadSpeedLimit(int kbps) { settings.put("download_speed_limit", Math.max(0, kbps)); save(); }
+
+    public int getSegmentsPerFile() { return settings.optInt("segments_per_file", 4); }
+    public void setSegmentsPerFile(int segments) { settings.put("segments_per_file", Math.max(1, Math.min(8, segments))); save(); }
+
+    public boolean isUseOllama() { return settings.optBoolean("use_ollama", false); }
+    public void setUseOllama(boolean enabled) { settings.put("use_ollama", enabled); save(); }
+
+    public String getOllamaUrl() { return settings.optString("ollama_url", "http://localhost:11434"); }
+    public void setOllamaUrl(String url) { settings.put("ollama_url", url); save(); }
+
+    public String getOllamaModel() { return settings.optString("ollama_model", "llama3"); }
+    public void setOllamaModel(String model) { settings.put("ollama_model", model); save(); }
+
+    public boolean isUseSymlinksOnRestore() { return settings.optBoolean("use_symlinks_on_restore", false); }
+    public void setUseSymlinksOnRestore(boolean enabled) { settings.put("use_symlinks_on_restore", enabled); save(); }
 
     public void resetVault() {
         File vault = getFileInAppData(VAULT_FILE);

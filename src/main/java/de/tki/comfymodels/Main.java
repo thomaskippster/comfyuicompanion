@@ -10,7 +10,6 @@ import de.tki.comfymodels.service.impl.ConfigService;
 import de.tki.comfymodels.service.impl.GeminiAIService;
 import de.tki.comfymodels.service.impl.ModelListService;
 import de.tki.comfymodels.service.impl.ModelHashRegistry;
-import de.tki.comfymodels.ui.ComfyWebPanel;
 import com.formdev.flatlaf.FlatDarkLaf;
 import com.formdev.flatlaf.FlatLightLaf;
 import com.formdev.flatlaf.FlatLaf;
@@ -45,6 +44,7 @@ import java.util.ArrayList;
 import java.util.Map;
 import java.util.HashMap;
 import java.util.stream.Collectors;
+import java.util.concurrent.CompletableFuture;
 
 @Component
 public class Main extends JFrame {
@@ -64,7 +64,6 @@ public class Main extends JFrame {
     private final de.tki.comfymodels.service.impl.HuggingFaceService huggingFaceService;
     private JLabel lblComfyVersion;
     private JLabel lblPythonVersion;
-    private de.tki.comfymodels.ui.ComfyWebPanel comfyWebPanel;
     private JLabel lifecycleStatusLabel;
 
     @Autowired
@@ -88,6 +87,21 @@ public class Main extends JFrame {
     @Autowired
     private de.tki.comfymodels.service.impl.VersionService versionService;
 
+
+
+    @Autowired
+    private de.tki.comfymodels.service.impl.HardwareMonitorService hardwareMonitorService;
+
+    @Autowired
+    private de.tki.comfymodels.service.impl.UpdaterService updaterService;
+
+    private JProgressBar progressCpu;
+    private JProgressBar progressRam;
+    private JProgressBar progressGpu;
+    private JProgressBar progressVram;
+    private JLabel lblGpuName;
+    private JPanel gpuPanel;
+
     private JCheckBox backgroundCheck;
     private JCheckBox shutdownCheck;
     private JCheckBox restartCheck;
@@ -97,11 +111,29 @@ public class Main extends JFrame {
     private JTextArea jsonInputArea;
     private JTextArea consoleOutput; 
     private DefaultTableModel tableModel;
+    private JButton launchBtn;
+    private JList<de.tki.comfymodels.domain.LaunchProfile> profileList;
     private JLabel statusLabel;
     private JButton downloadButton, pauseButton, stopButton;
     private List<ModelInfo> modelsToDownload;
     private String currentFileName = "input.json";
     private Image appIcon;
+
+    private JTabbedPane mainTabs;
+    private JPanel geminiGeneratorPanel;
+    private boolean isGeminiTabAdded = false;
+    private Boolean isGeminiGenerationSuccessful = null;
+    private boolean isCheckingGemini = false;
+    private String lastCheckedGeminiKey = null;
+    private byte[] selectedImageBytes = null;
+    private String selectedImageMimeType = null;
+    private JLabel inputImagePreviewLabel;
+    private JLabel selectedImageFileLabel;
+    private JTextArea promptArea;
+    private JPanel resultsContainer;
+    private JProgressBar generatorProgressBar;
+    private JButton btnGenerateImage;
+    private JButton btnClearImage;
 
     public Main(IModelAnalyzer analyzer, IDownloadManager downloadManager,
                 IWorkflowService workflowService, IModelSearchService searchService,
@@ -168,6 +200,9 @@ public class Main extends JFrame {
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             processController.stop();
             downloadManager.stop();
+            if (hardwareMonitorService != null) {
+                hardwareMonitorService.stop();
+            }
         }));
 
         if (!promptForPassword()) {
@@ -184,6 +219,10 @@ public class Main extends JFrame {
                 loadSettingsIntoUI(); 
                 updateAiModelDisplay();
                 
+                if (hardwareMonitorService != null) {
+                    hardwareMonitorService.start(stats -> SwingUtilities.invokeLater(() -> updateHardwareUI(stats)));
+                }
+                
                 // Add WindowListener to handle background mode
                 addWindowListener(new java.awt.event.WindowAdapter() {
                     @Override
@@ -193,6 +232,9 @@ public class Main extends JFrame {
                         } else {
                             processController.stop();
                             downloadManager.stop();
+                            if (hardwareMonitorService != null) {
+                                hardwareMonitorService.stop();
+                            }
                             System.exit(0);
                         }
                     }
@@ -584,7 +626,7 @@ public class Main extends JFrame {
 
         getRootPane().putClientProperty("flatlaf.useWindowDecorations", true);
         
-        JTabbedPane mainTabs = new JTabbedPane();
+        this.mainTabs = new JTabbedPane();
         mainTabs.setFont(new Font("SansSerif", Font.BOLD, 13));
         mainTabs.putClientProperty("JTabbedPane.tabType", "card");
         mainTabs.putClientProperty("JTabbedPane.showTabSeparators", true);
@@ -600,14 +642,398 @@ public class Main extends JFrame {
         // TAB 2: MODEL MANAGER
         mainTabs.addTab("📥 Model Manager", createManagerPanel(mainTabs));
 
-        // TAB 3: GALLERY
+
+
+        // TAB 4: GALLERY
         String outputDir = Paths.get(configService.getComfyUIPath(), "output").toString();
         mainTabs.addTab("🖼️ Output Gallery", new de.tki.comfymodels.ui.OutputGalleryPanel(outputDir));
 
-        // TAB 4: SETTINGS
+        // TAB 5: SETTINGS
         mainTabs.addTab("⚙️ Settings", createSettingsPanel());
 
+        updateGeminiTabVisibility();
+
         setContentPane(mainTabs);
+    }
+
+    private boolean isGeminiKeyConfigured() {
+        String key = configService.getGeminiApiKey();
+        return key != null && !key.trim().isEmpty();
+    }
+
+    private void updateGeminiTabVisibility() {
+        if (mainTabs == null) return;
+        boolean hasKey = isGeminiKeyConfigured();
+        String currentKey = configService.getGeminiApiKey();
+
+        if (hasKey) {
+            if (lastCheckedGeminiKey == null || !lastCheckedGeminiKey.equals(currentKey)) {
+                isGeminiGenerationSuccessful = null;
+                lastCheckedGeminiKey = currentKey;
+            }
+
+            if (isGeminiGenerationSuccessful == null) {
+                if (!isCheckingGemini) {
+                    isCheckingGemini = true;
+                    new Thread(() -> {
+                        try {
+                            // Test validation with a simple tree prompt and seed 42
+                            geminiService.generateImageNanoBanana("Ein Baum", null, null, 42);
+                            isGeminiGenerationSuccessful = true;
+                        } catch (Exception ex) {
+                            System.err.println("Gemini startup test image generation failed: " + ex.getMessage());
+                            isGeminiGenerationSuccessful = false;
+                        } finally {
+                            isCheckingGemini = false;
+                            SwingUtilities.invokeLater(this::updateGeminiTabVisibility);
+                        }
+                    }).start();
+                }
+
+                if (isGeminiTabAdded) {
+                    if (geminiGeneratorPanel != null) {
+                        mainTabs.remove(geminiGeneratorPanel);
+                    }
+                    isGeminiTabAdded = false;
+                }
+            } else if (isGeminiGenerationSuccessful) {
+                if (!isGeminiTabAdded) {
+                    if (geminiGeneratorPanel == null) {
+                        geminiGeneratorPanel = createGeminiGeneratorPanel();
+                    }
+                    int settingsIndex = -1;
+                    for (int i = 0; i < mainTabs.getTabCount(); i++) {
+                        if (mainTabs.getTitleAt(i).contains("Settings")) {
+                            settingsIndex = i;
+                            break;
+                        }
+                    }
+                    if (settingsIndex != -1) {
+                        mainTabs.insertTab("🎨 Gemini Generator", null, geminiGeneratorPanel, "Bilder mit Gemini 3 über Gemini erzeugen", settingsIndex);
+                    } else {
+                        mainTabs.addTab("🎨 Gemini Generator", geminiGeneratorPanel);
+                    }
+                    isGeminiTabAdded = true;
+                }
+            } else {
+                if (isGeminiTabAdded) {
+                    if (geminiGeneratorPanel != null) {
+                        mainTabs.remove(geminiGeneratorPanel);
+                    }
+                    isGeminiTabAdded = false;
+                }
+            }
+        } else {
+            isGeminiGenerationSuccessful = null;
+            lastCheckedGeminiKey = null;
+            if (isGeminiTabAdded) {
+                if (geminiGeneratorPanel != null) {
+                    mainTabs.remove(geminiGeneratorPanel);
+                }
+                isGeminiTabAdded = false;
+            }
+        }
+    }
+
+    private JPanel createGeminiGeneratorPanel() {
+        JPanel panel = new JPanel(new BorderLayout(15, 15));
+        panel.setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
+
+        JPanel controlsPanel = new JPanel();
+        controlsPanel.setLayout(new BoxLayout(controlsPanel, BoxLayout.Y_AXIS));
+        controlsPanel.putClientProperty("FlatLaf.style", "arc: 15; background: lighten($Panel.background, 2%)");
+        controlsPanel.setBorder(BorderFactory.createEmptyBorder(15, 15, 15, 15));
+
+        JLabel titleLabel = new JLabel("🎨 Gemini Image Generator (Gemini 3.1 Flash)");
+        titleLabel.putClientProperty("FlatLaf.styleClass", "h2");
+        titleLabel.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        controlsPanel.add(titleLabel);
+        controlsPanel.add(Box.createVerticalStrut(15));
+
+        JLabel lblPrompt = new JLabel("Prompt (Bildbeschreibung):");
+        lblPrompt.putClientProperty("FlatLaf.styleClass", "h4");
+        lblPrompt.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        controlsPanel.add(lblPrompt);
+        controlsPanel.add(Box.createVerticalStrut(5));
+
+        promptArea = new JTextArea(4, 40);
+        promptArea.setLineWrap(true);
+        promptArea.setWrapStyleWord(true);
+        promptArea.setFont(new Font("SansSerif", Font.PLAIN, 14));
+        promptArea.setToolTipText("Beschreibe das Bild, das du generieren möchtest.");
+        JScrollPane promptScroll = new JScrollPane(promptArea);
+        promptScroll.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        controlsPanel.add(promptScroll);
+        controlsPanel.add(Box.createVerticalStrut(15));
+
+        JLabel lblInputImage = new JLabel("Referenzbild (Optional - Image-to-Image):");
+        lblInputImage.putClientProperty("FlatLaf.styleClass", "h4");
+        lblInputImage.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        controlsPanel.add(lblInputImage);
+        controlsPanel.add(Box.createVerticalStrut(5));
+
+        JPanel imgButtonsPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+        imgButtonsPanel.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        JButton btnSelectImage = new JButton("📁 Bild auswählen...");
+        btnClearImage = new JButton("❌ Entfernen");
+        btnClearImage.setEnabled(false);
+
+        imgButtonsPanel.add(btnSelectImage);
+        imgButtonsPanel.add(Box.createHorizontalStrut(10));
+        imgButtonsPanel.add(btnClearImage);
+        controlsPanel.add(imgButtonsPanel);
+        controlsPanel.add(Box.createVerticalStrut(10));
+
+        selectedImageFileLabel = new JLabel("Kein Bild ausgewählt");
+        selectedImageFileLabel.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        selectedImageFileLabel.setFont(new Font("SansSerif", Font.ITALIC, 12));
+        controlsPanel.add(selectedImageFileLabel);
+        controlsPanel.add(Box.createVerticalStrut(10));
+
+        inputImagePreviewLabel = new JLabel();
+        inputImagePreviewLabel.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        inputImagePreviewLabel.setBorder(BorderFactory.createLineBorder(Color.GRAY, 1));
+        inputImagePreviewLabel.setPreferredSize(new Dimension(150, 150));
+        inputImagePreviewLabel.setMinimumSize(new Dimension(150, 150));
+        inputImagePreviewLabel.setMaximumSize(new Dimension(150, 150));
+        inputImagePreviewLabel.setHorizontalAlignment(SwingConstants.CENTER);
+        inputImagePreviewLabel.setVerticalAlignment(SwingConstants.CENTER);
+        inputImagePreviewLabel.setText("Vorschau");
+        controlsPanel.add(inputImagePreviewLabel);
+        controlsPanel.add(Box.createVerticalStrut(20));
+
+        btnGenerateImage = new JButton("🚀 Bild erzeugen");
+        btnGenerateImage.setFont(new Font("SansSerif", Font.BOLD, 14));
+        btnGenerateImage.putClientProperty("Button.background", new Color(255, 204, 0));
+        btnGenerateImage.putClientProperty("Button.foreground", Color.BLACK);
+        btnGenerateImage.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        btnGenerateImage.setMaximumSize(new Dimension(300, 45));
+        controlsPanel.add(btnGenerateImage);
+        controlsPanel.add(Box.createVerticalStrut(15));
+
+        generatorProgressBar = new JProgressBar(0, 100);
+        generatorProgressBar.setStringPainted(true);
+        generatorProgressBar.setVisible(false);
+        generatorProgressBar.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        generatorProgressBar.setMaximumSize(new Dimension(300, 25));
+        controlsPanel.add(generatorProgressBar);
+
+        btnSelectImage.addActionListener(e -> {
+            JFileChooser chooser = new JFileChooser();
+            chooser.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("Image Files", "png", "jpg", "jpeg", "webp"));
+            if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
+                File file = chooser.getSelectedFile();
+                try {
+                    selectedImageBytes = Files.readAllBytes(file.toPath());
+                    selectedImageFileLabel.setText(file.getName() + " (" + (selectedImageBytes.length / 1024) + " KB)");
+                    
+                    String name = file.getName().toLowerCase();
+                    if (name.endsWith(".png")) selectedImageMimeType = "image/png";
+                    else if (name.endsWith(".jpg") || name.endsWith(".jpeg")) selectedImageMimeType = "image/jpeg";
+                    else if (name.endsWith(".webp")) selectedImageMimeType = "image/webp";
+                    else selectedImageMimeType = "image/png";
+
+                    ImageIcon icon = new ImageIcon(selectedImageBytes);
+                    Image img = icon.getImage().getScaledInstance(148, 148, Image.SCALE_SMOOTH);
+                    inputImagePreviewLabel.setIcon(new ImageIcon(img));
+                    inputImagePreviewLabel.setText("");
+                    btnClearImage.setEnabled(true);
+                } catch (Exception ex) {
+                    JOptionPane.showMessageDialog(this, "Fehler beim Laden des Bildes: " + ex.getMessage(), "Fehler", JOptionPane.ERROR_MESSAGE);
+                }
+            }
+        });
+
+        btnClearImage.addActionListener(e -> {
+            selectedImageBytes = null;
+            selectedImageMimeType = null;
+            selectedImageFileLabel.setText("Kein Bild ausgewählt");
+            inputImagePreviewLabel.setIcon(null);
+            inputImagePreviewLabel.setText("Vorschau");
+            btnClearImage.setEnabled(false);
+        });
+
+        btnGenerateImage.addActionListener(e -> startImageGeneration());
+
+        resultsContainer = new JPanel(new GridLayout(0, 3, 20, 20));
+        resultsContainer.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+        
+        JScrollPane resultsScroll = new JScrollPane(resultsContainer);
+        resultsScroll.putClientProperty("FlatLaf.style", "arc: 15");
+        resultsScroll.getVerticalScrollBar().setUnitIncrement(16);
+
+        JPanel leftWrapper = new JPanel(new BorderLayout());
+        leftWrapper.setPreferredSize(new Dimension(350, 0));
+        leftWrapper.add(controlsPanel, BorderLayout.CENTER);
+
+        panel.add(leftWrapper, BorderLayout.WEST);
+        panel.add(resultsScroll, BorderLayout.CENTER);
+
+        return panel;
+    }
+
+    private void startImageGeneration() {
+        String prompt = promptArea.getText().trim();
+        if (prompt.isEmpty()) {
+            JOptionPane.showMessageDialog(this, "Bitte gib einen Prompt ein.", "Eingabe fehlt", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
+        btnGenerateImage.setEnabled(false);
+        btnClearImage.setEnabled(false);
+        promptArea.setEnabled(false);
+        generatorProgressBar.setValue(0);
+        generatorProgressBar.setString("Starte Generierung...");
+        generatorProgressBar.setVisible(true);
+
+        resultsContainer.removeAll();
+        resultsContainer.revalidate();
+        resultsContainer.repaint();
+
+        new Thread(() -> {
+            int totalImages = 1;
+            java.util.concurrent.atomic.AtomicInteger completedCount = new java.util.concurrent.atomic.AtomicInteger(0);
+            java.util.concurrent.atomic.AtomicInteger failedCount = new java.util.concurrent.atomic.AtomicInteger(0);
+            
+            java.util.concurrent.ExecutorService executor = java.util.concurrent.Executors.newFixedThreadPool(totalImages);
+            java.util.List<java.util.concurrent.CompletableFuture<Void>> futures = new ArrayList<>();
+
+            for (int i = 0; i < totalImages; i++) {
+                final int index = i;
+                final int seed = java.util.concurrent.ThreadLocalRandom.current().nextInt(1, 1000000);
+                
+                SwingUtilities.invokeLater(() -> {
+                    JPanel placeholderCard = new JPanel(new BorderLayout());
+                    placeholderCard.putClientProperty("FlatLaf.style", "arc: 12; background: lighten($Panel.background, 4%)");
+                    placeholderCard.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+                    placeholderCard.setPreferredSize(new Dimension(250, 320));
+                    
+                    JLabel loadingLbl = new JLabel("Generiere Bild " + (index + 1) + " (Seed: " + seed + ")...", SwingConstants.CENTER);
+                    placeholderCard.add(loadingLbl, BorderLayout.CENTER);
+                    
+                    resultsContainer.add(placeholderCard);
+                    resultsContainer.revalidate();
+                    resultsContainer.repaint();
+                });
+
+                java.util.concurrent.CompletableFuture<Void> future = java.util.concurrent.CompletableFuture.runAsync(() -> {
+                    try {
+                        byte[] imgBytes = geminiService.generateImageNanoBanana(prompt, selectedImageBytes, selectedImageMimeType, seed);
+                        
+                        java.io.ByteArrayInputStream bais = new java.io.ByteArrayInputStream(imgBytes);
+                        BufferedImage img = javax.imageio.ImageIO.read(bais);
+                        
+                        SwingUtilities.invokeLater(() -> {
+                            if (index < resultsContainer.getComponentCount()) {
+                                JPanel card = (JPanel) resultsContainer.getComponent(index);
+                                card.removeAll();
+                                
+                                JLabel imgLabel = new JLabel();
+                                imgLabel.setHorizontalAlignment(SwingConstants.CENTER);
+                                Image scaledImg = img.getScaledInstance(260, 260, Image.SCALE_SMOOTH);
+                                imgLabel.setIcon(new ImageIcon(scaledImg));
+                                card.add(imgLabel, BorderLayout.CENTER);
+                                
+                                JPanel infoPanel = new JPanel(new BorderLayout(5, 5));
+                                infoPanel.setOpaque(false);
+                                
+                                JLabel seedLabel = new JLabel("Seed: " + seed);
+                                seedLabel.setFont(new Font("SansSerif", Font.PLAIN, 12));
+                                infoPanel.add(seedLabel, BorderLayout.WEST);
+                                
+                                JPanel actionBtns = new JPanel(new FlowLayout(FlowLayout.RIGHT, 5, 0));
+                                actionBtns.setOpaque(false);
+                                
+                                JButton btnSave = new JButton("Speichern");
+                                btnSave.addActionListener(ev -> {
+                                    JFileChooser saver = new JFileChooser();
+                                    saver.setSelectedFile(new File("gemini_" + seed + ".png"));
+                                    if (saver.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
+                                        try {
+                                            Files.write(saver.getSelectedFile().toPath(), imgBytes);
+                                            statusLabel.setText("Bild erfolgreich gespeichert.");
+                                        } catch (Exception ex) {
+                                            JOptionPane.showMessageDialog(this, "Fehler beim Speichern: " + ex.getMessage(), "Fehler", JOptionPane.ERROR_MESSAGE);
+                                        }
+                                    }
+                                });
+                                
+                                JButton btnCopy = new JButton("Kopieren");
+                                btnCopy.addActionListener(ev -> {
+                                    try {
+                                        java.awt.Toolkit.getDefaultToolkit().getSystemClipboard().setContents(new java.awt.datatransfer.Transferable() {
+                                            @Override
+                                            public java.awt.datatransfer.DataFlavor[] getTransferDataFlavors() {
+                                                return new java.awt.datatransfer.DataFlavor[]{java.awt.datatransfer.DataFlavor.imageFlavor};
+                                            }
+                                            @Override
+                                            public boolean isDataFlavorSupported(java.awt.datatransfer.DataFlavor flavor) {
+                                                return java.awt.datatransfer.DataFlavor.imageFlavor.equals(flavor);
+                                            }
+                                            @Override
+                                            public Object getTransferData(java.awt.datatransfer.DataFlavor flavor) throws java.awt.datatransfer.UnsupportedFlavorException {
+                                                if (isDataFlavorSupported(flavor)) return img;
+                                                throw new java.awt.datatransfer.UnsupportedFlavorException(flavor);
+                                            }
+                                        }, null);
+                                        statusLabel.setText("Bild in die Zwischenablage kopiert.");
+                                    } catch (Exception ex) {
+                                        JOptionPane.showMessageDialog(this, "Fehler beim Kopieren: " + ex.getMessage(), "Fehler", JOptionPane.ERROR_MESSAGE);
+                                    }
+                                });
+                                
+                                actionBtns.add(btnSave);
+                                actionBtns.add(btnCopy);
+                                infoPanel.add(actionBtns, BorderLayout.EAST);
+                                
+                                card.add(infoPanel, BorderLayout.SOUTH);
+                                card.revalidate();
+                                card.repaint();
+                            }
+                        });
+                        completedCount.incrementAndGet();
+                    } catch (Exception ex) {
+                        ex.printStackTrace();
+                        failedCount.incrementAndGet();
+                        SwingUtilities.invokeLater(() -> {
+                            if (index < resultsContainer.getComponentCount()) {
+                                JPanel card = (JPanel) resultsContainer.getComponent(index);
+                                card.removeAll();
+                                String rawMsg = ex.getMessage();
+                                if (rawMsg == null) {
+                                    rawMsg = ex.toString();
+                                }
+                                String formattedMsg = rawMsg.replace("\n", "<br>");
+                                JLabel errLabel = new JLabel("<html><body style='text-align: center; color: #ef4444; padding: 10px;'><b>Fehler bei der Generierung:</b><br><br>" + formattedMsg + "</body></html>", SwingConstants.CENTER);
+                                card.add(errLabel, BorderLayout.CENTER);
+                                card.revalidate();
+                                card.repaint();
+                            }
+                        });
+                    } finally {
+                        int done = completedCount.get() + failedCount.get();
+                        final int progress = (done * 100) / totalImages;
+                        final String statusStr = "Fertig: " + completedCount.get() + " / Fehler: " + failedCount.get();
+                        SwingUtilities.invokeLater(() -> {
+                            generatorProgressBar.setValue(progress);
+                            generatorProgressBar.setString(statusStr);
+                        });
+                    }
+                }, executor);
+                
+                futures.add(future);
+            }
+
+            CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+            executor.shutdown();
+
+            SwingUtilities.invokeLater(() -> {
+                btnGenerateImage.setEnabled(true);
+                btnClearImage.setEnabled(selectedImageBytes != null);
+                promptArea.setEnabled(true);
+                generatorProgressBar.setString("Generierung beendet. " + completedCount.get() + " Bilder erfolgreich.");
+            });
+        }).start();
     }
 
     private JPanel createDashboardPanel(JTabbedPane tabs) {
@@ -625,7 +1051,7 @@ public class Main extends JFrame {
         leftPanel.add(profilesHeader, BorderLayout.NORTH);
 
         DefaultListModel<de.tki.comfymodels.domain.LaunchProfile> profileListModel = new DefaultListModel<>();
-        JList<de.tki.comfymodels.domain.LaunchProfile> profileList = new JList<>(profileListModel);
+        profileList = new JList<>(profileListModel);
         profileList.setCellRenderer(new DefaultListCellRenderer() {
             @Override public java.awt.Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
                 de.tki.comfymodels.domain.LaunchProfile p = (de.tki.comfymodels.domain.LaunchProfile) value;
@@ -637,7 +1063,6 @@ public class Main extends JFrame {
                 return c;
             }
         });
-        refreshProfileList(profileListModel);
 
         JScrollPane profileScroll = new JScrollPane(profileList);
         profileScroll.setBorder(BorderFactory.createEmptyBorder());
@@ -714,16 +1139,19 @@ public class Main extends JFrame {
             de.tki.comfymodels.domain.LaunchProfile selected = profileList.getSelectedValue();
             if (selected != null) {
                 descLabel.setText("<html><body style='width: 500px;'>" + selected.description() + "</body></html>");
+                configService.setActiveProfile(selected.id());
             } else {
                 descLabel.setText("Select a profile to see details.");
             }
         });
 
+        refreshProfileList(profileListModel);
+
         // One-row clean button layout (5 buttons)
         JPanel actionPanel = new JPanel(new GridLayout(1, 5, 12, 12));
         actionPanel.setOpaque(false);
         
-        JButton launchBtn = new JButton("🚀 Launch");
+        launchBtn = new JButton("🚀 Launch");
         launchBtn.putClientProperty("JButton.buttonType", "accent");
         launchBtn.setFont(new Font("SansSerif", Font.BOLD, 14));
         
@@ -794,8 +1222,60 @@ public class Main extends JFrame {
         
         JScrollPane consoleScroll = new JScrollPane(consoleOutput);
         consoleScroll.setBorder(BorderFactory.createLineBorder(new Color(60, 60, 60), 1));
+        
+        JPanel consoleContainer = new JPanel(new BorderLayout(5, 5));
+        consoleContainer.setOpaque(false);
+        
+        JPanel consoleToolbar = new JPanel(new BorderLayout(5, 5));
+        consoleToolbar.setOpaque(false);
+        
+        JTextField logSearchField = new JTextField();
+        logSearchField.putClientProperty("JTextField.placeholderText", "🔍 Search console logs...");
+        
+        JButton clearConsoleBtn = new JButton("Clear Console");
+        clearConsoleBtn.putClientProperty("JButton.buttonType", "roundRect");
+        clearConsoleBtn.addActionListener(e -> consoleOutput.setText(""));
+        
+        consoleToolbar.add(logSearchField, BorderLayout.CENTER);
+        consoleToolbar.add(clearConsoleBtn, BorderLayout.EAST);
+        
+        consoleContainer.add(consoleToolbar, BorderLayout.NORTH);
+        consoleContainer.add(consoleScroll, BorderLayout.CENTER);
+
+        logSearchField.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
+            @Override
+            public void insertUpdate(javax.swing.event.DocumentEvent e) { highlight(); }
+            @Override
+            public void removeUpdate(javax.swing.event.DocumentEvent e) { highlight(); }
+            @Override
+            public void changedUpdate(javax.swing.event.DocumentEvent e) { highlight(); }
+
+            private void highlight() {
+                javax.swing.text.Highlighter h = consoleOutput.getHighlighter();
+                h.removeAllHighlights();
+                String text = logSearchField.getText();
+                if (text == null || text.trim().isEmpty()) return;
+                String content = consoleOutput.getText();
+                if (content == null || content.isEmpty()) return;
+                
+                String pattern = text.toLowerCase();
+                String lowerContent = content.toLowerCase();
+                int index = lowerContent.indexOf(pattern);
+                javax.swing.text.Highlighter.HighlightPainter painter = 
+                    new javax.swing.text.DefaultHighlighter.DefaultHighlightPainter(new Color(255, 255, 100, 100));
+                while (index >= 0) {
+                    try {
+                        h.addHighlight(index, index + pattern.length(), painter);
+                    } catch (javax.swing.text.BadLocationException ex) {
+                        // ignore
+                    }
+                    index = lowerContent.indexOf(pattern, index + pattern.length());
+                }
+            }
+        });
+
         gbc.gridy = 6; gbc.weighty = 1.0; gbc.insets = new Insets(5, 5, 5, 5);
-        rightPanel.add(consoleScroll, gbc);
+        rightPanel.add(consoleContainer, gbc);
 
         // Timer for status updates
         Timer statusTimer = new Timer(1000, e -> {
@@ -829,9 +1309,7 @@ public class Main extends JFrame {
                 processController.stop();
                 try { Thread.sleep(1500); } catch (InterruptedException ignored) {}
                 SwingUtilities.invokeLater(() -> {
-                    processController.start(selected, Paths.get(configService.getComfyUIPath()), configService.getPythonPath(), log -> {
-                        SwingUtilities.invokeLater(() -> { consoleOutput.append(log + "\n"); consoleOutput.setCaretPosition(consoleOutput.getDocument().getLength()); });
-                    });
+                    startComfyUI(selected, false);
                 });
             }).start();
         });
@@ -851,6 +1329,7 @@ public class Main extends JFrame {
                             .thenCompose(v -> bootstrapper.installRequirements(pythonPath, comfyTarget, log -> SwingUtilities.invokeLater(() -> consoleOutput.append(log + "\n"))));
                     }).thenRun(() -> SwingUtilities.invokeLater(() -> {
                         configService.setComfyUIPath(comfyTarget.toString()); configService.autoDiscoverPaths();
+                        syncBridgeFiles();
                         consoleOutput.append("✅ Environment ready!\n");
                         bootstrapBtn.setEnabled(true); launchBtn.setEnabled(true);
                         refreshVersions(); JOptionPane.showMessageDialog(this, "Setup complete!");
@@ -864,16 +1343,140 @@ public class Main extends JFrame {
         launchBtn.addActionListener(e -> {
             de.tki.comfymodels.domain.LaunchProfile selected = profileList.getSelectedValue();
             if (selected == null) { JOptionPane.showMessageDialog(this, "Please select a launch profile."); return; }
-            launchBtn.setEnabled(false); consoleOutput.setText("");
-            processController.start(selected, Paths.get(configService.getComfyUIPath()), configService.getPythonPath(), log -> {
-                SwingUtilities.invokeLater(() -> { consoleOutput.append(log + "\n"); consoleOutput.setCaretPosition(consoleOutput.getDocument().getLength()); });
-            });
+            startComfyUI(selected, true);
         });
 
         stopBtn.addActionListener(e -> { consoleOutput.append("\n⏹ Stopping ComfyUI process...\n"); processController.stop(); });
 
+        // RIGHT: System Stats & Quick Actions
+        JPanel rightPanelEast = new JPanel(new GridBagLayout());
+        rightPanelEast.setPreferredSize(new Dimension(340, 0));
+        rightPanelEast.putClientProperty("FlatLaf.style", "arc: 15; background: lighten($Panel.background, 2%)");
+        rightPanelEast.setBorder(BorderFactory.createEmptyBorder(15, 15, 15, 15));
+
+        GridBagConstraints eastGbc = new GridBagConstraints();
+        eastGbc.fill = GridBagConstraints.HORIZONTAL;
+        eastGbc.weightx = 1.0;
+        eastGbc.gridx = 0;
+        eastGbc.gridy = 0;
+        eastGbc.insets = new Insets(5, 5, 15, 5);
+
+        JLabel statsHeader = new JLabel("System Stats");
+        statsHeader.putClientProperty("FlatLaf.styleClass", "h3");
+        rightPanelEast.add(statsHeader, eastGbc);
+
+        // CPU
+        eastGbc.gridy++;
+        eastGbc.insets = new Insets(5, 5, 5, 5);
+        progressCpu = new JProgressBar(0, 100);
+        progressCpu.setStringPainted(true);
+        progressCpu.setString("CPU: --%");
+        progressCpu.setPreferredSize(new Dimension(0, 24));
+        rightPanelEast.add(progressCpu, eastGbc);
+
+        // RAM
+        eastGbc.gridy++;
+        progressRam = new JProgressBar(0, 100);
+        progressRam.setStringPainted(true);
+        progressRam.setString("RAM: -- GB / -- GB");
+        progressRam.setPreferredSize(new Dimension(0, 24));
+        rightPanelEast.add(progressRam, eastGbc);
+
+        // GPU Panel wrapper
+        eastGbc.gridy++;
+        gpuPanel = new JPanel(new GridBagLayout());
+        gpuPanel.setOpaque(false);
+
+        GridBagConstraints gpuGbc = new GridBagConstraints();
+        gpuGbc.fill = GridBagConstraints.HORIZONTAL;
+        gpuGbc.weightx = 1.0;
+        gpuGbc.gridx = 0;
+        gpuGbc.gridy = 0;
+        gpuGbc.insets = new Insets(5, 0, 5, 0);
+
+        lblGpuName = new JLabel("GPU: N/A");
+        lblGpuName.setFont(new Font("SansSerif", Font.BOLD, 12));
+        gpuPanel.add(lblGpuName, gpuGbc);
+
+        gpuGbc.gridy++;
+        progressGpu = new JProgressBar(0, 100);
+        progressGpu.setStringPainted(true);
+        progressGpu.setString("GPU Load: --%");
+        progressGpu.setPreferredSize(new Dimension(0, 24));
+        gpuPanel.add(progressGpu, gpuGbc);
+
+        gpuGbc.gridy++;
+        progressVram = new JProgressBar(0, 100);
+        progressVram.setStringPainted(true);
+        progressVram.setString("VRAM: -- GB / -- GB");
+        progressVram.setPreferredSize(new Dimension(0, 24));
+        gpuPanel.add(progressVram, gpuGbc);
+
+        rightPanelEast.add(gpuPanel, eastGbc);
+
+        // Separator
+        eastGbc.gridy++;
+        eastGbc.insets = new Insets(15, 5, 15, 5);
+        rightPanelEast.add(new JSeparator(), eastGbc);
+
+        // Quick Actions
+        eastGbc.gridy++;
+        eastGbc.insets = new Insets(5, 5, 15, 5);
+        JLabel actionsHeader = new JLabel("Quick Actions");
+        actionsHeader.putClientProperty("FlatLaf.styleClass", "h3");
+        rightPanelEast.add(actionsHeader, eastGbc);
+
+        // Buttons
+        eastGbc.gridy++;
+        eastGbc.insets = new Insets(6, 5, 6, 5);
+        JButton updateBtn = new JButton("📥 Update ComfyUI & Nodes");
+        updateBtn.putClientProperty("JButton.buttonType", "roundRect");
+        updateBtn.setFont(new Font("SansSerif", Font.BOLD, 13));
+        updateBtn.setPreferredSize(new Dimension(0, 35));
+        updateBtn.addActionListener(e -> {
+            de.tki.comfymodels.ui.AutoUpdaterDialog dialog = new de.tki.comfymodels.ui.AutoUpdaterDialog(this, updaterService);
+            dialog.setLocationRelativeTo(this);
+            dialog.setVisible(true);
+        });
+        rightPanelEast.add(updateBtn, eastGbc);
+
+        eastGbc.gridy++;
+        JButton checkUpdatesBtn = new JButton("🔍 Check Model Upgrades");
+        checkUpdatesBtn.putClientProperty("JButton.buttonType", "roundRect");
+        checkUpdatesBtn.setFont(new Font("SansSerif", Font.BOLD, 13));
+        checkUpdatesBtn.setPreferredSize(new Dimension(0, 35));
+        checkUpdatesBtn.addActionListener(e -> {
+            de.tki.comfymodels.ui.ModelUpdateCheckerDialog dialog = new de.tki.comfymodels.ui.ModelUpdateCheckerDialog(
+                this, configService, hashRegistry, modelValidator, civitaiService, downloadManager
+            );
+            dialog.setLocationRelativeTo(this);
+            dialog.setVisible(true);
+        });
+        rightPanelEast.add(checkUpdatesBtn, eastGbc);
+
+        eastGbc.gridy++;
+        JButton storageOptBtn = new JButton("🧼 Storage Optimizer");
+        storageOptBtn.putClientProperty("JButton.buttonType", "roundRect");
+        storageOptBtn.setFont(new Font("SansSerif", Font.BOLD, 13));
+        storageOptBtn.setPreferredSize(new Dimension(0, 35));
+        storageOptBtn.addActionListener(e -> {
+            de.tki.comfymodels.ui.DeduplicationDialog dialog = new de.tki.comfymodels.ui.DeduplicationDialog(
+                this, configService, modelValidator, hashRegistry
+            );
+            dialog.setLocationRelativeTo(this);
+            dialog.setVisible(true);
+        });
+        rightPanelEast.add(storageOptBtn, eastGbc);
+
+        // Add a vertical glue / weight filler
+        eastGbc.gridy++;
+        eastGbc.weighty = 1.0;
+        eastGbc.fill = GridBagConstraints.BOTH;
+        rightPanelEast.add(Box.createGlue(), eastGbc);
+
         panel.add(leftPanel, BorderLayout.WEST);
         panel.add(rightPanel, BorderLayout.CENTER);
+        panel.add(rightPanelEast, BorderLayout.EAST);
 
         return panel;
     }
@@ -884,37 +1487,11 @@ public class Main extends JFrame {
             // Wait for health
             for (int i = 0; i < 30; i++) {
                 if (lifecycleService.isHealthy()) {
-                    if (comfyWebPanel != null) {
-                        comfyWebPanel.reload();
-                    }
                     return;
                 }
                 try { Thread.sleep(1000); } catch (InterruptedException ignored) {}
             }
         }).start();
-    }
-
-    private void updateComfyTabVisibility(JTabbedPane tabs) {
-        boolean isRunning = lifecycleService.isRunning();
-        boolean isHealthy = lifecycleService.isHealthy();
-        
-        // Only show if actually running or healthy
-        boolean shouldShow = isRunning || isHealthy;
-        
-        int comfyTabIndex = tabs.indexOfComponent(comfyWebPanel);
-
-        if (shouldShow && comfyTabIndex == -1) {
-            System.out.println("✅ [UI] Showing ComfyUI Tab (Running=" + isRunning + ", Healthy=" + isHealthy + ")");
-            tabs.addTab("🎨 ComfyUI Interface", comfyWebPanel);
-            comfyWebPanel.loadUrl(configService.getComfyUIUrl()); // Force reload when re-added
-            tabs.revalidate();
-            tabs.repaint();
-        } else if (!shouldShow && comfyTabIndex != -1) {
-            System.out.println("🚫 [UI] Hiding ComfyUI Tab (Running=" + isRunning + ", Healthy=" + isHealthy + ")");
-            tabs.removeTabAt(comfyTabIndex);
-            tabs.revalidate();
-            tabs.repaint();
-        }
     }
 
     private void showSettingsMenu(JButton parent) {
@@ -1050,6 +1627,11 @@ public class Main extends JFrame {
         });
 
         gbc.gridy++;
+        gbc.insets = new Insets(10, 0, 5, 0);
+        JCheckBox symlinkCheck = new JCheckBox("Use Symbolic Links on Restore (Saves SSD space)", configService.isUseSymlinksOnRestore());
+        panel.add(symlinkCheck, gbc);
+
+        gbc.gridy++;
         gbc.weighty = 1.0;
         JPanel spacer = new JPanel();
         spacer.setOpaque(false);
@@ -1064,8 +1646,10 @@ public class Main extends JFrame {
             configService.setArchivePath(field2.getText().trim());
             configService.setComfyUIPath(field3.getText().trim());
             configService.setPythonPath(field4.getText().trim());
+            configService.setUseSymlinksOnRestore(symlinkCheck.isSelected());
             configService.setComfyLaunchCommand(""); 
             configService.autoDiscoverPaths();
+            syncBridgeFiles();
             statusLabel.setText("Settings updated.");
             analyzeJsonContent();
             dialog.dispose();
@@ -1078,9 +1662,84 @@ public class Main extends JFrame {
         dialog.setVisible(true);
     }
 
+    private void showDownloadSettingsDialog() {
+        de.tki.comfymodels.ui.StandardDialog dialog = new de.tki.comfymodels.ui.StandardDialog(this, "Download Settings");
+        dialog.setSize(600, 380);
+        dialog.setLocationRelativeTo(this);
+
+        JPanel panel = dialog.createContentPanel();
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        gbc.gridx = 0; gbc.gridy = 0; gbc.weightx = 1.0;
+        gbc.insets = new Insets(0, 0, 5, 0);
+
+        panel.add(new JLabel("Max Parallel Downloads (Active downloads in queue):"), gbc);
+        
+        gbc.gridy++;
+        gbc.insets = new Insets(0, 0, 15, 0);
+        SpinnerNumberModel threadModel = new SpinnerNumberModel(configService.getMaxParallelDownloads(), 1, 10, 1);
+        JSpinner threadSpinner = new JSpinner(threadModel);
+        panel.add(threadSpinner, gbc);
+
+        gbc.gridy++;
+        gbc.insets = new Insets(0, 0, 5, 0);
+        panel.add(new JLabel("Download Speed Limit (KB/s - 0 for unlimited):"), gbc);
+
+        gbc.gridy++;
+        gbc.insets = new Insets(0, 0, 15, 0);
+        JTextField speedField = new JTextField(String.valueOf(configService.getDownloadSpeedLimit()));
+        panel.add(speedField, gbc);
+
+        gbc.gridy++;
+        gbc.insets = new Insets(0, 0, 5, 0);
+        panel.add(new JLabel("Segments Per File (Multi-segment downloading, 1 to disable):"), gbc);
+
+        gbc.gridy++;
+        gbc.insets = new Insets(0, 0, 15, 0);
+        SpinnerNumberModel segmentModel = new SpinnerNumberModel(configService.getSegmentsPerFile(), 1, 8, 1);
+        JSpinner segmentSpinner = new JSpinner(segmentModel);
+        panel.add(segmentSpinner, gbc);
+
+        gbc.gridy++;
+        gbc.weighty = 1.0;
+        JPanel spacer = new JPanel();
+        spacer.setOpaque(false);
+        panel.add(spacer, gbc);
+
+        JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+        JButton cancel = new JButton("Cancel");
+        cancel.addActionListener(e -> dialog.dispose());
+        JButton save = new JButton("Save");
+        save.addActionListener(e -> {
+            try {
+                int threads = (Integer) threadSpinner.getValue();
+                int segments = (Integer) segmentSpinner.getValue();
+                int speedLimit = Integer.parseInt(speedField.getText().trim());
+                if (speedLimit < 0) {
+                    throw new NumberFormatException();
+                }
+
+                configService.setMaxParallelDownloads(threads);
+                configService.setDownloadSpeedLimit(speedLimit);
+                configService.setSegmentsPerFile(segments);
+
+                statusLabel.setText("Download settings updated.");
+                dialog.dispose();
+            } catch (NumberFormatException ex) {
+                JOptionPane.showMessageDialog(dialog, "Please enter a valid positive integer for the speed limit.", "Invalid Input", JOptionPane.ERROR_MESSAGE);
+            }
+        });
+        buttons.add(cancel);
+        buttons.add(save);
+
+        dialog.add(panel, BorderLayout.CENTER);
+        dialog.add(buttons, BorderLayout.SOUTH);
+        dialog.setVisible(true);
+    }
+
     private void showApiKeysDialog() {
         de.tki.comfymodels.ui.StandardDialog dialog = new de.tki.comfymodels.ui.StandardDialog(this, "AI & API Keys");
-        dialog.setSize(600, 380);
+        dialog.setSize(600, 520);
         dialog.setLocationRelativeTo(this);
 
         JPanel panel = dialog.createContentPanel();
@@ -1106,9 +1765,33 @@ public class Main extends JFrame {
         gbc.insets = new Insets(0, 0, 0, 0);
         panel.add(new JLabel("Civitai API Key:"), gbc);
         gbc.gridy++;
-        gbc.insets = new Insets(5, 0, 5, 0);
+        gbc.insets = new Insets(5, 0, 15, 0);
         JPasswordField civitaiField = new JPasswordField(configService.getCivitaiApiKey());
         panel.add(civitaiField, gbc);
+
+        gbc.gridy++;
+        gbc.insets = new Insets(0, 0, 5, 0);
+        JCheckBox ollamaCheck = new JCheckBox("Use Local Ollama LLM for Author Identification", configService.isUseOllama());
+        panel.add(ollamaCheck, gbc);
+
+        gbc.gridy++;
+        gbc.insets = new Insets(0, 20, 5, 0);
+        JPanel ollamaRow = new JPanel(new GridLayout(2, 2, 10, 5));
+        ollamaRow.setOpaque(false);
+        ollamaRow.add(new JLabel("Ollama Server URL:"));
+        ollamaRow.add(new JLabel("Ollama Model:"));
+        JTextField ollamaUrlField = new JTextField(configService.getOllamaUrl());
+        JTextField ollamaModelField = new JTextField(configService.getOllamaModel());
+        ollamaRow.add(ollamaUrlField);
+        ollamaRow.add(ollamaModelField);
+        panel.add(ollamaRow, gbc);
+
+        ollamaUrlField.setEnabled(ollamaCheck.isSelected());
+        ollamaModelField.setEnabled(ollamaCheck.isSelected());
+        ollamaCheck.addActionListener(e -> {
+            ollamaUrlField.setEnabled(ollamaCheck.isSelected());
+            ollamaModelField.setEnabled(ollamaCheck.isSelected());
+        });
 
         gbc.gridy++;
         gbc.weighty = 1.0;
@@ -1124,8 +1807,12 @@ public class Main extends JFrame {
             configService.setGeminiApiKey(new String(geminiField.getPassword()).trim());
             configService.setHfToken(new String(hfField.getPassword()).trim());
             configService.setCivitaiApiKey(new String(civitaiField.getPassword()).trim());
+            configService.setUseOllama(ollamaCheck.isSelected());
+            configService.setOllamaUrl(ollamaUrlField.getText().trim());
+            configService.setOllamaModel(ollamaModelField.getText().trim());
             statusLabel.setText("API keys updated.");
             updateAiModelDisplay();
+            updateGeminiTabVisibility();
             analyzeJsonContent();
             dialog.dispose();
         });
@@ -2151,6 +2838,38 @@ public class Main extends JFrame {
         });
         JTable modelTable = new JTable(tableModel);
         modelTable.putClientProperty("terminateEditOnFocusLost", Boolean.TRUE);
+
+        JPopupMenu modelTablePopup = new JPopupMenu();
+        JMenuItem searchCivitaiItem = new JMenuItem("Search Civitai & Select Version...");
+        modelTablePopup.add(searchCivitaiItem);
+
+        modelTable.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mousePressed(MouseEvent e) {
+                showPopup(e);
+            }
+            @Override
+            public void mouseReleased(MouseEvent e) {
+                showPopup(e);
+            }
+            private void showPopup(MouseEvent e) {
+                if (e.isPopupTrigger()) {
+                    int row = modelTable.rowAtPoint(e.getPoint());
+                    if (row >= 0 && row < modelTable.getRowCount()) {
+                        modelTable.setRowSelectionInterval(row, row);
+                        modelTablePopup.show(e.getComponent(), e.getX(), e.getY());
+                    }
+                }
+            }
+        });
+
+        searchCivitaiItem.addActionListener(e -> {
+            int selectedRow = modelTable.getSelectedRow();
+            if (selectedRow >= 0) {
+                int modelRow = modelTable.convertRowIndexToModel(selectedRow);
+                showCivitaiSearchDialog(modelRow);
+            }
+        });
         JScrollPane tableScroll = new JScrollPane(modelTable);
         JPanel tablePanel = new JPanel(new BorderLayout());
         tablePanel.setBorder(BorderFactory.createTitledBorder("Identified Models"));
@@ -2226,6 +2945,16 @@ public class Main extends JFrame {
         pathsBtn.setMaximumSize(new Dimension(300, 40));
         pathsBtn.addActionListener(e -> showPathsDialog());
 
+        JButton repairBtn = new JButton("🛠️ Auto-Repair Environment...");
+        repairBtn.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        repairBtn.setMaximumSize(new Dimension(300, 40));
+        repairBtn.addActionListener(e -> triggerEnvironmentRepair());
+
+        JButton downloadSettingsBtn = new JButton("📥 Download Settings...");
+        downloadSettingsBtn.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        downloadSettingsBtn.setMaximumSize(new Dimension(300, 40));
+        downloadSettingsBtn.addActionListener(e -> showDownloadSettingsDialog());
+
         JButton bridgeBtn = new JButton("🚀 ComfyUI Bridge Installer...");
         bridgeBtn.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
         bridgeBtn.setMaximumSize(new Dimension(300, 40));
@@ -2278,6 +3007,10 @@ public class Main extends JFrame {
         left.add(Box.createVerticalStrut(20));
         left.add(pathsBtn);
         left.add(Box.createVerticalStrut(10));
+        left.add(repairBtn);
+        left.add(Box.createVerticalStrut(10));
+        left.add(downloadSettingsBtn);
+        left.add(Box.createVerticalStrut(10));
         left.add(bridgeBtn);
         left.add(Box.createVerticalStrut(25));
         left.add(checksPanel);
@@ -2308,7 +3041,10 @@ public class Main extends JFrame {
         resetVaultBtn.setMaximumSize(new Dimension(300, 40));
         resetVaultBtn.addActionListener(e -> {
             int confirm = JOptionPane.showConfirmDialog(this, "This will delete all stored API keys. Continue?", "Vault Reset", JOptionPane.YES_NO_OPTION);
-            if (confirm == JOptionPane.YES_OPTION) configService.resetVault();
+            if (confirm == JOptionPane.YES_OPTION) {
+                configService.resetVault();
+                updateGeminiTabVisibility();
+            }
         });
 
         right.add(aiHeader);
@@ -2325,6 +3061,29 @@ public class Main extends JFrame {
         panel.add(grid, BorderLayout.CENTER);
         
         return panel;
+    }
+
+    private void triggerEnvironmentRepair() {
+        if (mainTabs != null) {
+            mainTabs.setSelectedIndex(0);
+        } else if (getContentPane() instanceof JTabbedPane) {
+            ((JTabbedPane) getContentPane()).setSelectedIndex(0);
+        } else {
+            findAndSelectTab(getContentPane(), 0);
+        }
+        
+        if (consoleOutput != null) {
+            consoleOutput.setText("");
+        }
+        
+        new Thread(() -> {
+            updaterService.repairEnvironment(log -> SwingUtilities.invokeLater(() -> {
+                if (consoleOutput != null) {
+                    consoleOutput.append(log);
+                    consoleOutput.setCaretPosition(consoleOutput.getDocument().getLength());
+                }
+            }));
+        }).start();
     }
 
     private void performFullServiceRestart() {
@@ -2382,6 +3141,22 @@ public class Main extends JFrame {
         for (de.tki.comfymodels.domain.LaunchProfile p : profiles) {
             model.addElement(p);
         }
+
+        // Restore active profile selection
+        String activeId = configService.getActiveProfile();
+        int targetIdx = -1;
+        for (int i = 0; i < model.size(); i++) {
+            if (model.get(i).id().equals(activeId)) {
+                targetIdx = i;
+                break;
+            }
+        }
+        if (targetIdx == -1 && !model.isEmpty()) {
+            targetIdx = 0;
+        }
+        if (profileList != null && targetIdx != -1) {
+            profileList.setSelectedIndex(targetIdx);
+        }
     }
 
     private void refreshVersions() {
@@ -2401,6 +3176,72 @@ public class Main extends JFrame {
                 }
             });
         });
+    }
+
+    private void updateHardwareUI(de.tki.comfymodels.service.impl.HardwareMonitorService.HardwareStats stats) {
+        if (progressCpu != null) {
+            progressCpu.setValue((int) stats.cpuLoad);
+            progressCpu.setString(String.format("CPU: %.1f%%", stats.cpuLoad));
+        }
+        if (progressRam != null) {
+            double usedGb = stats.ramUsed / (1024.0 * 1024.0 * 1024.0);
+            double totalGb = stats.ramTotal / (1024.0 * 1024.0 * 1024.0);
+            int pct = stats.ramTotal > 0 ? (int) ((stats.ramUsed * 100) / stats.ramTotal) : 0;
+            progressRam.setValue(pct);
+            progressRam.setString(String.format("RAM: %.1f GB / %.1f GB (%d%%)", usedGb, totalGb, pct));
+        }
+        if (stats.hasNvidia) {
+            if (gpuPanel != null) gpuPanel.setVisible(true);
+            if (progressGpu != null) {
+                progressGpu.setValue(stats.gpuUtilization);
+                progressGpu.setString(String.format("GPU Load: %d%%", stats.gpuUtilization));
+            }
+            if (progressVram != null) {
+                double usedGb = stats.vramUsed / (1024.0 * 1024.0 * 1024.0);
+                double totalGb = stats.vramTotal / (1024.0 * 1024.0 * 1024.0);
+                int pct = stats.vramTotal > 0 ? (int) ((stats.vramUsed * 100) / stats.vramTotal) : 0;
+                progressVram.setValue(pct);
+                progressVram.setString(String.format("VRAM: %.1f GB / %.1f GB (%d%%)", usedGb, totalGb, pct));
+            }
+            if (lblGpuName != null) {
+                lblGpuName.setText("GPU: " + stats.gpuName);
+            }
+        } else {
+            if (gpuPanel != null) gpuPanel.setVisible(false);
+        }
+    }
+
+    public String getWorkspaceWorkflowJson() {
+        return jsonInputArea != null ? jsonInputArea.getText() : "";
+    }
+
+    public void loadWorkflowExternal(String name, String json) {
+        SwingUtilities.invokeLater(() -> {
+            if (jsonInputArea != null) {
+                jsonInputArea.setText(json);
+                currentFileName = name != null ? name + ".json" : "library_workflow.json";
+                analyzeJsonContent();
+                searchMissingOnline();
+                
+                // Switch to Model Manager Tab (index 1)
+                if (getContentPane() instanceof JTabbedPane) {
+                    ((JTabbedPane) getContentPane()).setSelectedIndex(1);
+                } else {
+                    findAndSelectTab(getContentPane(), 1);
+                }
+            }
+        });
+    }
+
+    private void findAndSelectTab(Container container, int index) {
+        for (java.awt.Component child : container.getComponents()) {
+            if (child instanceof JTabbedPane) {
+                ((JTabbedPane) child).setSelectedIndex(index);
+                return;
+            } else if (child instanceof Container) {
+                findAndSelectTab((Container) child, index);
+            }
+        }
     }
 
     private void showModalProgressDialog(String title, String statusPrefix, List<Integer> selectedRows, 
@@ -2622,6 +3463,356 @@ public class Main extends JFrame {
                 System.err.println("[Bridge-Sync] Failed to sync code: " + e.getMessage());
             }
         }
+    }
+
+    private void startComfyUI(de.tki.comfymodels.domain.LaunchProfile selected, boolean clearConsole) {
+        if (selected == null) return;
+        if (launchBtn != null) launchBtn.setEnabled(false);
+        if (clearConsole && consoleOutput != null) {
+            consoleOutput.setText("");
+        }
+        java.util.concurrent.atomic.AtomicBoolean cudaError = new java.util.concurrent.atomic.AtomicBoolean(false);
+        processController.start(selected, Paths.get(configService.getComfyUIPath()), configService.getPythonPath(), log -> {
+            if (log.contains("Torch not compiled with CUDA enabled") || log.contains("AssertionError: Torch not compiled with CUDA enabled")) {
+                cudaError.set(true);
+            }
+            if (log.contains("To see the GUI go to:")) {
+                int idx = log.indexOf("http://");
+                if (idx == -1) idx = log.indexOf("https://");
+                if (idx != -1) {
+                    String url = log.substring(idx).trim();
+                    new Thread(() -> {
+                        try {
+                            if (Desktop.isDesktopSupported()) {
+                                Desktop.getDesktop().browse(new java.net.URI(url));
+                            }
+                        } catch (Exception e) {
+                            System.err.println("Failed to open browser automatically: " + e.getMessage());
+                        }
+                    }).start();
+                }
+            }
+            SwingUtilities.invokeLater(() -> {
+                consoleOutput.append(log + "\n");
+                consoleOutput.setCaretPosition(consoleOutput.getDocument().getLength());
+            });
+        }).thenAccept(exitCode -> {
+            if (exitCode != 0 && cudaError.get()) {
+                SwingUtilities.invokeLater(() -> {
+                    int choice = JOptionPane.showConfirmDialog(this,
+                        "ComfyUI failed to start because CUDA is not enabled/supported on this PyTorch installation.\n" +
+                        "Would you like to switch to 'CPU Mode' profile and start ComfyUI on your CPU?",
+                        "CUDA Error Detected", JOptionPane.YES_NO_OPTION, JOptionPane.ERROR_MESSAGE);
+                    if (choice == JOptionPane.YES_OPTION) {
+                        List<de.tki.comfymodels.domain.LaunchProfile> profiles = profileManager.loadProfiles();
+                        de.tki.comfymodels.domain.LaunchProfile cpuProfile = profiles.stream()
+                            .filter(p -> p.id().equals("cpu_mode"))
+                            .findFirst().orElse(null);
+                        if (cpuProfile != null) {
+                            if (profileList != null) {
+                                profileList.setSelectedValue(cpuProfile, true);
+                            }
+                            startComfyUI(cpuProfile, true);
+                        } else {
+                            JOptionPane.showMessageDialog(this, "CPU Mode profile not found. Please add or use a custom profile with '--cpu'.");
+                        }
+                    }
+                });
+            }
+        });
+    }
+
+    private static class CivitaiModel {
+        String name;
+        String type;
+        com.fasterxml.jackson.databind.JsonNode rawNode;
+        CivitaiModel(String name, String type, com.fasterxml.jackson.databind.JsonNode rawNode) {
+            this.name = name;
+            this.type = type;
+            this.rawNode = rawNode;
+        }
+        @Override public String toString() {
+            return name + " (" + type + ")";
+        }
+    }
+
+    private static class CivitaiVersion {
+        String name;
+        String downloadUrl;
+        String size;
+        long byteSize;
+        String imageUrl;
+        List<String> triggerWords;
+        com.fasterxml.jackson.databind.JsonNode rawNode;
+        CivitaiVersion(String name, String downloadUrl, String size, long byteSize, String imageUrl, List<String> triggerWords, com.fasterxml.jackson.databind.JsonNode rawNode) {
+            this.name = name;
+            this.downloadUrl = downloadUrl;
+            this.size = size;
+            this.byteSize = byteSize;
+            this.imageUrl = imageUrl;
+            this.triggerWords = triggerWords;
+            this.rawNode = rawNode;
+        }
+        @Override public String toString() {
+            return name;
+        }
+    }
+
+    private void showCivitaiSearchDialog(int row) {
+        String initialName = (String) tableModel.getValueAt(row, 2);
+        String cleanedQuery = initialName.replaceAll("(?i)\\.(safetensors|ckpt|sft|pt|bin)$", "").trim();
+
+        JDialog dialog = new JDialog(this, "Civitai Version Selector", true);
+        dialog.setSize(950, 650);
+        dialog.setLocationRelativeTo(this);
+        dialog.setLayout(new BorderLayout(10, 10));
+
+        JPanel leftPanel = new JPanel(new BorderLayout(10, 10));
+        leftPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+        
+        JPanel searchBar = new JPanel(new BorderLayout(5, 0));
+        JTextField searchField = new JTextField(cleanedQuery);
+        JButton searchBtn = new JButton("Search");
+        searchBar.add(searchField, BorderLayout.CENTER);
+        searchBar.add(searchBtn, BorderLayout.EAST);
+        leftPanel.add(searchBar, BorderLayout.NORTH);
+        
+        DefaultListModel<CivitaiModel> modelListModel = new DefaultListModel<>();
+        JList<CivitaiModel> modelList = new JList<>(modelListModel);
+        modelList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        JScrollPane listScroll = new JScrollPane(modelList);
+        leftPanel.add(listScroll, BorderLayout.CENTER);
+
+        JPanel rightPanel = new JPanel(new BorderLayout(10, 10));
+        rightPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+        
+        JPanel versionPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 5));
+        versionPanel.add(new JLabel("Version:"));
+        JComboBox<CivitaiVersion> versionCombo = new JComboBox<>();
+        versionPanel.add(versionCombo);
+        rightPanel.add(versionPanel, BorderLayout.NORTH);
+        
+        JPanel detailsPanel = new JPanel(new BorderLayout(5, 5));
+        JTextArea infoText = new JTextArea();
+        infoText.setEditable(false);
+        infoText.setLineWrap(true);
+        infoText.setWrapStyleWord(true);
+        JScrollPane infoScroll = new JScrollPane(infoText);
+        infoScroll.setPreferredSize(new Dimension(350, 180));
+        detailsPanel.add(infoScroll, BorderLayout.NORTH);
+        
+        JLabel previewLabel = new JLabel("No Preview Image Available", JLabel.CENTER);
+        previewLabel.setBorder(BorderFactory.createLineBorder(Color.GRAY, 1));
+        previewLabel.setPreferredSize(new Dimension(350, 350));
+        detailsPanel.add(previewLabel, BorderLayout.CENTER);
+        
+        rightPanel.add(detailsPanel, BorderLayout.CENTER);
+
+        JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, leftPanel, rightPanel);
+        splitPane.setDividerLocation(420);
+        dialog.add(splitPane, BorderLayout.CENTER);
+
+        JPanel bottomPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 10));
+        JButton cancelBtn = new JButton("Cancel");
+        cancelBtn.addActionListener(e -> dialog.dispose());
+        JButton applyBtn = new JButton("Apply Selected Version");
+        applyBtn.putClientProperty("JButton.buttonType", "accent");
+        
+        bottomPanel.add(cancelBtn);
+        bottomPanel.add(applyBtn);
+        dialog.add(bottomPanel, BorderLayout.SOUTH);
+
+        Runnable doSearch = () -> {
+            String q = searchField.getText().trim();
+            if (q.isEmpty()) return;
+            searchBtn.setEnabled(false);
+            civitaiService.searchModelsRaw(q).thenAccept(root -> {
+                SwingUtilities.invokeLater(() -> {
+                    searchBtn.setEnabled(true);
+                    modelListModel.clear();
+                    if (root != null) {
+                        com.fasterxml.jackson.databind.JsonNode items = root.get("items");
+                        if (items != null && items.isArray()) {
+                            for (com.fasterxml.jackson.databind.JsonNode item : items) {
+                                String name = item.path("name").asText("Unknown");
+                                String type = item.path("type").asText("Unknown");
+                                modelListModel.addElement(new CivitaiModel(name, type, item));
+                            }
+                        }
+                    }
+                    if (modelListModel.isEmpty()) {
+                        modelListModel.addElement(new CivitaiModel("No results found", "", null));
+                    }
+                });
+            }).exceptionally(ex -> {
+                SwingUtilities.invokeLater(() -> {
+                    searchBtn.setEnabled(true);
+                    modelListModel.clear();
+                    modelListModel.addElement(new CivitaiModel("Error: " + ex.getMessage(), "", null));
+                });
+                return null;
+            });
+        };
+
+        searchBtn.addActionListener(e -> doSearch.run());
+        searchField.addActionListener(e -> doSearch.run());
+
+        modelList.addListSelectionListener(e -> {
+            if (e.getValueIsAdjusting()) return;
+            CivitaiModel selectedModel = modelList.getSelectedValue();
+            versionCombo.removeAllItems();
+            infoText.setText("");
+            previewLabel.setIcon(null);
+            previewLabel.setText("No Preview Image Available");
+            
+            if (selectedModel == null || selectedModel.rawNode == null) return;
+            
+            com.fasterxml.jackson.databind.JsonNode versions = selectedModel.rawNode.get("modelVersions");
+            if (versions != null && versions.isArray()) {
+                for (com.fasterxml.jackson.databind.JsonNode v : versions) {
+                    String vName = v.path("name").asText("Unknown");
+                    String downloadUrl = v.path("downloadUrl").asText("");
+                    
+                    long byteSize = 0;
+                    String sizeStr = "Unknown";
+                    com.fasterxml.jackson.databind.JsonNode files = v.get("files");
+                    if (files != null && files.isArray() && files.size() > 0) {
+                        double sizeKb = files.get(0).path("sizeKB").asDouble(0);
+                        byteSize = (long) (sizeKb * 1024);
+                        double sizeMb = sizeKb / 1024.0;
+                        if (sizeMb > 1024) {
+                            sizeStr = String.format("%.2f GB", sizeMb / 1024.0);
+                        } else {
+                            sizeStr = String.format("%.2f MB", sizeMb);
+                        }
+                    }
+                    
+                    String imgUrl = null;
+                    com.fasterxml.jackson.databind.JsonNode images = v.get("images");
+                    if (images != null && images.isArray() && images.size() > 0) {
+                        imgUrl = images.get(0).path("url").asText(null);
+                    }
+                    
+                    List<String> triggers = new ArrayList<>();
+                    com.fasterxml.jackson.databind.JsonNode trainedWords = v.get("trainedWords");
+                    if (trainedWords != null && trainedWords.isArray()) {
+                        for (com.fasterxml.jackson.databind.JsonNode word : trainedWords) {
+                            triggers.add(word.asText());
+                        }
+                    }
+                    
+                    versionCombo.addItem(new CivitaiVersion(vName, downloadUrl, sizeStr, byteSize, imgUrl, triggers, v));
+                }
+            }
+        });
+
+        versionCombo.addActionListener(e -> {
+            CivitaiVersion selectedVersion = (CivitaiVersion) versionCombo.getSelectedItem();
+            infoText.setText("");
+            previewLabel.setIcon(null);
+            previewLabel.setText("Loading Preview...");
+            
+            if (selectedVersion == null) {
+                previewLabel.setText("No Preview Image Available");
+                return;
+            }
+            
+            StringBuilder sb = new StringBuilder();
+            sb.append("File Size: ").append(selectedVersion.size).append("\n");
+            sb.append("Download URL: ").append(selectedVersion.downloadUrl).append("\n\n");
+            
+            if (!selectedVersion.triggerWords.isEmpty()) {
+                sb.append("Trigger Words: ").append(String.join(", ", selectedVersion.triggerWords)).append("\n\n");
+            }
+            
+            String desc = selectedVersion.rawNode.path("description").asText("");
+            if (!desc.isEmpty()) {
+                desc = desc.replaceAll("<[^>]*>", "");
+                sb.append("Description:\n").append(desc);
+            }
+            
+            infoText.setText(sb.toString());
+            infoText.setCaretPosition(0);
+            
+            String imgUrl = selectedVersion.imageUrl;
+            if (imgUrl != null && !imgUrl.isEmpty()) {
+                new Thread(() -> {
+                    try {
+                        java.net.URL url = new java.net.URL(imgUrl);
+                        BufferedImage img = javax.imageio.ImageIO.read(url);
+                        if (img != null) {
+                            int lblWidth = previewLabel.getWidth();
+                            int lblHeight = previewLabel.getHeight();
+                            if (lblWidth <= 0) lblWidth = 350;
+                            if (lblHeight <= 0) lblHeight = 350;
+                            
+                            double ratio = Math.min((double) lblWidth / img.getWidth(), (double) lblHeight / img.getHeight());
+                            int w = (int) (img.getWidth() * ratio);
+                            int h = (int) (img.getHeight() * ratio);
+                            Image scaled = img.getScaledInstance(w, h, Image.SCALE_SMOOTH);
+                            
+                            SwingUtilities.invokeLater(() -> {
+                                if (versionCombo.getSelectedItem() == selectedVersion) {
+                                    previewLabel.setIcon(new ImageIcon(scaled));
+                                    previewLabel.setText("");
+                                }
+                            });
+                        } else {
+                            SwingUtilities.invokeLater(() -> {
+                                if (versionCombo.getSelectedItem() == selectedVersion) {
+                                    previewLabel.setText("Failed to load image preview");
+                                }
+                            });
+                        }
+                    } catch (Exception ex) {
+                        SwingUtilities.invokeLater(() -> {
+                            if (versionCombo.getSelectedItem() == selectedVersion) {
+                                previewLabel.setText("Preview Image unavailable");
+                            }
+                        });
+                    }
+                }).start();
+            } else {
+                previewLabel.setText("No Preview Image Available");
+            }
+        });
+
+        applyBtn.addActionListener(e -> {
+            CivitaiVersion selectedVersion = (CivitaiVersion) versionCombo.getSelectedItem();
+            CivitaiModel selectedModel = modelList.getSelectedValue();
+            if (selectedVersion == null || selectedModel == null) {
+                JOptionPane.showMessageDialog(dialog, "Please select a model and a version first.", "No Selection", JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+            
+            ModelInfo info = modelsToDownload.get(row);
+            
+            String targetFileName = "";
+            com.fasterxml.jackson.databind.JsonNode files = selectedVersion.rawNode.get("files");
+            if (files != null && files.isArray() && files.size() > 0) {
+                targetFileName = files.get(0).path("name").asText("");
+            }
+            if (targetFileName.isEmpty()) {
+                targetFileName = info.getName();
+            }
+            
+            info.setName(targetFileName);
+            info.setUrl(selectedVersion.downloadUrl);
+            info.setSize(selectedVersion.size);
+            info.setByteSize(selectedVersion.byteSize);
+            
+            tableModel.setValueAt(true, row, 0);
+            tableModel.setValueAt(targetFileName, row, 2);
+            tableModel.setValueAt(selectedVersion.size, row, 3);
+            tableModel.setValueAt(selectedVersion.downloadUrl, row, 6);
+            tableModel.setValueAt("✅ Known Good", row, 7);
+            
+            dialog.dispose();
+            JOptionPane.showMessageDialog(this, "Model version applied! Ready to download.", "Version Applied", JOptionPane.INFORMATION_MESSAGE);
+        });
+
+        SwingUtilities.invokeLater(() -> doSearch.run());
+        dialog.setVisible(true);
     }
 
     public static void main(String[] args) {

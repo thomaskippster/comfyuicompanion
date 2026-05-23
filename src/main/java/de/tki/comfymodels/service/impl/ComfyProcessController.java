@@ -110,6 +110,7 @@ public class ComfyProcessController {
                 boolean hasListen = false;
                 boolean hasPort = false;
                 boolean hasEnableManager = false;
+                boolean hasExtraPathsConfig = false;
                 for (String arg : command) {
                     if (arg.equals("--listen")) {
                         hasListen = true;
@@ -119,6 +120,9 @@ public class ComfyProcessController {
                     }
                     if (arg.equals("--enable-manager")) {
                         hasEnableManager = true;
+                    }
+                    if (arg.equals("--extra-model-paths-config")) {
+                        hasExtraPathsConfig = true;
                     }
                 }
 
@@ -140,6 +144,13 @@ public class ComfyProcessController {
                 }
                 if (!hasEnableManager) {
                     command.add("--enable-manager");
+                }
+                if (!hasExtraPathsConfig) {
+                    java.nio.file.Path extraPathsFile = comfyDir.resolve("extra_model_paths.yaml");
+                    if (java.nio.file.Files.exists(extraPathsFile)) {
+                        command.add("--extra-model-paths-config");
+                        command.add(extraPathsFile.toAbsolutePath().toString());
+                    }
                 }
 
                 ProcessBuilder pb = new ProcessBuilder(command);

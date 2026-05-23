@@ -38,6 +38,12 @@ public class ComfyLifecycleService implements IComfyLifecycleService {
     private final java.util.concurrent.atomic.AtomicBoolean stopping = new java.util.concurrent.atomic.AtomicBoolean(false);
     private final java.util.concurrent.atomic.AtomicBoolean browserLaunched = new java.util.concurrent.atomic.AtomicBoolean(false);
     private final HttpClient httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofMillis(500)).build();
+    private Runnable onBrowserLaunched;
+
+    @Override
+    public void setOnBrowserLaunched(Runnable callback) {
+        this.onBrowserLaunched = callback;
+    }
 
     @Override
     public synchronized void start() {
@@ -123,6 +129,9 @@ public class ComfyLifecycleService implements IComfyLifecycleService {
                                     if (p.waitFor() != 0) {
                                         System.err.println("⚠️ [Lifecycle] Browser launch process failed with exit code: " + p.exitValue());
                                     }
+                                }
+                                if (onBrowserLaunched != null) {
+                                    onBrowserLaunched.run();
                                 }
                             } catch (Exception e) {
                                 System.err.println("❌ [Lifecycle] Failed to open browser: " + e.getMessage());

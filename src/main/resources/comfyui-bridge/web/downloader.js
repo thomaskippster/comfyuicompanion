@@ -1,15 +1,8 @@
 // ComfyUI Companion - Bridge Extension
-let app = null;
-let api = null;
+import { app } from "../../scripts/app.js";
+import { api } from "../../scripts/api.js";
 
 const initializeExtension = async () => {
-    const paths = ["../../scripts/app.js", "/scripts/app.js", "../../../scripts/app.js"];
-    const apiPaths = ["../../scripts/api.js", "/scripts/api.js", "../../../scripts/api.js"];
-    for (const path of paths) { try { const mod = await import(path); if (mod.app) { app = mod.app; break; } } catch (e) {} }
-    for (const path of apiPaths) { try { const mod = await import(path); if (mod.api) { api = mod.api; break; } } catch (e) {} }
-
-    if (!app || !api) { setTimeout(initializeExtension, 2000); return; }
-
     let apiToken = null;
     const loadConfig = async () => {
         try {
@@ -93,12 +86,9 @@ const initializeExtension = async () => {
     addUI();
 };
 
-const register = () => {
-    if (window.app && window.app.registerExtension) {
-        window.app.registerExtension({ name: "TKI.ComfyUICompanion", async setup() { await initializeExtension(); } });
-    } else {
-        if (document.readyState === "complete") initializeExtension();
-        else window.addEventListener("load", initializeExtension);
+app.registerExtension({
+    name: "TKI.ComfyUICompanion",
+    async setup() {
+        await initializeExtension();
     }
-};
-register();
+});

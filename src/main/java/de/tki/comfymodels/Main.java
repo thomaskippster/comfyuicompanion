@@ -3460,20 +3460,21 @@ public class Main extends JFrame {
         if (customNodesDir == null) return;
 
         Path targetDir = customNodesDir.resolve("comfyuicompanion");
-        if (Files.exists(targetDir) && Files.isDirectory(targetDir)) {
-            try {
-                // Always sync latest code files from resources to target
-                extractResource("/comfyui-bridge/__init__.py", targetDir.resolve("__init__.py").toFile());
-                Path webDir = targetDir.resolve("web");
-                Files.createDirectories(webDir);
-                extractResource("/comfyui-bridge/web/downloader.js", webDir.resolve("downloader.js").toFile());
-                
-                // Also update config
-                writeExtensionConfig(targetDir.toFile());
-                System.out.println("[Bridge-Sync] Successfully synchronized latest bridge code and token.");
-            } catch (IOException e) {
-                System.err.println("[Bridge-Sync] Failed to sync code: " + e.getMessage());
+        try {
+            if (!Files.exists(targetDir)) {
+                Files.createDirectories(targetDir);
             }
+            // Always sync latest code files from resources to target
+            extractResource("/comfyui-bridge/__init__.py", targetDir.resolve("__init__.py").toFile());
+            Path webDir = targetDir.resolve("web");
+            Files.createDirectories(webDir);
+            extractResource("/comfyui-bridge/web/downloader.js", webDir.resolve("downloader.js").toFile());
+            
+            // Also update config
+            writeExtensionConfig(targetDir.toFile());
+            System.out.println("[Bridge-Sync] Successfully synchronized latest bridge code and token.");
+        } catch (IOException e) {
+            System.err.println("[Bridge-Sync] Failed to sync code: " + e.getMessage());
         }
     }
 

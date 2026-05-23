@@ -361,6 +361,7 @@ public class ConfigService {
                 this.settings = decryptedJson;
                 this.masterPassword = password;
                 System.out.println("Vault unlocked successfully. Keys found: " + settings.keySet());
+                updateExtraModelPathsYaml();
             } catch (Exception e) {
                 System.err.println("Failed to unlock vault: " + e.getMessage());
                 throw new Exception("Wrong password or corrupted vault!");
@@ -448,7 +449,7 @@ public class ConfigService {
         String path = settings.optString("models_path", PathResolver.MODELS_DIR);
         return pathResolver.resolveModelsPath(path).toString();
     }
-    public void setModelsPath(String path) { settings.put("models_path", path); save(); }
+    public void setModelsPath(String path) { settings.put("models_path", path); save(); updateExtraModelPathsYaml(); }
 
     public String getArchivePath() { 
         String path = settings.optString("archive_path", PathResolver.ARCHIVE_DIR);
@@ -495,6 +496,7 @@ public class ConfigService {
         pathResolver.setComfyUIRoot(path);
         save(); 
         loadExtraModelPaths(); // Ensure extra paths are reloaded when root changes
+        updateExtraModelPathsYaml();
     }
 
     public String getPythonPath() { return settings.optString("python_path", ""); }
@@ -580,5 +582,66 @@ public class ConfigService {
         this.masterPassword = null;
         this.vaultFresh = true;
         System.out.println("Vault has been reset.");
+    }
+
+    public void updateExtraModelPathsYaml() {
+        String comfyRoot = getComfyUIPath();
+        if (comfyRoot == null || comfyRoot.isEmpty()) return;
+        
+        File comfyDir = new File(comfyRoot);
+        if (!comfyDir.exists() || !comfyDir.isDirectory()) return;
+
+        String modelsPath = getModelsPath();
+        if (modelsPath == null || modelsPath.isEmpty()) return;
+
+        Path yamlPath = Paths.get(comfyRoot).resolve("extra_model_paths.yaml");
+        Map<String, Object> data = null;
+
+        try {
+            Yaml yaml = new Yaml();
+            if (Files.exists(yamlPath)) {
+                try (InputStream is = new FileInputStream(yamlPath.toFile())) {
+                    data = yaml.load(is);
+                } catch (Exception ex) {
+                    System.err.println("⚠️ [Config] Failed to load existing extra_model_paths.yaml: " + ex.getMessage());
+                }
+            }
+            
+            if (data == null) {
+                data = new java.util.LinkedHashMap<>();
+            }
+
+            Map<String, Object> companionSection = new java.util.LinkedHashMap<>();
+            companionSection.put("base_path", modelsPath);
+            companionSection.put("checkpoints", "checkpoints");
+            companionSection.put("configs", "configs");
+            companionSection.put("vae", "vae");
+            companionSection.put("loras", "loras");
+            companionSection.put("upscale_models", "upscale_models");
+            companionSection.put("controlnet", "controlnet");
+            companionSection.put("clip", "clip");
+            companionSection.put("clip_vision", "clip_vision");
+            companionSection.put("style_models", "style_models");
+            companionSection.put("hypernetworks", "hypernetworks");
+            companionSection.put("embeddings", "embeddings");
+            companionSection.put("diffusers", "diffusers");
+            companionSection.put("gligen", "gligen");
+            companionSection.put("unet", "unet");
+            companionSection.put("audio_encoders", "audio_encoders");
+
+            data.put("comfyui_companion", companionSection);
+
+            org.yaml.snakeyaml.DumperOptions options = new org.yaml.snakeyaml.DumperOptions();
+            options.setDefaultFlowStyle(org.yaml.snakeyaml.DumperOptions.FlowStyle.BLOCK);
+            options.setPrettyFlow(true);
+            Yaml yamlDump = new Yaml(options);
+
+            String yamlContent = yamlDump.dump(data);
+            Files.writeString(yamlPath, yamlContent, StandardCharsets.UTF_8);
+            System.out.println("📄 [Config] Successfully updated extra_model_paths.yaml at: " + yamlPath.toAbsolutePath());
+        } catch (Exception e) {
+            System.err.println("❌ [Config] Failed to update extra_model_paths.yaml: " + e.getMessage());
+            e.printStackTrace();
+        }
     }
 }

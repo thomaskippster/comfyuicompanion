@@ -36,8 +36,7 @@ public class EnvironmentBootstrapperImpl {
                 if (Files.exists(targetDir)) {
                     Path gitDir = targetDir.resolve(".git");
                     if (Files.exists(gitDir) && Files.isDirectory(gitDir)) {
-                        // Valid git repo already present → pull instead
-                        progressCallback.accept("📂 ComfyUI already exists – updating via git pull...");
+                        boolean pullSuccess = false;
                         try (Git git = Git.open(targetDir.toFile())) {
                             git.pull()
                                 .setProgressMonitor(new TextProgressMonitor(new PrintWriter(System.out) {
@@ -45,9 +44,15 @@ public class EnvironmentBootstrapperImpl {
                                     public void println(String x) { progressCallback.accept(x); }
                                 }))
                                 .call();
+                            pullSuccess = true;
+                        } catch (Exception e) {
+                            progressCallback.accept("⚠️ Git pull failed: " + e.getMessage() + ". Removing and recloning...");
+                            deleteDirectoryRecursively(targetDir);
                         }
-                        progressCallback.accept("✅ ComfyUI erfolgreich aktualisiert.");
-                        return;
+                        if (pullSuccess) {
+                            progressCallback.accept("✅ ComfyUI erfolgreich aktualisiert.");
+                            return;
+                        }
                     } else {
                         // Exists but not a git repo (e.g. partial/failed install) → delete and reclone
                         progressCallback.accept("⚠️ Target directory exists but is not a git repo. Removing and recloning...");
@@ -152,43 +157,145 @@ public class EnvironmentBootstrapperImpl {
     }
 
     /**
-     * Installiert die Requirements aus der requirements.txt.
+     * Installiert die Requirements aus der requirements.txt, die CUDA PyTorch-Pakete und Manager-Requirements.
      */
     public CompletableFuture<Void> installRequirements(Path pythonExe, Path comfyDir, Consumer<String> progressCallback) {
         return CompletableFuture.runAsync(() -> {
             try {
-                Path reqFile = comfyDir.resolve("requirements.txt");
-                if (!Files.exists(reqFile)) {
-                    progressCallback.accept("⚠️ Keine requirements.txt gefunden. Überspringe.");
-                    return;
-                }
+                // 1. CUDA PyTorch-Installation für Windows bei vorhandener NVIDIA-GPU
+                boolean isWindows = System.getProperty("os.name").toLowerCase().contains("win");
+                if (isWindows) {
+                    boolean hasNvidia = false;
+                    double maxComputeCap = 0.0;
+                    try {
+                        Process p = Runtime.getRuntime().exec(new String[]{"nvidia-smi", "--query-gpu=compute_cap", "--format=csv,noheader"});
+                        try (java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(p.getInputStream(), java.nio.charset.StandardCharsets.UTF_8))) {
+                            String line;
+                            while ((line = r.readLine()) != null) {
+                                if (!line.trim().isEmpty()) {
+                                    hasNvidia = true;
+                                    try {
+                                        double cap = Double.parseDouble(line.trim());
+                                        if (cap > maxComputeCap) {
+                                            maxComputeCap = cap;
+                                        }
+                                    } catch (NumberFormatException ignored) {}
+                                }
+                            }
+                        }
+                        p.waitFor();
+                    } catch (Exception ignored) {}
 
-                progressCallback.accept("🚀 Installiere ComfyUI Abhängigkeiten (pip install -r requirements.txt)...");
-                ProcessBuilder pb = new ProcessBuilder(
-                    pythonExe.toString(), "-m", "pip", "install", "-r", "requirements.txt", 
-                    "--no-warn-script-location"
-                );
-                pb.directory(comfyDir.toFile());
-                
-                // Wir nutzen einen Stream Gobbler, um den Fortschritt von pip zu sehen
-                Process p = pb.start();
-                try (java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.InputStreamReader(p.getInputStream()))) {
-                    String line;
-                    while ((line = reader.readLine()) != null) {
-                        progressCallback.accept("[pip] " + line);
+                    if (hasNvidia) {
+                        String cudaVersion;
+                        String cudaLogName;
+                        if (maxComputeCap >= 12.0) {
+                            cudaVersion = "cu128";
+                            cudaLogName = "CUDA 12.8 (Blackwell/Modern)";
+                        } else if (maxComputeCap >= 5.0) {
+                            cudaVersion = "cu121";
+                            cudaLogName = "CUDA 12.1 (Standard)";
+                        } else {
+                            progressCallback.accept("🔍 NVIDIA-GPU erkannt, aber die Compute Capability (" + maxComputeCap + ") wird von modernem PyTorch CUDA nicht unterstützt (erfordert >= 5.0). Verwende Standard-Installation.");
+                            hasNvidia = false;
+                            cudaVersion = "";
+                            cudaLogName = "";
+                        }
+
+                        progressCallback.accept("🔍 NVIDIA-GPU erkannt (" + cudaLogName + "). Bereite PyTorch-Installation vor...");
+                        
+                        progressCallback.accept("🗑️ Deinstalliere alte PyTorch-Pakete (torch, torchvision, torchaudio), um Konflikte zu vermeiden...");
+                        runPipCommand(pythonExe, comfyDir, progressCallback, "uninstall", "torch", "torchvision", "torchaudio", "-y");
+                        
+                        progressCallback.accept("📥 Installiere PyTorch mit " + cudaLogName + "-Support (dies kann einige Minuten dauern)...");
+                        int exitCode = runPipCommand(pythonExe, comfyDir, progressCallback, 
+                            "install", "torch", "torchvision", "torchaudio", 
+                            "--index-url", "https://download.pytorch.org/whl/" + cudaVersion, 
+                            "--no-warn-script-location"
+                        );
+                        if (exitCode == 0) {
+                            progressCallback.accept("✅ PyTorch mit " + cudaLogName + " erfolgreich installiert.");
+                        } else {
+                            progressCallback.accept("⚠️ PyTorch-CUDA-Installation beendet mit Code " + exitCode + ". Standard-Installation wird versucht.");
+                        }
+                    } else {
+                        progressCallback.accept("🔍 Keine NVIDIA-GPU erkannt oder nvidia-smi nicht verfügbar. Verwende Standard-Installation.");
                     }
                 }
-                int exitCode = p.waitFor();
-                
-                if (exitCode == 0) {
-                    progressCallback.accept("✅ Abhängigkeiten erfolgreich installiert.");
+
+                // 2. Core-Abhängigkeiten installieren
+                Path reqFile = comfyDir.resolve("requirements.txt");
+                if (Files.exists(reqFile)) {
+                    progressCallback.accept("🚀 Installiere ComfyUI-Abhängigkeiten (pip install -r requirements.txt)...");
+                    int exitCode = runPipCommand(pythonExe, comfyDir, progressCallback, "install", "-r", "requirements.txt", "--no-warn-script-location");
+                    if (exitCode == 0) {
+                        progressCallback.accept("✅ ComfyUI-Abhängigkeiten erfolgreich installiert.");
+                    } else {
+                        progressCallback.accept("⚠️ pip beendet mit Code " + exitCode + " bei requirements.txt.");
+                    }
                 } else {
-                    progressCallback.accept("⚠️ pip beendet mit Code " + exitCode + ". Prüfe die Logs.");
+                    progressCallback.accept("⚠️ Keine requirements.txt gefunden.");
                 }
+
+                // 3. ComfyUI-Manager-Abhängigkeiten installieren (falls vorhanden)
+                Path managerReq = comfyDir.resolve("manager_requirements.txt");
+                if (Files.exists(managerReq)) {
+                    progressCallback.accept("🚀 Installiere ComfyUI-Manager Abhängigkeiten (pip install -r manager_requirements.txt)...");
+                    int exitCode = runPipCommand(pythonExe, comfyDir, progressCallback, "install", "-r", "manager_requirements.txt", "--no-warn-script-location");
+                    if (exitCode == 0) {
+                        progressCallback.accept("✅ ComfyUI-Manager Abhängigkeiten erfolgreich installiert.");
+                    } else {
+                        progressCallback.accept("⚠️ pip beendet mit Code " + exitCode + " bei manager_requirements.txt.");
+                    }
+                }
+
+                // 4. Custom_nodes ComfyUI-Manager Abhängigkeiten installieren (falls vorhanden)
+                Path customManagerReq = comfyDir.resolve("custom_nodes").resolve("ComfyUI-Manager").resolve("requirements.txt");
+                if (Files.exists(customManagerReq)) {
+                    progressCallback.accept("🚀 Installiere custom_nodes/ComfyUI-Manager Abhängigkeiten (pip install -r ...)...");
+                    int exitCode = runPipCommand(pythonExe, customManagerReq.getParent(), progressCallback, "install", "-r", "requirements.txt", "--no-warn-script-location");
+                    if (exitCode == 0) {
+                        progressCallback.accept("✅ custom_nodes/ComfyUI-Manager Abhängigkeiten erfolgreich installiert.");
+                    } else {
+                        progressCallback.accept("⚠️ pip beendet mit Code " + exitCode + " bei custom_nodes/ComfyUI-Manager/requirements.txt.");
+                    }
+                }
+
             } catch (Exception e) {
                 throw new RuntimeException("Fehler bei der Installation der Abhängigkeiten: " + e.getMessage(), e);
             }
         });
+    }
+
+    private int runPipCommand(Path pythonExe, Path workingDir, Consumer<String> progressCallback, String... args) {
+        try {
+            java.util.List<String> command = new java.util.ArrayList<>();
+            command.add(pythonExe.toString());
+            command.add("-m");
+            command.add("pip");
+            for (String arg : args) {
+                command.add(arg);
+            }
+            
+            ProcessBuilder pb = new ProcessBuilder(command);
+            if (workingDir != null) {
+                pb.directory(workingDir.toFile());
+            }
+            pb.redirectErrorStream(true);
+            
+            Process p = pb.start();
+            try (java.io.BufferedReader reader = new java.io.BufferedReader(
+                    new java.io.InputStreamReader(p.getInputStream(), java.nio.charset.StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    progressCallback.accept("[pip] " + line);
+                }
+            }
+            return p.waitFor();
+        } catch (Exception e) {
+            progressCallback.accept("❌ Fehler beim Ausführen des pip-Befehls: " + e.getMessage());
+            return -1;
+        }
     }
 
     private void extractZip(Path zipFile, Path targetDir) throws java.io.IOException {

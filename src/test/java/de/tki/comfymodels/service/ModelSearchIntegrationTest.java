@@ -57,6 +57,7 @@ public class ModelSearchIntegrationTest {
     private static class ModelValidatorStub implements IModelValidator {
         @Override public ValidationResult validateFile(File file) { return new ValidationResult(true, "OK", file.getAbsolutePath()); }
         @Override public String calculateHash(File file) { return null; }
+        @Override public String calculateFullSha256(File file) { return null; }
     }
 
     @BeforeEach

@@ -43,6 +43,10 @@ public class ModelHashRegistryTest {
                 calculationCount++;
                 return lastCalculatedHash;
             }
+            @Override
+            public String calculateFullSha256(File file) {
+                return calculateHash(file);
+            }
         };
 
         registry = new ModelHashRegistry();

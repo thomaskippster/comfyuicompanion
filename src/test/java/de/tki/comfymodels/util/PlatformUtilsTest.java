@@ -69,4 +69,19 @@ public class PlatformUtilsTest {
         assertEquals("shutdown", cmd[0]);
         assertEquals("-h", cmd[1]);
     }
+
+    @Test
+    void testParseCommandLine() {
+        String cmd = "\"C:\\Program Files\\Python\\python.exe\" \"C:\\comfy ui\\main.py\" --port 8188 --listen";
+        java.util.List<String> parsed = PlatformUtils.parseCommandLine(cmd);
+        assertEquals(5, parsed.size());
+        assertEquals("C:\\Program Files\\Python\\python.exe", parsed.get(0));
+        assertEquals("C:\\comfy ui\\main.py", parsed.get(1));
+        assertEquals("--port", parsed.get(2));
+        assertEquals("8188", parsed.get(3));
+        assertEquals("--listen", parsed.get(4));
+
+        assertTrue(PlatformUtils.parseCommandLine(null).isEmpty());
+        assertTrue(PlatformUtils.parseCommandLine("   ").isEmpty());
+    }
 }

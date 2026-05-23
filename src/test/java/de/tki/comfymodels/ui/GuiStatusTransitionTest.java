@@ -48,6 +48,9 @@ public class GuiStatusTransitionTest {
     @Mock private PathResolver pathResolver;
     @Mock private VersionService versionService;
 
+    @Mock private HardwareMonitorService hardwareMonitorService;
+    @Mock private UpdaterService updaterService;
+
     @BeforeEach
     public void setUp() throws InterruptedException, InvocationTargetException {
         MockitoAnnotations.openMocks(this);
@@ -67,6 +70,8 @@ public class GuiStatusTransitionTest {
         when(versionService.getRemotePythonVersion()).thenReturn("3.11.0");
         when(versionService.getRemoteComfyVersionAsync()).thenReturn(java.util.concurrent.CompletableFuture.completedFuture("1.0.0"));
 
+
+
         SwingUtilities.invokeAndWait(() -> {
             mainFrame = new Main(analyzer, downloadManager, workflowService, searchService, 
                                  modelValidator, restBridge, archiveService, lifecycleService, diagnosticService,
@@ -80,6 +85,9 @@ public class GuiStatusTransitionTest {
             ReflectionTestUtils.setField(mainFrame, "localScanner", localScanner);
             ReflectionTestUtils.setField(mainFrame, "pathResolver", pathResolver);
             ReflectionTestUtils.setField(mainFrame, "versionService", versionService);
+
+            ReflectionTestUtils.setField(mainFrame, "hardwareMonitorService", hardwareMonitorService);
+            ReflectionTestUtils.setField(mainFrame, "updaterService", updaterService);
             
             ReflectionTestUtils.invokeMethod(mainFrame, "initUI");
         });

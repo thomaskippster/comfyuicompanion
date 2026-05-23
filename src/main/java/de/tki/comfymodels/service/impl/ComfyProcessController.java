@@ -23,6 +23,9 @@ public class ComfyProcessController {
     @org.springframework.context.annotation.Lazy
     private de.tki.comfymodels.service.IComfyLifecycleService lifecycleService;
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private ConfigService configService;
+
     private volatile Process currentProcess;
     private final java.util.concurrent.atomic.AtomicBoolean stopping = new java.util.concurrent.atomic.AtomicBoolean(false);
     private final AtomicReference<String> detectedUrl = new AtomicReference<>();
@@ -47,14 +50,96 @@ public class ComfyProcessController {
                     command.addAll(List.of("wsl", "python3", "main.py"));
                 } else {
                     String pythonPath = (profile.pythonPath() == null || profile.pythonPath().equals("python")) 
-                                        ? globalPythonPath : profile.pythonPath();
+                                         ? globalPythonPath : profile.pythonPath();
                     command.add(pythonPath);
                     command.add("main.py");
+                    
+                    // Dynamically configure ._pth file if using embedded Python
+                    if (pythonPath != null && !pythonPath.isEmpty()) {
+                        try {
+                            java.io.File exeFile = new java.io.File(pythonPath);
+                            java.io.File parentDir = exeFile.getParentFile();
+                            if (parentDir != null && parentDir.exists()) {
+                                java.io.File[] pthFiles = parentDir.listFiles((dir, name) -> name.endsWith("._pth"));
+                                if (pthFiles != null) {
+                                    for (java.io.File pthFile : pthFiles) {
+                                        String absoluteComfyPath = comfyDir.toAbsolutePath().toString();
+                                        String normalizedPath = absoluteComfyPath.replace("\\", "/").toLowerCase();
+                                        String content = java.nio.file.Files.readString(pthFile.toPath(), java.nio.charset.StandardCharsets.UTF_8);
+                                        String normalizedContent = content.replace("\\", "/").toLowerCase();
+                                        
+                                        if (!normalizedContent.contains(normalizedPath)) {
+                                            java.util.List<String> lines = new java.util.ArrayList<>();
+                                            boolean hasSite = false;
+                                            boolean hasComfy = false;
+                                            for (String line : java.nio.file.Files.readAllLines(pthFile.toPath(), java.nio.charset.StandardCharsets.UTF_8)) {
+                                                String trimmed = line.trim();
+                                                if (trimmed.equals("import site") || trimmed.equals("#import site")) {
+                                                    lines.add("import site");
+                                                    hasSite = true;
+                                                } else if (trimmed.replace("\\", "/").toLowerCase().equals(normalizedPath)) {
+                                                    lines.add(line);
+                                                    hasComfy = true;
+                                                } else {
+                                                    lines.add(line);
+                                                }
+                                            }
+                                            if (!hasSite) {
+                                                lines.add("import site");
+                                            }
+                                            if (!hasComfy) {
+                                                lines.add(absoluteComfyPath);
+                                            }
+                                            java.nio.file.Files.write(pthFile.toPath(), lines, java.nio.charset.StandardCharsets.UTF_8);
+                                        }
+                                    }
+                                }
+                            }
+                        } catch (Exception ex) {
+                            logConsumer.accept("⚠️ Failed to update python _pth files: " + ex.getMessage());
+                        }
+                    }
                 }
                 
                 // Dynamische Argument-Übergabe
                 if (profile.cliArguments() != null) {
                     command.addAll(profile.cliArguments());
+                }
+
+                // Ensure standard server arguments are present if not already overridden by the profile
+                boolean hasListen = false;
+                boolean hasPort = false;
+                boolean hasEnableManager = false;
+                for (String arg : command) {
+                    if (arg.equals("--listen")) {
+                        hasListen = true;
+                    }
+                    if (arg.equals("--port")) {
+                        hasPort = true;
+                    }
+                    if (arg.equals("--enable-manager")) {
+                        hasEnableManager = true;
+                    }
+                }
+
+                if (!hasListen) {
+                    command.add("--listen");
+                    command.add("127.0.0.1");
+                }
+                if (!hasPort) {
+                    int port = 8188;
+                    try {
+                        String url = configService.getComfyUIUrl();
+                        int colonIndex = url.lastIndexOf(":");
+                        if (colonIndex != -1) {
+                            port = Integer.parseInt(url.substring(colonIndex + 1));
+                        }
+                    } catch (Exception ignored) {}
+                    command.add("--port");
+                    command.add(String.valueOf(port));
+                }
+                if (!hasEnableManager) {
+                    command.add("--enable-manager");
                 }
 
                 ProcessBuilder pb = new ProcessBuilder(command);

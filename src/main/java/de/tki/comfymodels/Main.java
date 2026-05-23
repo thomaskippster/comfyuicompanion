@@ -3472,6 +3472,7 @@ public class Main extends JFrame {
             
             // Also update config
             writeExtensionConfig(targetDir.toFile());
+            configService.updateExtraModelPathsYaml();
             System.out.println("[Bridge-Sync] Successfully synchronized latest bridge code and token.");
         } catch (IOException e) {
             System.err.println("[Bridge-Sync] Failed to sync code: " + e.getMessage());

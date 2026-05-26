@@ -124,44 +124,34 @@ public class GeminiAIService {
         return null;
     }
 
-    public byte[] generateImageNanoBanana(String prompt, byte[] inputImageBytes, String inputImageMimeType, int seed) throws Exception {
+    public byte[] generateImage(String prompt, byte[] inputImageBytes, String inputImageMimeType, int seed) throws Exception {
         String apiKey = configService.getGeminiApiKey();
         if (apiKey == null || apiKey.trim().isEmpty()) {
             throw new IllegalStateException("Gemini API Key is not set.");
         }
 
         JSONObject payload = new JSONObject();
-        JSONArray parts = new JSONArray();
-        
-        // 1. Text Prompt
-        parts.put(new JSONObject().put("text", prompt != null ? prompt : ""));
-        
-        // 2. Optional Input Image
+        JSONArray instances = new JSONArray();
+        JSONObject instance = new JSONObject();
+        instance.put("prompt", prompt != null ? prompt : "");
+
         if (inputImageBytes != null && inputImageBytes.length > 0) {
             String mime = inputImageMimeType != null ? inputImageMimeType : "image/png";
             String base64Data = java.util.Base64.getEncoder().encodeToString(inputImageBytes);
-            JSONObject inlineData = new JSONObject()
-                    .put("mimeType", mime)
-                    .put("data", base64Data);
-            parts.put(new JSONObject().put("inlineData", inlineData));
+            JSONObject imageObj = new JSONObject()
+                    .put("bytesBase64Encoded", base64Data)
+                    .put("mimeType", mime);
+            instance.put("image", imageObj);
         }
-        
-        JSONArray contents = new JSONArray();
-        contents.put(new JSONObject().put("role", "user").put("parts", parts));
-        payload.put("contents", contents);
-        
-        JSONObject genConfig = new JSONObject();
-        JSONArray modalities = new JSONArray();
-        modalities.put("IMAGE");
-        genConfig.put("responseModalities", modalities);
-        
-        if (seed != -1) {
-            genConfig.put("seed", seed);
-        }
-        payload.put("generationConfig", genConfig);
+        instances.put(instance);
+        payload.put("instances", instances);
+
+        JSONObject parameters = new JSONObject();
+        parameters.put("sampleCount", 1);
+        payload.put("parameters", parameters);
 
         HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(getApiBaseUrl() + "/v1beta/models/gemini-3.1-flash-image-preview:generateContent?key=" + apiKey))
+                .uri(URI.create(getApiBaseUrl() + "/v1beta/models/imagen-3.0-generate-002:predict?key=" + apiKey))
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(payload.toString()))
                 .timeout(Duration.ofSeconds(60))
@@ -171,29 +161,18 @@ public class GeminiAIService {
         int statusCode = response.statusCode();
         if (statusCode == 200) {
             JSONObject responseJson = new JSONObject(response.body());
-            JSONArray candidates = responseJson.optJSONArray("candidates");
-            if (candidates != null && candidates.length() > 0) {
-                JSONObject content = candidates.getJSONObject(0).optJSONObject("content");
-                if (content != null) {
-                    JSONArray resParts = content.optJSONArray("parts");
-                    if (resParts != null) {
-                        for (int i = 0; i < resParts.length(); i++) {
-                            JSONObject part = resParts.getJSONObject(i);
-                            JSONObject inlineData = part.optJSONObject("inlineData");
-                            if (inlineData != null) {
-                                String dataBase64 = inlineData.optString("data");
-                                if (dataBase64 != null && !dataBase64.isEmpty()) {
-                                    return java.util.Base64.getDecoder().decode(dataBase64);
-                                }
-                            }
-                        }
-                    }
+            JSONArray predictions = responseJson.optJSONArray("predictions");
+            if (predictions != null && predictions.length() > 0) {
+                JSONObject prediction = predictions.getJSONObject(0);
+                String dataBase64 = prediction.optString("bytesBase64Encoded");
+                if (dataBase64 != null && !dataBase64.isEmpty()) {
+                    return java.util.Base64.getDecoder().decode(dataBase64);
                 }
             }
             throw new IOException("Kein Bild in der API-Antwort gefunden.\nAntwort: " + response.body());
         } else if (statusCode == 429) {
             throw new IOException("Ratenbegrenzung überschritten (Resource Exhausted - HTTP 429).\n\n"
-                    + "Bei kostenlosen Gemini API Keys (insbesondere für Preview-Modelle wie gemini-3.1-flash-image-preview) gelten sehr strenge Ratenbegrenzungen (oft nur 1-2 Bilder pro Minute).\n\n"
+                    + "Bei kostenlosen Gemini API Keys (insbesondere für Imagen 3 Modelle wie imagen-3.0-generate-002) gelten sehr strenge Ratenbegrenzungen (oft nur 1-2 Bilder pro Minute).\n\n"
                     + "Bitte warte 1-2 Minuten und versuche es dann erneut.");
         } else {
             String errorMsg = response.body();

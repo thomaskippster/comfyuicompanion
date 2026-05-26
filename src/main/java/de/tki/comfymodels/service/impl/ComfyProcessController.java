@@ -28,11 +28,16 @@ public class ComfyProcessController {
 
     private volatile Process currentProcess;
     private final java.util.concurrent.atomic.AtomicBoolean stopping = new java.util.concurrent.atomic.AtomicBoolean(false);
+    private final java.util.concurrent.atomic.AtomicBoolean guiLineShown = new java.util.concurrent.atomic.AtomicBoolean(false);
     private final AtomicReference<String> detectedUrl = new AtomicReference<>();
     private final Pattern urlPattern = Pattern.compile("(https?://[\\d\\.]+(?::\\d+)?)");
 
     public String getDetectedUrl() {
         return detectedUrl.get();
+    }
+    
+    public boolean isGuiLineShown() {
+        return guiLineShown.get();
     }
 
     public CompletableFuture<Integer> start(LaunchProfile profile, Path comfyDir, String globalPythonPath, Consumer<String> logConsumer) {
@@ -153,6 +158,35 @@ public class ComfyProcessController {
                     }
                 }
 
+                // Check if extra ComfyUI data path is set and pass input/output directories to ComfyUI if different from root
+                boolean hasInputDirectory = false;
+                boolean hasOutputDirectory = false;
+                for (String arg : command) {
+                    if (arg.equals("--input-directory")) {
+                        hasInputDirectory = true;
+                    }
+                    if (arg.equals("--output-directory")) {
+                        hasOutputDirectory = true;
+                    }
+                }
+                String extraComfyUIPath = configService.getExtraComfyUIPath();
+                String comfyRootStr = configService.getComfyUIPath();
+                if (extraComfyUIPath != null && !extraComfyUIPath.isEmpty() && java.nio.file.Paths.get(extraComfyUIPath).isAbsolute()) {
+                    boolean isDifferent = comfyRootStr == null || comfyRootStr.isEmpty() || 
+                                          !java.nio.file.Paths.get(extraComfyUIPath).toAbsolutePath().toString().equalsIgnoreCase(java.nio.file.Paths.get(comfyRootStr).toAbsolutePath().toString());
+                    
+                    if (isDifferent) {
+                        if (!hasInputDirectory) {
+                            command.add("--input-directory");
+                            command.add(configService.getResolvedInputDetailDir());
+                        }
+                        if (!hasOutputDirectory) {
+                            command.add("--output-directory");
+                            command.add(configService.getResolvedOutputDir());
+                        }
+                    }
+                }
+
                 ProcessBuilder pb = new ProcessBuilder(command);
                 pb.directory(comfyDir.toFile());
                 
@@ -175,6 +209,9 @@ public class ComfyProcessController {
                 // Enhanced log consumer to capture URL
                 Consumer<String> enhancedLogger = line -> {
                     logConsumer.accept(line);
+                    if (line.contains("To see the GUI go to:")) {
+                        guiLineShown.set(true);
+                    }
                     if (detectedUrl.get() == null && line.contains("To see the GUI go to:")) {
                         Matcher m = urlPattern.matcher(line);
                         if (m.find()) detectedUrl.set(m.group());
@@ -213,6 +250,7 @@ public class ComfyProcessController {
             return;
         }
         try {
+            guiLineShown.set(false);
             if (currentProcess != null && currentProcess.isAlive()) {
                 currentProcess.destroy(); // Sanfter Stop (SIGTERM)
                 try {

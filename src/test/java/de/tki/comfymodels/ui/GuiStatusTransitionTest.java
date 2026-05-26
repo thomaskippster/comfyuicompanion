@@ -307,6 +307,34 @@ public class GuiStatusTransitionTest {
         });
     }
 
+    @Test
+    public void testStatusStartingWhenServerStarting() throws Exception {
+        when(processController.isRunning()).thenReturn(true);
+        when(processController.isProcessAlive()).thenReturn(true);
+        when(processController.isGuiLineShown()).thenReturn(false);
+
+        Thread.sleep(1500);
+
+        SwingUtilities.invokeAndWait(() -> {
+            JLabel statusDisplay = findLabelByTextPrefix(mainFrame, "Status:");
+            assertThat(statusDisplay).isNotNull();
+            assertThat(statusDisplay.getText()).isEqualTo("Status: Starting");
+            assertThat(statusDisplay.getForeground()).isEqualTo(new Color(255, 204, 0));
+        });
+    }
+
+    private JLabel findLabelByTextPrefix(Container container, String prefix) {
+        for (Component c : container.getComponents()) {
+            if (c instanceof JLabel && ((JLabel) c).getText() != null && ((JLabel) c).getText().startsWith(prefix)) {
+                return (JLabel) c;
+            } else if (c instanceof Container) {
+                JLabel l = findLabelByTextPrefix((Container) c, prefix);
+                if (l != null) return l;
+            }
+        }
+        return null;
+    }
+
     private <T extends Component> T findComponent(Container container, Class<T> type) {
         for (Component c : container.getComponents()) {
             if (type.isInstance(c)) {

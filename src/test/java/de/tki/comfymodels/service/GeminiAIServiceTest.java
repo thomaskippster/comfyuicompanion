@@ -44,7 +44,7 @@ public class GeminiAIServiceTest {
     }
 
     @Test
-    void testGenerateImageNanoBanana_SuccessTextOnly() throws Exception {
+    void testGenerateImage_SuccessTextOnly() throws Exception {
         // GIVEN
         String prompt = "A cute banana running in space";
         int seed = 42;
@@ -52,37 +52,31 @@ public class GeminiAIServiceTest {
         String base64Image = Base64.getEncoder().encodeToString(expectedImageBytes);
 
         String jsonResponse = new JSONObject()
-                .put("candidates", new org.json.JSONArray().put(
-                        new JSONObject().put("content", new JSONObject().put("parts", new org.json.JSONArray().put(
-                                new JSONObject().put("inlineData", new JSONObject()
-                                        .put("mimeType", "image/png")
-                                        .put("data", base64Image)
-                                )
-                        )))
+                .put("predictions", new org.json.JSONArray().put(
+                        new JSONObject().put("bytesBase64Encoded", base64Image)
                 )).toString();
 
-        stubFor(post(urlEqualTo("/v1beta/models/gemini-3.1-flash-image-preview:generateContent?key=mock-key"))
+        stubFor(post(urlEqualTo("/v1beta/models/imagen-3.0-generate-002:predict?key=mock-key"))
                 .willReturn(aResponse()
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json")
                         .withBody(jsonResponse)));
 
         // WHEN
-        byte[] result = geminiService.generateImageNanoBanana(prompt, null, null, seed);
+        byte[] result = geminiService.generateImage(prompt, null, null, seed);
 
         // THEN
         assertArrayEquals(expectedImageBytes, result);
 
         // Verify request payload
-        verify(postRequestedFor(urlEqualTo("/v1beta/models/gemini-3.1-flash-image-preview:generateContent?key=mock-key"))
-                .withRequestBody(matchingJsonPath("$.contents[0].parts[0].text", equalTo(prompt)))
-                .withRequestBody(matchingJsonPath("$.generationConfig.responseModalities[0]", equalTo("IMAGE")))
-                .withRequestBody(matchingJsonPath("$.generationConfig.seed", equalTo("42")))
+        verify(postRequestedFor(urlEqualTo("/v1beta/models/imagen-3.0-generate-002:predict?key=mock-key"))
+                .withRequestBody(matchingJsonPath("$.instances[0].prompt", equalTo(prompt)))
+                .withRequestBody(matchingJsonPath("$.parameters.sampleCount", equalTo("1")))
         );
     }
 
     @Test
-    void testGenerateImageNanoBanana_SuccessWithImage() throws Exception {
+    void testGenerateImage_SuccessWithImage() throws Exception {
         // GIVEN
         String prompt = "Transform this cat to a banana";
         byte[] inputImage = new byte[]{9, 8, 7};
@@ -93,75 +87,70 @@ public class GeminiAIServiceTest {
         String base64Image = Base64.getEncoder().encodeToString(expectedImageBytes);
 
         String jsonResponse = new JSONObject()
-                .put("candidates", new org.json.JSONArray().put(
-                        new JSONObject().put("content", new JSONObject().put("parts", new org.json.JSONArray().put(
-                                new JSONObject().put("inlineData", new JSONObject()
-                                        .put("mimeType", "image/png")
-                                        .put("data", base64Image)
-                                )
-                        )))
+                .put("predictions", new org.json.JSONArray().put(
+                        new JSONObject().put("bytesBase64Encoded", base64Image)
                 )).toString();
 
-        stubFor(post(urlEqualTo("/v1beta/models/gemini-3.1-flash-image-preview:generateContent?key=mock-key"))
+        stubFor(post(urlEqualTo("/v1beta/models/imagen-3.0-generate-002:predict?key=mock-key"))
                 .willReturn(aResponse()
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json")
                         .withBody(jsonResponse)));
 
         // WHEN
-        byte[] result = geminiService.generateImageNanoBanana(prompt, inputImage, inputMime, seed);
+        byte[] result = geminiService.generateImage(prompt, inputImage, inputMime, seed);
 
         // THEN
         assertArrayEquals(expectedImageBytes, result);
 
         // Verify request payload
-        verify(postRequestedFor(urlEqualTo("/v1beta/models/gemini-3.1-flash-image-preview:generateContent?key=mock-key"))
-                .withRequestBody(matchingJsonPath("$.contents[0].parts[0].text", equalTo(prompt)))
-                .withRequestBody(matchingJsonPath("$.contents[0].parts[1].inlineData.mimeType", equalTo("image/jpeg")))
-                .withRequestBody(matchingJsonPath("$.contents[0].parts[1].inlineData.data", equalTo(Base64.getEncoder().encodeToString(inputImage))))
-                .withRequestBody(matchingJsonPath("$.generationConfig.seed", equalTo("100")))
+        verify(postRequestedFor(urlEqualTo("/v1beta/models/imagen-3.0-generate-002:predict?key=mock-key"))
+                .withRequestBody(matchingJsonPath("$.instances[0].prompt", equalTo(prompt)))
+                .withRequestBody(matchingJsonPath("$.instances[0].image.mimeType", equalTo("image/jpeg")))
+                .withRequestBody(matchingJsonPath("$.instances[0].image.bytesBase64Encoded", equalTo(Base64.getEncoder().encodeToString(inputImage))))
+                .withRequestBody(matchingJsonPath("$.parameters.sampleCount", equalTo("1")))
         );
     }
 
     @Test
-    void testGenerateImageNanoBanana_ApiError() {
+    void testGenerateImage_ApiError() {
         // GIVEN
-        stubFor(post(urlEqualTo("/v1beta/models/gemini-3.1-flash-image-preview:generateContent?key=mock-key"))
+        stubFor(post(urlEqualTo("/v1beta/models/imagen-3.0-generate-002:predict?key=mock-key"))
                 .willReturn(aResponse()
                         .withStatus(400)
                         .withBody("Invalid Request")));
 
         // WHEN & THEN
         Exception exception = assertThrows(IOException.class, () -> {
-            geminiService.generateImageNanoBanana("test", null, null, -1);
+            geminiService.generateImage("test", null, null, -1);
         });
         assertTrue(exception.getMessage().contains("Gemini API Error (status 400)"));
     }
 
     @Test
-    void testGenerateImageNanoBanana_RateLimitError() {
+    void testGenerateImage_RateLimitError() {
         // GIVEN
-        stubFor(post(urlEqualTo("/v1beta/models/gemini-3.1-flash-image-preview:generateContent?key=mock-key"))
+        stubFor(post(urlEqualTo("/v1beta/models/imagen-3.0-generate-002:predict?key=mock-key"))
                 .willReturn(aResponse()
                         .withStatus(429)
                         .withBody("Resource Exhausted")));
 
         // WHEN & THEN
         Exception exception = assertThrows(IOException.class, () -> {
-            geminiService.generateImageNanoBanana("test", null, null, -1);
+            geminiService.generateImage("test", null, null, -1);
         });
         assertTrue(exception.getMessage().contains("Ratenbegrenzung überschritten"));
         assertTrue(exception.getMessage().contains("HTTP 429"));
     }
 
     @Test
-    void testGenerateImageNanoBanana_MissingApiKey() {
+    void testGenerateImage_MissingApiKey() {
         // GIVEN
         configService.setGeminiApiKey("");
 
         // WHEN & THEN
         Exception exception = assertThrows(IllegalStateException.class, () -> {
-            geminiService.generateImageNanoBanana("test", null, null, -1);
+            geminiService.generateImage("test", null, null, -1);
         });
         assertEquals("Gemini API Key is not set.", exception.getMessage());
     }

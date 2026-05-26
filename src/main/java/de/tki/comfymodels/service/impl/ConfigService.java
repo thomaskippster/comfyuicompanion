@@ -59,6 +59,7 @@ public class ConfigService {
         autoDiscoverPaths();
         pathResolver.setComfyUIRoot(getComfyUIPath());
         loadExtraModelPaths();
+        ensureExtraComfyUIDirectories();
     }
 
     public void loadExtraModelPaths() {
@@ -346,7 +347,11 @@ public class ConfigService {
     }
 
     public File getFileInAppData(String filename) {
-        return new File(getAppDataPath(), filename);
+        File appDataDir = new File(getAppDataPath());
+        if (!appDataDir.exists()) {
+            appDataDir.mkdirs();
+        }
+        return new File(appDataDir, filename);
     }
 
     public void unlock(String password) throws Exception {
@@ -445,11 +450,61 @@ public class ConfigService {
     public boolean isFastHashEnabled() { return settings.optBoolean("fast_hash", false); }
     public void setFastHashEnabled(boolean enabled) { settings.put("fast_hash", enabled); save(); }
 
-    public String getModelsPath() { 
+    public String getExtraComfyUIPath() {
         String path = settings.optString("models_path", PathResolver.MODELS_DIR);
-        return pathResolver.resolveModelsPath(path).toString();
+        Path p = Paths.get(path);
+        
+        // If absolute path
+        if (p.isAbsolute()) {
+            if (p.getFileName() != null && p.getFileName().toString().equalsIgnoreCase("models")) {
+                Path parent = p.getParent();
+                return parent != null ? parent.toString() : p.toString();
+            }
+            return p.toString();
+        }
+        
+        // If relative path
+        String comfyRoot = getComfyUIPath();
+        if (comfyRoot != null && !comfyRoot.isEmpty()) {
+            return comfyRoot;
+        }
+        return Paths.get(".").toAbsolutePath().normalize().toString();
     }
-    public void setModelsPath(String path) { settings.put("models_path", path); save(); updateExtraModelPathsYaml(); }
+
+    public String getModelsPath() { 
+        String extraPath = getExtraComfyUIPath();
+        return Paths.get(extraPath).resolve("models").toAbsolutePath().toString();
+    }
+    
+    public void setModelsPath(String path) { 
+        settings.put("models_path", path); 
+        save(); 
+        ensureExtraComfyUIDirectories();
+        updateExtraModelPathsYaml(); 
+    }
+
+    public String getResolvedInputDetailDir() {
+        String extraPath = getExtraComfyUIPath();
+        return Paths.get(extraPath).resolve("input").toAbsolutePath().toString();
+    }
+
+    public void ensureExtraComfyUIDirectories() {
+        try {
+            String extraPath = getExtraComfyUIPath();
+            if (extraPath != null && !extraPath.isEmpty()) {
+                Path base = Paths.get(extraPath);
+                Path models = base.resolve("models");
+                Path input = base.resolve("input");
+                Path output = base.resolve("output");
+                
+                if (!Files.exists(models)) Files.createDirectories(models);
+                if (!Files.exists(input)) Files.createDirectories(input);
+                if (!Files.exists(output)) Files.createDirectories(output);
+            }
+        } catch (Exception e) {
+            System.err.println("⚠️ [Config] Failed to create extra ComfyUI directories: " + e.getMessage());
+        }
+    }
 
     public String getArchivePath() { 
         String path = settings.optString("archive_path", PathResolver.ARCHIVE_DIR);
@@ -459,6 +514,12 @@ public class ConfigService {
     public void setArchivePath(String path) { settings.put("archive_path", path); save(); }
 
     public String getResolvedOutputDir() {
+        // Option 1: Use the extra ComfyUI path's "output" subfolder if resolved
+        String extraPath = getExtraComfyUIPath();
+        if (extraPath != null && !extraPath.isEmpty()) {
+            return Paths.get(extraPath).resolve("output").toAbsolutePath().toString();
+        }
+
         // Candidate 1: Check if specified in CLI launch command via --output-directory
         String launchCmd = getComfyLaunchCommand();
         if (launchCmd != null && !launchCmd.isEmpty()) {

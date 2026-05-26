@@ -2,6 +2,7 @@ package de.tki.comfymodels.service.impl;
 
 import de.tki.comfymodels.domain.ModelInfo;
 import de.tki.comfymodels.service.IDownloadManager;
+import de.tki.comfymodels.service.IModelValidator;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -43,6 +44,12 @@ public class DefaultDownloadManager implements IDownloadManager {
 
     @Autowired
     private CivitaiService civitaiService;
+
+    @Autowired
+    private ModelHashRegistry hashRegistry;
+
+    @Autowired
+    private IModelValidator modelValidator;
 
     private void safeUpdateStatus(int index, String status, BiConsumer<Integer, String> statusUpdater) {
         statusMap.put(index, status);
@@ -332,6 +339,11 @@ public class DefaultDownloadManager implements IDownloadManager {
             } else {
                 String msg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
                 safeUpdateStatus(index, "Error: " + msg, statusUpdater);
+                // Clean up single segment temp file (.cmfd) on actual error
+                try {
+                    Path partFile = targetFile.resolveSibling(targetFile.getFileName().toString() + ".cmfd");
+                    Files.deleteIfExists(partFile);
+                } catch (Exception ignored) {}
             }
         }
     }
@@ -355,6 +367,22 @@ public class DefaultDownloadManager implements IDownloadManager {
         if (statusCode == 416) { 
              if (existingPartSize == totalRemoteSize) {
                  Files.move(partFile, targetFile, StandardCopyOption.REPLACE_EXISTING);
+                 
+                 // Deep validation using modelValidator
+                 if (modelValidator != null) {
+                     IModelValidator.ValidationResult valResult = modelValidator.validateFile(targetFile.toFile());
+                     if (!valResult.ok) {
+                         targetFile.toFile().delete(); // Clean up corrupted file
+                         safeUpdateStatus(index, "❌ Validation failed: " + valResult.message, statusUpdater);
+                         return;
+                     }
+                 }
+                 
+                 // Pre-compute and register the file hash in registry cache
+                 if (hashRegistry != null) {
+                     hashRegistry.getOrCalculateHash(targetFile.toFile());
+                 }
+                 
                  onDownloadComplete(info, targetFile);
                  safeUpdateStatus(index, "✅ Finished", statusUpdater);
              } else {
@@ -444,10 +472,28 @@ public class DefaultDownloadManager implements IDownloadManager {
                 downloadWithResumeInternal(info, targetFile, index, statusUpdater, retryCount + 1);
             } else if (sizeMismatch) {
                 safeUpdateStatus(index, "❌ Incomplete (" + formatSize(finalSize) + "/" + formatSize(totalBytes) + ")", statusUpdater);
+                pFile.delete(); // Delete temp file
             } else if (corruptedSafetensor) {
                 safeUpdateStatus(index, "❌ Corrupted (Odd Size)", statusUpdater);
+                pFile.delete(); // Delete temp file
             } else {
                 Files.move(partFile, targetFile, StandardCopyOption.REPLACE_EXISTING);
+                
+                // Deep validation using modelValidator
+                if (modelValidator != null) {
+                    IModelValidator.ValidationResult valResult = modelValidator.validateFile(targetFile.toFile());
+                    if (!valResult.ok) {
+                        targetFile.toFile().delete(); // Clean up corrupted file
+                        safeUpdateStatus(index, "❌ Validation failed: " + valResult.message, statusUpdater);
+                        return;
+                    }
+                }
+                
+                // Pre-compute and register the file hash in registry cache
+                if (hashRegistry != null) {
+                    hashRegistry.getOrCalculateHash(targetFile.toFile());
+                }
+                
                 onDownloadComplete(info, targetFile);
                 safeUpdateStatus(index, "✅ Finished", statusUpdater);
             }
@@ -589,6 +635,12 @@ public class DefaultDownloadManager implements IDownloadManager {
         } catch (Exception ignored) {}
         
         if (segmentFailed.get()) {
+            if (!isStopped && isSelected(index)) {
+                // Delete all part files on actual failure (not stopped or unselected)
+                for (int i = 0; i < numSegments; i++) {
+                    try { Files.deleteIfExists(partFiles[i]); } catch (Exception ignored) {}
+                }
+            }
             throw new IOException("Segment download failed: " + errorMessage.get());
         }
         
@@ -605,6 +657,22 @@ public class DefaultDownloadManager implements IDownloadManager {
                 }
                 Files.delete(partFiles[i]);
             }
+            
+            // Deep validation using modelValidator
+            if (modelValidator != null) {
+                IModelValidator.ValidationResult valResult = modelValidator.validateFile(targetFile.toFile());
+                if (!valResult.ok) {
+                    targetFile.toFile().delete(); // Clean up corrupted file
+                    safeUpdateStatus(index, "❌ Validation failed: " + valResult.message, statusUpdater);
+                    return;
+                }
+            }
+            
+            // Pre-compute and register the file hash in registry cache
+            if (hashRegistry != null) {
+                hashRegistry.getOrCalculateHash(targetFile.toFile());
+            }
+            
             onDownloadComplete(info, targetFile);
             safeUpdateStatus(index, "✅ Finished", statusUpdater);
         } catch (Exception e) {

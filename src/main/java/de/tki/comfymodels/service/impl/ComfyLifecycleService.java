@@ -39,6 +39,7 @@ public class ComfyLifecycleService implements IComfyLifecycleService {
     private final java.util.concurrent.atomic.AtomicBoolean browserLaunched = new java.util.concurrent.atomic.AtomicBoolean(false);
     private final HttpClient httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofMillis(500)).build();
     private Runnable onBrowserLaunched;
+    private final java.util.concurrent.atomic.AtomicBoolean guiLineShown = new java.util.concurrent.atomic.AtomicBoolean(false);
 
     @Override
     public void setOnBrowserLaunched(Runnable callback) {
@@ -62,6 +63,7 @@ public class ComfyLifecycleService implements IComfyLifecycleService {
 
         try {
             status.set("Starting...");
+            guiLineShown.set(false);
             
             java.util.List<String> commandList = de.tki.comfymodels.util.PlatformUtils.parseCommandLine(command);
             
@@ -119,11 +121,14 @@ public class ComfyLifecycleService implements IComfyLifecycleService {
 
             comfyProcess = pb.start();
 
-            // Quietly consume output to prevent process buffer stalls
+            // Consume output and check for GUI line
             new Thread(() -> {
-                try (java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.InputStreamReader(comfyProcess.getInputStream()))) {
-                    while (reader.readLine() != null) {
-                        // Just consume, don't print
+                try (java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.InputStreamReader(comfyProcess.getInputStream(), java.nio.charset.StandardCharsets.UTF_8))) {
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        if (line.contains("To see the GUI go to:")) {
+                            guiLineShown.set(true);
+                        }
                     }
                 } catch (java.io.IOException ignored) {}
             }).start();
@@ -189,6 +194,7 @@ public class ComfyLifecycleService implements IComfyLifecycleService {
         }
         try {
             status.set("Stopping...");
+            guiLineShown.set(false);
             
             // 1. Kill internal process if managed
             if (comfyProcess != null) {
@@ -229,12 +235,21 @@ public class ComfyLifecycleService implements IComfyLifecycleService {
             if (de.tki.comfymodels.util.PlatformUtils.isWindows()) {
                 // Find PID on port and kill it
                 Process p = Runtime.getRuntime().exec("cmd /c netstat -ano | findstr :" + port);
-                java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.InputStreamReader(p.getInputStream()));
-                String line = reader.readLine();
-                if (line != null) {
-                    String[] parts = line.trim().split("\\s+");
-                    long pid = Long.parseLong(parts[parts.length - 1]);
-                    ProcessHandle.of(pid).ifPresent(ProcessHandle::destroyForcibly);
+                try (java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.InputStreamReader(p.getInputStream(), java.nio.charset.StandardCharsets.UTF_8))) {
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        if (line.contains("LISTENING")) {
+                            String[] parts = line.trim().split("\\s+");
+                            if (parts.length > 0) {
+                                long pid = Long.parseLong(parts[parts.length - 1]);
+                                if (pid != ProcessHandle.current().pid()) {
+                                    ProcessHandle.of(pid).ifPresent(ProcessHandle::destroyForcibly);
+                                    System.out.println("💀 Killed process " + pid + " listening on port " + port);
+                                    break;
+                                }
+                            }
+                        }
+                    }
                 }
             } else {
                 // Linux/Mac fallback
@@ -278,6 +293,11 @@ public class ComfyLifecycleService implements IComfyLifecycleService {
             }
         }
         return current;
+    }
+
+    @Override
+    public boolean isGuiLineShown() {
+        return guiLineShown.get();
     }
 
     @Override

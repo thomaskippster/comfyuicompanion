@@ -82,6 +82,7 @@ public class DeduplicationDialog extends JDialog {
         }
 
         new Thread(() -> {
+            boolean wasFastHashEnabled = configService.isFastHashEnabled();
             try {
                 // 1. Walk files
                 List<Path> files = Files.walk(root.toPath())
@@ -109,14 +110,13 @@ public class DeduplicationDialog extends JDialog {
 
                 if (candidates.isEmpty()) {
                     updateLog("✅ No duplicate sizes found. Library is fully optimized!");
-                    SwingUtilities.invokeLater(() -> scanBtn.setEnabled(true));
                     return;
                 }
 
                 updateLog("Found " + candidates.size() + " size-matching groups. Computing hashes...");
 
-                // Enable fast hash temporarily for scanning if not already enabled
-                boolean wasFastHashEnabled = configService.isFastHashEnabled();
+                // Enable fast hash temporarily for scanning
+                configService.setFastHashEnabled(true);
                 
                 int checked = 0;
                 long totalCandidates = candidates.stream().mapToInt(List::size).sum();
@@ -184,6 +184,7 @@ public class DeduplicationDialog extends JDialog {
             } catch (Exception ex) {
                 updateLog("❌ Error: " + ex.getMessage());
             } finally {
+                configService.setFastHashEnabled(wasFastHashEnabled);
                 SwingUtilities.invokeLater(() -> scanBtn.setEnabled(true));
             }
         }).start();

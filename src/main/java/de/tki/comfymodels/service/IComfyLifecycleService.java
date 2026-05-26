@@ -45,4 +45,9 @@ public interface IComfyLifecycleService {
      * Registers a callback to be run when the browser is automatically launched by the service.
      */
     void setOnBrowserLaunched(Runnable callback);
+
+    /**
+     * Returns true if the "To see the GUI go to:" line has been detected in the logs.
+     */
+    boolean isGuiLineShown();
 }

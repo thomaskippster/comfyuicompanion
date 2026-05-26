@@ -268,8 +268,33 @@ public class UpdaterService {
     }
 
     private void runPipInstall(String pythonPath, File requirementsFile, Consumer<String> logCallback) {
+        File targetFile = requirementsFile;
+        boolean createdTempFile = false;
         try {
-            ProcessBuilder pb = new ProcessBuilder(pythonPath, "-m", "pip", "install", "--upgrade", "-r", requirementsFile.getName());
+            if (System.getProperty("os.name").toLowerCase().contains("win")) {
+                List<String> originalLines = Files.readAllLines(requirementsFile.toPath());
+                List<String> filteredLines = new ArrayList<>();
+                boolean filteredAny = false;
+                for (String line : originalLines) {
+                    if (isTorchPackage(line)) {
+                        logCallback.accept("  ⚠️ Skipping PyTorch component upgrade to protect CUDA environment: " + line.trim() + "\n");
+                        filteredAny = true;
+                    } else {
+                        filteredLines.add(line);
+                    }
+                }
+                if (filteredAny) {
+                    targetFile = new File(requirementsFile.getParentFile(), "temp_requirements_companion.txt");
+                    Files.write(targetFile.toPath(), filteredLines);
+                    createdTempFile = true;
+                }
+            }
+        } catch (Exception e) {
+            logCallback.accept("  ⚠️ Warning: Failed to parse/filter requirements file, using original: " + e.getMessage() + "\n");
+        }
+
+        try {
+            ProcessBuilder pb = new ProcessBuilder(pythonPath, "-m", "pip", "install", "--upgrade", "-r", targetFile.getName());
             pb.directory(requirementsFile.getParentFile());
             pb.redirectErrorStream(true);
             Process p = pb.start();
@@ -287,6 +312,19 @@ public class UpdaterService {
             }
         } catch (Exception e) {
             logCallback.accept("  ❌ Failed: " + e.getMessage() + "\n\n");
+        } finally {
+            if (createdTempFile && targetFile.exists()) {
+                targetFile.delete();
+            }
         }
+    }
+
+    private boolean isTorchPackage(String line) {
+        String clean = line.trim().toLowerCase();
+        if (clean.isEmpty() || clean.startsWith("#")) {
+            return false;
+        }
+        String packageName = clean.split("[=<>~;@\\s]")[0].trim();
+        return packageName.equals("torch") || packageName.equals("torchvision") || packageName.equals("torchaudio");
     }
 }

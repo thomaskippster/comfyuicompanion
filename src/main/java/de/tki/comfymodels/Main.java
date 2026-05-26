@@ -263,7 +263,7 @@ public class Main extends JFrame {
     private void setupTheme(boolean darkMode) {
         try {
             // Global arcs for a modern feel
-            UIManager.put("Button.arc", 8);
+            UIManager.put("Button.arc", 999);
             UIManager.put("Component.arc", 8);
             UIManager.put("TextComponent.arc", 8);
             UIManager.put("ProgressBar.arc", 8);
@@ -323,10 +323,16 @@ public class Main extends JFrame {
                     UIManager.put(key, null);
                 }
                 UIManager.setLookAndFeel(new FlatLightLaf());
+                
+                // Pronounced borders in light mode (white mode)
+                java.awt.Color pronouncedBorder = new javax.swing.plaf.ColorUIResource(180, 185, 195);
+                UIManager.put("Component.borderColor", pronouncedBorder);
+                UIManager.put("Button.borderColor", pronouncedBorder);
+                UIManager.put("Separator.foreground", new javax.swing.plaf.ColorUIResource(200, 205, 215));
             }
             
             // Re-apply global arcs which might be cleared by setLookAndFeel
-            UIManager.put("Button.arc", 8);
+            UIManager.put("Button.arc", 999);
             UIManager.put("Component.arc", 8);
             UIManager.put("TextComponent.arc", 8);
             UIManager.put("ProgressBar.arc", 8);
@@ -422,6 +428,7 @@ public class Main extends JFrame {
 
             JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
             JButton btnAction = new JButton(vaultExists ? "Unlock" : "Set Password");
+            btnAction.putClientProperty("JButton.buttonType", "accent");
             JButton btnCancel = new JButton("Cancel");
             buttonPanel.add(btnAction);
             buttonPanel.add(btnCancel);
@@ -634,6 +641,7 @@ public class Main extends JFrame {
         loadIcon();
         setTitle("ComfyUI Companion");
         setSize(1450, 950);
+        setMinimumSize(new java.awt.Dimension(1200, 800));
         setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
 
         getRootPane().putClientProperty("flatlaf.useWindowDecorations", true);
@@ -689,7 +697,7 @@ public class Main extends JFrame {
                     new Thread(() -> {
                         try {
                             // Test validation with a simple tree prompt and seed 42
-                            geminiService.generateImageNanoBanana("Ein Baum", null, null, 42);
+                            geminiService.generateImage("Ein Baum", null, null, 42);
                             isGeminiGenerationSuccessful = true;
                         } catch (Exception ex) {
                             System.err.println("Gemini startup test image generation failed: " + ex.getMessage());
@@ -752,10 +760,10 @@ public class Main extends JFrame {
 
         JPanel controlsPanel = new JPanel();
         controlsPanel.setLayout(new BoxLayout(controlsPanel, BoxLayout.Y_AXIS));
-        controlsPanel.putClientProperty("FlatLaf.style", "arc: 15; background: lighten($Panel.background, 2%)");
+        controlsPanel.putClientProperty("FlatLaf.style", "arc: 15; background: lighten($Panel.background, 2%); border: 15,15,15,15,$Component.borderColor,1,15");
         controlsPanel.setBorder(BorderFactory.createEmptyBorder(15, 15, 15, 15));
 
-        JLabel titleLabel = new JLabel("🎨 Gemini Image Generator (Gemini 3.1 Flash)");
+        JLabel titleLabel = new JLabel("🎨 Gemini Image Generator (Imagen 3)");
         titleLabel.putClientProperty("FlatLaf.styleClass", "h2");
         titleLabel.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
         controlsPanel.add(titleLabel);
@@ -870,7 +878,7 @@ public class Main extends JFrame {
         resultsContainer.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
         
         JScrollPane resultsScroll = new JScrollPane(resultsContainer);
-        resultsScroll.putClientProperty("FlatLaf.style", "arc: 15");
+        resultsScroll.putClientProperty("FlatLaf.style", "arc: 15; border: 1,1,1,1,$Component.borderColor,1,15");
         resultsScroll.getVerticalScrollBar().setUnitIncrement(16);
 
         JPanel leftWrapper = new JPanel(new BorderLayout());
@@ -915,7 +923,7 @@ public class Main extends JFrame {
                 
                 SwingUtilities.invokeLater(() -> {
                     JPanel placeholderCard = new JPanel(new BorderLayout());
-                    placeholderCard.putClientProperty("FlatLaf.style", "arc: 12; background: lighten($Panel.background, 4%)");
+                    placeholderCard.putClientProperty("FlatLaf.style", "arc: 12; background: lighten($Panel.background, 4%); border: 10,10,10,10,$Component.borderColor,1,12");
                     placeholderCard.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
                     placeholderCard.setPreferredSize(new Dimension(250, 320));
                     
@@ -929,7 +937,7 @@ public class Main extends JFrame {
 
                 java.util.concurrent.CompletableFuture<Void> future = java.util.concurrent.CompletableFuture.runAsync(() -> {
                     try {
-                        byte[] imgBytes = geminiService.generateImageNanoBanana(prompt, selectedImageBytes, selectedImageMimeType, seed);
+                        byte[] imgBytes = geminiService.generateImage(prompt, selectedImageBytes, selectedImageMimeType, seed);
                         
                         java.io.ByteArrayInputStream bais = new java.io.ByteArrayInputStream(imgBytes);
                         BufferedImage img = javax.imageio.ImageIO.read(bais);
@@ -956,6 +964,7 @@ public class Main extends JFrame {
                                 actionBtns.setOpaque(false);
                                 
                                 JButton btnSave = new JButton("Speichern");
+                                btnSave.putClientProperty("JButton.buttonType", "accent");
                                 btnSave.addActionListener(ev -> {
                                     JFileChooser saver = new JFileChooser();
                                     saver.setSelectedFile(new File("gemini_" + seed + ".png"));
@@ -1054,7 +1063,7 @@ public class Main extends JFrame {
         // LEFT: Profile List (Card-like)
         JPanel leftPanel = new JPanel(new BorderLayout(10, 10));
         leftPanel.setPreferredSize(new Dimension(320, 0));
-        leftPanel.putClientProperty("FlatLaf.style", "arc: 15; background: lighten($Panel.background, 2%)");
+        leftPanel.putClientProperty("FlatLaf.style", "arc: 15; background: lighten($Panel.background, 2%); border: 15,15,15,15,$Component.borderColor,1,15");
         leftPanel.setBorder(BorderFactory.createEmptyBorder(15, 15, 15, 15));
 
         JLabel profilesHeader = new JLabel("Launch Profiles");
@@ -1121,7 +1130,7 @@ public class Main extends JFrame {
 
         // RIGHT: Control Center
         JPanel rightPanel = new JPanel(new GridBagLayout());
-        rightPanel.putClientProperty("FlatLaf.style", "arc: 15; background: lighten($Panel.background, 2%)");
+        rightPanel.putClientProperty("FlatLaf.style", "arc: 15; background: lighten($Panel.background, 2%); border: 20,20,20,20,$Component.borderColor,1,15");
         rightPanel.setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
         
         GridBagConstraints gbc = new GridBagConstraints();
@@ -1292,12 +1301,28 @@ public class Main extends JFrame {
         Timer statusTimer = new Timer(1000, e -> {
             boolean running = processController.isRunning();
             if (running) {
-                statusDisplay.setText("Status: Running");
-                statusDisplay.setForeground(new Color(0, 180, 0));
-                launchBtn.setEnabled(false);
-                restartBtn.setEnabled(true);
-                stopBtn.setEnabled(true);
-                browserBtn.setEnabled(true);
+                boolean starting = false;
+                if (processController.isProcessAlive() && !processController.isGuiLineShown()) {
+                    starting = true;
+                } else if (lifecycleService.isProcessAlive() && !lifecycleService.isGuiLineShown()) {
+                    starting = true;
+                }
+
+                if (starting) {
+                    statusDisplay.setText("Status: Starting");
+                    statusDisplay.setForeground(new Color(255, 204, 0));
+                    launchBtn.setEnabled(false);
+                    restartBtn.setEnabled(true);
+                    stopBtn.setEnabled(true);
+                    browserBtn.setEnabled(false);
+                } else {
+                    statusDisplay.setText("Status: Running");
+                    statusDisplay.setForeground(new Color(0, 180, 0));
+                    launchBtn.setEnabled(false);
+                    restartBtn.setEnabled(true);
+                    stopBtn.setEnabled(true);
+                    browserBtn.setEnabled(true);
+                }
             } else {
                 statusDisplay.setText("Status: Offline");
                 statusDisplay.setForeground(Color.GRAY);
@@ -1362,7 +1387,7 @@ public class Main extends JFrame {
         // RIGHT: System Stats & Quick Actions
         JPanel rightPanelEast = new JPanel(new GridBagLayout());
         rightPanelEast.setPreferredSize(new Dimension(340, 0));
-        rightPanelEast.putClientProperty("FlatLaf.style", "arc: 15; background: lighten($Panel.background, 2%)");
+        rightPanelEast.putClientProperty("FlatLaf.style", "arc: 15; background: lighten($Panel.background, 2%); border: 15,15,15,15,$Component.borderColor,1,15");
         rightPanelEast.setBorder(BorderFactory.createEmptyBorder(15, 15, 15, 15));
 
         GridBagConstraints eastGbc = new GridBagConstraints();
@@ -1552,11 +1577,11 @@ public class Main extends JFrame {
         gbc.gridx = 0; gbc.gridy = 0; gbc.weightx = 1.0;
         gbc.insets = new Insets(0, 0, 5, 0);
 
-        panel.add(new JLabel("ComfyUI Models Path (Target for downloads):"), gbc);
+        panel.add(new JLabel("Extra ComfyUI Path (contains models, input, output):"), gbc);
         
         gbc.gridy++;
         JPanel row1 = new JPanel(new BorderLayout(5, 0));
-        JTextField field1 = new JTextField(configService.getModelsPath());
+        JTextField field1 = new JTextField(configService.getExtraComfyUIPath());
         JButton browse1 = new JButton("Browse...");
         browse1.addActionListener(e -> {
             JFileChooser chooser = new JFileChooser();
@@ -1652,6 +1677,7 @@ public class Main extends JFrame {
         JButton cancel = new JButton("Cancel");
         cancel.addActionListener(e -> dialog.dispose());
         JButton save = new JButton("Save");
+        save.putClientProperty("JButton.buttonType", "accent");
         save.addActionListener(e -> {
             configService.setModelsPath(field1.getText().trim());
             configService.setArchivePath(field2.getText().trim());
@@ -1721,6 +1747,7 @@ public class Main extends JFrame {
         JButton cancel = new JButton("Cancel");
         cancel.addActionListener(e -> dialog.dispose());
         JButton save = new JButton("Save");
+        save.putClientProperty("JButton.buttonType", "accent");
         save.addActionListener(e -> {
             try {
                 int threads = (Integer) threadSpinner.getValue();
@@ -1814,6 +1841,7 @@ public class Main extends JFrame {
         JButton cancel = new JButton("Cancel");
         cancel.addActionListener(e -> dialog.dispose());
         JButton save = new JButton("Save");
+        save.putClientProperty("JButton.buttonType", "accent");
         save.addActionListener(e -> {
             configService.setGeminiApiKey(new String(geminiField.getPassword()).trim());
             configService.setHfToken(new String(hfField.getPassword()).trim());
@@ -1987,6 +2015,7 @@ public class Main extends JFrame {
         JButton cancelBtn = new JButton("Cancel");
         cancelBtn.addActionListener(e -> dialog.dispose());
         JButton installBtn = new JButton("🚀 Start Installation");
+        installBtn.putClientProperty("JButton.buttonType", "accent");
         installBtn.addActionListener(e -> {
             String selectedPath = pathField.getText().trim();
             if (selectedPath.isEmpty()) {
@@ -2620,6 +2649,7 @@ public class Main extends JFrame {
         });
         
         JButton archiveNowBtn = new JButton("📦 Move to Archive");
+        archiveNowBtn.putClientProperty("JButton.buttonType", "accent");
         archiveNowBtn.addActionListener(e -> {
             List<Integer> selectedRows = new ArrayList<>();
             for (int i = 0; i < archiveTableModel.getRowCount(); i++) if ((Boolean) archiveTableModel.getValueAt(i, 0)) selectedRows.add(i);
@@ -2697,6 +2727,7 @@ public class Main extends JFrame {
         });
 
         JButton restoreNowBtn = new JButton("🚀 Restore from Archive");
+        restoreNowBtn.putClientProperty("JButton.buttonType", "accent");
         restoreNowBtn.addActionListener(e -> {
             List<Integer> selectedRows = new ArrayList<>();
             for (int i = 0; i < restoreTableModel.getRowCount(); i++) if ((Boolean) restoreTableModel.getValueAt(i, 0)) selectedRows.add(i);
@@ -2826,6 +2857,7 @@ public class Main extends JFrame {
         });
 
         JButton analyzeBtn = new JButton("Deep Search");
+        analyzeBtn.putClientProperty("JButton.buttonType", "accent");
         analyzeBtn.addActionListener(e -> { analyzeJsonContent(); searchMissingOnline(); });
         jsonButtons.add(loadJsonBtn);
         jsonButtons.add(importModelListBtn);
@@ -2849,6 +2881,37 @@ public class Main extends JFrame {
         });
         JTable modelTable = new JTable(tableModel);
         modelTable.putClientProperty("terminateEditOnFocusLost", Boolean.TRUE);
+
+        // Configure table column model with preferred column widths representing percentages
+        modelTable.setAutoResizeMode(JTable.AUTO_RESIZE_SUBSEQUENT_COLUMNS);
+        javax.swing.table.TableColumnModel colModel = modelTable.getColumnModel();
+        
+        // 0: Select (3% / min 40px)
+        javax.swing.table.TableColumn col0 = colModel.getColumn(0);
+        col0.setPreferredWidth(40);
+        col0.setMinWidth(40);
+        col0.setMaxWidth(60);
+        
+        // 1: Type (10%)
+        colModel.getColumn(1).setPreferredWidth(115);
+        
+        // 2: Name (15%)
+        colModel.getColumn(2).setPreferredWidth(172);
+        
+        // 3: Size (5%)
+        colModel.getColumn(3).setPreferredWidth(58);
+        
+        // 4: AI Source (10%)
+        colModel.getColumn(4).setPreferredWidth(115);
+        
+        // 5: Target Path (10%)
+        colModel.getColumn(5).setPreferredWidth(115);
+        
+        // 6: URL (25%)
+        colModel.getColumn(6).setPreferredWidth(288);
+        
+        // 7: Status (22%)
+        colModel.getColumn(7).setPreferredWidth(253);
 
         JPopupMenu modelTablePopup = new JPopupMenu();
         JMenuItem searchCivitaiItem = new JMenuItem("Search Civitai & Select Version...");
@@ -2938,13 +3001,16 @@ public class Main extends JFrame {
         JPanel panel = new JPanel(new BorderLayout(15, 15));
         panel.setBorder(BorderFactory.createEmptyBorder(25, 25, 25, 25));
 
+        Font btnFont = new Font("SansSerif", Font.BOLD, 14);
+        Font checkFont = new Font("SansSerif", Font.PLAIN, 14);
+
         JPanel grid = new JPanel(new GridLayout(1, 2, 25, 0));
         grid.setOpaque(false);
         
         // Left Column: General & Paths
         JPanel left = new JPanel();
         left.setLayout(new BoxLayout(left, BoxLayout.Y_AXIS));
-        left.putClientProperty("FlatLaf.style", "arc: 15; background: lighten($Panel.background, 2%)");
+        left.putClientProperty("FlatLaf.style", "arc: 15; background: lighten($Panel.background, 2%); border: 20,20,20,20,$Component.borderColor,1,15");
         left.setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
 
         JLabel pathsHeader = new JLabel("General & Paths");
@@ -2952,23 +3018,27 @@ public class Main extends JFrame {
         pathsHeader.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
 
         JButton pathsBtn = new JButton("📁 Configure Directories...");
+        pathsBtn.setFont(btnFont);
         pathsBtn.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
-        pathsBtn.setMaximumSize(new Dimension(300, 40));
+        pathsBtn.setMaximumSize(new Dimension(360, 40));
         pathsBtn.addActionListener(e -> showPathsDialog());
 
         JButton repairBtn = new JButton("🛠️ Auto-Repair Environment...");
+        repairBtn.setFont(btnFont);
         repairBtn.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
-        repairBtn.setMaximumSize(new Dimension(300, 40));
+        repairBtn.setMaximumSize(new Dimension(360, 40));
         repairBtn.addActionListener(e -> triggerEnvironmentRepair());
 
         JButton downloadSettingsBtn = new JButton("📥 Download Settings...");
+        downloadSettingsBtn.setFont(btnFont);
         downloadSettingsBtn.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
-        downloadSettingsBtn.setMaximumSize(new Dimension(300, 40));
+        downloadSettingsBtn.setMaximumSize(new Dimension(360, 40));
         downloadSettingsBtn.addActionListener(e -> showDownloadSettingsDialog());
 
         JButton bridgeBtn = new JButton("🚀 ComfyUI Bridge Installer...");
+        bridgeBtn.setFont(btnFont);
         bridgeBtn.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
-        bridgeBtn.setMaximumSize(new Dimension(300, 40));
+        bridgeBtn.setMaximumSize(new Dimension(360, 40));
         bridgeBtn.addActionListener(e -> showInstallationDialog());
 
         JPanel checksPanel = new JPanel();
@@ -2977,18 +3047,22 @@ public class Main extends JFrame {
         checksPanel.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
 
         backgroundCheck = new JCheckBox("Stay in Background");
+        backgroundCheck.setFont(checkFont);
         backgroundCheck.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
         backgroundCheck.addActionListener(e -> configService.setBackgroundModeEnabled(backgroundCheck.isSelected()));
         
         shutdownCheck = new JCheckBox("Shutdown after Queue");
+        shutdownCheck.setFont(checkFont);
         shutdownCheck.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
         shutdownCheck.addActionListener(e -> configService.setShutdownAfterDownloadEnabled(shutdownCheck.isSelected()));
         
         restartCheck = new JCheckBox("Full Restart after Queue");
+        restartCheck.setFont(checkFont);
         restartCheck.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
         restartCheck.addActionListener(e -> configService.setRestartAfterDownloadEnabled(restartCheck.isSelected()));
         
         darkCheck = new JCheckBox("Dark Mode");
+        darkCheck.setFont(checkFont);
         darkCheck.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
         darkCheck.addActionListener(e -> {
             boolean isDark = darkCheck.isSelected();
@@ -3001,6 +3075,7 @@ public class Main extends JFrame {
         });
 
         fastHashCheck = new JCheckBox("Fast Hashing (AutoV1)");
+        fastHashCheck.setFont(checkFont);
         fastHashCheck.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
         fastHashCheck.addActionListener(e -> configService.setFastHashEnabled(fastHashCheck.isSelected()));
 
@@ -3030,7 +3105,7 @@ public class Main extends JFrame {
         // Right Column: AI & Help
         JPanel right = new JPanel();
         right.setLayout(new BoxLayout(right, BoxLayout.Y_AXIS));
-        right.putClientProperty("FlatLaf.style", "arc: 15; background: lighten($Panel.background, 2%)");
+        right.putClientProperty("FlatLaf.style", "arc: 15; background: lighten($Panel.background, 2%); border: 20,20,20,20,$Component.borderColor,1,15");
         right.setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
 
         JLabel aiHeader = new JLabel("AI & Support");
@@ -3038,18 +3113,21 @@ public class Main extends JFrame {
         aiHeader.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
 
         JButton apiBtn = new JButton("🔑 AI & API Keys...");
+        apiBtn.setFont(btnFont);
         apiBtn.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
-        apiBtn.setMaximumSize(new Dimension(300, 40));
+        apiBtn.setMaximumSize(new Dimension(360, 40));
         apiBtn.addActionListener(e -> showApiKeysDialog());
 
         JButton helpBtn = new JButton("ℹ View Help & Guide");
+        helpBtn.setFont(btnFont);
         helpBtn.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
-        helpBtn.setMaximumSize(new Dimension(300, 40));
+        helpBtn.setMaximumSize(new Dimension(360, 40));
         helpBtn.addActionListener(e -> showHelpDialog());
 
         JButton resetVaultBtn = new JButton("🔒 Reset Security Vault...");
+        resetVaultBtn.setFont(btnFont);
         resetVaultBtn.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
-        resetVaultBtn.setMaximumSize(new Dimension(300, 40));
+        resetVaultBtn.setMaximumSize(new Dimension(360, 40));
         resetVaultBtn.addActionListener(e -> {
             int confirm = JOptionPane.showConfirmDialog(this, "This will delete all stored API keys. Continue?", "Vault Reset", JOptionPane.YES_NO_OPTION);
             if (confirm == JOptionPane.YES_OPTION) {
@@ -3106,12 +3184,41 @@ public class Main extends JFrame {
             // Core logic: Stop via process controller
             processController.stop();
             
-            // Switch to Dashboard so user can pick profile and start again
+            try { Thread.sleep(1500); } catch (InterruptedException ignored) {}
+            
+            // Switch to Dashboard and start ComfyUI again using active profile
             SwingUtilities.invokeLater(() -> {
                 if (getContentPane() instanceof JTabbedPane) {
                     ((JTabbedPane) getContentPane()).setSelectedIndex(0);
                 }
-                statusLabel.setText("✅ ComfyUI stopped. Please restart via Dashboard.");
+                
+                de.tki.comfymodels.domain.LaunchProfile activeProfile = null;
+                if (profileList != null) {
+                    activeProfile = profileList.getSelectedValue();
+                }
+                if (activeProfile == null) {
+                    String activeId = configService.getActiveProfile();
+                    List<de.tki.comfymodels.domain.LaunchProfile> profiles = profileManager.loadProfiles();
+                    activeProfile = profiles.stream()
+                        .filter(p -> p.id().equals(activeId))
+                        .findFirst()
+                        .orElse(null);
+                    if (activeProfile == null && !profiles.isEmpty()) {
+                        activeProfile = profiles.get(0);
+                    }
+                }
+                
+                if (activeProfile != null) {
+                    if (profileList != null) {
+                        profileList.setSelectedValue(activeProfile, true);
+                    }
+                    if (consoleOutput != null) {
+                        consoleOutput.append("\n🔄 Restarting ComfyUI...\n");
+                    }
+                    startComfyUI(activeProfile, false);
+                } else {
+                    statusLabel.setText("⚠️ No launch profile available to start ComfyUI.");
+                }
             });
         }).start();
     }
@@ -3386,13 +3493,17 @@ public class Main extends JFrame {
         editorPane.setEditable(false);
         editorPane.setContentType("text/html");
         
+        java.awt.Color panelBg = javax.swing.UIManager.getColor("Panel.background");
+        java.awt.Color labelFg = javax.swing.UIManager.getColor("Label.foreground");
+        
         boolean darkMode = configService.isDarkMode();
-        String bgColor = darkMode ? "#161616" : "#f8f9fa";
-        String textColor = darkMode ? "#e6e6e6" : "#212529";
-        String accentColor = darkMode ? "#ffff00" : "#0056b3";
-        String boxBg = darkMode ? "#202020" : "#ffffff";
-        String boxBorder = darkMode ? "#333" : "#dee2e6";
-        String tipBg = darkMode ? "#333" : "#e9ecef";
+        String bgColor = panelBg != null ? String.format("#%02x%02x%02x", panelBg.getRed(), panelBg.getGreen(), panelBg.getBlue()) : (darkMode ? "#121214" : "#f8fafc");
+        String textColor = labelFg != null ? String.format("#%02x%02x%02x", labelFg.getRed(), labelFg.getGreen(), labelFg.getBlue()) : (darkMode ? "#e2e8f0" : "#1e293b");
+        
+        String accentColor = darkMode ? "#818cf8" : "#4f46e5";
+        String boxBg = darkMode ? "#1a1a24" : "#ffffff";
+        String boxBorder = darkMode ? "#2d2d3d" : "#e2e8f0";
+        String tipBg = darkMode ? "#222230" : "#f1f5f9";
 
         StringBuilder sb = new StringBuilder();
         sb.append("<html><body style='padding: 25px; font-family: sans-serif; background-color: ").append(bgColor).append("; color: ").append(textColor).append(";'>");
@@ -3415,27 +3526,32 @@ public class Main extends JFrame {
                   "If a workflow needs them later, the Downloader detects them in the archive and offers a <b>one-click restoration</b>.</p>");
         
         sb.append("<p><b>👯 Storage Optimizer:</b> Scans your library for duplicates. " +
-                  "Using SHA-256 hash comparison, it identifies identical files even if they have different names.</p>");
+                  "Using SHA-256 hash comparison, it identifies identical files even if they have different names. Duplicates are replaced with NTFS hardlinks to save space while keeping files accessible. Supports fast initial scanning.</p>");
         
         sb.append("<p><b>🔍 Fast Verify:</b> Quickly checks if your model files are valid or have corrupted headers.</p>");
 
         sb.append("<p><b>🧠 AI Search:</b> When loading a workflow, the AI automatically tries to identify models. " +
                   "Use <i>Deep Search</i> to have the AI specifically search for download sources.</p>");
 
+        sb.append("<p><b>🖼️ Output Gallery:</b> Displays generated output images and videos with asynchronous background loading and scaling to keep the interface smooth and responsive.</p>");
+
         sb.append("<div style='background-color: ").append(tipBg).append("; padding: 10px; border-radius: 5px; margin-top: 20px;'>");
         sb.append("<b>💡 Pro Tips:</b><br>");
         sb.append("• Use <b>Drag & Drop</b> for images (.png) to directly read their embedded workflow.<br>");
         sb.append("• Enable <b>Shutdown after Queue</b> for overnight downloads.<br>");
-        sb.append("• The app minimizes to the <b>System Tray</b> (bottom right) if 'Stay in Background' is active.");
+        sb.append("• The app minimizes to the <b>System Tray</b> (bottom right) if 'Stay in Background' is active.<br>");
+        sb.append("• Windows users benefit from automatic active port cleaning to prevent launch conflicts.");
         sb.append("</div>");
         
-        sb.append("<p style='margin-top: 30px; color: #888; font-style: italic; text-align: center;'>Version 1.0.5 - developed by TKI</p>");
+        sb.append("<p style='margin-top: 30px; color: #888; font-style: italic; text-align: center;'>Version 1.1.0 - developed by TKI</p>");
         sb.append("</body></html>");
 
         editorPane.setText(sb.toString());
         editorPane.setCaretPosition(0);
 
-        JScrollPane scrollPane = new JScrollPane(editorPane);
+        JScrollPane scrollPane = new JScrollPane(editorPane, 
+                JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED, 
+                JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
         scrollPane.setBorder(null);
         helpDialog.add(scrollPane, BorderLayout.CENTER);
 
@@ -3596,6 +3712,7 @@ public class Main extends JFrame {
         JPanel searchBar = new JPanel(new BorderLayout(5, 0));
         JTextField searchField = new JTextField(cleanedQuery);
         JButton searchBtn = new JButton("Search");
+        searchBtn.putClientProperty("JButton.buttonType", "accent");
         searchBar.add(searchField, BorderLayout.CENTER);
         searchBar.add(searchBtn, BorderLayout.EAST);
         leftPanel.add(searchBar, BorderLayout.NORTH);

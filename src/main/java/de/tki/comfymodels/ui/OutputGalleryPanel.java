@@ -160,8 +160,24 @@ public class OutputGalleryPanel extends JPanel {
         if (name.toLowerCase().endsWith(".mp4")) {
             tile.add(new JLabel("<html><center>🎥<br>" + name + "</center></html>", SwingConstants.CENTER), BorderLayout.CENTER);
         } else {
-            ImageIcon icon = new ImageIcon(new ImageIcon(file.toString()).getImage().getScaledInstance(110, 110, Image.SCALE_FAST));
-            tile.add(new JLabel(icon), BorderLayout.CENTER);
+            JLabel imageLabel = new JLabel("⌛ Loading...", SwingConstants.CENTER);
+            tile.add(imageLabel, BorderLayout.CENTER);
+            
+            java.util.concurrent.CompletableFuture.runAsync(() -> {
+                try {
+                    ImageIcon rawIcon = new ImageIcon(file.toString());
+                    Image rawImage = rawIcon.getImage();
+                    if (rawImage != null) {
+                        Image scaledImage = rawImage.getScaledInstance(110, 110, Image.SCALE_FAST);
+                        ImageIcon icon = new ImageIcon(scaledImage);
+                        SwingUtilities.invokeLater(() -> {
+                            imageLabel.setText("");
+                            imageLabel.setIcon(icon);
+                        });
+                    }
+                } catch (Exception ignored) {}
+            });
+            
             tile.add(new JLabel(name, SwingConstants.CENTER), BorderLayout.SOUTH);
         }
         

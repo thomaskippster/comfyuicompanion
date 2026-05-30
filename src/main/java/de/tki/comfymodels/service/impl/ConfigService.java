@@ -127,11 +127,11 @@ public class ConfigService {
     }
 
     public void autoDiscoverPaths() {
-        String root = getComfyUIPath();
+        String root = settings.optString("comfyui_path", "");
         String userHome = System.getProperty("user.home");
         String currentDir = System.getProperty("user.dir");
 
-        System.out.println("🔍 [Config] Starting auto-discovery. Current Root: " + root);
+        System.out.println("🔍 [Config] Starting auto-discovery. Stored Root: " + root);
 
         // 1. VALIDATE AND DISCOVER COMFYUI ROOT
         boolean rootValid = !root.isEmpty() && new File(root, "main.py").exists();
@@ -178,15 +178,16 @@ public class ConfigService {
             
             // Priority 3: Check common Pinokio/Home locations
             if (root.isEmpty()) {
-                String[] commonPatterns = {
-                    "C:\\AI\\ComfyUI\\resources\\ComfyUI",
-                    "C:\\AI\\ComfyUI",
-                    userHome + "\\AppData\\Roaming\\pinokio\\bin\\ComfyUI",
-                    userHome + "/pinokio/bin/ComfyUI",
-                    userHome + "/ComfyUI",
-                    userHome + "/AI/ComfyUI"
-                };
-                for (String p : commonPatterns) {
+                java.util.List<String> patterns = new java.util.ArrayList<>();
+                if (de.tki.comfymodels.util.PlatformUtils.isWindows()) {
+                    patterns.add(userHome + "\\ComfyUI");
+                    patterns.add(userHome + "\\AppData\\Roaming\\pinokio\\bin\\ComfyUI");
+                } else {
+                    patterns.add(userHome + "/ComfyUI");
+                    patterns.add(userHome + "/pinokio/bin/ComfyUI");
+                    patterns.add(userHome + "/.local/share/pinokio/bin/ComfyUI");
+                }
+                for (String p : patterns) {
                     File f = new File(p);
                     if (new File(f, "main.py").exists()) {
                         root = f.getAbsolutePath();
@@ -213,7 +214,7 @@ public class ConfigService {
         String currentModelsPath = settings.optString("models_path", "");
         if (currentModelsPath.isEmpty() || currentModelsPath.equals(PathResolver.MODELS_DIR)) {
             // Check for Pinokio data structure: sibling of ComfyUI's main installation folder
-            // e.g. C:\AI\ComfyUI (binary) -> C:\AI\comfyuidata\models (data)
+            // e.g. ComfyUI (binary) -> comfyuidata/models (data)
             File comfyFolder = new File(root);
             while (comfyFolder != null) {
                 File parent = comfyFolder.getParentFile();
@@ -305,8 +306,7 @@ public class ConfigService {
         File[] venvLocations = {
             new File(comfyRoot, ".venv"),
             new File(new File(comfyRoot).getParentFile(), ".venv"),
-            new File(new File(comfyRoot).getParentFile().getParentFile(), ".venv"), // Try 2 levels up
-            new File("C:\\AI\\comfyuidata\\.venv")
+            new File(new File(comfyRoot).getParentFile().getParentFile(), ".venv") // Try 2 levels up
         };
 
         for (File venv : venvLocations) {
@@ -507,7 +507,15 @@ public class ConfigService {
     }
 
     public String getArchivePath() { 
-        String path = settings.optString("archive_path", PathResolver.ARCHIVE_DIR);
+        String path = settings.optString("archive_path", "");
+        if (path.isEmpty()) {
+            String userHome = System.getProperty("user.home");
+            if (de.tki.comfymodels.util.PlatformUtils.isWindows()) {
+                return userHome + "\\ComfyUI-Archive";
+            } else {
+                return userHome + "/ComfyUI-Archive";
+            }
+        }
         Path modelsPath = Paths.get(getModelsPath());
         return pathResolver.resolveArchivePath(modelsPath, path).toString();
     }
@@ -536,7 +544,7 @@ public class ConfigService {
             } catch (Exception ignored) {}
         }
 
-        // Candidate 2: Sibling of the configured models directory (e.g. if models is C:\AI\comfyuidata\models, output could be C:\AI\comfyuidata\output)
+        // Candidate 2: Sibling of the configured models directory (e.g. if models is comfyuidata/models, output could be comfyuidata/output)
         String modelsPathStr = getModelsPath();
         if (modelsPathStr != null && !modelsPathStr.isEmpty()) {
             try {
@@ -623,7 +631,18 @@ public class ConfigService {
         return null;
     }
 
-    public String getComfyUIPath() { return settings.optString("comfyui_path", ""); }
+    public String getComfyUIPath() {
+        String path = settings.optString("comfyui_path", "");
+        if (path.isEmpty()) {
+            String userHome = System.getProperty("user.home");
+            if (de.tki.comfymodels.util.PlatformUtils.isWindows()) {
+                return userHome + "\\ComfyUI";
+            } else {
+                return userHome + "/ComfyUI";
+            }
+        }
+        return path;
+    }
     public void setComfyUIPath(String path) { 
         settings.put("comfyui_path", path); 
         pathResolver.setComfyUIRoot(path);
@@ -632,7 +651,13 @@ public class ConfigService {
         updateExtraModelPathsYaml();
     }
 
-    public String getPythonPath() { return settings.optString("python_path", ""); }
+    public String getPythonPath() {
+        String path = settings.optString("python_path", "");
+        if (path.isEmpty()) {
+            return discoverPython(getComfyUIPath());
+        }
+        return path;
+    }
     public void setPythonPath(String path) { settings.put("python_path", path); save(); }
 
     public String getComfyLaunchCommand() { return settings.optString("comfy_launch_command", ""); }

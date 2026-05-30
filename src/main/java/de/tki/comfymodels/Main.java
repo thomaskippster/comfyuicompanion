@@ -426,6 +426,119 @@ public class Main extends JFrame {
             gbc.insets = new Insets(10, 0, 10, 0);
             content.add(pf, gbc);
 
+            final JTextField finalField1;
+            final JTextField finalField2;
+            final JTextField finalField3;
+            final JTextField finalField4;
+            final JCheckBox finalSymlinkCheck;
+
+            if (!vaultExists) {
+                finalField1 = new JTextField(configService.getExtraComfyUIPath());
+                finalField2 = new JTextField(configService.getArchivePath());
+                finalField3 = new JTextField(configService.getComfyUIPath());
+                finalField4 = new JTextField(configService.getPythonPath());
+                finalSymlinkCheck = new JCheckBox("Use Symbolic Links on Restore (Saves SSD space)", configService.isUseSymlinksOnRestore());
+
+                // Extra ComfyUI Path
+                gbc.gridy++;
+                gbc.insets = new Insets(10, 0, 5, 0);
+                content.add(new JLabel("Extra ComfyUI Path (contains models, input, output):"), gbc);
+                
+                gbc.gridy++;
+                gbc.insets = new Insets(0, 0, 5, 0);
+                JPanel row1 = new JPanel(new BorderLayout(5, 0));
+                JButton browse1 = new JButton("Browse...");
+                browse1.addActionListener(e -> {
+                    JFileChooser chooser = new JFileChooser();
+                    chooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
+                    if (chooser.showOpenDialog(dialog) == JFileChooser.APPROVE_OPTION) {
+                        finalField1.setText(chooser.getSelectedFile().getAbsolutePath());
+                    }
+                });
+                row1.add(finalField1, BorderLayout.CENTER);
+                row1.add(browse1, BorderLayout.EAST);
+                content.add(row1, gbc);
+
+                // Archive Path
+                gbc.gridy++;
+                gbc.insets = new Insets(10, 0, 5, 0);
+                content.add(new JLabel("Archive Path (Offload storage):"), gbc);
+
+                gbc.gridy++;
+                gbc.insets = new Insets(0, 0, 5, 0);
+                JPanel row2 = new JPanel(new BorderLayout(5, 0));
+                JButton browse2 = new JButton("Browse...");
+                browse2.addActionListener(e -> {
+                    JFileChooser chooser = new JFileChooser();
+                    chooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
+                    if (chooser.showOpenDialog(dialog) == JFileChooser.APPROVE_OPTION) {
+                        finalField2.setText(chooser.getSelectedFile().getAbsolutePath());
+                    }
+                });
+                row2.add(finalField2, BorderLayout.CENTER);
+                row2.add(browse2, BorderLayout.EAST);
+                content.add(row2, gbc);
+
+                // ComfyUI Main Directory
+                gbc.gridy++;
+                gbc.insets = new Insets(10, 0, 5, 0);
+                content.add(new JLabel("ComfyUI Main Directory (contains main.py):"), gbc);
+
+                gbc.gridy++;
+                gbc.insets = new Insets(0, 0, 5, 0);
+                JPanel row3 = new JPanel(new BorderLayout(5, 0));
+                JButton browse3 = new JButton("Browse...");
+                row3.add(finalField3, BorderLayout.CENTER);
+                row3.add(browse3, BorderLayout.EAST);
+                content.add(row3, gbc);
+
+                // Python Executable Path
+                gbc.gridy++;
+                gbc.insets = new Insets(10, 0, 5, 0);
+                content.add(new JLabel("Python Executable Path:"), gbc);
+
+                gbc.gridy++;
+                gbc.insets = new Insets(0, 0, 5, 0);
+                JPanel row4 = new JPanel(new BorderLayout(5, 0));
+                JButton browse4 = new JButton("Browse...");
+                row4.add(finalField4, BorderLayout.CENTER);
+                row4.add(browse4, BorderLayout.EAST);
+                content.add(row4, gbc);
+
+                browse3.addActionListener(e -> {
+                    JFileChooser chooser = new JFileChooser();
+                    chooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
+                    if (chooser.showOpenDialog(dialog) == JFileChooser.APPROVE_OPTION) {
+                        String path = chooser.getSelectedFile().getAbsolutePath();
+                        finalField3.setText(path);
+                        
+                        String discoveredPython = configService.discoverPython(path);
+                        if (discoveredPython != null && !discoveredPython.equals("python") && !discoveredPython.equals("python3")) {
+                            finalField4.setText(discoveredPython);
+                        }
+                    }
+                });
+
+                browse4.addActionListener(e -> {
+                    JFileChooser chooser = new JFileChooser();
+                    chooser.setFileSelectionMode(JFileChooser.FILES_ONLY);
+                    if (chooser.showOpenDialog(dialog) == JFileChooser.APPROVE_OPTION) {
+                        finalField4.setText(chooser.getSelectedFile().getAbsolutePath());
+                    }
+                });
+
+                // Symlink checkbox
+                gbc.gridy++;
+                gbc.insets = new Insets(10, 0, 5, 0);
+                content.add(finalSymlinkCheck, gbc);
+            } else {
+                finalField1 = null;
+                finalField2 = null;
+                finalField3 = null;
+                finalField4 = null;
+                finalSymlinkCheck = null;
+            }
+
             JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
             JButton btnAction = new JButton(vaultExists ? "Unlock" : "Set Password");
             btnAction.putClientProperty("JButton.buttonType", "accent");
@@ -459,7 +572,12 @@ public class Main extends JFrame {
 
             dialog.add(content, BorderLayout.CENTER);
             dialog.add(buttonPanel, BorderLayout.SOUTH);
-            dialog.pack();
+            
+            if (vaultExists) {
+                dialog.pack();
+            } else {
+                dialog.setSize(600, 600);
+            }
             dialog.setLocationRelativeTo(null); 
             
             SwingUtilities.invokeLater(() -> pf.requestFocusInWindow());
@@ -485,6 +603,13 @@ public class Main extends JFrame {
 
             try {
                 configService.unlock(pass);
+                if (!vaultExists) {
+                    configService.setModelsPath(finalField1.getText().trim());
+                    configService.setArchivePath(finalField2.getText().trim());
+                    configService.setComfyUIPath(finalField3.getText().trim());
+                    configService.setPythonPath(finalField4.getText().trim());
+                    configService.setUseSymlinksOnRestore(finalSymlinkCheck.isSelected());
+                }
                 configService.autoDiscoverPaths();
                 restBridge.setApiToken(configService.getApiToken());
                 syncBridgeFiles();

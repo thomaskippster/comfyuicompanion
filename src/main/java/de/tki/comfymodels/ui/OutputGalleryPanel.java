@@ -138,7 +138,7 @@ public class OutputGalleryPanel extends JPanel {
                 .collect(Collectors.toList());
 
             if (files.isEmpty()) {
-                galleryPanel.add(new JLabel("No images or videos found in the output directory."));
+                galleryPanel.add(new JLabel("No images or videos found in output directory."));
             } else {
                 for (Path file : files) {
                     galleryPanel.add(createFileTile(file));
@@ -195,7 +195,7 @@ public class OutputGalleryPanel extends JPanel {
         try {
             Desktop.getDesktop().open(file.toFile());
         } catch (Exception ex) {
-            JOptionPane.showMessageDialog(this, "Could not open file in external viewer: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+            JOptionPane.showMessageDialog(this, "Failed to open file in external viewer: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
         }
     }
 }

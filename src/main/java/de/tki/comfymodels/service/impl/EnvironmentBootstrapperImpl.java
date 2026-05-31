@@ -50,7 +50,7 @@ public class EnvironmentBootstrapperImpl {
                             deleteDirectoryRecursively(targetDir);
                         }
                         if (pullSuccess) {
-                            progressCallback.accept("✅ ComfyUI erfolgreich aktualisiert.");
+                            progressCallback.accept("✅ ComfyUI successfully updated.");
                             return;
                         }
                     } else {
@@ -60,7 +60,7 @@ public class EnvironmentBootstrapperImpl {
                     }
                 }
 
-                progressCallback.accept("Starte Git Clone von ComfyUI...");
+                progressCallback.accept("Starting Git Clone of ComfyUI...");
                 Git.cloneRepository()
                         .setURI(COMFY_REPO_URL)
                         .setDirectory(targetDir.toFile())
@@ -71,9 +71,9 @@ public class EnvironmentBootstrapperImpl {
                         }))
                         .call()
                         .close();
-                progressCallback.accept("✅ Clone erfolgreich abgeschlossen.");
+                progressCallback.accept("✅ Clone successfully completed.");
             } catch (Exception e) {
-                throw new RuntimeException("Git Clone fehlgeschlagen: " + e.getMessage(), e);
+                throw new RuntimeException("Git clone failed: " + e.getMessage(), e);
             }
         });
     }
@@ -98,18 +98,18 @@ public class EnvironmentBootstrapperImpl {
         return CompletableFuture.runAsync(() -> {
             try {
                 Files.createDirectories(targetDir);
-                progressCallback.accept("📥 Lade portables Python herunter...");
+                progressCallback.accept("📥 Downloading portable Python...");
                 
                 HttpRequest request = HttpRequest.newBuilder().uri(URI.create(pythonUrl)).GET().build();
                 httpClient.send(request, HttpResponse.BodyHandlers.ofFile(zipFile));
                 
-                progressCallback.accept("📦 Entpacke Python-Umgebung...");
+                progressCallback.accept("📦 Extracting Python environment...");
                 extractZip(zipFile, extractDir);
                 
                 Files.deleteIfExists(zipFile);
-                progressCallback.accept("✅ Portables Python bereitgestellt.");
+                progressCallback.accept("✅ Portable Python set up.");
             } catch (Exception e) {
-                throw new RuntimeException("Fehler beim Setup von Python: " + e.getMessage(), e);
+                throw new RuntimeException("Error setting up Python: " + e.getMessage(), e);
             }
         }).thenApply(v -> extractDir.resolve("python.exe"));
     }
@@ -120,7 +120,7 @@ public class EnvironmentBootstrapperImpl {
     public CompletableFuture<Void> installPip(Path pythonExe, Consumer<String> progressCallback) {
         return CompletableFuture.runAsync(() -> {
             try {
-                progressCallback.accept("📦 Bereite pip-Installation vor...");
+                progressCallback.accept("📦 Preparing pip installation...");
                 
                 // 1. ._pth Datei anpassen, um site-packages zu aktivieren
                 Path pthFile = pythonExe.getParent().resolve("python311._pth");
@@ -129,29 +129,29 @@ public class EnvironmentBootstrapperImpl {
                     if (content.contains("#import site")) {
                         content = content.replace("#import site", "import site");
                         Files.writeString(pthFile, content);
-                        progressCallback.accept("🔧 site-packages aktiviert.");
+                        progressCallback.accept("🔧 site-packages enabled.");
                     }
                 }
 
                 // 2. get-pip.py herunterladen
                 Path getPipScript = pythonExe.getParent().resolve("get-pip.py");
-                progressCallback.accept("📥 Lade get-pip.py herunter...");
+                progressCallback.accept("📥 Downloading get-pip.py...");
                 HttpRequest request = HttpRequest.newBuilder()
                         .uri(URI.create("https://bootstrap.pypa.io/get-pip.py"))
                         .GET().build();
                 httpClient.send(request, HttpResponse.BodyHandlers.ofFile(getPipScript));
 
                 // 3. get-pip.py ausführen
-                progressCallback.accept("⚙️ Installiere pip (dies kann einen Moment dauern)...");
+                progressCallback.accept("⚙️ Installing pip (this may take a moment)...");
                 ProcessBuilder pb = new ProcessBuilder(pythonExe.toString(), getPipScript.toString());
                 pb.directory(pythonExe.getParent().toFile());
                 Process p = pb.start();
                 p.waitFor();
                 
                 Files.deleteIfExists(getPipScript);
-                progressCallback.accept("✅ pip erfolgreich installiert.");
+                progressCallback.accept("✅ pip successfully installed.");
             } catch (Exception e) {
-                throw new RuntimeException("Fehler bei der pip-Installation: " + e.getMessage(), e);
+                throw new RuntimeException("Error during pip installation: " + e.getMessage(), e);
             }
         });
     }
@@ -196,108 +196,108 @@ public class EnvironmentBootstrapperImpl {
                             cudaVersion = "cu121";
                             cudaLogName = "CUDA 12.1 (Standard)";
                         } else {
-                            progressCallback.accept("🔍 NVIDIA-GPU erkannt, aber die Compute Capability (" + maxComputeCap + ") wird von modernem PyTorch CUDA nicht unterstützt (erfordert >= 5.0). Verwende Standard-Installation.");
+                            progressCallback.accept("🔍 NVIDIA GPU detected, but Compute Capability (" + maxComputeCap + ") is not supported by modern PyTorch CUDA (requires >= 5.0). Using default installation.");
                             hasNvidia = false;
                             cudaVersion = "";
                             cudaLogName = "";
                         }
 
-                        progressCallback.accept("🔍 NVIDIA-GPU erkannt (" + cudaLogName + "). Bereite PyTorch-Installation vor...");
+                        progressCallback.accept("🔍 NVIDIA GPU detected (" + cudaLogName + "). Preparing PyTorch installation...");
                         
-                        progressCallback.accept("🗑️ Deinstalliere alte PyTorch-Pakete (torch, torchvision, torchaudio), um Konflikte zu vermeiden...");
+                        progressCallback.accept("🗑️ Uninstalling old PyTorch packages (torch, torchvision, torchaudio) to avoid conflicts...");
                         runPipCommand(pythonExe, comfyDir, progressCallback, "uninstall", "torch", "torchvision", "torchaudio", "-y");
                         
-                        progressCallback.accept("📥 Installiere PyTorch mit " + cudaLogName + "-Support (dies kann einige Minuten dauern)...");
+                        progressCallback.accept("📥 Installing PyTorch with " + cudaLogName + " support (this may take a few minutes)...");
                         int exitCode = runPipCommand(pythonExe, comfyDir, progressCallback, 
                             "install", "torch", "torchvision", "torchaudio", 
                             "--index-url", "https://download.pytorch.org/whl/" + cudaVersion, 
                             "--no-warn-script-location"
                         );
                         if (exitCode == 0) {
-                            progressCallback.accept("✅ PyTorch mit " + cudaLogName + " erfolgreich installiert.");
+                            progressCallback.accept("✅ PyTorch with " + cudaLogName + " successfully installed.");
                         } else {
-                            progressCallback.accept("⚠️ PyTorch-CUDA-Installation beendet mit Code " + exitCode + ". Standard-Installation wird versucht.");
+                            progressCallback.accept("⚠️ PyTorch CUDA installation finished with code " + exitCode + ". Trying default installation.");
                         }
                     } else {
-                        progressCallback.accept("🔍 Keine NVIDIA-GPU erkannt oder nvidia-smi nicht verfügbar. Verwende Standard-Installation.");
+                        progressCallback.accept("🔍 No NVIDIA GPU detected or nvidia-smi not available. Using default installation.");
                     }
                 }
 
                 // 2. Core-Abhängigkeiten installieren
                 Path reqFile = comfyDir.resolve("requirements.txt");
                 if (Files.exists(reqFile)) {
-                    progressCallback.accept("🚀 Installiere ComfyUI-Abhängigkeiten (pip install -r requirements.txt)...");
+                    progressCallback.accept("🚀 Installing ComfyUI dependencies (pip install -r requirements.txt)...");
                     int exitCode = runPipCommand(pythonExe, comfyDir, progressCallback, "install", "-r", "requirements.txt", "--no-warn-script-location");
                     if (exitCode == 0) {
-                        progressCallback.accept("✅ ComfyUI-Abhängigkeiten erfolgreich installiert.");
+                        progressCallback.accept("✅ ComfyUI dependencies successfully installed.");
                     } else {
-                        progressCallback.accept("⚠️ pip beendet mit Code " + exitCode + " bei requirements.txt.");
+                        progressCallback.accept("⚠️ pip finished with code " + exitCode + " on requirements.txt.");
                     }
                 } else {
-                    progressCallback.accept("⚠️ Keine requirements.txt gefunden.");
+                    progressCallback.accept("⚠️ No requirements.txt found.");
                 }
 
                 // 3. ComfyUI-Manager-Abhängigkeiten installieren (falls vorhanden)
                 Path managerReq = comfyDir.resolve("manager_requirements.txt");
                 if (Files.exists(managerReq)) {
-                    progressCallback.accept("🚀 Installiere ComfyUI-Manager Abhängigkeiten (pip install -r manager_requirements.txt)...");
+                    progressCallback.accept("🚀 Installing ComfyUI-Manager dependencies (pip install -r manager_requirements.txt)...");
                     int exitCode = runPipCommand(pythonExe, comfyDir, progressCallback, "install", "-r", "manager_requirements.txt", "--no-warn-script-location");
                     if (exitCode == 0) {
-                        progressCallback.accept("✅ ComfyUI-Manager Abhängigkeiten erfolgreich installiert.");
+                        progressCallback.accept("✅ ComfyUI-Manager dependencies successfully installed.");
                     } else {
-                        progressCallback.accept("⚠️ pip beendet mit Code " + exitCode + " bei manager_requirements.txt.");
+                        progressCallback.accept("⚠️ pip finished with code " + exitCode + " on manager_requirements.txt.");
                     }
                 }
 
                 // 4. Custom_nodes ComfyUI-Manager Abhängigkeiten installieren (falls vorhanden)
                 Path customManagerReq = comfyDir.resolve("custom_nodes").resolve("ComfyUI-Manager").resolve("requirements.txt");
                 if (Files.exists(customManagerReq)) {
-                    progressCallback.accept("🚀 Installiere custom_nodes/ComfyUI-Manager Abhängigkeiten (pip install -r ...)...");
+                    progressCallback.accept("🚀 Installing custom_nodes/ComfyUI-Manager dependencies (pip install -r ...)...");
                     int exitCode = runPipCommand(pythonExe, customManagerReq.getParent(), progressCallback, "install", "-r", "requirements.txt", "--no-warn-script-location");
                     if (exitCode == 0) {
-                        progressCallback.accept("✅ custom_nodes/ComfyUI-Manager Abhängigkeiten erfolgreich installiert.");
+                        progressCallback.accept("✅ custom_nodes/ComfyUI-Manager dependencies successfully installed.");
                     } else {
-                        progressCallback.accept("⚠️ pip beendet mit Code " + exitCode + " bei custom_nodes/ComfyUI-Manager/requirements.txt.");
+                        progressCallback.accept("⚠️ pip finished with code " + exitCode + " on custom_nodes/ComfyUI-Manager/requirements.txt.");
                     }
                 }
 
                 // 5. WSL-Abhängigkeiten installieren, falls WSL auf dem System vorhanden ist
                 if (isWslAvailable()) {
-                    progressCallback.accept("🚀 WSL-Unterstützung auf dem System erkannt. Richte WSL-Python-Umgebung ein...");
+                    progressCallback.accept("🚀 WSL support detected on system. Setting up WSL Python environment...");
                     
                     if (Files.exists(reqFile)) {
-                        progressCallback.accept("🚀 Installiere ComfyUI-Abhängigkeiten in WSL (wsl python3 -m pip install -r requirements.txt --break-system-packages)...");
+                        progressCallback.accept("🚀 Installing ComfyUI dependencies in WSL (wsl python3 -m pip install -r requirements.txt --break-system-packages)...");
                         int exitCode = runWslPipCommand(comfyDir, progressCallback, "install", "-r", "requirements.txt", "--break-system-packages");
                         if (exitCode == 0) {
-                            progressCallback.accept("✅ ComfyUI-Abhängigkeiten in WSL erfolgreich installiert.");
+                            progressCallback.accept("✅ ComfyUI dependencies in WSL successfully installed.");
                         } else {
-                            progressCallback.accept("⚠️ WSL pip beendet mit Code " + exitCode + " bei requirements.txt.");
+                            progressCallback.accept("⚠️ WSL pip finished with code " + exitCode + " on requirements.txt.");
                         }
                     }
 
                     if (Files.exists(managerReq)) {
-                        progressCallback.accept("🚀 Installiere ComfyUI-Manager Abhängigkeiten in WSL...");
+                        progressCallback.accept("🚀 Installing ComfyUI-Manager dependencies in WSL...");
                         int exitCode = runWslPipCommand(comfyDir, progressCallback, "install", "-r", "manager_requirements.txt", "--break-system-packages");
                         if (exitCode == 0) {
-                            progressCallback.accept("✅ ComfyUI-Manager Abhängigkeiten in WSL erfolgreich installiert.");
+                            progressCallback.accept("✅ ComfyUI-Manager dependencies in WSL successfully installed.");
                         } else {
-                            progressCallback.accept("⚠️ WSL pip beendet mit Code " + exitCode + " bei manager_requirements.txt.");
+                            progressCallback.accept("⚠️ WSL pip finished with code " + exitCode + " on manager_requirements.txt.");
                         }
                     }
 
                     if (Files.exists(customManagerReq)) {
-                        progressCallback.accept("🚀 Installiere custom_nodes/ComfyUI-Manager Abhängigkeiten in WSL...");
+                        progressCallback.accept("🚀 Installing custom_nodes/ComfyUI-Manager dependencies in WSL...");
                         int exitCode = runWslPipCommand(customManagerReq.getParent(), progressCallback, "install", "-r", "requirements.txt", "--break-system-packages");
                         if (exitCode == 0) {
-                            progressCallback.accept("✅ custom_nodes/ComfyUI-Manager Abhängigkeiten in WSL erfolgreich installiert.");
+                            progressCallback.accept("✅ custom_nodes/ComfyUI-Manager dependencies in WSL successfully installed.");
                         } else {
-                            progressCallback.accept("⚠️ WSL pip beendet mit Code " + exitCode + " bei custom_nodes/ComfyUI-Manager/requirements.txt.");
+                            progressCallback.accept("⚠️ WSL pip finished with code " + exitCode + " on custom_nodes/ComfyUI-Manager/requirements.txt.");
                         }
                     }
                 }
 
             } catch (Exception e) {
-                throw new RuntimeException("Fehler bei der Installation der Abhängigkeiten: " + e.getMessage(), e);
+                throw new RuntimeException("Error installing dependencies: " + e.getMessage(), e);
             }
         });
     }
@@ -339,7 +339,7 @@ public class EnvironmentBootstrapperImpl {
             }
             return p.waitFor();
         } catch (Exception e) {
-            progressCallback.accept("❌ Fehler beim Ausführen des WSL pip-Befehls: " + e.getMessage());
+            progressCallback.accept("❌ Error running WSL pip command: " + e.getMessage());
             return -1;
         }
     }
@@ -370,7 +370,7 @@ public class EnvironmentBootstrapperImpl {
             }
             return p.waitFor();
         } catch (Exception e) {
-            progressCallback.accept("❌ Fehler beim Ausführen des pip-Befehls: " + e.getMessage());
+            progressCallback.accept("❌ Error running pip command: " + e.getMessage());
             return -1;
         }
     }

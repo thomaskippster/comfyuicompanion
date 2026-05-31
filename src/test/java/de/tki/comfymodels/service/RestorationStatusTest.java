@@ -42,9 +42,23 @@ public class RestorationStatusTest {
         System.setProperty("comfyuicompanion.appdata", tempAppDataDir.toString());
 
         PathResolver pathResolver = new PathResolver();
-        configService = new ConfigService(new EncryptionUtils(), pathResolver);
-        configService.setModelsPath(tempModelsDir.toString());
-        configService.setArchivePath(tempArchiveDir.toString());
+        pathResolver.clearExtraModelPaths();
+
+        configService = new ConfigService(null, pathResolver) {
+            private String modelsPath = tempModelsDir.toString();
+            private String archivePath = tempArchiveDir.toString();
+            private String comfyuiPath = tempModelsDir.toString();
+            private boolean useSymlinks = false;
+
+            @Override public String getModelsPath() { return modelsPath; }
+            @Override public void setModelsPath(String p) { this.modelsPath = p; }
+            @Override public String getArchivePath() { return archivePath; }
+            @Override public void setArchivePath(String p) { this.archivePath = p; }
+            @Override public String getComfyUIPath() { return comfyuiPath; }
+            @Override public void setComfyUIPath(String p) { this.comfyuiPath = p; }
+            @Override public boolean isUseSymlinksOnRestore() { return useSymlinks; }
+            @Override public void setUseSymlinksOnRestore(boolean b) { this.useSymlinks = b; }
+        };
 
         archiveService = new ArchiveService(configService, pathResolver);
     }

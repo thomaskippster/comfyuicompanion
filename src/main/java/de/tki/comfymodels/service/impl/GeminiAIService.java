@@ -36,10 +36,11 @@ public class GeminiAIService {
     }
 
     private static final List<String> MODEL_PRIORITY = Arrays.asList(
-            "gemini-3.1-pro-preview", "gemini-3-flash-preview", "gemini-3.1-flash-lite-preview",
-            "gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.5-flash-lite",
-            "gemini-1.5-pro", "gemini-1.5-flash"
+            "gemini-2.5-flash-lite", "gemini-1.5-flash-8b", "gemini-3.1-flash-lite-preview",
+            "gemini-1.5-flash", "gemini-2.5-flash", "gemini-3-flash-preview",
+            "gemini-2.5-pro", "gemini-1.5-pro", "gemini-3.1-pro-preview"
     );
+
 
     public String discoverBestModel() {
         String apiKey = configService.getGeminiApiKey();
@@ -169,11 +170,11 @@ public class GeminiAIService {
                     return java.util.Base64.getDecoder().decode(dataBase64);
                 }
             }
-            throw new IOException("Kein Bild in der API-Antwort gefunden.\nAntwort: " + response.body());
+            throw new IOException("No image found in API response.\nResponse: " + response.body());
         } else if (statusCode == 429) {
-            throw new IOException("Ratenbegrenzung überschritten (Resource Exhausted - HTTP 429).\n\n"
-                    + "Bei kostenlosen Gemini API Keys (insbesondere für Imagen 3 Modelle wie imagen-3.0-generate-002) gelten sehr strenge Ratenbegrenzungen (oft nur 1-2 Bilder pro Minute).\n\n"
-                    + "Bitte warte 1-2 Minuten und versuche es dann erneut.");
+            throw new IOException("Rate limit exceeded (Resource Exhausted - HTTP 429).\n\n"
+                    + "For free Gemini API keys (especially for Imagen 3 models like imagen-3.0-generate-002), very strict rate limits apply (often only 1-2 images per minute).\n\n"
+                    + "Please wait 1-2 minutes and try again.");
         } else {
             String errorMsg = response.body();
             try {
@@ -190,6 +191,63 @@ public class GeminiAIService {
                 }
             } catch (Exception ignored) {}
             throw new IOException("Gemini API Error (status " + statusCode + "): " + errorMsg);
+        }
+    }
+
+    public String optimizePrompt(String rawPrompt) throws IOException {
+        String apiKey = configService.getGeminiApiKey();
+        if (apiKey == null || apiKey.trim().isEmpty()) {
+            throw new IOException("Gemini API key is not configured.");
+        }
+
+        try {
+            String systemInstruction = "You are an expert prompt engineer for text-to-image models (like Stable Diffusion / ComfyUI). "
+                    + "Your task is to optimize a simple prompt into a detailed, high-quality English image generation prompt. "
+                    + "Add suitable details about subject, environment, lighting, style, and quality (in English). "
+                    + "Respond ONLY with the optimized prompt text. Do not use explanations, annotations, or quotes.";
+
+            String promptText = systemInstruction + "\n\nOriginal prompt: " + rawPrompt + "\n\nOptimized prompt:";
+
+            JSONObject payload = new JSONObject();
+            JSONArray contents = new JSONArray();
+            contents.put(new JSONObject().put("role", "user")
+                    .put("parts", new JSONArray().put(new JSONObject().put("text", promptText))));
+            payload.put("contents", contents);
+
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(getApiBaseUrl() + "/v1beta/models/" + activeModel + ":generateContent?key=" + apiKey))
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(payload.toString()))
+                    .build();
+
+            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            int statusCode = response.statusCode();
+            if (statusCode == 200) {
+                String result = new JSONObject(response.body()).getJSONArray("candidates")
+                        .getJSONObject(0).getJSONObject("content").getJSONArray("parts")
+                        .getJSONObject(0).getString("text").trim();
+                return result;
+            } else {
+                String errorMsg = response.body();
+                try {
+                    JSONObject errObj = new JSONObject(errorMsg);
+                    if (errObj.has("error")) {
+                        JSONObject innerErr = errObj.getJSONObject("error");
+                        String msg = innerErr.optString("message");
+                        String status = innerErr.optString("status");
+                        if (status != null && !status.isEmpty()) {
+                            errorMsg = status + ": " + msg;
+                        } else if (msg != null && !msg.isEmpty()) {
+                            errorMsg = msg;
+                        }
+                    }
+                } catch (Exception ignored) {}
+                throw new IOException("Gemini API Error (status " + statusCode + "): " + errorMsg);
+            }
+        } catch (IOException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new IOException("Error communicating with Gemini API: " + e.getMessage(), e);
         }
     }
 }

@@ -36,7 +36,7 @@ workflow.json
 !pom.xml
 !src/**
 *.png
-!icon.png
+!assets/**
 env/
 *.bat
 *.zip

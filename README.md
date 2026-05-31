@@ -1,5 +1,12 @@
 # ComfyUI Companion 🚀
+
+<p align="center">
+  <img src="assets/icon.png" width="128" height="128" alt="ComfyUI Companion Icon" />
+</p>
+
 > **Automate your model management and keep your creative flow uninterrupted.**
+
+![ComfyUI Companion Dashboard](assets/screenshot1.png)
 
 ComfyUI Companion is a local companion app designed to eliminate the manual frustration of managing model files for ComfyUI. Instead of hunting down models, downloading them to temporary folders, and manually moving them to `custom_nodes`, `checkpoints`, `loras`, or `vae` folders, ComfyUI Companion automates the entire process. 
 

@@ -1,7 +1,7 @@
 module.exports = {
   title: "ComfyUI Companion",
   description: "Identify and download missing models for ComfyUI workflows automatically.",
-  icon: "icon.png",
+  icon: "assets/icon.png",
   menu: async (kernel) => {
     let installed = await kernel.exists("target/comfyuicompanion.jar")
     let results = [

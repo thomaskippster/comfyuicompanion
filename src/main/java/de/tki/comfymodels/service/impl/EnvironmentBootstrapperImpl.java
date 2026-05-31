@@ -261,10 +261,87 @@ public class EnvironmentBootstrapperImpl {
                     }
                 }
 
+                // 5. WSL-Abhängigkeiten installieren, falls WSL auf dem System vorhanden ist
+                if (isWslAvailable()) {
+                    progressCallback.accept("🚀 WSL-Unterstützung auf dem System erkannt. Richte WSL-Python-Umgebung ein...");
+                    
+                    if (Files.exists(reqFile)) {
+                        progressCallback.accept("🚀 Installiere ComfyUI-Abhängigkeiten in WSL (wsl python3 -m pip install -r requirements.txt --break-system-packages)...");
+                        int exitCode = runWslPipCommand(comfyDir, progressCallback, "install", "-r", "requirements.txt", "--break-system-packages");
+                        if (exitCode == 0) {
+                            progressCallback.accept("✅ ComfyUI-Abhängigkeiten in WSL erfolgreich installiert.");
+                        } else {
+                            progressCallback.accept("⚠️ WSL pip beendet mit Code " + exitCode + " bei requirements.txt.");
+                        }
+                    }
+
+                    if (Files.exists(managerReq)) {
+                        progressCallback.accept("🚀 Installiere ComfyUI-Manager Abhängigkeiten in WSL...");
+                        int exitCode = runWslPipCommand(comfyDir, progressCallback, "install", "-r", "manager_requirements.txt", "--break-system-packages");
+                        if (exitCode == 0) {
+                            progressCallback.accept("✅ ComfyUI-Manager Abhängigkeiten in WSL erfolgreich installiert.");
+                        } else {
+                            progressCallback.accept("⚠️ WSL pip beendet mit Code " + exitCode + " bei manager_requirements.txt.");
+                        }
+                    }
+
+                    if (Files.exists(customManagerReq)) {
+                        progressCallback.accept("🚀 Installiere custom_nodes/ComfyUI-Manager Abhängigkeiten in WSL...");
+                        int exitCode = runWslPipCommand(customManagerReq.getParent(), progressCallback, "install", "-r", "requirements.txt", "--break-system-packages");
+                        if (exitCode == 0) {
+                            progressCallback.accept("✅ custom_nodes/ComfyUI-Manager Abhängigkeiten in WSL erfolgreich installiert.");
+                        } else {
+                            progressCallback.accept("⚠️ WSL pip beendet mit Code " + exitCode + " bei custom_nodes/ComfyUI-Manager/requirements.txt.");
+                        }
+                    }
+                }
+
             } catch (Exception e) {
                 throw new RuntimeException("Fehler bei der Installation der Abhängigkeiten: " + e.getMessage(), e);
             }
         });
+    }
+
+    private boolean isWslAvailable() {
+        try {
+            Process p = new ProcessBuilder("wsl", "echo", "1").start();
+            boolean finished = p.waitFor(5, java.util.concurrent.TimeUnit.SECONDS);
+            return finished && p.exitValue() == 0;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private int runWslPipCommand(Path workingDir, Consumer<String> progressCallback, String... args) {
+        try {
+            java.util.List<String> command = new java.util.ArrayList<>();
+            command.add("wsl");
+            command.add("python3");
+            command.add("-m");
+            command.add("pip");
+            for (String arg : args) {
+                command.add(arg);
+            }
+            
+            ProcessBuilder pb = new ProcessBuilder(command);
+            if (workingDir != null) {
+                pb.directory(workingDir.toFile());
+            }
+            pb.redirectErrorStream(true);
+            
+            Process p = pb.start();
+            try (java.io.BufferedReader reader = new java.io.BufferedReader(
+                    new java.io.InputStreamReader(p.getInputStream(), java.nio.charset.StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    progressCallback.accept("[wsl-pip] " + line);
+                }
+            }
+            return p.waitFor();
+        } catch (Exception e) {
+            progressCallback.accept("❌ Fehler beim Ausführen des WSL pip-Befehls: " + e.getMessage());
+            return -1;
+        }
     }
 
     private int runPipCommand(Path pythonExe, Path workingDir, Consumer<String> progressCallback, String... args) {

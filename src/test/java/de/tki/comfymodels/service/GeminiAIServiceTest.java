@@ -139,7 +139,7 @@ public class GeminiAIServiceTest {
         Exception exception = assertThrows(IOException.class, () -> {
             geminiService.generateImage("test", null, null, -1);
         });
-        assertTrue(exception.getMessage().contains("Ratenbegrenzung überschritten"));
+        assertTrue(exception.getMessage().contains("Rate limit exceeded"));
         assertTrue(exception.getMessage().contains("HTTP 429"));
     }
 
@@ -153,5 +153,63 @@ public class GeminiAIServiceTest {
             geminiService.generateImage("test", null, null, -1);
         });
         assertEquals("Gemini API Key is not set.", exception.getMessage());
+    }
+
+    @Test
+    void testOptimizePrompt_Success() throws Exception {
+        // GIVEN
+        String rawPrompt = "cybernetic tiger";
+        String expectedOptimized = "A majestic cybernetic tiger with neon-lit circuitry glowing in a cyberpunk laboratory.";
+
+        String jsonResponse = new JSONObject()
+                .put("candidates", new org.json.JSONArray().put(
+                        new JSONObject().put("content", new JSONObject().put("parts", new org.json.JSONArray().put(
+                                new JSONObject().put("text", expectedOptimized)
+                        )))
+                )).toString();
+
+        stubFor(post(urlEqualTo("/v1beta/models/gemini-1.5-flash:generateContent?key=mock-key"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody(jsonResponse)));
+
+        // WHEN
+        String result = geminiService.optimizePrompt(rawPrompt);
+
+        // THEN
+        assertEquals(expectedOptimized, result);
+
+        // Verify request payload contains rawPrompt
+        verify(postRequestedFor(urlEqualTo("/v1beta/models/gemini-1.5-flash:generateContent?key=mock-key"))
+                .withRequestBody(matchingJsonPath("$.contents[0].parts[0].text", containing(rawPrompt)))
+        );
+    }
+
+    @Test
+    void testOptimizePrompt_ApiError() {
+        // GIVEN
+        stubFor(post(urlEqualTo("/v1beta/models/gemini-1.5-flash:generateContent?key=mock-key"))
+                .willReturn(aResponse()
+                        .withStatus(400)
+                        .withBody("Invalid Request")));
+
+        // WHEN & THEN
+        Exception exception = assertThrows(IOException.class, () -> {
+            geminiService.optimizePrompt("test");
+        });
+        assertTrue(exception.getMessage().contains("Gemini API Error (status 400)"));
+    }
+
+    @Test
+    void testOptimizePrompt_MissingApiKey() {
+        // GIVEN
+        configService.setGeminiApiKey("");
+
+        // WHEN & THEN
+        Exception exception = assertThrows(IOException.class, () -> {
+            geminiService.optimizePrompt("test");
+        });
+        assertEquals("Gemini API key is not configured.", exception.getMessage());
     }
 }

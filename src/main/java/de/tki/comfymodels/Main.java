@@ -133,6 +133,41 @@ public class Main extends JFrame {
     private JPanel resultsContainer;
     private JProgressBar generatorProgressBar;
     private JButton btnGenerateImage;
+
+    // Prompt Lab Fields
+    private static class DropdownItem {
+        private final String display;
+        private final String value;
+        public DropdownItem(String display, String value) {
+            this.display = display;
+            this.value = value;
+        }
+        @Override
+        public String toString() {
+            return display;
+        }
+        public String getValue() {
+            return value;
+        }
+    }
+    private JTextField promptSubjectField;
+    private JComboBox<DropdownItem> promptEnvCombo;
+    private JComboBox<String> promptModelCombo;
+    private JSpinner promptWidthSpinner;
+    private JSpinner promptHeightSpinner;
+
+    private JCheckBox chkPhotorealistic;
+    private JCheckBox chkOil;
+    private JCheckBox chkEngine;
+    private JCheckBox chkAnime;
+    private JCheckBox chkFantasy;
+    private JCheckBox chkSketch;
+    private JTextArea promptAssembleArea;
+    private JTextArea promptJsonArea;
+    private JTextArea promptLabConsole;
+    private JButton btnSendToComfy;
+    private JButton btnOptimizePrompt;
+
     private JButton btnClearImage;
 
     public Main(IModelAnalyzer analyzer, IDownloadManager downloadManager,
@@ -787,10 +822,11 @@ public class Main extends JFrame {
         // TAB 2: MODEL MANAGER
         mainTabs.addTab("📥 Model Manager", createManagerPanel(mainTabs));
 
-
+        // TAB 3: PROMPT LAB
+        mainTabs.addTab("🔬 Prompt Lab", createPromptLabPanel());
 
         // TAB 4: GALLERY
-        mainTabs.addTab("🖼️ Output Gallery", new de.tki.comfymodels.ui.OutputGalleryPanel(configService));
+        mainTabs.addTab("🖼️ Gallery", new de.tki.comfymodels.ui.OutputGalleryPanel(configService));
 
         // TAB 5: SETTINGS
         mainTabs.addTab("⚙️ Settings", createSettingsPanel());
@@ -853,7 +889,7 @@ public class Main extends JFrame {
                         }
                     }
                     if (settingsIndex != -1) {
-                        mainTabs.insertTab("🎨 Gemini Generator", null, geminiGeneratorPanel, "Bilder mit Gemini 3 über Gemini erzeugen", settingsIndex);
+                        mainTabs.insertTab("🎨 Gemini Generator", null, geminiGeneratorPanel, "Generate images with Gemini 3 via Gemini", settingsIndex);
                     } else {
                         mainTabs.addTab("🎨 Gemini Generator", geminiGeneratorPanel);
                     }
@@ -894,7 +930,7 @@ public class Main extends JFrame {
         controlsPanel.add(titleLabel);
         controlsPanel.add(Box.createVerticalStrut(15));
 
-        JLabel lblPrompt = new JLabel("Prompt (Bildbeschreibung):");
+        JLabel lblPrompt = new JLabel("Prompt (Image description):");
         lblPrompt.putClientProperty("FlatLaf.styleClass", "h4");
         lblPrompt.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
         controlsPanel.add(lblPrompt);
@@ -904,13 +940,13 @@ public class Main extends JFrame {
         promptArea.setLineWrap(true);
         promptArea.setWrapStyleWord(true);
         promptArea.setFont(new Font("SansSerif", Font.PLAIN, 14));
-        promptArea.setToolTipText("Beschreibe das Bild, das du generieren möchtest.");
+        promptArea.setToolTipText("Describe the image you want to generate.");
         JScrollPane promptScroll = new JScrollPane(promptArea);
         promptScroll.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
         controlsPanel.add(promptScroll);
         controlsPanel.add(Box.createVerticalStrut(15));
 
-        JLabel lblInputImage = new JLabel("Referenzbild (Optional - Image-to-Image):");
+        JLabel lblInputImage = new JLabel("Reference Image (Optional - Image-to-Image):");
         lblInputImage.putClientProperty("FlatLaf.styleClass", "h4");
         lblInputImage.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
         controlsPanel.add(lblInputImage);
@@ -918,8 +954,8 @@ public class Main extends JFrame {
 
         JPanel imgButtonsPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
         imgButtonsPanel.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
-        JButton btnSelectImage = new JButton("📁 Bild auswählen...");
-        btnClearImage = new JButton("❌ Entfernen");
+        JButton btnSelectImage = new JButton("📁 Select Image...");
+        btnClearImage = new JButton("❌ Remove");
         btnClearImage.setEnabled(false);
 
         imgButtonsPanel.add(btnSelectImage);
@@ -928,7 +964,7 @@ public class Main extends JFrame {
         controlsPanel.add(imgButtonsPanel);
         controlsPanel.add(Box.createVerticalStrut(10));
 
-        selectedImageFileLabel = new JLabel("Kein Bild ausgewählt");
+        selectedImageFileLabel = new JLabel("No image selected");
         selectedImageFileLabel.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
         selectedImageFileLabel.setFont(new Font("SansSerif", Font.ITALIC, 12));
         controlsPanel.add(selectedImageFileLabel);
@@ -942,11 +978,11 @@ public class Main extends JFrame {
         inputImagePreviewLabel.setMaximumSize(new Dimension(150, 150));
         inputImagePreviewLabel.setHorizontalAlignment(SwingConstants.CENTER);
         inputImagePreviewLabel.setVerticalAlignment(SwingConstants.CENTER);
-        inputImagePreviewLabel.setText("Vorschau");
+        inputImagePreviewLabel.setText("Preview");
         controlsPanel.add(inputImagePreviewLabel);
         controlsPanel.add(Box.createVerticalStrut(20));
 
-        btnGenerateImage = new JButton("🚀 Bild erzeugen");
+        btnGenerateImage = new JButton("🚀 Generate Image");
         btnGenerateImage.setFont(new Font("SansSerif", Font.BOLD, 14));
         btnGenerateImage.putClientProperty("Button.background", new Color(255, 204, 0));
         btnGenerateImage.putClientProperty("Button.foreground", Color.BLACK);
@@ -983,7 +1019,7 @@ public class Main extends JFrame {
                     inputImagePreviewLabel.setText("");
                     btnClearImage.setEnabled(true);
                 } catch (Exception ex) {
-                    JOptionPane.showMessageDialog(this, "Fehler beim Laden des Bildes: " + ex.getMessage(), "Fehler", JOptionPane.ERROR_MESSAGE);
+                    JOptionPane.showMessageDialog(this, "Error loading image: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
                 }
             }
         });
@@ -991,9 +1027,9 @@ public class Main extends JFrame {
         btnClearImage.addActionListener(e -> {
             selectedImageBytes = null;
             selectedImageMimeType = null;
-            selectedImageFileLabel.setText("Kein Bild ausgewählt");
+            selectedImageFileLabel.setText("No image selected");
             inputImagePreviewLabel.setIcon(null);
-            inputImagePreviewLabel.setText("Vorschau");
+            inputImagePreviewLabel.setText("Preview");
             btnClearImage.setEnabled(false);
         });
 
@@ -1019,7 +1055,7 @@ public class Main extends JFrame {
     private void startImageGeneration() {
         String prompt = promptArea.getText().trim();
         if (prompt.isEmpty()) {
-            JOptionPane.showMessageDialog(this, "Bitte gib einen Prompt ein.", "Eingabe fehlt", JOptionPane.WARNING_MESSAGE);
+            JOptionPane.showMessageDialog(this, "Please enter a prompt.", "Input missing", JOptionPane.WARNING_MESSAGE);
             return;
         }
 
@@ -1027,7 +1063,7 @@ public class Main extends JFrame {
         btnClearImage.setEnabled(false);
         promptArea.setEnabled(false);
         generatorProgressBar.setValue(0);
-        generatorProgressBar.setString("Starte Generierung...");
+        generatorProgressBar.setString("Starting generation...");
         generatorProgressBar.setVisible(true);
 
         resultsContainer.removeAll();
@@ -1052,7 +1088,7 @@ public class Main extends JFrame {
                     placeholderCard.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
                     placeholderCard.setPreferredSize(new Dimension(250, 320));
                     
-                    JLabel loadingLbl = new JLabel("Generiere Bild " + (index + 1) + " (Seed: " + seed + ")...", SwingConstants.CENTER);
+                    JLabel loadingLbl = new JLabel("Generating image " + (index + 1) + " (Seed: " + seed + ")...", SwingConstants.CENTER);
                     placeholderCard.add(loadingLbl, BorderLayout.CENTER);
                     
                     resultsContainer.add(placeholderCard);
@@ -1088,7 +1124,7 @@ public class Main extends JFrame {
                                 JPanel actionBtns = new JPanel(new FlowLayout(FlowLayout.RIGHT, 5, 0));
                                 actionBtns.setOpaque(false);
                                 
-                                JButton btnSave = new JButton("Speichern");
+                                JButton btnSave = new JButton("Save");
                                 btnSave.putClientProperty("JButton.buttonType", "accent");
                                 btnSave.addActionListener(ev -> {
                                     JFileChooser saver = new JFileChooser();
@@ -1096,14 +1132,14 @@ public class Main extends JFrame {
                                     if (saver.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
                                         try {
                                             Files.write(saver.getSelectedFile().toPath(), imgBytes);
-                                            statusLabel.setText("Bild erfolgreich gespeichert.");
+                                            statusLabel.setText("Image successfully saved.");
                                         } catch (Exception ex) {
-                                            JOptionPane.showMessageDialog(this, "Fehler beim Speichern: " + ex.getMessage(), "Fehler", JOptionPane.ERROR_MESSAGE);
+                                            JOptionPane.showMessageDialog(this, "Error saving: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
                                         }
                                     }
                                 });
                                 
-                                JButton btnCopy = new JButton("Kopieren");
+                                JButton btnCopy = new JButton("Copy");
                                 btnCopy.addActionListener(ev -> {
                                     try {
                                         java.awt.Toolkit.getDefaultToolkit().getSystemClipboard().setContents(new java.awt.datatransfer.Transferable() {
@@ -1121,9 +1157,9 @@ public class Main extends JFrame {
                                                 throw new java.awt.datatransfer.UnsupportedFlavorException(flavor);
                                             }
                                         }, null);
-                                        statusLabel.setText("Bild in die Zwischenablage kopiert.");
+                                        statusLabel.setText("Image copied to clipboard.");
                                     } catch (Exception ex) {
-                                        JOptionPane.showMessageDialog(this, "Fehler beim Kopieren: " + ex.getMessage(), "Fehler", JOptionPane.ERROR_MESSAGE);
+                                        JOptionPane.showMessageDialog(this, "Error copying: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
                                     }
                                 });
                                 
@@ -1149,7 +1185,7 @@ public class Main extends JFrame {
                                     rawMsg = ex.toString();
                                 }
                                 String formattedMsg = rawMsg.replace("\n", "<br>");
-                                JLabel errLabel = new JLabel("<html><body style='text-align: center; color: #ef4444; padding: 10px;'><b>Fehler bei der Generierung:</b><br><br>" + formattedMsg + "</body></html>", SwingConstants.CENTER);
+                                JLabel errLabel = new JLabel("<html><body style='text-align: center; color: #ef4444; padding: 10px;'><b>Generation Error:</b><br><br>" + formattedMsg + "</body></html>", SwingConstants.CENTER);
                                 card.add(errLabel, BorderLayout.CENTER);
                                 card.revalidate();
                                 card.repaint();
@@ -1158,7 +1194,7 @@ public class Main extends JFrame {
                     } finally {
                         int done = completedCount.get() + failedCount.get();
                         final int progress = (done * 100) / totalImages;
-                        final String statusStr = "Fertig: " + completedCount.get() + " / Fehler: " + failedCount.get();
+                        final String statusStr = "Completed: " + completedCount.get() + " / Errors: " + failedCount.get();
                         SwingUtilities.invokeLater(() -> {
                             generatorProgressBar.setValue(progress);
                             generatorProgressBar.setString(statusStr);
@@ -1176,8 +1212,874 @@ public class Main extends JFrame {
                 btnGenerateImage.setEnabled(true);
                 btnClearImage.setEnabled(selectedImageBytes != null);
                 promptArea.setEnabled(true);
-                generatorProgressBar.setString("Generierung beendet. " + completedCount.get() + " Bilder erfolgreich.");
+                generatorProgressBar.setString("Generation finished. " + completedCount.get() + " images successfully generated.");
             });
+        }).start();
+    }
+
+    private static final String DEFAULT_PROMPT_JSON = "{\n" +
+            "  \"prompt\": {\n" +
+            "    \"3\": {\n" +
+            "      \"inputs\": {\n" +
+            "        \"seed\": 42,\n" +
+            "        \"steps\": 20,\n" +
+            "        \"cfg\": 8.0,\n" +
+            "        \"sampler_name\": \"euler\",\n" +
+            "        \"scheduler\": \"normal\",\n" +
+            "        \"denoise\": 1.0,\n" +
+            "        \"model\": [\n" +
+            "          \"4\",\n" +
+            "          0\n" +
+            "        ],\n" +
+            "        \"positive\": [\n" +
+            "          \"6\",\n" +
+            "          0\n" +
+            "        ],\n" +
+            "        \"negative\": [\n" +
+            "          \"7\",\n" +
+            "          0\n" +
+            "        ],\n" +
+            "        \"latent_image\": [\n" +
+            "          \"5\",\n" +
+            "          0\n" +
+            "        ]\n" +
+            "      },\n" +
+            "      \"class_type\": \"KSampler\"\n" +
+            "    },\n" +
+            "    \"4\": {\n" +
+            "      \"inputs\": {\n" +
+            "        \"ckpt_name\": \"v1-5-pruned-emaonly.safetensors\"\n" +
+            "      },\n" +
+            "      \"class_type\": \"CheckpointLoaderSimple\"\n" +
+            "    },\n" +
+            "    \"5\": {\n" +
+            "      \"inputs\": {\n" +
+            "        \"width\": 512,\n" +
+            "        \"height\": 512,\n" +
+            "        \"batch_size\": 1\n" +
+            "      },\n" +
+            "      \"class_type\": \"EmptyLatentImage\"\n" +
+            "    },\n" +
+            "    \"6\": {\n" +
+            "      \"inputs\": {\n" +
+            "        \"text\": \"cybernetic tiger, neon-lit alley, photorealistic, 8k, unreal engine 5 render\",\n" +
+            "        \"clip\": [\n" +
+            "          \"4\",\n" +
+            "          1\n" +
+            "        ]\n" +
+            "      },\n" +
+            "      \"class_type\": \"CLIPTextEncode\"\n" +
+            "    },\n" +
+            "    \"7\": {\n" +
+            "      \"inputs\": {\n" +
+            "        \"text\": \"bad hands, text, blurry, worst quality, low quality\",\n" +
+            "        \"clip\": [\n" +
+            "          \"4\",\n" +
+            "          1\n" +
+            "        ]\n" +
+            "      },\n" +
+            "      \"class_type\": \"CLIPTextEncode\"\n" +
+            "    },\n" +
+            "    \"8\": {\n" +
+            "      \"inputs\": {\n" +
+            "        \"samples\": [\n" +
+            "          \"3\",\n" +
+            "          0\n" +
+            "        ],\n" +
+            "        \"vae\": [\n" +
+            "          \"4\",\n" +
+            "          2\n" +
+            "        ]\n" +
+            "      },\n" +
+            "      \"class_type\": \"VAEDecode\"\n" +
+            "    },\n" +
+            "    \"9\": {\n" +
+            "      \"inputs\": {\n" +
+            "        \"filename_prefix\": \"ComfyUI\",\n" +
+            "        \"images\": [\n" +
+            "          \"8\",\n" +
+            "          0\n" +
+            "        ]\n" +
+            "      },\n" +
+            "      \"class_type\": \"SaveImage\"\n" +
+            "    }\n" +
+            "  }\n" +
+            "}";
+
+    private JPanel createPromptLabPanel() {
+        JPanel panel = new JPanel(new BorderLayout(15, 15));
+        panel.setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
+
+        // LEFT: Prompt builder controls (Was?, Wo?, Wie?)
+        JPanel leftPanel = new JPanel();
+        leftPanel.setLayout(new BoxLayout(leftPanel, BoxLayout.Y_AXIS));
+        leftPanel.putClientProperty("FlatLaf.style", "arc: 15; background: lighten($Panel.background, 2%); border: 15,15,15,15,$Component.borderColor,1,15");
+        leftPanel.setBorder(BorderFactory.createEmptyBorder(15, 15, 15, 15));
+
+        // Header Title
+        JLabel titleLabel = new JLabel("🔬 Prompt Lab");
+        titleLabel.putClientProperty("FlatLaf.styleClass", "h2");
+        titleLabel.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        leftPanel.add(titleLabel);
+        leftPanel.add(Box.createVerticalStrut(15));
+
+        // Step 1: Subject Definition (Was?)
+        JLabel lblSubject = new JLabel("1. Subject Definition (What?)");
+        lblSubject.putClientProperty("FlatLaf.styleClass", "h4");
+        lblSubject.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        leftPanel.add(lblSubject);
+        leftPanel.add(Box.createVerticalStrut(5));
+
+        promptSubjectField = new JTextField("cybernetic tiger");
+        promptSubjectField.setFont(new Font("SansSerif", Font.PLAIN, 14));
+        promptSubjectField.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        promptSubjectField.setMaximumSize(new Dimension(Integer.MAX_VALUE, 35));
+        leftPanel.add(promptSubjectField);
+        leftPanel.add(Box.createVerticalStrut(15));
+
+        // Step 2: Umgebungs-Kontext (Wo?)
+        JLabel lblEnv = new JLabel("2. Environmental Context (Where?)");
+        lblEnv.putClientProperty("FlatLaf.styleClass", "h4");
+        lblEnv.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        leftPanel.add(lblEnv);
+        leftPanel.add(Box.createVerticalStrut(5));
+
+        DropdownItem[] envs = {
+            new DropdownItem("Neon-lit alley", "neon-lit alley"),
+            new DropdownItem("Cyberpunk laboratory", "cyberpunk laboratory"),
+            new DropdownItem("Steaming jungle", "steaming jungle"),
+            new DropdownItem("Ancient temple ruins", "ancient temple ruins"),
+            new DropdownItem("Misty mountaintop", "misty mountaintop"),
+            new DropdownItem("Futuristic space station", "futuristic space station"),
+            new DropdownItem("Cozy library with fireplace", "cozy library with fireplace"),
+            new DropdownItem("Sun-drenched beach", "sun-drenched beach"),
+            new DropdownItem("Surreal dreamscape", "surreal dreamscape"),
+            new DropdownItem("Ruined post-apocalyptic city", "ruined post-apocalyptic city")
+        };
+        promptEnvCombo = new JComboBox<>(envs);
+        promptEnvCombo.setFont(new Font("SansSerif", Font.PLAIN, 14));
+        promptEnvCombo.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        promptEnvCombo.setMaximumSize(new Dimension(Integer.MAX_VALUE, 35));
+        leftPanel.add(promptEnvCombo);
+        leftPanel.add(Box.createVerticalStrut(15));
+
+        // Step 3: Stil-Filter (Wie?)
+        JLabel lblStyles = new JLabel("3. Style Filter (How?)");
+        lblStyles.putClientProperty("FlatLaf.styleClass", "h4");
+        lblStyles.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        leftPanel.add(lblStyles);
+        leftPanel.add(Box.createVerticalStrut(8));
+
+        JPanel stylesPanel = new JPanel(new GridLayout(0, 2, 8, 8));
+        stylesPanel.setOpaque(false);
+        stylesPanel.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        
+        chkPhotorealistic = new JCheckBox("Photorealistic", true);
+        chkOil = new JCheckBox("Oil painting", false);
+        chkEngine = new JCheckBox("Unreal Engine 5 Render", true);
+        chkAnime = new JCheckBox("Anime Style", false);
+        chkFantasy = new JCheckBox("Dark Fantasy / Cinematic", false);
+        chkSketch = new JCheckBox("Watercolor Sketch", false);
+
+        stylesPanel.add(chkPhotorealistic);
+        stylesPanel.add(chkOil);
+        stylesPanel.add(chkEngine);
+        stylesPanel.add(chkAnime);
+        stylesPanel.add(chkFantasy);
+        stylesPanel.add(chkSketch);
+        leftPanel.add(stylesPanel);
+        leftPanel.add(Box.createVerticalStrut(20));
+
+        // Step 4: Model & Size Settings
+        JLabel lblSettings = new JLabel("4. Model & Size Settings");
+        lblSettings.putClientProperty("FlatLaf.styleClass", "h4");
+        lblSettings.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        leftPanel.add(lblSettings);
+        leftPanel.add(Box.createVerticalStrut(5));
+
+        // Model Selection row with refresh button
+        JPanel modelRow = new JPanel(new BorderLayout(5, 0));
+        modelRow.setOpaque(false);
+        modelRow.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        modelRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 35));
+
+        promptModelCombo = new JComboBox<>(new String[]{"v1-5-pruned-emaonly.safetensors"});
+        promptModelCombo.setEditable(true);
+        promptModelCombo.setFont(new Font("SansSerif", Font.PLAIN, 14));
+        modelRow.add(promptModelCombo, BorderLayout.CENTER);
+
+        JButton btnRefreshModels = new JButton("🔄");
+        btnRefreshModels.setToolTipText("Refresh models list from ComfyUI");
+        btnRefreshModels.addActionListener(e -> refreshPromptLabModels());
+        modelRow.add(btnRefreshModels, BorderLayout.EAST);
+
+        leftPanel.add(modelRow);
+        leftPanel.add(Box.createVerticalStrut(10));
+
+        // Size Inputs (Width & Height)
+        JPanel sizeRow = new JPanel(new GridLayout(1, 2, 10, 0));
+        sizeRow.setOpaque(false);
+        sizeRow.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        sizeRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 50));
+
+        JPanel widthPanel = new JPanel(new BorderLayout(0, 2));
+        widthPanel.setOpaque(false);
+        JLabel lblWidth = new JLabel("Width");
+        lblWidth.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        promptWidthSpinner = new JSpinner(new SpinnerNumberModel(512, 64, 4096, 64));
+        widthPanel.add(lblWidth, BorderLayout.NORTH);
+        widthPanel.add(promptWidthSpinner, BorderLayout.CENTER);
+
+        JPanel heightPanel = new JPanel(new BorderLayout(0, 2));
+        heightPanel.setOpaque(false);
+        JLabel lblHeight = new JLabel("Height");
+        lblHeight.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        promptHeightSpinner = new JSpinner(new SpinnerNumberModel(512, 64, 4096, 64));
+        heightPanel.add(lblHeight, BorderLayout.NORTH);
+        heightPanel.add(promptHeightSpinner, BorderLayout.CENTER);
+
+        sizeRow.add(widthPanel);
+        sizeRow.add(heightPanel);
+
+        leftPanel.add(sizeRow);
+        leftPanel.add(Box.createVerticalStrut(20));
+
+        // Step 5: Assembler (Die "Antigravity"-Logik)
+        JLabel lblAssembled = new JLabel("5. Assembler (The \"Antigravity\" logic)");
+        lblAssembled.putClientProperty("FlatLaf.styleClass", "h4");
+        lblAssembled.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        leftPanel.add(lblAssembled);
+        leftPanel.add(Box.createVerticalStrut(5));
+
+        promptAssembleArea = new JTextArea(3, 20);
+        promptAssembleArea.setLineWrap(true);
+        promptAssembleArea.setWrapStyleWord(true);
+        promptAssembleArea.setFont(new Font("SansSerif", Font.BOLD, 14));
+        promptAssembleArea.setEditable(false);
+        promptAssembleArea.putClientProperty("FlatLaf.style", "background: lighten($Panel.background, 4%)");
+        
+        JScrollPane assembleScroll = new JScrollPane(promptAssembleArea);
+        assembleScroll.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        assembleScroll.setMaximumSize(new Dimension(Integer.MAX_VALUE, 80));
+        leftPanel.add(assembleScroll);
+        leftPanel.add(Box.createVerticalStrut(10));
+
+        btnOptimizePrompt = new JButton("✨ Optimize with Gemini");
+        btnOptimizePrompt.setFont(new Font("SansSerif", Font.BOLD, 13));
+        btnOptimizePrompt.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        btnOptimizePrompt.setMaximumSize(new Dimension(Integer.MAX_VALUE, 40));
+        btnOptimizePrompt.putClientProperty("Button.background", new Color(58, 117, 196));
+        btnOptimizePrompt.putClientProperty("Button.foreground", Color.WHITE);
+        btnOptimizePrompt.addActionListener(e -> optimizePromptWithGemini());
+
+        if (!isGeminiKeyConfigured()) {
+            btnOptimizePrompt.setToolTipText("Add a Gemini API key in settings to unlock this feature.");
+        } else {
+            btnOptimizePrompt.setToolTipText("Optimizes the assembled prompt using Gemini AI for better image quality.");
+        }
+        leftPanel.add(btnOptimizePrompt);
+
+        leftPanel.add(Box.createVerticalGlue());
+
+        // Document / Item Listeners to update prompt instantly
+        promptSubjectField.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
+            public void insertUpdate(javax.swing.event.DocumentEvent e) { updatePromptLabJson(); }
+            public void removeUpdate(javax.swing.event.DocumentEvent e) { updatePromptLabJson(); }
+            public void changedUpdate(javax.swing.event.DocumentEvent e) { updatePromptLabJson(); }
+        });
+        promptEnvCombo.addActionListener(e -> updatePromptLabJson());
+        ActionListener styleChanger = e -> updatePromptLabJson();
+        chkPhotorealistic.addActionListener(styleChanger);
+        chkOil.addActionListener(styleChanger);
+        chkEngine.addActionListener(styleChanger);
+        chkAnime.addActionListener(styleChanger);
+        chkFantasy.addActionListener(styleChanger);
+        chkSketch.addActionListener(styleChanger);
+
+        promptModelCombo.addActionListener(e -> updatePromptLabJson());
+        promptWidthSpinner.addChangeListener(e -> updatePromptLabJson());
+        promptHeightSpinner.addChangeListener(e -> updatePromptLabJson());
+        
+        // Initial load of models in background
+        refreshPromptLabModels();
+
+
+        // RIGHT: ComfyUI integration / API payload view
+        JPanel rightPanel = new JPanel(new BorderLayout(10, 10));
+        rightPanel.putClientProperty("FlatLaf.style", "arc: 15; background: lighten($Panel.background, 2%); border: 15,15,15,15,$Component.borderColor,1,15");
+        rightPanel.setBorder(BorderFactory.createEmptyBorder(15, 15, 15, 15));
+
+        // Top controls of right panel
+        JPanel rightTopPanel = new JPanel(new BorderLayout());
+        rightTopPanel.setOpaque(false);
+        rightTopPanel.setBorder(BorderFactory.createEmptyBorder(0, 0, 8, 0));
+
+        JLabel apiHeader = new JLabel("ComfyUI API Integration (workflow_api.json)");
+        apiHeader.putClientProperty("FlatLaf.styleClass", "h3");
+        rightTopPanel.add(apiHeader, BorderLayout.CENTER);
+
+        rightPanel.add(rightTopPanel, BorderLayout.NORTH);
+
+        // Center JSON Area
+        promptJsonArea = new JTextArea(DEFAULT_PROMPT_JSON);
+        promptJsonArea.setFont(new Font("Monospaced", Font.PLAIN, 12));
+        JScrollPane jsonScroll = new JScrollPane(promptJsonArea);
+        rightPanel.add(jsonScroll, BorderLayout.CENTER);
+
+        // Bottom panel for console/status and send action
+        JPanel rightBottomPanel = new JPanel(new BorderLayout(5, 5));
+        rightBottomPanel.setOpaque(false);
+
+        promptLabConsole = new JTextArea(4, 20);
+        promptLabConsole.setBackground(new Color(25, 25, 25));
+        promptLabConsole.setForeground(new Color(0, 220, 0));
+        promptLabConsole.setFont(new Font("Monospaced", Font.PLAIN, 12));
+        promptLabConsole.setEditable(false);
+        promptLabConsole.setText("System: Prompt Lab ready.\n");
+        JScrollPane consoleScroll = new JScrollPane(promptLabConsole);
+        rightBottomPanel.add(consoleScroll, BorderLayout.CENTER);
+
+        btnSendToComfy = new JButton("🚀 Send to ComfyUI");
+        btnSendToComfy.setFont(new Font("SansSerif", Font.BOLD, 14));
+        btnSendToComfy.putClientProperty("Button.background", new Color(255, 204, 0));
+        btnSendToComfy.putClientProperty("Button.foreground", Color.BLACK);
+        btnSendToComfy.setPreferredSize(new Dimension(0, 45));
+        btnSendToComfy.addActionListener(e -> sendPromptToComfyUI());
+        
+        rightBottomPanel.add(btnSendToComfy, BorderLayout.SOUTH);
+        rightPanel.add(rightBottomPanel, BorderLayout.SOUTH);
+
+        // Split panel
+        JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, leftPanel, rightPanel);
+        splitPane.setDividerLocation(360);
+        splitPane.setResizeWeight(0.3);
+
+        panel.add(splitPane, BorderLayout.CENTER);
+
+        // Run initial update to align values
+        updatePromptLabJson();
+
+        return panel;
+    }
+
+    private void updatePromptLabJson() {
+        if (promptSubjectField == null || promptEnvCombo == null || promptAssembleArea == null || promptJsonArea == null) {
+            return;
+        }
+        
+        String selectedModel = (promptModelCombo != null) ? (String) promptModelCombo.getSelectedItem() : null;
+        Integer width = (promptWidthSpinner != null) ? (Integer) promptWidthSpinner.getValue() : null;
+        Integer height = (promptHeightSpinner != null) ? (Integer) promptHeightSpinner.getValue() : null;
+        
+        String subject = promptSubjectField.getText().trim();
+        DropdownItem envItem = (DropdownItem) promptEnvCombo.getSelectedItem();
+        String env = (envItem != null) ? envItem.getValue() : "";
+        
+        java.util.List<String> parts = new java.util.ArrayList<>();
+        if (!subject.isEmpty()) {
+            parts.add(subject);
+        }
+        if (!env.isEmpty()) {
+            parts.add(env);
+        }
+        
+        if (chkPhotorealistic.isSelected()) parts.add("photorealistic");
+        if (chkOil.isSelected()) parts.add("oil painting");
+        if (chkEngine.isSelected()) parts.add("8k, unreal engine 5 render");
+        if (chkAnime.isSelected()) parts.add("anime style");
+        if (chkFantasy.isSelected()) parts.add("dark fantasy, cinematic lighting");
+        if (chkSketch.isSelected()) parts.add("watercolor sketch");
+        
+        String assembled = String.join(", ", parts);
+        promptAssembleArea.setText(assembled);
+        
+        try {
+            String currentJsonStr = promptJsonArea.getText();
+            JSONObject mainObj = new JSONObject(currentJsonStr);
+            if (mainObj.has("prompt")) {
+                JSONObject promptObj = mainObj.getJSONObject("prompt");
+                
+                String targetId = null;
+                for (String key : promptObj.keySet()) {
+                    JSONObject nodeObj = promptObj.getJSONObject(key);
+                    if (nodeObj.has("class_type") && "CLIPTextEncode".equals(nodeObj.getString("class_type"))) {
+                        if (nodeObj.has("inputs")) {
+                            JSONObject inputsObj = nodeObj.getJSONObject("inputs");
+                            if (inputsObj.has("text")) {
+                                String textVal = inputsObj.getString("text").toLowerCase();
+                                if (textVal.contains("bad") || textVal.contains("blurry") || textVal.contains("low quality") || textVal.contains("worst")) {
+                                    continue;
+                                }
+                                targetId = key;
+                                break;
+                            }
+                        }
+                    }
+                }
+                
+                if (targetId == null) {
+                    for (String key : promptObj.keySet()) {
+                        JSONObject nodeObj = promptObj.getJSONObject(key);
+                        if (nodeObj.has("class_type") && "CLIPTextEncode".equals(nodeObj.getString("class_type"))) {
+                            targetId = key;
+                            break;
+                        }
+                    }
+                }
+                
+                if (targetId != null) {
+                    JSONObject nodeObj = promptObj.getJSONObject(targetId);
+                    if (nodeObj.has("inputs")) {
+                        JSONObject inputsObj = nodeObj.getJSONObject("inputs");
+                        inputsObj.put("text", assembled);
+                    }
+                }
+                
+                // Update Checkpoint Loader Simple
+                if (selectedModel != null && !selectedModel.trim().isEmpty()) {
+                    for (String key : promptObj.keySet()) {
+                        JSONObject nodeObj = promptObj.getJSONObject(key);
+                        if (nodeObj.has("class_type") && "CheckpointLoaderSimple".equals(nodeObj.getString("class_type"))) {
+                            if (nodeObj.has("inputs")) {
+                                JSONObject inputs = nodeObj.getJSONObject("inputs");
+                                inputs.put("ckpt_name", selectedModel.trim());
+                            }
+                        }
+                    }
+                }
+
+                // Update Latent Image Dimensions
+                if (width != null && height != null) {
+                    for (String key : promptObj.keySet()) {
+                        JSONObject nodeObj = promptObj.getJSONObject(key);
+                        if (nodeObj.has("class_type") && "EmptyLatentImage".equals(nodeObj.getString("class_type"))) {
+                            if (nodeObj.has("inputs")) {
+                                JSONObject inputs = nodeObj.getJSONObject("inputs");
+                                inputs.put("width", width);
+                                inputs.put("height", height);
+                            }
+                        }
+                    }
+                }
+
+                promptJsonArea.setText(mainObj.toString(2));
+            }
+        } catch (Exception ex) {
+            // ignore manually modified JSON errors
+        }
+    }
+
+    private void refreshPromptLabModels() {
+        String comfyUrl = configService.getComfyUIUrl();
+        new Thread(() -> {
+            try {
+                java.net.http.HttpClient client = java.net.http.HttpClient.newBuilder()
+                        .connectTimeout(java.time.Duration.ofSeconds(3))
+                        .build();
+                java.net.http.HttpRequest request = java.net.http.HttpRequest.newBuilder()
+                        .uri(java.net.URI.create(comfyUrl + "/object_info"))
+                        .GET()
+                        .build();
+                java.net.http.HttpResponse<String> response = client.send(request, java.net.http.HttpResponse.BodyHandlers.ofString());
+                if (response.statusCode() == 200) {
+                    JSONObject info = new JSONObject(response.body());
+                    if (info.has("CheckpointLoaderSimple")) {
+                        JSONObject nodeInfo = info.getJSONObject("CheckpointLoaderSimple");
+                        if (nodeInfo.has("input")) {
+                            JSONObject input = nodeInfo.getJSONObject("input");
+                            if (input.has("required")) {
+                                JSONObject required = input.getJSONObject("required");
+                                if (required.has("ckpt_name")) {
+                                    Object val = required.get("ckpt_name");
+                                    if (val instanceof org.json.JSONArray) {
+                                        org.json.JSONArray outerArray = (org.json.JSONArray) val;
+                                        if (outerArray.length() > 0) {
+                                            Object firstElement = outerArray.get(0);
+                                            if (firstElement instanceof org.json.JSONArray) {
+                                                org.json.JSONArray options = (org.json.JSONArray) firstElement;
+                                                java.util.List<String> list = new java.util.ArrayList<>();
+                                                for (int i = 0; i < options.length(); i++) {
+                                                    list.add(options.getString(i));
+                                                }
+                                                SwingUtilities.invokeLater(() -> {
+                                                    if (promptModelCombo != null) {
+                                                        String selected = (String) promptModelCombo.getSelectedItem();
+                                                        promptModelCombo.removeAllItems();
+                                                        for (String modelName : list) {
+                                                            promptModelCombo.addItem(modelName);
+                                                        }
+                                                        if (selected != null && list.contains(selected)) {
+                                                            promptModelCombo.setSelectedItem(selected);
+                                                        } else if (!list.isEmpty()) {
+                                                            promptModelCombo.setSelectedIndex(0);
+                                                        }
+                                                        promptLabConsole.append("🔄 Prompt Lab: Available checkpoints loaded from ComfyUI (" + list.size() + " models).\n");
+                                                    }
+                                                });
+                                                return;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (Exception ex) {
+                SwingUtilities.invokeLater(() -> {
+                    if (promptLabConsole != null) {
+                        promptLabConsole.append("⚠️ Prompt Lab: Failed to fetch models from ComfyUI (is ComfyUI running?)\n");
+                    }
+                });
+            }
+        }).start();
+    }
+
+
+    private void sendPromptToComfyUI() {
+        String comfyUrl = configService.getComfyUIUrl();
+        String selectedModelVal = (promptModelCombo != null) ? (String) promptModelCombo.getSelectedItem() : null;
+        int widthVal = (promptWidthSpinner != null) ? (int) promptWidthSpinner.getValue() : 512;
+        int heightVal = (promptHeightSpinner != null) ? (int) promptHeightSpinner.getValue() : 512;
+        
+        btnSendToComfy.setEnabled(false);
+        promptLabConsole.append("Checking connection to ComfyUI and loading models...\n");
+        
+        new Thread(() -> {
+            try {
+                java.net.http.HttpClient client = java.net.http.HttpClient.newBuilder()
+                        .connectTimeout(java.time.Duration.ofSeconds(4))
+                        .build();
+                        
+                // Step 1: Query ComfyUI status & available checkpoints
+                java.net.http.HttpRequest infoRequest = java.net.http.HttpRequest.newBuilder()
+                        .uri(java.net.URI.create(comfyUrl + "/object_info"))
+                        .GET()
+                        .build();
+                        
+                java.net.http.HttpResponse<String> infoResponse;
+                try {
+                    infoResponse = client.send(infoRequest, java.net.http.HttpResponse.BodyHandlers.ofString());
+                } catch (java.net.ConnectException | java.net.http.HttpConnectTimeoutException | java.net.UnknownHostException ex) {
+                    SwingUtilities.invokeLater(() -> {
+                        btnSendToComfy.setEnabled(true);
+                        promptLabConsole.append("❌ ComfyUI is offline. Please start ComfyUI in the dashboard first!\n\n");
+                        JOptionPane.showMessageDialog(this, 
+                            "ComfyUI is offline. Please start ComfyUI in the dashboard first!", 
+                            "Connection Failed", JOptionPane.ERROR_MESSAGE);
+                    });
+                    return;
+                } catch (java.io.IOException ex) {
+                    SwingUtilities.invokeLater(() -> {
+                        btnSendToComfy.setEnabled(true);
+                        promptLabConsole.append("❌ ComfyUI is offline or not responding. Please start ComfyUI in the dashboard first!\n\n");
+                        JOptionPane.showMessageDialog(this, 
+                            "ComfyUI is offline or not responding. Please start ComfyUI in the dashboard first!", 
+                            "Connection Failed", JOptionPane.ERROR_MESSAGE);
+                    });
+                    return;
+                }
+                
+                if (infoResponse.statusCode() != 200) {
+                    SwingUtilities.invokeLater(() -> {
+                        btnSendToComfy.setEnabled(true);
+                        promptLabConsole.append("❌ ComfyUI returned error code " + infoResponse.statusCode() + " during status check.\n\n");
+                        JOptionPane.showMessageDialog(this, 
+                            "ComfyUI returned error code " + infoResponse.statusCode() + " during status check.", 
+                            "Connection Failed", JOptionPane.ERROR_MESSAGE);
+                    });
+                    return;
+                }
+                
+                // Parse checkpoints from response
+                java.util.List<String> checkpoints = new java.util.ArrayList<>();
+                try {
+                    JSONObject info = new JSONObject(infoResponse.body());
+                    if (info.has("CheckpointLoaderSimple")) {
+                        JSONObject nodeInfo = info.getJSONObject("CheckpointLoaderSimple");
+                        if (nodeInfo.has("input")) {
+                            JSONObject input = nodeInfo.getJSONObject("input");
+                            if (input.has("required")) {
+                                JSONObject required = input.getJSONObject("required");
+                                if (required.has("ckpt_name")) {
+                                    Object val = required.get("ckpt_name");
+                                    if (val instanceof org.json.JSONArray) {
+                                        org.json.JSONArray outerArray = (org.json.JSONArray) val;
+                                        if (outerArray.length() > 0) {
+                                            Object firstElement = outerArray.get(0);
+                                            if (firstElement instanceof org.json.JSONArray) {
+                                                org.json.JSONArray options = (org.json.JSONArray) firstElement;
+                                                for (int i = 0; i < options.length(); i++) {
+                                                    checkpoints.add(options.getString(i));
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } catch (Exception ex) {
+                    // JSON parsing error
+                }
+                
+                if (checkpoints.isEmpty()) {
+                    SwingUtilities.invokeLater(() -> {
+                        btnSendToComfy.setEnabled(true);
+                        promptLabConsole.append("❌ No models found in ComfyUI.\n\n");
+                        JOptionPane.showMessageDialog(this, 
+                            "No models (checkpoints) were found in ComfyUI. Please install a model first!", 
+                            "No Models Available", JOptionPane.WARNING_MESSAGE);
+                    });
+                    return;
+                }
+                
+                String selectedModel = selectedModelVal;
+                if (selectedModel == null || selectedModel.trim().isEmpty() || !checkpoints.contains(selectedModel)) {
+                    if (!checkpoints.isEmpty()) {
+                        selectedModel = checkpoints.get(0);
+                        final String fallback = selectedModel;
+                        SwingUtilities.invokeLater(() -> {
+                            promptModelCombo.setSelectedItem(fallback);
+                            promptLabConsole.append("⚠️ Selected model not loaded/available. Falling back to: " + fallback + "\n");
+                        });
+                    }
+                }
+                
+                final String finalModel = selectedModel;
+                SwingUtilities.invokeLater(() -> {
+                    promptLabConsole.append("Using model: " + finalModel + "\n");
+                });
+                
+                // Parse and update JSON payload
+                String rawJson = promptJsonArea.getText().trim();
+                JSONObject mainObj = new JSONObject(rawJson);
+                if (mainObj.has("prompt")) {
+                    JSONObject promptObj = mainObj.getJSONObject("prompt");
+                    
+                    // Update CheckpointLoaderSimple
+                    for (String key : promptObj.keySet()) {
+                        JSONObject nodeObj = promptObj.getJSONObject(key);
+                        if (nodeObj.has("class_type") && "CheckpointLoaderSimple".equals(nodeObj.getString("class_type"))) {
+                            if (nodeObj.has("inputs")) {
+                                JSONObject inputs = nodeObj.getJSONObject("inputs");
+                                inputs.put("ckpt_name", finalModel);
+                            }
+                        }
+                    }
+                    
+                    // Update EmptyLatentImage width & height
+                    for (String key : promptObj.keySet()) {
+                        JSONObject nodeObj = promptObj.getJSONObject(key);
+                        if (nodeObj.has("class_type") && "EmptyLatentImage".equals(nodeObj.getString("class_type"))) {
+                            if (nodeObj.has("inputs")) {
+                                JSONObject inputs = nodeObj.getJSONObject("inputs");
+                                inputs.put("width", widthVal);
+                                inputs.put("height", heightVal);
+                            }
+                        }
+                    }
+                    
+                    // Update positive CLIPTextEncode
+                    String assembledPrompt = promptAssembleArea.getText().trim();
+                    String positiveNodeId = null;
+                    for (String key : promptObj.keySet()) {
+                        JSONObject nodeObj = promptObj.getJSONObject(key);
+                        if (nodeObj.has("class_type") && "CLIPTextEncode".equals(nodeObj.getString("class_type"))) {
+                            if (nodeObj.has("inputs")) {
+                                JSONObject inputs = nodeObj.getJSONObject("inputs");
+                                if (inputs.has("text")) {
+                                    String textVal = inputs.getString("text").toLowerCase();
+                                    if (textVal.contains("bad") || textVal.contains("blurry") || textVal.contains("low quality") || textVal.contains("worst")) {
+                                        continue;
+                                    }
+                                    positiveNodeId = key;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    
+                    if (positiveNodeId == null) {
+                        for (String key : promptObj.keySet()) {
+                            JSONObject nodeObj = promptObj.getJSONObject(key);
+                            if (nodeObj.has("class_type") && "CLIPTextEncode".equals(nodeObj.getString("class_type"))) {
+                                positiveNodeId = key;
+                                break;
+                            }
+                        }
+                    }
+                    
+                    if (positiveNodeId != null) {
+                        JSONObject nodeObj = promptObj.getJSONObject(positiveNodeId);
+                        if (nodeObj.has("inputs")) {
+                            JSONObject inputs = nodeObj.getJSONObject("inputs");
+                            inputs.put("text", assembledPrompt);
+                        }
+                    }
+                }
+                
+                String updatedJsonPayload = mainObj.toString(2);
+                SwingUtilities.invokeLater(() -> {
+                    promptJsonArea.setText(updatedJsonPayload);
+                    promptLabConsole.append("Sending prompt to ComfyUI...\n");
+                });
+                
+                java.net.http.HttpRequest request = java.net.http.HttpRequest.newBuilder()
+                        .uri(java.net.URI.create(comfyUrl + "/prompt"))
+                        .header("Content-Type", "application/json")
+                        .POST(java.net.http.HttpRequest.BodyPublishers.ofString(updatedJsonPayload))
+                        .build();
+                        
+                java.net.http.HttpResponse<String> response = client.send(request, java.net.http.HttpResponse.BodyHandlers.ofString());
+                
+                SwingUtilities.invokeLater(() -> {
+                    btnSendToComfy.setEnabled(true);
+                    if (response.statusCode() == 200) {
+                        promptLabConsole.append("Successfully sent! Status Code: 200\n");
+                        promptLabConsole.append("Response: " + response.body() + "\n\n");
+                        JOptionPane.showMessageDialog(this, 
+                            "Prompt successfully queued in ComfyUI!\nResponse: " + response.body(), 
+                            "Image Generation Started", JOptionPane.INFORMATION_MESSAGE);
+                    } else if (response.statusCode() == 400) {
+                        promptLabConsole.append("Error! Status Code: 400\n");
+                        promptLabConsole.append("Response: " + response.body() + "\n\n");
+                        
+                        String errMsg = "ComfyUI reported a validation error (400 Bad Request).\n";
+                        try {
+                            JSONObject errObj = new JSONObject(response.body());
+                            if (errObj.has("error")) {
+                                JSONObject subErr = errObj.getJSONObject("error");
+                                String type = subErr.optString("type", "");
+                                String msg = subErr.optString("message", "");
+                                errMsg += "\nType: " + type + "\nMessage: " + msg;
+                                if (subErr.has("details")) {
+                                    errMsg += "\nDetails: " + subErr.get("details").toString();
+                                }
+                            } else {
+                                errMsg += "\nResponse content:\n" + response.body();
+                            }
+                        } catch (Exception ex) {
+                            errMsg += "\nResponse content:\n" + response.body();
+                        }
+                        
+                        JOptionPane.showMessageDialog(this, errMsg, "Validation Error (400)", JOptionPane.ERROR_MESSAGE);
+                    } else {
+                        promptLabConsole.append("Error! Status Code: " + response.statusCode() + "\n");
+                        promptLabConsole.append("Response: " + response.body() + "\n\n");
+                        JOptionPane.showMessageDialog(this, 
+                            "ComfyUI reported an error: " + response.statusCode() + "\nResponse: " + response.body(), 
+                            "API Error", JOptionPane.ERROR_MESSAGE);
+                    }
+                });
+            } catch (Exception ex) {
+                SwingUtilities.invokeLater(() -> {
+                    btnSendToComfy.setEnabled(true);
+                    promptLabConsole.append("Error: " + ex.getMessage() + "\n\n");
+                    JOptionPane.showMessageDialog(this, 
+                        "Connection to ComfyUI failed:\n" + ex.getMessage(), 
+                        "Connection Error", JOptionPane.ERROR_MESSAGE);
+                });
+            }
+        }).start();
+    }
+
+    private void optimizePromptWithGemini() {
+        if (!isGeminiKeyConfigured()) {
+            JOptionPane.showMessageDialog(this, 
+                "Please add a Gemini API key in settings to optimize prompts.", 
+                "Gemini API key missing", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+        
+        String rawPrompt = promptAssembleArea.getText().trim();
+        if (rawPrompt.isEmpty()) {
+            JOptionPane.showMessageDialog(this, 
+                "Please create a prompt first (What?, Where?, How?).", 
+                "Empty Prompt", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+        
+        btnOptimizePrompt.setEnabled(false);
+        btnOptimizePrompt.setText("✨ Optimizing...");
+        promptLabConsole.append("Optimizing prompt with Gemini AI...\n");
+        
+        new Thread(() -> {
+            try {
+                geminiService.discoverBestModel();
+                String optimized = geminiService.optimizePrompt(rawPrompt);
+                
+                SwingUtilities.invokeLater(() -> {
+                    btnOptimizePrompt.setEnabled(true);
+                    btnOptimizePrompt.setText("✨ Optimize with Gemini");
+                    if (optimized != null && !optimized.isEmpty()) {
+                        promptAssembleArea.setText(optimized);
+                        
+                        // Manually inject optimized prompt into JSON prompt area
+                        try {
+                            String currentJsonStr = promptJsonArea.getText();
+                            JSONObject mainObj = new JSONObject(currentJsonStr);
+                            if (mainObj.has("prompt")) {
+                                JSONObject promptObj = mainObj.getJSONObject("prompt");
+                                String positiveNodeId = null;
+                                for (String key : promptObj.keySet()) {
+                                    JSONObject nodeObj = promptObj.getJSONObject(key);
+                                    if (nodeObj.has("class_type") && "CLIPTextEncode".equals(nodeObj.getString("class_type"))) {
+                                        if (nodeObj.has("inputs")) {
+                                            JSONObject inputs = nodeObj.getJSONObject("inputs");
+                                            if (inputs.has("text")) {
+                                                String textVal = inputs.getString("text").toLowerCase();
+                                                if (textVal.contains("bad") || textVal.contains("blurry") || textVal.contains("low quality") || textVal.contains("worst")) {
+                                                    continue;
+                                                }
+                                                positiveNodeId = key;
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+                                
+                                if (positiveNodeId == null) {
+                                    for (String key : promptObj.keySet()) {
+                                        JSONObject nodeObj = promptObj.getJSONObject(key);
+                                        if (nodeObj.has("class_type") && "CLIPTextEncode".equals(nodeObj.getString("class_type"))) {
+                                            positiveNodeId = key;
+                                            break;
+                                        }
+                                    }
+                                }
+                                
+                                if (positiveNodeId != null) {
+                                    JSONObject nodeObj = promptObj.getJSONObject(positiveNodeId);
+                                    if (nodeObj.has("inputs")) {
+                                        JSONObject inputs = nodeObj.getJSONObject("inputs");
+                                        inputs.put("text", optimized);
+                                    }
+                                }
+                                promptJsonArea.setText(mainObj.toString(2));
+                            }
+                        } catch (Exception ex) {
+                            // ignore json error
+                        }
+                        
+                        promptLabConsole.append("Prompt successfully optimized with Gemini!\n\n");
+                    } else {
+                        promptLabConsole.append("❌ Error: Prompt could not be optimized.\n\n");
+                        JOptionPane.showMessageDialog(this, 
+                            "Prompt optimization failed.", 
+                            "Error", JOptionPane.ERROR_MESSAGE);
+                    }
+                });
+            } catch (Exception ex) {
+                SwingUtilities.invokeLater(() -> {
+                    btnOptimizePrompt.setEnabled(true);
+                    btnOptimizePrompt.setText("✨ Optimize with Gemini");
+                    promptLabConsole.append("❌ Error: " + ex.getMessage() + "\n\n");
+                    JOptionPane.showMessageDialog(this, 
+                        "Error during prompt optimization: " + ex.getMessage(), 
+                        "Error", JOptionPane.ERROR_MESSAGE);
+                });
+            }
         }).start();
     }
 
@@ -1191,7 +2093,7 @@ public class Main extends JFrame {
         leftPanel.putClientProperty("FlatLaf.style", "arc: 15; background: lighten($Panel.background, 2%); border: 15,15,15,15,$Component.borderColor,1,15");
         leftPanel.setBorder(BorderFactory.createEmptyBorder(15, 15, 15, 15));
 
-        JLabel profilesHeader = new JLabel("Launch Profiles");
+        JLabel profilesHeader = new JLabel("Startprofile");
         profilesHeader.putClientProperty("FlatLaf.styleClass", "h3");
         leftPanel.add(profilesHeader, BorderLayout.NORTH);
 
@@ -1225,12 +2127,12 @@ public class Main extends JFrame {
         addProfileBtn.addActionListener(e -> {
             JTextField nameField = new JTextField();
             JTextField argsField = new JTextField("--listen, --port, 8188");
-            Object[] message = { "Profile Name:", nameField, "Arguments (comma separated):", argsField };
+            Object[] message = { "Profile Name:", nameField, "Arguments (comma-separated):", argsField };
             int option = JOptionPane.showConfirmDialog(this, message, "Add Launch Profile", JOptionPane.OK_CANCEL_OPTION);
             if (option == JOptionPane.OK_OPTION && !nameField.getText().trim().isEmpty()) {
                 List<String> args = java.util.Arrays.stream(argsField.getText().split(",")).map(String::trim).filter(s -> !s.isEmpty()).collect(Collectors.toList());
                 de.tki.comfymodels.domain.LaunchProfile newProfile = new de.tki.comfymodels.domain.LaunchProfile(
-                    java.util.UUID.randomUUID().toString(), nameField.getText().trim(), "Custom user profile.",
+                    java.util.UUID.randomUUID().toString(), nameField.getText().trim(), "User-defined profile.",
                     false, "python", args, new HashMap<>()
                 );
                 List<de.tki.comfymodels.domain.LaunchProfile> profiles = profileManager.loadProfiles();
@@ -1263,7 +2165,7 @@ public class Main extends JFrame {
         gbc.insets = new Insets(5, 5, 15, 5);
         gbc.weightx = 1.0;
 
-        JLabel titleLabel = new JLabel("Dashboard");
+        JLabel titleLabel = new JLabel("Übersicht");
         titleLabel.putClientProperty("FlatLaf.styleClass", "h1");
         gbc.gridx = 0; gbc.gridy = 0; gbc.gridwidth = 2;
         rightPanel.add(titleLabel, gbc);
@@ -1274,7 +2176,7 @@ public class Main extends JFrame {
         gbc.gridy = 1;
         rightPanel.add(statusDisplay, gbc);
 
-        JLabel descLabel = new JLabel("Select a profile to see details.");
+        JLabel descLabel = new JLabel("Wähle ein Profil aus, um Details anzuzeigen.");
         descLabel.setFont(new Font("SansSerif", Font.ITALIC, 14));
         descLabel.setForeground(Color.LIGHT_GRAY);
         gbc.gridy = 2;
@@ -1286,7 +2188,7 @@ public class Main extends JFrame {
                 descLabel.setText("<html><body style='width: 500px;'>" + selected.description() + "</body></html>");
                 configService.setActiveProfile(selected.id());
             } else {
-                descLabel.setText("Select a profile to see details.");
+                descLabel.setText("Wähle ein Profil aus, um Details anzuzeigen.");
             }
         });
 
@@ -1296,16 +2198,16 @@ public class Main extends JFrame {
         JPanel actionPanel = new JPanel(new GridLayout(1, 5, 12, 12));
         actionPanel.setOpaque(false);
         
-        launchBtn = new JButton("🚀 Launch");
+        launchBtn = new JButton("🚀 Starten");
         launchBtn.putClientProperty("JButton.buttonType", "accent");
         launchBtn.setFont(new Font("SansSerif", Font.BOLD, 14));
         
-        JButton restartBtn = new JButton("🔄 Restart");
+        JButton restartBtn = new JButton("🔄 Neustart");
         restartBtn.putClientProperty("JButton.buttonType", "roundRect");
         restartBtn.setFont(new Font("SansSerif", Font.BOLD, 14));
         restartBtn.setEnabled(false);
 
-        JButton stopBtn = new JButton("⏹ Stop");
+        JButton stopBtn = new JButton("⏹ Stoppen");
         stopBtn.putClientProperty("JButton.buttonType", "roundRect");
         stopBtn.setFont(new Font("SansSerif", Font.BOLD, 14));
         stopBtn.setEnabled(false);
@@ -1318,11 +2220,11 @@ public class Main extends JFrame {
             try {
                 Desktop.getDesktop().browse(new java.net.URI(configService.getComfyUIUrl()));
             } catch (Exception ex) {
-                JOptionPane.showMessageDialog(this, "Could not open browser: " + ex.getMessage());
+                JOptionPane.showMessageDialog(this, "Browser konnte nicht geöffnet werden: " + ex.getMessage());
             }
         });
 
-        JButton bootstrapBtn = new JButton("🛠️ Setup");
+        JButton bootstrapBtn = new JButton("🛠️ Einrichtung");
         bootstrapBtn.putClientProperty("JButton.buttonType", "roundRect");
         bootstrapBtn.setFont(new Font("SansSerif", Font.BOLD, 14));
 
@@ -1340,11 +2242,11 @@ public class Main extends JFrame {
         versionPanel.setOpaque(false);
         versionPanel.setLayout(new BoxLayout(versionPanel, BoxLayout.Y_AXIS));
         
-        JLabel versionHeader = new JLabel("Environment Versions");
+        JLabel versionHeader = new JLabel("Umgebungsversionen");
         versionHeader.putClientProperty("FlatLaf.styleClass", "h4");
         
-        lblComfyVersion = new JLabel("ComfyUI: Fetching...");
-        lblPythonVersion = new JLabel("Python: Fetching...");
+        lblComfyVersion = new JLabel("ComfyUI: Wird geladen...");
+        lblPythonVersion = new JLabel("Python: Wird geladen...");
 
         versionPanel.add(versionHeader);
         versionPanel.add(Box.createRigidArea(new Dimension(0, 8)));
@@ -2897,7 +3799,7 @@ public class Main extends JFrame {
         toolbar.putClientProperty("FlatLaf.style", "background: lighten($Panel.background, 1%)");
         toolbar.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, UIManager.getColor("Separator.foreground")));
 
-        JButton verifyBtn = new JButton("🔍 Fast Verify");
+        JButton verifyBtn = new JButton("🔍 Quick Check");
         verifyBtn.putClientProperty("JButton.buttonType", "roundRect");
         verifyBtn.addActionListener(e -> verifyLocalModels(false));
         
@@ -2905,9 +3807,9 @@ public class Main extends JFrame {
         optimizeBtn.putClientProperty("JButton.buttonType", "roundRect");
         optimizeBtn.addActionListener(e -> {
             int confirm = JOptionPane.showConfirmDialog(this, 
-                "The Storage Optimizer calculates SHA-256 hashes for all local models.\n" +
+                "The storage optimizer calculates SHA-256 hashes for all local models.\n" +
                 "This is EXTREMELY slow and resource-intensive for large libraries.\n\n" +
-                "Do you want to proceed?", "Performance Warning", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
+                "Do you want to continue?", "Performance Warning", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
             if (confirm == JOptionPane.YES_OPTION) {
                 verifyLocalModels(true);
             }
@@ -2917,23 +3819,23 @@ public class Main extends JFrame {
         archiveBtn.putClientProperty("JButton.buttonType", "roundRect");
         archiveBtn.addActionListener(e -> showArchiveDialog());
 
-        JButton diagnosticBtn = new JButton("🩺 Diagnostic");
+        JButton diagnosticBtn = new JButton("🩺 Diagnostics");
         diagnosticBtn.putClientProperty("JButton.buttonType", "roundRect");
         diagnosticBtn.addActionListener(e -> {
             if (modelsToDownload == null || modelsToDownload.isEmpty()) {
-                JOptionPane.showMessageDialog(this, "Load a workflow first to perform a diagnostic check.");
+                JOptionPane.showMessageDialog(this, "Please load a workflow first to perform diagnostics.");
                 return;
             }
             List<String> missing = diagnosticService.getMissingModels(modelsToDownload);
             if (missing.isEmpty()) {
-                JOptionPane.showMessageDialog(this, "✅ All workflow models are visible to ComfyUI!", "Diagnostic Passed", JOptionPane.INFORMATION_MESSAGE);
+                JOptionPane.showMessageDialog(this, "✅ All workflow models are visible to ComfyUI!", "Diagnostics Successful", JOptionPane.INFORMATION_MESSAGE);
             } else {
                 String list = String.join("\n- ", missing);
-                Object[] options = {"Go to Dashboard (Restart)", "Ignore"};
+                Object[] options = {"Switch to Overview (Restart)", "Ignore"};
                 int choice = JOptionPane.showOptionDialog(this, 
                     "❌ ComfyUI still reports these models as missing:\n- " + list + "\n\n" +
-                    "A restart is required for ComfyUI to detect new models.", 
-                    "Diagnostic Failed", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE, null, options, options[0]);
+                    "A restart is required for ComfyUI to recognize new models.", 
+                    "Diagnostics Failed", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE, null, options, options[0]);
                 
                 if (choice == 0) tabs.setSelectedIndex(0);
             }
@@ -2973,7 +3875,7 @@ public class Main extends JFrame {
             if (fd.getFile() != null) {
                 try {
                     modelListService.importJson(new File(fd.getDirectory(), fd.getFile()));
-                    JOptionPane.showMessageDialog(this, "Model list imported successfully! (" + modelListService.getModels().size() + " models)");
+                    JOptionPane.showMessageDialog(this, "Model list successfully imported! (" + modelListService.getModels().size() + " models)");
                     analyzeJsonContent();
                 } catch (Exception ex) {
                     JOptionPane.showMessageDialog(this, "Error: " + ex.getMessage());
@@ -3039,7 +3941,7 @@ public class Main extends JFrame {
         colModel.getColumn(7).setPreferredWidth(253);
 
         JPopupMenu modelTablePopup = new JPopupMenu();
-        JMenuItem searchCivitaiItem = new JMenuItem("Search Civitai & Select Version...");
+        JMenuItem searchCivitaiItem = new JMenuItem("Search on Civitai & select version...");
         modelTablePopup.add(searchCivitaiItem);
 
         modelTable.addMouseListener(new MouseAdapter() {
@@ -3071,7 +3973,7 @@ public class Main extends JFrame {
         });
         JScrollPane tableScroll = new JScrollPane(modelTable);
         JPanel tablePanel = new JPanel(new BorderLayout());
-        tablePanel.setBorder(BorderFactory.createTitledBorder("Identified Models"));
+        tablePanel.setBorder(BorderFactory.createTitledBorder("Detected Models"));
         tablePanel.add(tableScroll, BorderLayout.CENTER);
 
         splitPane.setTopComponent(jsonPanel);
@@ -3089,7 +3991,7 @@ public class Main extends JFrame {
         progressPanel.add(activeAiModelLabel);
         
         JPanel actionButtons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 5));
-        downloadButton = new JButton("Start Queue");
+        downloadButton = new JButton("Start queue");
         downloadButton.putClientProperty("JButton.buttonType", "accent");
         downloadButton.setFont(new Font("SansSerif", Font.BOLD, 13));
         downloadButton.setEnabled(false);
@@ -3148,7 +4050,7 @@ public class Main extends JFrame {
         pathsBtn.setMaximumSize(new Dimension(360, 40));
         pathsBtn.addActionListener(e -> showPathsDialog());
 
-        JButton repairBtn = new JButton("🛠️ Auto-Repair Environment...");
+        JButton repairBtn = new JButton("🛠️ Repair Environment Automatically...");
         repairBtn.setFont(btnFont);
         repairBtn.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
         repairBtn.setMaximumSize(new Dimension(360, 40));
@@ -3160,7 +4062,7 @@ public class Main extends JFrame {
         downloadSettingsBtn.setMaximumSize(new Dimension(360, 40));
         downloadSettingsBtn.addActionListener(e -> showDownloadSettingsDialog());
 
-        JButton bridgeBtn = new JButton("🚀 ComfyUI Bridge Installer...");
+        JButton bridgeBtn = new JButton("🚀 Install ComfyUI Bridge...");
         bridgeBtn.setFont(btnFont);
         bridgeBtn.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
         bridgeBtn.setMaximumSize(new Dimension(360, 40));
@@ -3171,17 +4073,17 @@ public class Main extends JFrame {
         checksPanel.setLayout(new BoxLayout(checksPanel, BoxLayout.Y_AXIS));
         checksPanel.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
 
-        backgroundCheck = new JCheckBox("Stay in Background");
+        backgroundCheck = new JCheckBox("Run in background");
         backgroundCheck.setFont(checkFont);
         backgroundCheck.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
         backgroundCheck.addActionListener(e -> configService.setBackgroundModeEnabled(backgroundCheck.isSelected()));
         
-        shutdownCheck = new JCheckBox("Shutdown after Queue");
+        shutdownCheck = new JCheckBox("Shutdown after completion");
         shutdownCheck.setFont(checkFont);
         shutdownCheck.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
         shutdownCheck.addActionListener(e -> configService.setShutdownAfterDownloadEnabled(shutdownCheck.isSelected()));
         
-        restartCheck = new JCheckBox("Full Restart after Queue");
+        restartCheck = new JCheckBox("Restart after completion");
         restartCheck.setFont(checkFont);
         restartCheck.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
         restartCheck.addActionListener(e -> configService.setRestartAfterDownloadEnabled(restartCheck.isSelected()));
@@ -3199,7 +4101,7 @@ public class Main extends JFrame {
             FlatAnimatedLafChange.hideSnapshotWithAnimation();
         });
 
-        fastHashCheck = new JCheckBox("Fast Hashing (AutoV1)");
+        fastHashCheck = new JCheckBox("Fast hashing (AutoV1)");
         fastHashCheck.setFont(checkFont);
         fastHashCheck.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
         fastHashCheck.addActionListener(e -> configService.setFastHashEnabled(fastHashCheck.isSelected()));
@@ -3243,18 +4145,18 @@ public class Main extends JFrame {
         apiBtn.setMaximumSize(new Dimension(360, 40));
         apiBtn.addActionListener(e -> showApiKeysDialog());
 
-        JButton helpBtn = new JButton("ℹ View Help & Guide");
+        JButton helpBtn = new JButton("ℹ Show Help & Instructions");
         helpBtn.setFont(btnFont);
         helpBtn.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
         helpBtn.setMaximumSize(new Dimension(360, 40));
         helpBtn.addActionListener(e -> showHelpDialog());
 
-        JButton resetVaultBtn = new JButton("🔒 Reset Security Vault...");
+        JButton resetVaultBtn = new JButton("🔒 Reset Secure Vault...");
         resetVaultBtn.setFont(btnFont);
         resetVaultBtn.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
         resetVaultBtn.setMaximumSize(new Dimension(360, 40));
         resetVaultBtn.addActionListener(e -> {
-            int confirm = JOptionPane.showConfirmDialog(this, "This will delete all stored API keys. Continue?", "Vault Reset", JOptionPane.YES_NO_OPTION);
+            int confirm = JOptionPane.showConfirmDialog(this, "This will delete all stored API keys. Continue?", "Reset Vault", JOptionPane.YES_NO_OPTION);
             if (confirm == JOptionPane.YES_OPTION) {
                 configService.resetVault();
                 updateGeminiTabVisibility();

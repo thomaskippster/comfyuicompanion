@@ -157,14 +157,14 @@ public class DefaultDownloadManager implements IDownloadManager {
         }
 
         // Auto-Discovery: If configured URL fails, search for ComfyUI on common ports
-        System.out.println("🔍 [Companion] ComfyUI unter " + comfyUrl + " nicht erreicht. Suche automatisch...");
+        System.out.println("🔍 [Companion] ComfyUI not reached at " + comfyUrl + ". Searching automatically...");
         String discoveredUrl = discoverComfyUrl();
         if (discoveredUrl != null) {
-            System.out.println("✨ [Companion] ComfyUI automatisch gefunden unter: " + discoveredUrl);
+            System.out.println("✨ [Companion] ComfyUI automatically found at: " + discoveredUrl);
             if (configService != null) configService.setComfyUIUrl(discoveredUrl);
             sendRefreshPing(discoveredUrl, forceReload);
         } else {
-            System.err.println("❌ [Companion] ComfyUI konnte nicht automatisch gefunden werden. Bitte stelle sicher, dass es läuft.");
+            System.err.println("❌ [Companion] ComfyUI could not be found automatically. Please make sure it is running.");
         }
     }
 
@@ -180,7 +180,7 @@ public class DefaultDownloadManager implements IDownloadManager {
             
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() == 200) {
-                System.out.println("✅ [Companion] ComfyUI (" + url + ") erfolgreich benachrichtigt (Force: " + forceReload + ").");
+                System.out.println("✅ [Companion] ComfyUI (" + url + ") successfully notified (Force: " + forceReload + ").");
                 return true;
             }
         } catch (Exception ignored) {}

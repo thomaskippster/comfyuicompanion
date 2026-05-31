@@ -66,13 +66,13 @@ public class ProfileManager {
                 try {
                     saveProfiles(updated);
                 } catch (IOException e) {
-                    System.err.println("Fehler beim Aktualisieren der Profile: " + e.getMessage());
+                    System.err.println("Error updating profiles: " + e.getMessage());
                 }
             }
             
             return updated;
         } catch (IOException e) {
-            System.err.println("Fehler beim Laden der Profile: " + e.getMessage());
+            System.err.println("Error loading profiles: " + e.getMessage());
             return defaults;
         }
     }
@@ -83,70 +83,70 @@ public class ProfileManager {
         profiles.add(new LaunchProfile(
             "standard_mode",
             "Standard Mode (Default)",
-            "Startet ComfyUI im normalen Modus mit ausgewogener VRAM-Nutzung. Empfohlen für den täglichen Gebrauch.",
+            "Starts ComfyUI in normal mode with balanced VRAM usage. Recommended for daily use.",
             false, "python", List.of(), new java.util.HashMap<>()
         ));
 
         profiles.add(new LaunchProfile(
             "beast_mode",
             "Beast Mode (High VRAM)",
-            "Maximale VRAM-Nutzung für High-End-Hardware (z.B. RTX 3090/4090). Ideal für große Auflösungen und schnelles Upscaling.",
+            "Maximum VRAM usage for high-end hardware (e.g. RTX 3090/4090). Ideal for high resolutions and fast upscaling.",
             false, "python", List.of("--highvram"), new java.util.HashMap<>()
         ));
 
         profiles.add(new LaunchProfile(
             "background_mode",
             "Background / Gaming Mode (Low VRAM)",
-            "Aggressives VRAM-Caching. Gibt VRAM für andere Anwendungen und Gaming im Vordergrund frei.",
+            "Aggressive VRAM caching. Frees up VRAM for other applications and gaming in the foreground.",
             false, "python", List.of("--lowvram"), new java.util.HashMap<>()
         ));
 
         profiles.add(new LaunchProfile(
             "flux_sd3_fp8",
             "Flux & SD3 Optimization (FP8)",
-            "Erzwingt FP8-Präzision für UNet und Text-Encoder. Ermöglicht das Ausführen großer Modelle wie Flux oder SD3 auf GPUs mit 8-12 GB VRAM.",
+            "Forces FP8 precision for UNet and text encoder. Allows running large models like Flux or SD3 on GPUs with 8-12 GB VRAM.",
             false, "python", List.of("--fp8_e4m3fn-text-enc", "--fp8_e4m3fn-unet"), new java.util.HashMap<>()
         ));
 
         profiles.add(new LaunchProfile(
             "cpu_mode",
             "CPU Mode (No GPU)",
-            "Führt alle Berechnungen auf dem Hauptprozessor (CPU) aus. Extrem langsam, funktioniert aber komplett ohne kompatible Grafikkarte.",
+            "Runs all calculations on the main processor (CPU). Extremely slow, but works entirely without a compatible graphics card.",
             false, "python", List.of("--cpu"), new java.util.HashMap<>()
         ));
 
         profiles.add(new LaunchProfile(
             "extreme_savings",
             "Extreme Savings (No VRAM)",
-            "Lagert alle Modelle in den Hauptspeicher aus und lädt sie nur blockweise in die GPU. Sehr langsam, spart aber maximalen Grafikspeicher.",
+            "Offloads all models to system memory and loads them only block-by-block into the GPU. Very slow, but saves maximum graphics memory.",
             false, "python", List.of("--novram"), new java.util.HashMap<>()
         ));
 
         profiles.add(new LaunchProfile(
             "network_hub",
             "Network Hub (LAN Mode)",
-            "Öffnet den ComfyUI-Server für das lokale Netzwerk (0.0.0.0), damit andere Geräte im LAN darauf zugreifen können.",
+            "Opens the ComfyUI server to the local network (0.0.0.0) so that other devices in the LAN can access it.",
             false, "python", List.of("--listen", "0.0.0.0"), new java.util.HashMap<>()
         ));
 
         profiles.add(new LaunchProfile(
             "directml_mode",
             "AMD / Intel GPU Mode (DirectML)",
-            "Aktiviert DirectML-Unterstützung für AMD Radeon oder Intel Arc Grafikkarten unter Windows.",
+            "Enables DirectML support for AMD Radeon or Intel Arc graphics cards under Windows.",
             false, "python", List.of("--directml"), new java.util.HashMap<>()
         ));
 
         profiles.add(new LaunchProfile(
             "wsl_mode",
             "WSL / Linux Subsystem Mode",
-            "Tunnelt den Startbefehl durch das Windows Subsystem für Linux (WSL) für maximale Linux-Kompatibilität.",
+            "Tunnels the startup command through the Windows Subsystem for Linux (WSL) for maximum Linux compatibility.",
             true, "python3", List.of(), new java.util.HashMap<>()
         ));
 
         profiles.add(new LaunchProfile(
             "safe_mode",
             "Safe Mode (Troubleshooting)",
-            "Deaktiviert alle Custom Nodes temporär. Perfekt, um nach fehlerhaften Updates die Web-UI wieder lauffähig zu machen.",
+            "Temporarily disables all custom nodes. Perfect for making the web UI work again after faulty updates.",
             false, "python", List.of("--disable-all-custom-nodes"), new java.util.HashMap<>()
         ));
 

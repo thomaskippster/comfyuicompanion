@@ -194,17 +194,84 @@ public class GeminiAIService {
         }
     }
 
+    private String detectModelArchitecture(String modelName) {
+        if (modelName == null) return "SD15";
+        String lower = modelName.toLowerCase();
+        if (lower.contains("z_image_turbo") || lower.contains("acestep") || lower.contains("longcat") || lower.contains("lumina")) {
+            return "Lumina2";
+        }
+        if (lower.contains("wan")) {
+            return "Wan";
+        }
+        if (lower.contains("flux")) {
+            return "Flux";
+        }
+        if (lower.contains("sd3") || lower.contains("stable_diffusion_3")) {
+            return "SD3";
+        }
+        if (lower.contains("xl") || lower.contains("sdxl")) {
+            return "SDXL";
+        }
+        return "SD15";
+    }
+
     public String optimizePrompt(String rawPrompt) throws IOException {
+        return optimizePrompt(rawPrompt, null);
+    }
+
+    public String optimizePrompt(String rawPrompt, String modelName) throws IOException {
         String apiKey = configService.getGeminiApiKey();
         if (apiKey == null || apiKey.trim().isEmpty()) {
             throw new IOException("Gemini API key is not configured.");
         }
 
         try {
-            String systemInstruction = "You are an expert prompt engineer for text-to-image models (like Stable Diffusion / ComfyUI). "
-                    + "Your task is to optimize a simple prompt into a detailed, high-quality English image generation prompt. "
-                    + "Add suitable details about subject, environment, lighting, style, and quality (in English). "
-                    + "Respond ONLY with the optimized prompt text. Do not use explanations, annotations, or quotes.";
+            String arch = detectModelArchitecture(modelName);
+            String promptGuide = "";
+            switch (arch) {
+                case "Lumina2":
+                    promptGuide = "The target model is Lumina-2 (Qwen text encoder). "
+                            + "It performs best with rich, detailed natural language paragraphs (1-3 sentences) describing the scene. "
+                            + "Focus on spatial arrangements, lighting, style, colors, and camera work. "
+                            + "Do NOT use comma-separated keyword lists or generic quality tags like 'masterpiece', '8k', 'best quality', 'photorealistic'.";
+                    break;
+                case "Wan":
+                    promptGuide = "The target model is Wan2.1 (T2I). "
+                            + "It performs best with descriptive, detailed natural language descriptions of the scene. "
+                            + "Focus on texture, scene depth, cinematic details, and atmosphere in natural flow. "
+                            + "Avoid keyword lists or boilerplate quality tags.";
+                    break;
+                case "Flux":
+                    promptGuide = "The target model is FLUX (flow-matching DiT). "
+                            + "It has supreme prompt adherence and performs best with a highly detailed, descriptive paragraph in natural English. "
+                            + "Describe the subject, clothing, environment, composition, camera style, lighting, and textures in detail as if explaining a scene to a photographer. "
+                            + "Do NOT write tag/keyword lists, and do NOT use boilerplate quality words like 'hyperrealistic', '8k', 'masterpiece'.";
+                    break;
+                case "SD3":
+                    promptGuide = "The target model is Stable Diffusion 3 / 3.5. "
+                            + "It uses T5XXL and CLIP encoders. It performs best with clear, descriptive natural language paragraphs detailing the composition, subject, and style. "
+                            + "Avoid keyword salads or excessive tags.";
+                    break;
+                case "SDXL":
+                    promptGuide = "The target model is Stable Diffusion XL (SDXL). "
+                            + "It performs best with a balanced mix: a clean descriptive sentence followed by clear style modifiers and camera keywords. "
+                            + "Avoid extremely long paragraphs, but do not fall into pure keyword lists. Make it concise and high-impact.";
+                    break;
+                default: // SD15
+                    promptGuide = "The target model is Stable Diffusion 1.5. "
+                            + "It performs best with comma-separated tag/keyword lists. "
+                            + "Start with the main subject, followed by detailed descriptions, lighting keywords, art medium/styles, and quality modifiers "
+                            + "(e.g., 'masterpiece, best quality, highly detailed, sharp focus, 8k resolution, volumetric lighting, by [artist]').";
+                    break;
+            }
+
+            String systemInstruction = "You are an expert prompt engineer for text-to-image models. "
+                    + "Your task is to optimize a simple prompt into a highly effective English image generation prompt tailored for the specific model architecture.\n\n"
+                    + "GUIDELINE FOR TARGET MODEL:\n" + promptGuide + "\n\n"
+                    + "Instructions:\n"
+                    + "1. Optimize the original prompt following the guideline above.\n"
+                    + "2. Translate any non-English concepts to English.\n"
+                    + "3. Respond ONLY with the optimized prompt text. Do not use explanations, annotations, markdown code blocks, or quotes.";
 
             String promptText = systemInstruction + "\n\nOriginal prompt: " + rawPrompt + "\n\nOptimized prompt:";
 

@@ -134,6 +134,13 @@ public class Main extends JFrame {
     private JProgressBar generatorProgressBar;
     private JButton btnGenerateImage;
 
+    private final java.util.Set<String> comfyCheckpoints = new java.util.concurrent.ConcurrentHashMap<String, Boolean>().keySet(Boolean.TRUE);
+    private final java.util.Set<String> comfyUnetModels = new java.util.concurrent.ConcurrentHashMap<String, Boolean>().keySet(Boolean.TRUE);
+    private final java.util.Set<String> comfyClips = new java.util.concurrent.ConcurrentHashMap<String, Boolean>().keySet(Boolean.TRUE);
+    private final java.util.Set<String> comfyVaes = new java.util.concurrent.ConcurrentHashMap<String, Boolean>().keySet(Boolean.TRUE);
+    private final java.util.Set<String> comfyClipTypes = new java.util.concurrent.ConcurrentHashMap<String, Boolean>().keySet(Boolean.TRUE);
+    private final java.util.Set<String> comfyUnetWeightDtypes = new java.util.concurrent.ConcurrentHashMap<String, Boolean>().keySet(Boolean.TRUE);
+
     // Prompt Lab Fields
     private static class DropdownItem {
         private final String display;
@@ -155,6 +162,9 @@ public class Main extends JFrame {
     private JComboBox<String> promptModelCombo;
     private JSpinner promptWidthSpinner;
     private JSpinner promptHeightSpinner;
+    private JSpinner promptStepsSpinner;
+    private JSpinner promptCfgSpinner;
+    private JLabel promptPresetLabel;
 
     private JCheckBox chkPhotorealistic;
     private JCheckBox chkOil;
@@ -199,6 +209,7 @@ public class Main extends JFrame {
                         }
                     }
                 }
+                refreshPromptLabModels();
             });
         });
         this.diagnosticService = diagnosticService;
@@ -1416,6 +1427,14 @@ public class Main extends JFrame {
         leftPanel.add(modelRow);
         leftPanel.add(Box.createVerticalStrut(10));
 
+        // Model capability label
+        promptPresetLabel = new JLabel("Detected Preset: Stable Diffusion 1.5 (SD 1.5)");
+        promptPresetLabel.setFont(new Font("SansSerif", Font.ITALIC | Font.BOLD, 12));
+        promptPresetLabel.setForeground(new Color(58, 117, 196));
+        promptPresetLabel.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        leftPanel.add(promptPresetLabel);
+        leftPanel.add(Box.createVerticalStrut(10));
+
         // Size Inputs (Width & Height)
         JPanel sizeRow = new JPanel(new GridLayout(1, 2, 10, 0));
         sizeRow.setOpaque(false);
@@ -1442,6 +1461,34 @@ public class Main extends JFrame {
         sizeRow.add(heightPanel);
 
         leftPanel.add(sizeRow);
+        leftPanel.add(Box.createVerticalStrut(10));
+
+        // Sampler Settings: Steps & CFG
+        JPanel samplerRow = new JPanel(new GridLayout(1, 2, 10, 0));
+        samplerRow.setOpaque(false);
+        samplerRow.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        samplerRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 50));
+
+        JPanel stepsPanel = new JPanel(new BorderLayout(0, 2));
+        stepsPanel.setOpaque(false);
+        JLabel lblSteps = new JLabel("Steps");
+        lblSteps.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        promptStepsSpinner = new JSpinner(new SpinnerNumberModel(20, 1, 100, 1));
+        stepsPanel.add(lblSteps, BorderLayout.NORTH);
+        stepsPanel.add(promptStepsSpinner, BorderLayout.CENTER);
+
+        JPanel cfgPanel = new JPanel(new BorderLayout(0, 2));
+        cfgPanel.setOpaque(false);
+        JLabel lblCfg = new JLabel("CFG Scale");
+        lblCfg.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        promptCfgSpinner = new JSpinner(new SpinnerNumberModel(8.0, 0.0, 30.0, 0.5));
+        cfgPanel.add(lblCfg, BorderLayout.NORTH);
+        cfgPanel.add(promptCfgSpinner, BorderLayout.CENTER);
+
+        samplerRow.add(stepsPanel);
+        samplerRow.add(cfgPanel);
+
+        leftPanel.add(samplerRow);
         leftPanel.add(Box.createVerticalStrut(20));
 
         // Step 5: Assembler (Die "Antigravity"-Logik)
@@ -1496,9 +1543,15 @@ public class Main extends JFrame {
         chkFantasy.addActionListener(styleChanger);
         chkSketch.addActionListener(styleChanger);
 
-        promptModelCombo.addActionListener(e -> updatePromptLabJson());
+        promptModelCombo.addActionListener(e -> {
+            String selected = (String) promptModelCombo.getSelectedItem();
+            applyModelPreset(selected);
+            updatePromptLabJson();
+        });
         promptWidthSpinner.addChangeListener(e -> updatePromptLabJson());
         promptHeightSpinner.addChangeListener(e -> updatePromptLabJson());
+        promptStepsSpinner.addChangeListener(e -> updatePromptLabJson());
+        promptCfgSpinner.addChangeListener(e -> updatePromptLabJson());
         
         // Initial load of models in background
         refreshPromptLabModels();
@@ -1562,6 +1615,415 @@ public class Main extends JFrame {
         return panel;
     }
 
+    private void applyModelPreset(String modelName) {
+        if (modelName == null || modelName.isEmpty()) return;
+        
+        String lower = modelName.toLowerCase();
+        if (lower.contains("flux1-schnell") || lower.contains("flux_schnell") || lower.contains("schnell")) {
+            promptPresetLabel.setText("Detected Preset: FLUX.1 Schnell (Fast 4-Step)");
+            promptWidthSpinner.setValue(1024);
+            promptHeightSpinner.setValue(1024);
+            promptStepsSpinner.setValue(4);
+            promptCfgSpinner.setValue(1.0);
+        } else if (lower.contains("flux")) {
+            promptPresetLabel.setText("Detected Preset: FLUX.1 (High Quality)");
+            promptWidthSpinner.setValue(1024);
+            promptHeightSpinner.setValue(1024);
+            promptStepsSpinner.setValue(20);
+            promptCfgSpinner.setValue(1.0);
+        } else if (lower.contains("xl") || lower.contains("juggernaut") || lower.contains("pony")) {
+            promptPresetLabel.setText("Detected Preset: Stable Diffusion XL (SDXL)");
+            promptWidthSpinner.setValue(1024);
+            promptHeightSpinner.setValue(1024);
+            promptStepsSpinner.setValue(30);
+            promptCfgSpinner.setValue(6.0);
+        } else if (lower.contains("ltx")) {
+            promptPresetLabel.setText("Detected Preset: LTX-Video / Image Transformer");
+            promptWidthSpinner.setValue(768);
+            promptHeightSpinner.setValue(512);
+            promptStepsSpinner.setValue(20);
+            promptCfgSpinner.setValue(3.0);
+        } else if (lower.contains("hunyuan")) {
+            promptPresetLabel.setText("Detected Preset: Hunyuan 3D / Video");
+            promptWidthSpinner.setValue(1024);
+            promptHeightSpinner.setValue(1024);
+            promptStepsSpinner.setValue(30);
+            promptCfgSpinner.setValue(5.0);
+        } else if (lower.contains("turbo")) {
+            promptPresetLabel.setText("Detected Preset: SD Turbo / fast inference");
+            promptWidthSpinner.setValue(512);
+            promptHeightSpinner.setValue(512);
+            promptStepsSpinner.setValue(8);
+            promptCfgSpinner.setValue(1.5);
+        } else {
+            promptPresetLabel.setText("Detected Preset: Stable Diffusion 1.5 (SD 1.5)");
+            promptWidthSpinner.setValue(512);
+            promptHeightSpinner.setValue(512);
+            promptStepsSpinner.setValue(20);
+            promptCfgSpinner.setValue(7.0);
+        }
+    }
+
+    private String findExactUnetName(String selectedModel) {
+        if (selectedModel == null) return "";
+        String normalized = selectedModel.replace("\\", "/");
+        for (String unet : comfyUnetModels) {
+            String uNorm = unet.replace("\\", "/");
+            if (uNorm.equalsIgnoreCase(normalized)) {
+                return unet;
+            }
+        }
+        String clean = normalized;
+        if (clean.startsWith("diffusion_models/")) {
+            clean = clean.substring(17);
+        }
+        for (String unet : comfyUnetModels) {
+            String uNorm = unet.replace("\\", "/");
+            if (uNorm.equalsIgnoreCase(clean)) {
+                return unet;
+            }
+        }
+        return clean;
+    }
+
+    private String findExactCheckpointName(String selectedModel) {
+        if (selectedModel == null) return "";
+        String normalized = selectedModel.replace("\\", "/");
+        for (String ckpt : comfyCheckpoints) {
+            String cNorm = ckpt.replace("\\", "/");
+            if (cNorm.equalsIgnoreCase(normalized)) {
+                return ckpt;
+            }
+        }
+        String clean = normalized;
+        if (clean.startsWith("checkpoints/")) {
+            clean = clean.substring(12);
+        }
+        for (String ckpt : comfyCheckpoints) {
+            String cNorm = ckpt.replace("\\", "/");
+            if (cNorm.equalsIgnoreCase(clean)) {
+                return ckpt;
+            }
+        }
+        return clean;
+    }
+
+    private String resolveClipType(String clipModel) {
+        if (clipModel == null) return "stable_diffusion";
+        String lower = clipModel.toLowerCase();
+        String candidate = "stable_diffusion";
+        
+        if (lower.contains("qwen_3_4b") || lower.contains("lumina2") || lower.contains("lumina-2")) {
+            candidate = "lumina2";
+        } else if (lower.contains("wan") || lower.contains("qwen_2.5_vl")) {
+            candidate = "wan";
+        } else if (lower.contains("flux")) {
+            candidate = "flux";
+        } else if (lower.contains("gemma")) {
+            candidate = "lumina2";
+        } else if (lower.contains("sd3") || lower.contains("stable_diffusion_3")) {
+            candidate = "sd3";
+        } else if (lower.contains("mochi")) {
+            candidate = "mochi";
+        } else if (lower.contains("ltxv")) {
+            candidate = "ltxv";
+        } else if (lower.contains("cosmos")) {
+            candidate = "cosmos";
+        }
+        
+        if (comfyClipTypes.contains(candidate)) {
+            return candidate;
+        }
+        if (comfyClipTypes.contains("stable_diffusion")) {
+            return "stable_diffusion";
+        }
+        if (!comfyClipTypes.isEmpty()) {
+            return comfyClipTypes.iterator().next();
+        }
+        return candidate;
+    }
+
+    private boolean isDiffusionModel(String modelName) {
+        if (modelName == null) return false;
+        String clean = modelName.replace("\\", "/");
+        if (clean.startsWith("diffusion_models/")) {
+            clean = clean.substring(17);
+        }
+        if (comfyUnetModels.contains(clean) || comfyUnetModels.contains(modelName)) {
+            return true;
+        }
+        String lower = modelName.toLowerCase();
+        return lower.contains("diffusion_models") || 
+               lower.contains("z_image_turbo") || 
+               lower.contains("acestep") || 
+               lower.contains("flux-2-klein") || 
+               lower.contains("longcat") || 
+               lower.contains("wan2.1") || 
+               lower.contains("wan2.2");
+    }
+
+    private String resolveClipForModel(String modelName) {
+        String lower = modelName.toLowerCase();
+        String expected = "qwen_3_4b.safetensors";
+        if (lower.contains("z_image_turbo") || lower.contains("acestep") || lower.contains("longcat")) {
+            expected = "qwen_3_4b.safetensors";
+        } else if (lower.contains("wan")) {
+            expected = "qwen/qwen_2.5_vl_7b_fp8_scaled.safetensors";
+        }
+        
+        String expectedClean = expected.replace("\\", "/");
+        for (String clip : comfyClips) {
+            String clipClean = clip.replace("\\", "/");
+            if (clipClean.equalsIgnoreCase(expectedClean) || clipClean.endsWith("/" + expectedClean)) {
+                return clip;
+            }
+        }
+        String expectedName = expectedClean.contains("/") ? expectedClean.substring(expectedClean.lastIndexOf('/') + 1) : expectedClean;
+        for (String clip : comfyClips) {
+            String clipClean = clip.replace("\\", "/");
+            if (clipClean.equalsIgnoreCase(expectedName) || clipClean.endsWith("/" + expectedName)) {
+                return clip;
+            }
+        }
+        if (expectedName.contains("qwen")) {
+            for (String clip : comfyClips) {
+                if (clip.toLowerCase().contains("qwen")) {
+                    return clip;
+                }
+            }
+        }
+        if (!comfyClips.isEmpty()) {
+            return comfyClips.iterator().next();
+        }
+        return expected;
+    }
+
+    private String resolveVaeForModel(String modelName) {
+        String lower = modelName.toLowerCase();
+        String expected = "FLUX1/ae.safetensors";
+        if (lower.contains("z_image_turbo") || lower.contains("acestep") || lower.contains("longcat")) {
+            expected = "FLUX1/ae.safetensors";
+        } else if (lower.contains("wan")) {
+            expected = "wan_2.1_vae.safetensors";
+        }
+        
+        String expectedClean = expected.replace("\\", "/");
+        for (String vae : comfyVaes) {
+            String vaeClean = vae.replace("\\", "/");
+            if (vaeClean.equalsIgnoreCase(expectedClean) || vaeClean.endsWith("/" + expectedClean)) {
+                return vae;
+            }
+        }
+        String expectedName = expectedClean.contains("/") ? expectedClean.substring(expectedClean.lastIndexOf('/') + 1) : expectedClean;
+        for (String vae : comfyVaes) {
+            String vaeClean = vae.replace("\\", "/");
+            if (vaeClean.equalsIgnoreCase(expectedName) || vaeClean.endsWith("/" + expectedName)) {
+                return vae;
+            }
+        }
+        if (expectedName.contains("ae") || expectedName.contains("flux")) {
+            for (String vae : comfyVaes) {
+                String vaeLower = vae.toLowerCase();
+                if (vaeLower.contains("ae") || vaeLower.contains("flux")) {
+                    return vae;
+                }
+            }
+        }
+        if (!comfyVaes.isEmpty()) {
+            return comfyVaes.iterator().next();
+        }
+        return expected;
+    }
+
+    private void adaptWorkflowJsonForModel(JSONObject promptObj, String selectedModel) {
+        if (promptObj == null || selectedModel == null) return;
+        
+        boolean isDiff = isDiffusionModel(selectedModel);
+        
+        if (isDiff) {
+            // Find CheckpointLoaderSimple and convert to UNETLoader
+            String targetCheckpointNodeId = null;
+            for (String key : promptObj.keySet()) {
+                JSONObject node = promptObj.getJSONObject(key);
+                if (node.has("class_type") && "CheckpointLoaderSimple".equals(node.getString("class_type"))) {
+                    targetCheckpointNodeId = key;
+                    break;
+                }
+            }
+            
+            if (targetCheckpointNodeId != null) {
+                JSONObject node = promptObj.getJSONObject(targetCheckpointNodeId);
+                node.put("class_type", "UNETLoader");
+                
+                JSONObject inputs = node.optJSONObject("inputs");
+                if (inputs == null) {
+                    inputs = new JSONObject();
+                    node.put("inputs", inputs);
+                }
+                inputs.remove("ckpt_name");
+                
+                String unetName = findExactUnetName(selectedModel);
+                inputs.put("unet_name", unetName);
+                
+                // Add weight_dtype dynamically
+                if (comfyUnetWeightDtypes != null && !comfyUnetWeightDtypes.isEmpty()) {
+                    if (comfyUnetWeightDtypes.contains("default")) {
+                        inputs.put("weight_dtype", "default");
+                    } else {
+                        inputs.put("weight_dtype", comfyUnetWeightDtypes.iterator().next());
+                    }
+                } else {
+                    inputs.put("weight_dtype", "default");
+                }
+                
+                // Create CLIPLoader
+                String clipNodeId = targetCheckpointNodeId + "_clip";
+                JSONObject clipNode = new JSONObject();
+                clipNode.put("class_type", "CLIPLoader");
+                JSONObject clipInputs = new JSONObject();
+                String clipModel = resolveClipForModel(selectedModel);
+                if (clipModel.startsWith("clip/")) clipModel = clipModel.substring(5);
+                else if (clipModel.startsWith("clip\\")) clipModel = clipModel.substring(5);
+                else if (clipModel.startsWith("text_encoders/")) clipModel = clipModel.substring(14);
+                else if (clipModel.startsWith("text_encoders\\")) clipModel = clipModel.substring(14);
+                clipInputs.put("clip_name", clipModel);
+                
+                String clipType = resolveClipType(clipModel);
+                clipInputs.put("type", clipType);
+                
+                clipNode.put("inputs", clipInputs);
+                promptObj.put(clipNodeId, clipNode);
+                
+                // Create VAELoader
+                String vaeNodeId = targetCheckpointNodeId + "_vae";
+                JSONObject vaeNode = new JSONObject();
+                vaeNode.put("class_type", "VAELoader");
+                JSONObject vaeInputs = new JSONObject();
+                String vaeModel = resolveVaeForModel(selectedModel);
+                if (vaeModel.startsWith("vae/")) vaeModel = vaeModel.substring(4);
+                else if (vaeModel.startsWith("vae\\")) vaeModel = vaeModel.substring(4);
+                vaeInputs.put("vae_name", vaeModel);
+                vaeNode.put("inputs", vaeInputs);
+                promptObj.put(vaeNodeId, vaeNode);
+                
+                // Redirect outputs
+                for (String key : promptObj.keySet()) {
+                    if (key.equals(targetCheckpointNodeId) || key.equals(clipNodeId) || key.equals(vaeNodeId)) {
+                        continue;
+                    }
+                    JSONObject otherNode = promptObj.getJSONObject(key);
+                    if (otherNode.has("inputs")) {
+                        JSONObject otherInputs = otherNode.getJSONObject("inputs");
+                        for (String inputKey : otherInputs.keySet()) {
+                            Object val = otherInputs.get(inputKey);
+                            if (val instanceof org.json.JSONArray) {
+                                org.json.JSONArray link = (org.json.JSONArray) val;
+                                if (link.length() == 2 && targetCheckpointNodeId.equals(link.getString(0))) {
+                                    int outputIndex = link.getInt(1);
+                                    if (outputIndex == 1) {
+                                        link.put(0, clipNodeId);
+                                        link.put(1, 0);
+                                    } else if (outputIndex == 2) {
+                                        link.put(0, vaeNodeId);
+                                        link.put(1, 0);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                for (String key : promptObj.keySet()) {
+                    JSONObject node = promptObj.getJSONObject(key);
+                    if (node.has("class_type") && "UNETLoader".equals(node.getString("class_type"))) {
+                        JSONObject inputs = node.optJSONObject("inputs");
+                        if (inputs != null) {
+                            String unetName = findExactUnetName(selectedModel);
+                            inputs.put("unet_name", unetName);
+                            if (!inputs.has("weight_dtype")) {
+                                if (comfyUnetWeightDtypes != null && !comfyUnetWeightDtypes.isEmpty()) {
+                                    if (comfyUnetWeightDtypes.contains("default")) {
+                                        inputs.put("weight_dtype", "default");
+                                    } else {
+                                        inputs.put("weight_dtype", comfyUnetWeightDtypes.iterator().next());
+                                    }
+                                } else {
+                                    inputs.put("weight_dtype", "default");
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            String targetUnetNodeId = null;
+            for (String key : promptObj.keySet()) {
+                JSONObject node = promptObj.getJSONObject(key);
+                if (node.has("class_type") && "UNETLoader".equals(node.getString("class_type"))) {
+                    targetUnetNodeId = key;
+                    break;
+                }
+            }
+            
+            if (targetUnetNodeId != null) {
+                JSONObject node = promptObj.getJSONObject(targetUnetNodeId);
+                node.put("class_type", "CheckpointLoaderSimple");
+                
+                JSONObject inputs = node.optJSONObject("inputs");
+                if (inputs == null) {
+                    inputs = new JSONObject();
+                    node.put("inputs", inputs);
+                }
+                inputs.remove("unet_name");
+                inputs.remove("weight_dtype");
+                
+                String ckptName = findExactCheckpointName(selectedModel);
+                inputs.put("ckpt_name", ckptName);
+                
+                String clipNodeId = targetUnetNodeId + "_clip";
+                String vaeNodeId = targetUnetNodeId + "_vae";
+                
+                for (String key : promptObj.keySet()) {
+                    if (key.equals(targetUnetNodeId)) continue;
+                    JSONObject otherNode = promptObj.getJSONObject(key);
+                    if (otherNode.has("inputs")) {
+                        JSONObject otherInputs = otherNode.getJSONObject("inputs");
+                        for (String inputKey : otherInputs.keySet()) {
+                            Object val = otherInputs.get(inputKey);
+                            if (val instanceof org.json.JSONArray) {
+                                org.json.JSONArray link = (org.json.JSONArray) val;
+                                if (link.length() == 2) {
+                                    String sourceNode = link.getString(0);
+                                    if (clipNodeId.equals(sourceNode)) {
+                                        link.put(0, targetUnetNodeId);
+                                        link.put(1, 1);
+                                    } else if (vaeNodeId.equals(sourceNode)) {
+                                        link.put(0, targetUnetNodeId);
+                                        link.put(1, 2);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                promptObj.remove(clipNodeId);
+                promptObj.remove(vaeNodeId);
+            } else {
+                for (String key : promptObj.keySet()) {
+                    JSONObject node = promptObj.getJSONObject(key);
+                    if (node.has("class_type") && "CheckpointLoaderSimple".equals(node.getString("class_type"))) {
+                        JSONObject inputs = node.optJSONObject("inputs");
+                        if (inputs != null) {
+                            String ckptName = findExactCheckpointName(selectedModel);
+                            inputs.put("ckpt_name", ckptName);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     private void updatePromptLabJson() {
         if (promptSubjectField == null || promptEnvCombo == null || promptAssembleArea == null || promptJsonArea == null) {
             return;
@@ -1570,6 +2032,8 @@ public class Main extends JFrame {
         String selectedModel = (promptModelCombo != null) ? (String) promptModelCombo.getSelectedItem() : null;
         Integer width = (promptWidthSpinner != null) ? (Integer) promptWidthSpinner.getValue() : null;
         Integer height = (promptHeightSpinner != null) ? (Integer) promptHeightSpinner.getValue() : null;
+        Integer steps = (promptStepsSpinner != null) ? (Integer) promptStepsSpinner.getValue() : null;
+        Double cfg = (promptCfgSpinner != null) ? ((Number) promptCfgSpinner.getValue()).doubleValue() : null;
         
         String subject = promptSubjectField.getText().trim();
         DropdownItem envItem = (DropdownItem) promptEnvCombo.getSelectedItem();
@@ -1635,17 +2099,9 @@ public class Main extends JFrame {
                     }
                 }
                 
-                // Update Checkpoint Loader Simple
+                // Adapt loaders for the selected model
                 if (selectedModel != null && !selectedModel.trim().isEmpty()) {
-                    for (String key : promptObj.keySet()) {
-                        JSONObject nodeObj = promptObj.getJSONObject(key);
-                        if (nodeObj.has("class_type") && "CheckpointLoaderSimple".equals(nodeObj.getString("class_type"))) {
-                            if (nodeObj.has("inputs")) {
-                                JSONObject inputs = nodeObj.getJSONObject("inputs");
-                                inputs.put("ckpt_name", selectedModel.trim());
-                            }
-                        }
-                    }
+                    adaptWorkflowJsonForModel(promptObj, selectedModel.trim());
                 }
 
                 // Update Latent Image Dimensions
@@ -1662,6 +2118,20 @@ public class Main extends JFrame {
                     }
                 }
 
+                // Update KSampler Steps & CFG
+                if (steps != null && cfg != null) {
+                    for (String key : promptObj.keySet()) {
+                        JSONObject nodeObj = promptObj.getJSONObject(key);
+                        if (nodeObj.has("class_type") && "KSampler".equals(nodeObj.getString("class_type"))) {
+                            if (nodeObj.has("inputs")) {
+                                JSONObject inputs = nodeObj.getJSONObject("inputs");
+                                inputs.put("steps", steps);
+                                inputs.put("cfg", cfg);
+                            }
+                        }
+                    }
+                }
+
                 promptJsonArea.setText(mainObj.toString(2));
             }
         } catch (Exception ex) {
@@ -1669,9 +2139,151 @@ public class Main extends JFrame {
         }
     }
 
+    private void updateComfyModelSets(JSONObject info) {
+        comfyCheckpoints.clear();
+        comfyUnetModels.clear();
+        comfyClips.clear();
+        comfyVaes.clear();
+        comfyClipTypes.clear();
+        comfyUnetWeightDtypes.clear();
+
+        if (info.has("CheckpointLoaderSimple")) {
+            JSONObject nodeInfo = info.getJSONObject("CheckpointLoaderSimple");
+            if (nodeInfo.has("input")) {
+                JSONObject input = nodeInfo.getJSONObject("input");
+                if (input.has("required")) {
+                    JSONObject required = input.getJSONObject("required");
+                    if (required.has("ckpt_name")) {
+                        Object val = required.get("ckpt_name");
+                        if (val instanceof org.json.JSONArray) {
+                            org.json.JSONArray outerArray = (org.json.JSONArray) val;
+                            if (outerArray.length() > 0) {
+                                Object firstElement = outerArray.get(0);
+                                if (firstElement instanceof org.json.JSONArray) {
+                                    org.json.JSONArray options = (org.json.JSONArray) firstElement;
+                                    for (int i = 0; i < options.length(); i++) {
+                                        comfyCheckpoints.add(options.getString(i));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if (info.has("UNETLoader")) {
+            JSONObject nodeInfo = info.getJSONObject("UNETLoader");
+            if (nodeInfo.has("input")) {
+                JSONObject input = nodeInfo.getJSONObject("input");
+                if (input.has("required")) {
+                    JSONObject required = input.getJSONObject("required");
+                    if (required.has("unet_name")) {
+                        Object val = required.get("unet_name");
+                        if (val instanceof org.json.JSONArray) {
+                            org.json.JSONArray outerArray = (org.json.JSONArray) val;
+                            if (outerArray.length() > 0) {
+                                Object firstElement = outerArray.get(0);
+                                if (firstElement instanceof org.json.JSONArray) {
+                                    org.json.JSONArray options = (org.json.JSONArray) firstElement;
+                                    for (int i = 0; i < options.length(); i++) {
+                                        comfyUnetModels.add(options.getString(i));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if (required.has("weight_dtype")) {
+                        Object val = required.get("weight_dtype");
+                        if (val instanceof org.json.JSONArray) {
+                            org.json.JSONArray outerArray = (org.json.JSONArray) val;
+                            if (outerArray.length() > 0) {
+                                Object firstElement = outerArray.get(0);
+                                if (firstElement instanceof org.json.JSONArray) {
+                                    org.json.JSONArray options = (org.json.JSONArray) firstElement;
+                                    for (int i = 0; i < options.length(); i++) {
+                                        comfyUnetWeightDtypes.add(options.getString(i));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if (info.has("CLIPLoader")) {
+            JSONObject nodeInfo = info.getJSONObject("CLIPLoader");
+            if (nodeInfo.has("input")) {
+                JSONObject input = nodeInfo.getJSONObject("input");
+                if (input.has("required")) {
+                    JSONObject required = input.getJSONObject("required");
+                    if (required.has("clip_name")) {
+                        Object val = required.get("clip_name");
+                        if (val instanceof org.json.JSONArray) {
+                            org.json.JSONArray outerArray = (org.json.JSONArray) val;
+                            if (outerArray.length() > 0) {
+                                Object firstElement = outerArray.get(0);
+                                if (firstElement instanceof org.json.JSONArray) {
+                                    org.json.JSONArray options = (org.json.JSONArray) firstElement;
+                                    for (int i = 0; i < options.length(); i++) {
+                                        comfyClips.add(options.getString(i));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if (required.has("type")) {
+                        Object val = required.get("type");
+                        if (val instanceof org.json.JSONArray) {
+                            org.json.JSONArray outerArray = (org.json.JSONArray) val;
+                            if (outerArray.length() > 0) {
+                                Object firstElement = outerArray.get(0);
+                                if (firstElement instanceof org.json.JSONArray) {
+                                    org.json.JSONArray options = (org.json.JSONArray) firstElement;
+                                    for (int i = 0; i < options.length(); i++) {
+                                        comfyClipTypes.add(options.getString(i));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if (info.has("VAELoader")) {
+            JSONObject nodeInfo = info.getJSONObject("VAELoader");
+            if (nodeInfo.has("input")) {
+                JSONObject input = nodeInfo.getJSONObject("input");
+                if (input.has("required")) {
+                    JSONObject required = input.getJSONObject("required");
+                    if (required.has("vae_name")) {
+                        Object val = required.get("vae_name");
+                        if (val instanceof org.json.JSONArray) {
+                            org.json.JSONArray outerArray = (org.json.JSONArray) val;
+                            if (outerArray.length() > 0) {
+                                Object firstElement = outerArray.get(0);
+                                if (firstElement instanceof org.json.JSONArray) {
+                                    org.json.JSONArray options = (org.json.JSONArray) firstElement;
+                                    for (int i = 0; i < options.length(); i++) {
+                                        comfyVaes.add(options.getString(i));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     private void refreshPromptLabModels() {
         String comfyUrl = configService.getComfyUIUrl();
         new Thread(() -> {
+            java.util.Set<String> apiModels = new java.util.TreeSet<>();
+            
+            // Query ComfyUI API status & available checkpoints/unets
             try {
                 java.net.http.HttpClient client = java.net.http.HttpClient.newBuilder()
                         .connectTimeout(java.time.Duration.ofSeconds(3))
@@ -1683,55 +2295,41 @@ public class Main extends JFrame {
                 java.net.http.HttpResponse<String> response = client.send(request, java.net.http.HttpResponse.BodyHandlers.ofString());
                 if (response.statusCode() == 200) {
                     JSONObject info = new JSONObject(response.body());
-                    if (info.has("CheckpointLoaderSimple")) {
-                        JSONObject nodeInfo = info.getJSONObject("CheckpointLoaderSimple");
-                        if (nodeInfo.has("input")) {
-                            JSONObject input = nodeInfo.getJSONObject("input");
-                            if (input.has("required")) {
-                                JSONObject required = input.getJSONObject("required");
-                                if (required.has("ckpt_name")) {
-                                    Object val = required.get("ckpt_name");
-                                    if (val instanceof org.json.JSONArray) {
-                                        org.json.JSONArray outerArray = (org.json.JSONArray) val;
-                                        if (outerArray.length() > 0) {
-                                            Object firstElement = outerArray.get(0);
-                                            if (firstElement instanceof org.json.JSONArray) {
-                                                org.json.JSONArray options = (org.json.JSONArray) firstElement;
-                                                java.util.List<String> list = new java.util.ArrayList<>();
-                                                for (int i = 0; i < options.length(); i++) {
-                                                    list.add(options.getString(i));
-                                                }
-                                                SwingUtilities.invokeLater(() -> {
-                                                    if (promptModelCombo != null) {
-                                                        String selected = (String) promptModelCombo.getSelectedItem();
-                                                        promptModelCombo.removeAllItems();
-                                                        for (String modelName : list) {
-                                                            promptModelCombo.addItem(modelName);
-                                                        }
-                                                        if (selected != null && list.contains(selected)) {
-                                                            promptModelCombo.setSelectedItem(selected);
-                                                        } else if (!list.isEmpty()) {
-                                                            promptModelCombo.setSelectedIndex(0);
-                                                        }
-                                                        promptLabConsole.append("🔄 Prompt Lab: Available checkpoints loaded from ComfyUI (" + list.size() + " models).\n");
-                                                    }
-                                                });
-                                                return;
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
+                    updateComfyModelSets(info);
+                    for (String ckpt : comfyCheckpoints) {
+                        apiModels.add(ckpt.replace("\\", "/"));
+                    }
+                    for (String unet : comfyUnetModels) {
+                        apiModels.add(unet.replace("\\", "/"));
                     }
                 }
             } catch (Exception ex) {
-                SwingUtilities.invokeLater(() -> {
-                    if (promptLabConsole != null) {
-                        promptLabConsole.append("⚠️ Prompt Lab: Failed to fetch models from ComfyUI (is ComfyUI running?)\n");
-                    }
-                });
+                // silent fallback
             }
+
+            java.util.List<String> list = new java.util.ArrayList<>(apiModels);
+            if (list.isEmpty()) {
+                list.add("v1-5-pruned-emaonly.safetensors");
+            }
+            
+            SwingUtilities.invokeLater(() -> {
+                if (promptModelCombo != null) {
+                    String selected = (String) promptModelCombo.getSelectedItem();
+                    promptModelCombo.removeAllItems();
+                    for (String modelName : list) {
+                        promptModelCombo.addItem(modelName);
+                    }
+                    if (selected != null && list.contains(selected)) {
+                        promptModelCombo.setSelectedItem(selected);
+                    } else if (!list.isEmpty()) {
+                        promptModelCombo.setSelectedIndex(0);
+                    }
+                    if (promptModelCombo.getSelectedItem() != null) {
+                        applyModelPreset((String) promptModelCombo.getSelectedItem());
+                    }
+                    promptLabConsole.append("🔄 Prompt Lab: Available ComfyUI models loaded (" + list.size() + " models fetched).\n");
+                }
+            });
         }).start();
     }
 
@@ -1741,6 +2339,8 @@ public class Main extends JFrame {
         String selectedModelVal = (promptModelCombo != null) ? (String) promptModelCombo.getSelectedItem() : null;
         int widthVal = (promptWidthSpinner != null) ? (int) promptWidthSpinner.getValue() : 512;
         int heightVal = (promptHeightSpinner != null) ? (int) promptHeightSpinner.getValue() : 512;
+        int stepsVal = (promptStepsSpinner != null) ? (int) promptStepsSpinner.getValue() : 20;
+        double cfgVal = (promptCfgSpinner != null) ? ((Number) promptCfgSpinner.getValue()).doubleValue() : 8.0;
         
         btnSendToComfy.setEnabled(false);
         promptLabConsole.append("Checking connection to ComfyUI and loading models...\n");
@@ -1791,57 +2391,77 @@ public class Main extends JFrame {
                     return;
                 }
                 
-                // Parse checkpoints from response
-                java.util.List<String> checkpoints = new java.util.ArrayList<>();
+                // Parse checkpoints and unet models from response
                 try {
                     JSONObject info = new JSONObject(infoResponse.body());
-                    if (info.has("CheckpointLoaderSimple")) {
-                        JSONObject nodeInfo = info.getJSONObject("CheckpointLoaderSimple");
-                        if (nodeInfo.has("input")) {
-                            JSONObject input = nodeInfo.getJSONObject("input");
-                            if (input.has("required")) {
-                                JSONObject required = input.getJSONObject("required");
-                                if (required.has("ckpt_name")) {
-                                    Object val = required.get("ckpt_name");
-                                    if (val instanceof org.json.JSONArray) {
-                                        org.json.JSONArray outerArray = (org.json.JSONArray) val;
-                                        if (outerArray.length() > 0) {
-                                            Object firstElement = outerArray.get(0);
-                                            if (firstElement instanceof org.json.JSONArray) {
-                                                org.json.JSONArray options = (org.json.JSONArray) firstElement;
-                                                for (int i = 0; i < options.length(); i++) {
-                                                    checkpoints.add(options.getString(i));
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    updateComfyModelSets(info);
                 } catch (Exception ex) {
                     // JSON parsing error
                 }
                 
-                if (checkpoints.isEmpty()) {
+                java.util.List<String> checkpoints = new java.util.ArrayList<>(comfyCheckpoints);
+                java.util.List<String> unetModels = new java.util.ArrayList<>(comfyUnetModels);
+                
+                if (checkpoints.isEmpty() && unetModels.isEmpty()) {
                     SwingUtilities.invokeLater(() -> {
                         btnSendToComfy.setEnabled(true);
-                        promptLabConsole.append("❌ No models found in ComfyUI.\n\n");
+                        promptLabConsole.append("❌ No checkpoints or UNet models found in ComfyUI.\n\n");
                         JOptionPane.showMessageDialog(this, 
-                            "No models (checkpoints) were found in ComfyUI. Please install a model first!", 
+                            "No models (checkpoints or UNets) were found in ComfyUI. Please install a model first!", 
                             "No Models Available", JOptionPane.WARNING_MESSAGE);
                     });
                     return;
                 }
                 
                 String selectedModel = selectedModelVal;
-                if (selectedModel == null || selectedModel.trim().isEmpty() || !checkpoints.contains(selectedModel)) {
-                    if (!checkpoints.isEmpty()) {
+                boolean isDiff = isDiffusionModel(selectedModel);
+                boolean isValid = false;
+                
+                if (selectedModel != null && !selectedModel.trim().isEmpty()) {
+                    String cleanModelName = selectedModel.replace("\\", "/");
+                    if (isDiff) {
+                        if (cleanModelName.startsWith("diffusion_models/")) {
+                            cleanModelName = cleanModelName.substring(17);
+                        }
+                        final String finalClean = cleanModelName;
+                        final String finalSelected = selectedModel.replace("\\", "/");
+                        isValid = unetModels.stream().anyMatch(u -> {
+                            String normalized = u.replace("\\", "/");
+                            if (normalized.startsWith("diffusion_models/")) {
+                                return normalized.substring(17).equalsIgnoreCase(finalClean) || normalized.equalsIgnoreCase(finalSelected);
+                            }
+                            return normalized.equalsIgnoreCase(finalClean) || normalized.equalsIgnoreCase(finalSelected);
+                        });
+                    } else {
+                        if (cleanModelName.startsWith("checkpoints/")) {
+                            cleanModelName = cleanModelName.substring(12);
+                        }
+                        final String finalClean = cleanModelName;
+                        final String finalSelected = selectedModel.replace("\\", "/");
+                        isValid = checkpoints.stream().anyMatch(c -> {
+                            String normalized = c.replace("\\", "/");
+                            if (normalized.startsWith("checkpoints/")) {
+                                return normalized.substring(12).equalsIgnoreCase(finalClean) || normalized.equalsIgnoreCase(finalSelected);
+                            }
+                            return normalized.equalsIgnoreCase(finalClean) || normalized.equalsIgnoreCase(finalSelected);
+                        });
+                    }
+                }
+                
+                if (!isValid) {
+                    if (isDiff && !unetModels.isEmpty()) {
+                        selectedModel = unetModels.get(0);
+                        final String fallback = selectedModel;
+                        SwingUtilities.invokeLater(() -> {
+                            promptModelCombo.setSelectedItem(fallback);
+                            promptLabConsole.append("⚠️ Selected diffusion model not loaded. Falling back to: " + fallback + "\n");
+                        });
+                    } else if (!checkpoints.isEmpty()) {
                         selectedModel = checkpoints.get(0);
                         final String fallback = selectedModel;
                         SwingUtilities.invokeLater(() -> {
                             promptModelCombo.setSelectedItem(fallback);
-                            promptLabConsole.append("⚠️ Selected model not loaded/available. Falling back to: " + fallback + "\n");
+                            promptLabConsole.append("⚠️ Selected model not loaded. Falling back to checkpoint: " + fallback + "\n");
                         });
                     }
                 }
@@ -1857,16 +2477,8 @@ public class Main extends JFrame {
                 if (mainObj.has("prompt")) {
                     JSONObject promptObj = mainObj.getJSONObject("prompt");
                     
-                    // Update CheckpointLoaderSimple
-                    for (String key : promptObj.keySet()) {
-                        JSONObject nodeObj = promptObj.getJSONObject(key);
-                        if (nodeObj.has("class_type") && "CheckpointLoaderSimple".equals(nodeObj.getString("class_type"))) {
-                            if (nodeObj.has("inputs")) {
-                                JSONObject inputs = nodeObj.getJSONObject("inputs");
-                                inputs.put("ckpt_name", finalModel);
-                            }
-                        }
-                    }
+                    // Adapt loaders for the selected model
+                    adaptWorkflowJsonForModel(promptObj, finalModel);
                     
                     // Update EmptyLatentImage width & height
                     for (String key : promptObj.keySet()) {
@@ -1876,6 +2488,18 @@ public class Main extends JFrame {
                                 JSONObject inputs = nodeObj.getJSONObject("inputs");
                                 inputs.put("width", widthVal);
                                 inputs.put("height", heightVal);
+                            }
+                        }
+                    }
+
+                    // Update KSampler steps & cfg
+                    for (String key : promptObj.keySet()) {
+                        JSONObject nodeObj = promptObj.getJSONObject(key);
+                        if (nodeObj.has("class_type") && "KSampler".equals(nodeObj.getString("class_type"))) {
+                            if (nodeObj.has("inputs")) {
+                                JSONObject inputs = nodeObj.getJSONObject("inputs");
+                                inputs.put("steps", stepsVal);
+                                inputs.put("cfg", cfgVal);
                             }
                         }
                     }
@@ -2000,6 +2624,8 @@ public class Main extends JFrame {
             return;
         }
         
+        String selectedModel = (promptModelCombo != null) ? (String) promptModelCombo.getSelectedItem() : null;
+        
         btnOptimizePrompt.setEnabled(false);
         btnOptimizePrompt.setText("✨ Optimizing...");
         promptLabConsole.append("Optimizing prompt with Gemini AI...\n");
@@ -2007,7 +2633,7 @@ public class Main extends JFrame {
         new Thread(() -> {
             try {
                 geminiService.discoverBestModel();
-                String optimized = geminiService.optimizePrompt(rawPrompt);
+                String optimized = geminiService.optimizePrompt(rawPrompt, selectedModel);
                 
                 SwingUtilities.invokeLater(() -> {
                     btnOptimizePrompt.setEnabled(true);
@@ -2165,7 +2791,7 @@ public class Main extends JFrame {
         gbc.insets = new Insets(5, 5, 15, 5);
         gbc.weightx = 1.0;
 
-        JLabel titleLabel = new JLabel("Übersicht");
+        JLabel titleLabel = new JLabel("Overview");
         titleLabel.putClientProperty("FlatLaf.styleClass", "h1");
         gbc.gridx = 0; gbc.gridy = 0; gbc.gridwidth = 2;
         rightPanel.add(titleLabel, gbc);
@@ -2176,7 +2802,7 @@ public class Main extends JFrame {
         gbc.gridy = 1;
         rightPanel.add(statusDisplay, gbc);
 
-        JLabel descLabel = new JLabel("Wähle ein Profil aus, um Details anzuzeigen.");
+        JLabel descLabel = new JLabel("Select a profile to view details.");
         descLabel.setFont(new Font("SansSerif", Font.ITALIC, 14));
         descLabel.setForeground(Color.LIGHT_GRAY);
         gbc.gridy = 2;
@@ -2188,7 +2814,7 @@ public class Main extends JFrame {
                 descLabel.setText("<html><body style='width: 500px;'>" + selected.description() + "</body></html>");
                 configService.setActiveProfile(selected.id());
             } else {
-                descLabel.setText("Wähle ein Profil aus, um Details anzuzeigen.");
+                descLabel.setText("Select a profile to view details.");
             }
         });
 
@@ -2198,16 +2824,16 @@ public class Main extends JFrame {
         JPanel actionPanel = new JPanel(new GridLayout(1, 5, 12, 12));
         actionPanel.setOpaque(false);
         
-        launchBtn = new JButton("🚀 Starten");
+        launchBtn = new JButton("🚀 Launch");
         launchBtn.putClientProperty("JButton.buttonType", "accent");
         launchBtn.setFont(new Font("SansSerif", Font.BOLD, 14));
         
-        JButton restartBtn = new JButton("🔄 Neustart");
+        JButton restartBtn = new JButton("🔄 Restart");
         restartBtn.putClientProperty("JButton.buttonType", "roundRect");
         restartBtn.setFont(new Font("SansSerif", Font.BOLD, 14));
         restartBtn.setEnabled(false);
 
-        JButton stopBtn = new JButton("⏹ Stoppen");
+        JButton stopBtn = new JButton("⏹ Stop");
         stopBtn.putClientProperty("JButton.buttonType", "roundRect");
         stopBtn.setFont(new Font("SansSerif", Font.BOLD, 14));
         stopBtn.setEnabled(false);
@@ -2220,11 +2846,11 @@ public class Main extends JFrame {
             try {
                 Desktop.getDesktop().browse(new java.net.URI(configService.getComfyUIUrl()));
             } catch (Exception ex) {
-                JOptionPane.showMessageDialog(this, "Browser konnte nicht geöffnet werden: " + ex.getMessage());
+                JOptionPane.showMessageDialog(this, "Browser could not be opened: " + ex.getMessage());
             }
         });
 
-        JButton bootstrapBtn = new JButton("🛠️ Einrichtung");
+        JButton bootstrapBtn = new JButton("🛠️ Setup");
         bootstrapBtn.putClientProperty("JButton.buttonType", "roundRect");
         bootstrapBtn.setFont(new Font("SansSerif", Font.BOLD, 14));
 
@@ -2242,11 +2868,11 @@ public class Main extends JFrame {
         versionPanel.setOpaque(false);
         versionPanel.setLayout(new BoxLayout(versionPanel, BoxLayout.Y_AXIS));
         
-        JLabel versionHeader = new JLabel("Umgebungsversionen");
+        JLabel versionHeader = new JLabel("Environment Versions");
         versionHeader.putClientProperty("FlatLaf.styleClass", "h4");
         
-        lblComfyVersion = new JLabel("ComfyUI: Wird geladen...");
-        lblPythonVersion = new JLabel("Python: Wird geladen...");
+        lblComfyVersion = new JLabel("ComfyUI: Loading...");
+        lblPythonVersion = new JLabel("Python: Loading...");
 
         versionPanel.add(versionHeader);
         versionPanel.add(Box.createRigidArea(new Dimension(0, 8)));
@@ -4633,6 +5259,7 @@ public class Main extends JFrame {
                 cudaError.set(true);
             }
             if (log.contains("To see the GUI go to:")) {
+                refreshPromptLabModels();
                 int idx = log.indexOf("http://");
                 if (idx == -1) idx = log.indexOf("https://");
                 if (idx != -1) {

@@ -120,19 +120,8 @@ public class Main extends JFrame {
     private Image appIcon;
 
     private JTabbedPane mainTabs;
-    private JPanel geminiGeneratorPanel;
-    private boolean isGeminiTabAdded = false;
-    private Boolean isGeminiGenerationSuccessful = null;
-    private boolean isCheckingGemini = false;
-    private String lastCheckedGeminiKey = null;
-    private byte[] selectedImageBytes = null;
-    private String selectedImageMimeType = null;
-    private JLabel inputImagePreviewLabel;
-    private JLabel selectedImageFileLabel;
-    private JTextArea promptArea;
-    private JPanel resultsContainer;
-    private JProgressBar generatorProgressBar;
-    private JButton btnGenerateImage;
+    private de.tki.comfymodels.ui.WorkflowGraphPanel workflowGraphPanel;
+
 
     private final java.util.Set<String> comfyCheckpoints = new java.util.concurrent.ConcurrentHashMap<String, Boolean>().keySet(Boolean.TRUE);
     private final java.util.Set<String> comfyUnetModels = new java.util.concurrent.ConcurrentHashMap<String, Boolean>().keySet(Boolean.TRUE);
@@ -177,8 +166,6 @@ public class Main extends JFrame {
     private JTextArea promptLabConsole;
     private JButton btnSendToComfy;
     private JButton btnOptimizePrompt;
-
-    private JButton btnClearImage;
 
     public Main(IModelAnalyzer analyzer, IDownloadManager downloadManager,
                 IWorkflowService workflowService, IModelSearchService searchService,
@@ -308,49 +295,80 @@ public class Main extends JFrame {
 
     private void setupTheme(boolean darkMode) {
         try {
-            // Global arcs for a modern feel
-            UIManager.put("Button.arc", 999);
-            UIManager.put("Component.arc", 8);
-            UIManager.put("TextComponent.arc", 8);
-            UIManager.put("ProgressBar.arc", 8);
+            // Global arcs for a modern feel - rounded corners
+            UIManager.put("Button.arc", 12);
+            UIManager.put("Component.arc", 16);
+            UIManager.put("TextComponent.arc", 12);
+            UIManager.put("ProgressBar.arc", 999);
             UIManager.put("TitlePane.unifiedBackground", true);
 
+            // Clean, highly readable typography (serifenlose Schriftart)
+            Font defaultFont = new Font("Segoe UI", Font.PLAIN, 13);
+            for (String fontName : GraphicsEnvironment.getLocalGraphicsEnvironment().getAvailableFontFamilyNames()) {
+                if (fontName.equalsIgnoreCase("Inter") || fontName.equalsIgnoreCase("Roboto")) {
+                    defaultFont = new Font(fontName, Font.PLAIN, 13);
+                    break;
+                }
+            }
+            UIManager.put("defaultFont", defaultFont);
+
             if (darkMode) {
-                // ComfyUI Dark Palette - using ColorUIResource to play nice with L&F
-                Color nodeBg = new javax.swing.plaf.ColorUIResource(43, 43, 43); 
-                Color comfySurface = new javax.swing.plaf.ColorUIResource(32, 32, 32); 
-                Color comfyAccent = new javax.swing.plaf.ColorUIResource(255, 204, 0); 
-                Color comfyText = new javax.swing.plaf.ColorUIResource(204, 204, 204); 
-                Color comfyBorder = new javax.swing.plaf.ColorUIResource(55, 55, 55);
+                // Frosted glass Base Dark Palette (Anthracite)
+                Color nodeBg = new javax.swing.plaf.ColorUIResource(24, 26, 32); 
+                Color comfySurface = new javax.swing.plaf.ColorUIResource(18, 19, 22); 
+                Color comfyAccent = new javax.swing.plaf.ColorUIResource(0, 240, 255); // Turquoise Accent
+                Color comfyText = new javax.swing.plaf.ColorUIResource(220, 230, 242); 
+                Color comfyBorder = new javax.swing.plaf.ColorUIResource(36, 39, 48);
 
                 UIManager.put("DefaultBackgroundColor", comfySurface);
                 UIManager.put("Panel.background", nodeBg);
                 UIManager.put("Table.background", comfySurface);
                 UIManager.put("TextArea.background", comfySurface);
-                UIManager.put("TextField.background", new javax.swing.plaf.ColorUIResource(40, 40, 40));
-                UIManager.put("PasswordField.background", new javax.swing.plaf.ColorUIResource(40, 40, 40));
+                UIManager.put("TextField.background", new javax.swing.plaf.ColorUIResource(32, 36, 44));
+                UIManager.put("PasswordField.background", new javax.swing.plaf.ColorUIResource(32, 36, 44));
                 
                 UIManager.put("Label.foreground", comfyText);
                 UIManager.put("Table.foreground", comfyText);
                 UIManager.put("TextArea.foreground", comfyText);
                 
-                UIManager.put("Table.selectionBackground", new javax.swing.plaf.ColorUIResource(new Color(255, 204, 0, 60))); 
+                UIManager.put("Table.selectionBackground", new javax.swing.plaf.ColorUIResource(new Color(0, 240, 255, 60))); 
                 UIManager.put("Table.selectionForeground", Color.WHITE);
                 UIManager.put("Component.focusedBorderColor", comfyAccent);
                 UIManager.put("Separator.foreground", comfyBorder);
                 
-                UIManager.put("Button.background", new javax.swing.plaf.ColorUIResource(50, 50, 50));
+                UIManager.put("Button.background", new javax.swing.plaf.ColorUIResource(32, 36, 44));
                 UIManager.put("Button.foreground", comfyText);
-                UIManager.put("Button.focusedBackground", new javax.swing.plaf.ColorUIResource(58, 117, 196)); 
-                UIManager.put("Button.hoverBackground", new javax.swing.plaf.ColorUIResource(70, 130, 210));
-                UIManager.put("Button.pressedBackground", new javax.swing.plaf.ColorUIResource(30, 30, 30));
+                UIManager.put("Button.focusedBackground", new javax.swing.plaf.ColorUIResource(0, 180, 200)); 
+                UIManager.put("Button.hoverBackground", new javax.swing.plaf.ColorUIResource(0, 200, 220));
+                UIManager.put("Button.pressedBackground", new javax.swing.plaf.ColorUIResource(20, 21, 24));
                 UIManager.put("Button.borderColor", comfyBorder);
                 
                 UIManager.put("ScrollBar.track", comfySurface);
-                UIManager.put("ScrollBar.thumb", new javax.swing.plaf.ColorUIResource(70, 70, 70));
+                UIManager.put("ScrollBar.thumb", new javax.swing.plaf.ColorUIResource(60, 64, 76));
                 
-                UIManager.put("TabbedPane.selectedBackground", new javax.swing.plaf.ColorUIResource(58, 117, 196));
+                UIManager.put("TabbedPane.selectedBackground", new javax.swing.plaf.ColorUIResource(new Color(0, 240, 255, 40)));
                 UIManager.put("TabbedPane.selectedForeground", Color.WHITE);
+                UIManager.put("TabbedPane.underlineColor", comfyAccent);
+
+                // ProgressBar custom styles - slim and styled with glowing turquoise
+                UIManager.put("ProgressBar.foreground", comfyAccent);
+                UIManager.put("ProgressBar.background", new Color(30, 35, 45));
+                UIManager.put("ProgressBar.arc", 999);
+
+                // Card panel & UI styling variables
+                UIManager.put("Card.background", new Color(30, 34, 42, 176)); 
+                UIManager.put("Card.border", new Color(255, 255, 255, 24)); 
+                UIManager.put("Card.placeholder", new Color(30, 34, 42, 144)); 
+                UIManager.put("Card.placeholderBorder", new Color(255, 255, 255, 18));
+                UIManager.put("Toolbar.customBg", new Color(30, 34, 42, 128));
+                UIManager.put("SlimStat.titleForeground", new Color(180, 190, 205));
+                UIManager.put("SlimStat.valueForeground", new Color(0, 240, 255));
+                UIManager.put("SlimStat.barForeground", new Color(0, 240, 255));
+                UIManager.put("SlimStat.barBackground", new Color(32, 37, 48));
+                UIManager.put("MainTabs.gradientStart", new Color(14, 15, 17));
+                UIManager.put("MainTabs.gradientEnd", new Color(24, 28, 38));
+                UIManager.put("MainTabs.glowStart", new Color(0, 240, 255, 12));
+                UIManager.put("PromptLab.presetForeground", new Color(100, 160, 240));
                 
                 UIManager.setLookAndFeel(new FlatDarkLaf());
             } else {
@@ -375,13 +393,53 @@ public class Main extends JFrame {
                 UIManager.put("Component.borderColor", pronouncedBorder);
                 UIManager.put("Button.borderColor", pronouncedBorder);
                 UIManager.put("Separator.foreground", new javax.swing.plaf.ColorUIResource(200, 205, 215));
+
+                // Soft/Accent light tab styles
+                UIManager.put("TabbedPane.selectedBackground", new javax.swing.plaf.ColorUIResource(new Color(0, 120, 150, 25)));
+                UIManager.put("TabbedPane.selectedForeground", new Color(20, 30, 40));
+                UIManager.put("TabbedPane.underlineColor", new Color(0, 120, 150));
+
+                // Card panel & UI styling variables for light mode
+                UIManager.put("Card.background", new Color(240, 243, 248, 180)); 
+                UIManager.put("Card.border", new Color(0, 0, 0, 24)); 
+                UIManager.put("Card.placeholder", new Color(230, 235, 242, 160)); 
+                UIManager.put("Card.placeholderBorder", new Color(0, 0, 0, 18));
+                UIManager.put("Toolbar.customBg", new Color(240, 243, 248, 128));
+                UIManager.put("SlimStat.titleForeground", new Color(90, 100, 110));
+                UIManager.put("SlimStat.valueForeground", new Color(0, 120, 150));
+                UIManager.put("SlimStat.barForeground", new Color(0, 120, 150));
+                UIManager.put("SlimStat.barBackground", new Color(225, 230, 240));
+                UIManager.put("MainTabs.gradientStart", new Color(245, 247, 250));
+                UIManager.put("MainTabs.gradientEnd", new Color(255, 255, 255));
+                UIManager.put("MainTabs.glowStart", new Color(0, 120, 150, 8));
+                UIManager.put("PromptLab.presetForeground", new Color(30, 100, 200));
             }
             
             // Re-apply global arcs which might be cleared by setLookAndFeel
-            UIManager.put("Button.arc", 999);
-            UIManager.put("Component.arc", 8);
-            UIManager.put("TextComponent.arc", 8);
-            UIManager.put("ProgressBar.arc", 8);
+            UIManager.put("Button.arc", 12);
+            UIManager.put("Component.arc", 16);
+            UIManager.put("TextComponent.arc", 12);
+            UIManager.put("ProgressBar.arc", 999);
+
+            // Update text area backgrounds / foregrounds dynamically if already instantiated
+            if (consoleOutput != null) {
+                if (darkMode) {
+                    consoleOutput.setBackground(new Color(25, 25, 25));
+                    consoleOutput.setForeground(new Color(0, 220, 0));
+                } else {
+                    consoleOutput.setBackground(new Color(245, 247, 250));
+                    consoleOutput.setForeground(new Color(30, 30, 30));
+                }
+            }
+            if (promptLabConsole != null) {
+                if (darkMode) {
+                    promptLabConsole.setBackground(new Color(25, 25, 25));
+                    promptLabConsole.setForeground(new Color(0, 220, 0));
+                } else {
+                    promptLabConsole.setBackground(new Color(245, 247, 250));
+                    promptLabConsole.setForeground(new Color(30, 30, 30));
+                }
+            }
             
             FlatLaf.updateUI();
             SwingUtilities.updateComponentTreeUI(this);
@@ -801,10 +859,24 @@ public class Main extends JFrame {
         if (fastHashCheck != null) fastHashCheck.setSelected(configService.isFastHashEnabled());
     }
 
+    private boolean isGeminiKeyConfigured() {
+        String key = configService.getGeminiApiKey();
+        return key != null && !key.trim().isEmpty();
+    }
+
     private void updateAiModelDisplay() {
         new Thread(() -> {
             String model = geminiService.discoverBestModel();
-            SwingUtilities.invokeLater(() -> activeAiModelLabel.setText("Active AI: " + model));
+            SwingUtilities.invokeLater(() -> {
+                activeAiModelLabel.setText("Active AI: " + model);
+                if (btnOptimizePrompt != null) {
+                    if (!isGeminiKeyConfigured()) {
+                        btnOptimizePrompt.setToolTipText("Add a Gemini API key in settings to unlock this feature.");
+                    } else {
+                        btnOptimizePrompt.setToolTipText("Optimizes the assembled prompt using Gemini AI for better image quality.");
+                    }
+                }
+            });
         }).start();
     }
 
@@ -817,15 +889,46 @@ public class Main extends JFrame {
 
         getRootPane().putClientProperty("flatlaf.useWindowDecorations", true);
         
-        this.mainTabs = new JTabbedPane();
+        this.mainTabs = new JTabbedPane() {
+            @Override
+            protected void paintComponent(Graphics g) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                int w = getWidth();
+                int h = getHeight();
+                
+                // Fetch dynamic background gradient colors from UIManager
+                Color start = UIManager.getColor("MainTabs.gradientStart");
+                Color end = UIManager.getColor("MainTabs.gradientEnd");
+                if (start == null) start = new Color(14, 15, 17);
+                if (end == null) end = new Color(24, 28, 38);
+                GradientPaint bgGrad = new GradientPaint(0, 0, start, 0, h, end);
+                g2.setPaint(bgGrad);
+                g2.fillRect(0, 0, w, h);
+                
+                // Fetch dynamic subtle glowing orb color from UIManager
+                Color glowStart = UIManager.getColor("MainTabs.glowStart");
+                if (glowStart == null) glowStart = new Color(0, 240, 255, 12);
+                float[] dist = {0.0f, 1.0f};
+                Color[] colors = {glowStart, new Color(0, 0, 0, 0)};
+                RadialGradientPaint glow = new RadialGradientPaint(
+                    new java.awt.geom.Point2D.Float(w * 0.85f, h * 0.15f),
+                    Math.max(w, h) * 0.45f,
+                    dist,
+                    colors
+                );
+                g2.setPaint(glow);
+                g2.fillRect(0, 0, w, h);
+                
+                g2.dispose();
+                super.paintComponent(g);
+            }
+        };
+        mainTabs.setOpaque(false);
         mainTabs.setFont(new Font("SansSerif", Font.BOLD, 13));
         mainTabs.putClientProperty("JTabbedPane.tabType", "card");
         mainTabs.putClientProperty("JTabbedPane.showTabSeparators", true);
         mainTabs.putClientProperty("JTabbedPane.tabSeparatorsFullHeight", true);
-        
-        // Soften the tab accent color globally for this component
-        UIManager.put("TabbedPane.selectedBackground", new Color(58, 117, 196, 40)); 
-        UIManager.put("TabbedPane.underlineColor", new Color(58, 117, 196));
 
         // TAB 1: DASHBOARD
         mainTabs.addTab("🏠 Dashboard", createDashboardPanel(mainTabs));
@@ -842,390 +945,7 @@ public class Main extends JFrame {
         // TAB 5: SETTINGS
         mainTabs.addTab("⚙️ Settings", createSettingsPanel());
 
-        updateGeminiTabVisibility();
-
         setContentPane(mainTabs);
-    }
-
-    private boolean isGeminiKeyConfigured() {
-        String key = configService.getGeminiApiKey();
-        return key != null && !key.trim().isEmpty();
-    }
-
-    private void updateGeminiTabVisibility() {
-        if (mainTabs == null) return;
-        boolean hasKey = isGeminiKeyConfigured();
-        String currentKey = configService.getGeminiApiKey();
-
-        if (hasKey) {
-            if (lastCheckedGeminiKey == null || !lastCheckedGeminiKey.equals(currentKey)) {
-                isGeminiGenerationSuccessful = null;
-                lastCheckedGeminiKey = currentKey;
-            }
-
-            if (isGeminiGenerationSuccessful == null) {
-                if (!isCheckingGemini) {
-                    isCheckingGemini = true;
-                    new Thread(() -> {
-                        try {
-                            // Test validation with a simple tree prompt and seed 42
-                            geminiService.generateImage("Ein Baum", null, null, 42);
-                            isGeminiGenerationSuccessful = true;
-                        } catch (Exception ex) {
-                            System.err.println("Gemini startup test image generation failed: " + ex.getMessage());
-                            isGeminiGenerationSuccessful = false;
-                        } finally {
-                            isCheckingGemini = false;
-                            SwingUtilities.invokeLater(this::updateGeminiTabVisibility);
-                        }
-                    }).start();
-                }
-
-                if (isGeminiTabAdded) {
-                    if (geminiGeneratorPanel != null) {
-                        mainTabs.remove(geminiGeneratorPanel);
-                    }
-                    isGeminiTabAdded = false;
-                }
-            } else if (isGeminiGenerationSuccessful) {
-                if (!isGeminiTabAdded) {
-                    if (geminiGeneratorPanel == null) {
-                        geminiGeneratorPanel = createGeminiGeneratorPanel();
-                    }
-                    int settingsIndex = -1;
-                    for (int i = 0; i < mainTabs.getTabCount(); i++) {
-                        if (mainTabs.getTitleAt(i).contains("Settings")) {
-                            settingsIndex = i;
-                            break;
-                        }
-                    }
-                    if (settingsIndex != -1) {
-                        mainTabs.insertTab("🎨 Gemini Generator", null, geminiGeneratorPanel, "Generate images with Gemini 3 via Gemini", settingsIndex);
-                    } else {
-                        mainTabs.addTab("🎨 Gemini Generator", geminiGeneratorPanel);
-                    }
-                    isGeminiTabAdded = true;
-                }
-            } else {
-                if (isGeminiTabAdded) {
-                    if (geminiGeneratorPanel != null) {
-                        mainTabs.remove(geminiGeneratorPanel);
-                    }
-                    isGeminiTabAdded = false;
-                }
-            }
-        } else {
-            isGeminiGenerationSuccessful = null;
-            lastCheckedGeminiKey = null;
-            if (isGeminiTabAdded) {
-                if (geminiGeneratorPanel != null) {
-                    mainTabs.remove(geminiGeneratorPanel);
-                }
-                isGeminiTabAdded = false;
-            }
-        }
-    }
-
-    private JPanel createGeminiGeneratorPanel() {
-        JPanel panel = new JPanel(new BorderLayout(15, 15));
-        panel.setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
-
-        JPanel controlsPanel = new JPanel();
-        controlsPanel.setLayout(new BoxLayout(controlsPanel, BoxLayout.Y_AXIS));
-        controlsPanel.putClientProperty("FlatLaf.style", "arc: 15; background: lighten($Panel.background, 2%); border: 15,15,15,15,$Component.borderColor,1,15");
-        controlsPanel.setBorder(BorderFactory.createEmptyBorder(15, 15, 15, 15));
-
-        JLabel titleLabel = new JLabel("🎨 Gemini Image Generator (Imagen 3)");
-        titleLabel.putClientProperty("FlatLaf.styleClass", "h2");
-        titleLabel.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
-        controlsPanel.add(titleLabel);
-        controlsPanel.add(Box.createVerticalStrut(15));
-
-        JLabel lblPrompt = new JLabel("Prompt (Image description):");
-        lblPrompt.putClientProperty("FlatLaf.styleClass", "h4");
-        lblPrompt.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
-        controlsPanel.add(lblPrompt);
-        controlsPanel.add(Box.createVerticalStrut(5));
-
-        promptArea = new JTextArea(4, 40);
-        promptArea.setLineWrap(true);
-        promptArea.setWrapStyleWord(true);
-        promptArea.setFont(new Font("SansSerif", Font.PLAIN, 14));
-        promptArea.setToolTipText("Describe the image you want to generate.");
-        JScrollPane promptScroll = new JScrollPane(promptArea);
-        promptScroll.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
-        controlsPanel.add(promptScroll);
-        controlsPanel.add(Box.createVerticalStrut(15));
-
-        JLabel lblInputImage = new JLabel("Reference Image (Optional - Image-to-Image):");
-        lblInputImage.putClientProperty("FlatLaf.styleClass", "h4");
-        lblInputImage.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
-        controlsPanel.add(lblInputImage);
-        controlsPanel.add(Box.createVerticalStrut(5));
-
-        JPanel imgButtonsPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
-        imgButtonsPanel.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
-        JButton btnSelectImage = new JButton("📁 Select Image...");
-        btnClearImage = new JButton("❌ Remove");
-        btnClearImage.setEnabled(false);
-
-        imgButtonsPanel.add(btnSelectImage);
-        imgButtonsPanel.add(Box.createHorizontalStrut(10));
-        imgButtonsPanel.add(btnClearImage);
-        controlsPanel.add(imgButtonsPanel);
-        controlsPanel.add(Box.createVerticalStrut(10));
-
-        selectedImageFileLabel = new JLabel("No image selected");
-        selectedImageFileLabel.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
-        selectedImageFileLabel.setFont(new Font("SansSerif", Font.ITALIC, 12));
-        controlsPanel.add(selectedImageFileLabel);
-        controlsPanel.add(Box.createVerticalStrut(10));
-
-        inputImagePreviewLabel = new JLabel();
-        inputImagePreviewLabel.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
-        inputImagePreviewLabel.setBorder(BorderFactory.createLineBorder(Color.GRAY, 1));
-        inputImagePreviewLabel.setPreferredSize(new Dimension(150, 150));
-        inputImagePreviewLabel.setMinimumSize(new Dimension(150, 150));
-        inputImagePreviewLabel.setMaximumSize(new Dimension(150, 150));
-        inputImagePreviewLabel.setHorizontalAlignment(SwingConstants.CENTER);
-        inputImagePreviewLabel.setVerticalAlignment(SwingConstants.CENTER);
-        inputImagePreviewLabel.setText("Preview");
-        controlsPanel.add(inputImagePreviewLabel);
-        controlsPanel.add(Box.createVerticalStrut(20));
-
-        btnGenerateImage = new JButton("🚀 Generate Image");
-        btnGenerateImage.setFont(new Font("SansSerif", Font.BOLD, 14));
-        btnGenerateImage.putClientProperty("Button.background", new Color(255, 204, 0));
-        btnGenerateImage.putClientProperty("Button.foreground", Color.BLACK);
-        btnGenerateImage.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
-        btnGenerateImage.setMaximumSize(new Dimension(300, 45));
-        controlsPanel.add(btnGenerateImage);
-        controlsPanel.add(Box.createVerticalStrut(15));
-
-        generatorProgressBar = new JProgressBar(0, 100);
-        generatorProgressBar.setStringPainted(true);
-        generatorProgressBar.setVisible(false);
-        generatorProgressBar.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
-        generatorProgressBar.setMaximumSize(new Dimension(300, 25));
-        controlsPanel.add(generatorProgressBar);
-
-        btnSelectImage.addActionListener(e -> {
-            JFileChooser chooser = new JFileChooser();
-            chooser.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("Image Files", "png", "jpg", "jpeg", "webp"));
-            if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
-                File file = chooser.getSelectedFile();
-                try {
-                    selectedImageBytes = Files.readAllBytes(file.toPath());
-                    selectedImageFileLabel.setText(file.getName() + " (" + (selectedImageBytes.length / 1024) + " KB)");
-                    
-                    String name = file.getName().toLowerCase();
-                    if (name.endsWith(".png")) selectedImageMimeType = "image/png";
-                    else if (name.endsWith(".jpg") || name.endsWith(".jpeg")) selectedImageMimeType = "image/jpeg";
-                    else if (name.endsWith(".webp")) selectedImageMimeType = "image/webp";
-                    else selectedImageMimeType = "image/png";
-
-                    ImageIcon icon = new ImageIcon(selectedImageBytes);
-                    Image img = icon.getImage().getScaledInstance(148, 148, Image.SCALE_SMOOTH);
-                    inputImagePreviewLabel.setIcon(new ImageIcon(img));
-                    inputImagePreviewLabel.setText("");
-                    btnClearImage.setEnabled(true);
-                } catch (Exception ex) {
-                    JOptionPane.showMessageDialog(this, "Error loading image: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
-                }
-            }
-        });
-
-        btnClearImage.addActionListener(e -> {
-            selectedImageBytes = null;
-            selectedImageMimeType = null;
-            selectedImageFileLabel.setText("No image selected");
-            inputImagePreviewLabel.setIcon(null);
-            inputImagePreviewLabel.setText("Preview");
-            btnClearImage.setEnabled(false);
-        });
-
-        btnGenerateImage.addActionListener(e -> startImageGeneration());
-
-        resultsContainer = new JPanel(new GridLayout(0, 3, 20, 20));
-        resultsContainer.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
-        
-        JScrollPane resultsScroll = new JScrollPane(resultsContainer);
-        resultsScroll.putClientProperty("FlatLaf.style", "arc: 15; border: 1,1,1,1,$Component.borderColor,1,15");
-        resultsScroll.getVerticalScrollBar().setUnitIncrement(16);
-
-        JPanel leftWrapper = new JPanel(new BorderLayout());
-        leftWrapper.setPreferredSize(new Dimension(350, 0));
-        leftWrapper.add(controlsPanel, BorderLayout.CENTER);
-
-        panel.add(leftWrapper, BorderLayout.WEST);
-        panel.add(resultsScroll, BorderLayout.CENTER);
-
-        return panel;
-    }
-
-    private void startImageGeneration() {
-        String prompt = promptArea.getText().trim();
-        if (prompt.isEmpty()) {
-            JOptionPane.showMessageDialog(this, "Please enter a prompt.", "Input missing", JOptionPane.WARNING_MESSAGE);
-            return;
-        }
-
-        btnGenerateImage.setEnabled(false);
-        btnClearImage.setEnabled(false);
-        promptArea.setEnabled(false);
-        generatorProgressBar.setValue(0);
-        generatorProgressBar.setString("Starting generation...");
-        generatorProgressBar.setVisible(true);
-
-        resultsContainer.removeAll();
-        resultsContainer.revalidate();
-        resultsContainer.repaint();
-
-        new Thread(() -> {
-            int totalImages = 1;
-            java.util.concurrent.atomic.AtomicInteger completedCount = new java.util.concurrent.atomic.AtomicInteger(0);
-            java.util.concurrent.atomic.AtomicInteger failedCount = new java.util.concurrent.atomic.AtomicInteger(0);
-            
-            java.util.concurrent.ExecutorService executor = java.util.concurrent.Executors.newFixedThreadPool(totalImages);
-            java.util.List<java.util.concurrent.CompletableFuture<Void>> futures = new ArrayList<>();
-
-            for (int i = 0; i < totalImages; i++) {
-                final int index = i;
-                final int seed = java.util.concurrent.ThreadLocalRandom.current().nextInt(1, 1000000);
-                
-                SwingUtilities.invokeLater(() -> {
-                    JPanel placeholderCard = new JPanel(new BorderLayout());
-                    placeholderCard.putClientProperty("FlatLaf.style", "arc: 12; background: lighten($Panel.background, 4%); border: 10,10,10,10,$Component.borderColor,1,12");
-                    placeholderCard.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
-                    placeholderCard.setPreferredSize(new Dimension(250, 320));
-                    
-                    JLabel loadingLbl = new JLabel("Generating image " + (index + 1) + " (Seed: " + seed + ")...", SwingConstants.CENTER);
-                    placeholderCard.add(loadingLbl, BorderLayout.CENTER);
-                    
-                    resultsContainer.add(placeholderCard);
-                    resultsContainer.revalidate();
-                    resultsContainer.repaint();
-                });
-
-                java.util.concurrent.CompletableFuture<Void> future = java.util.concurrent.CompletableFuture.runAsync(() -> {
-                    try {
-                        byte[] imgBytes = geminiService.generateImage(prompt, selectedImageBytes, selectedImageMimeType, seed);
-                        
-                        java.io.ByteArrayInputStream bais = new java.io.ByteArrayInputStream(imgBytes);
-                        BufferedImage img = javax.imageio.ImageIO.read(bais);
-                        
-                        SwingUtilities.invokeLater(() -> {
-                            if (index < resultsContainer.getComponentCount()) {
-                                JPanel card = (JPanel) resultsContainer.getComponent(index);
-                                card.removeAll();
-                                
-                                JLabel imgLabel = new JLabel();
-                                imgLabel.setHorizontalAlignment(SwingConstants.CENTER);
-                                Image scaledImg = img.getScaledInstance(260, 260, Image.SCALE_SMOOTH);
-                                imgLabel.setIcon(new ImageIcon(scaledImg));
-                                card.add(imgLabel, BorderLayout.CENTER);
-                                
-                                JPanel infoPanel = new JPanel(new BorderLayout(5, 5));
-                                infoPanel.setOpaque(false);
-                                
-                                JLabel seedLabel = new JLabel("Seed: " + seed);
-                                seedLabel.setFont(new Font("SansSerif", Font.PLAIN, 12));
-                                infoPanel.add(seedLabel, BorderLayout.WEST);
-                                
-                                JPanel actionBtns = new JPanel(new FlowLayout(FlowLayout.RIGHT, 5, 0));
-                                actionBtns.setOpaque(false);
-                                
-                                JButton btnSave = new JButton("Save");
-                                btnSave.putClientProperty("JButton.buttonType", "accent");
-                                btnSave.addActionListener(ev -> {
-                                    JFileChooser saver = new JFileChooser();
-                                    saver.setSelectedFile(new File("gemini_" + seed + ".png"));
-                                    if (saver.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
-                                        try {
-                                            Files.write(saver.getSelectedFile().toPath(), imgBytes);
-                                            statusLabel.setText("Image successfully saved.");
-                                        } catch (Exception ex) {
-                                            JOptionPane.showMessageDialog(this, "Error saving: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
-                                        }
-                                    }
-                                });
-                                
-                                JButton btnCopy = new JButton("Copy");
-                                btnCopy.addActionListener(ev -> {
-                                    try {
-                                        java.awt.Toolkit.getDefaultToolkit().getSystemClipboard().setContents(new java.awt.datatransfer.Transferable() {
-                                            @Override
-                                            public java.awt.datatransfer.DataFlavor[] getTransferDataFlavors() {
-                                                return new java.awt.datatransfer.DataFlavor[]{java.awt.datatransfer.DataFlavor.imageFlavor};
-                                            }
-                                            @Override
-                                            public boolean isDataFlavorSupported(java.awt.datatransfer.DataFlavor flavor) {
-                                                return java.awt.datatransfer.DataFlavor.imageFlavor.equals(flavor);
-                                            }
-                                            @Override
-                                            public Object getTransferData(java.awt.datatransfer.DataFlavor flavor) throws java.awt.datatransfer.UnsupportedFlavorException {
-                                                if (isDataFlavorSupported(flavor)) return img;
-                                                throw new java.awt.datatransfer.UnsupportedFlavorException(flavor);
-                                            }
-                                        }, null);
-                                        statusLabel.setText("Image copied to clipboard.");
-                                    } catch (Exception ex) {
-                                        JOptionPane.showMessageDialog(this, "Error copying: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
-                                    }
-                                });
-                                
-                                actionBtns.add(btnSave);
-                                actionBtns.add(btnCopy);
-                                infoPanel.add(actionBtns, BorderLayout.EAST);
-                                
-                                card.add(infoPanel, BorderLayout.SOUTH);
-                                card.revalidate();
-                                card.repaint();
-                            }
-                        });
-                        completedCount.incrementAndGet();
-                    } catch (Exception ex) {
-                        ex.printStackTrace();
-                        failedCount.incrementAndGet();
-                        SwingUtilities.invokeLater(() -> {
-                            if (index < resultsContainer.getComponentCount()) {
-                                JPanel card = (JPanel) resultsContainer.getComponent(index);
-                                card.removeAll();
-                                String rawMsg = ex.getMessage();
-                                if (rawMsg == null) {
-                                    rawMsg = ex.toString();
-                                }
-                                String formattedMsg = rawMsg.replace("\n", "<br>");
-                                JLabel errLabel = new JLabel("<html><body style='text-align: center; color: #ef4444; padding: 10px;'><b>Generation Error:</b><br><br>" + formattedMsg + "</body></html>", SwingConstants.CENTER);
-                                card.add(errLabel, BorderLayout.CENTER);
-                                card.revalidate();
-                                card.repaint();
-                            }
-                        });
-                    } finally {
-                        int done = completedCount.get() + failedCount.get();
-                        final int progress = (done * 100) / totalImages;
-                        final String statusStr = "Completed: " + completedCount.get() + " / Errors: " + failedCount.get();
-                        SwingUtilities.invokeLater(() -> {
-                            generatorProgressBar.setValue(progress);
-                            generatorProgressBar.setString(statusStr);
-                        });
-                    }
-                }, executor);
-                
-                futures.add(future);
-            }
-
-            CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
-            executor.shutdown();
-
-            SwingUtilities.invokeLater(() -> {
-                btnGenerateImage.setEnabled(true);
-                btnClearImage.setEnabled(selectedImageBytes != null);
-                promptArea.setEnabled(true);
-                generatorProgressBar.setString("Generation finished. " + completedCount.get() + " images successfully generated.");
-            });
-        }).start();
     }
 
     private static final String DEFAULT_PROMPT_JSON = "{\n" +
@@ -1319,12 +1039,14 @@ public class Main extends JFrame {
 
     private JPanel createPromptLabPanel() {
         JPanel panel = new JPanel(new BorderLayout(15, 15));
+        panel.setOpaque(false);
         panel.setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
 
         // LEFT: Prompt builder controls (Was?, Wo?, Wie?)
         JPanel leftPanel = new JPanel();
+        leftPanel.setOpaque(false);
         leftPanel.setLayout(new BoxLayout(leftPanel, BoxLayout.Y_AXIS));
-        leftPanel.putClientProperty("FlatLaf.style", "arc: 15; background: lighten($Panel.background, 2%); border: 15,15,15,15,$Component.borderColor,1,15");
+        leftPanel.putClientProperty("FlatLaf.style", "arc: 16; background: $Card.background; border: 15,15,15,15,$Card.border,1,16");
         leftPanel.setBorder(BorderFactory.createEmptyBorder(15, 15, 15, 15));
 
         // Header Title
@@ -1428,9 +1150,19 @@ public class Main extends JFrame {
         leftPanel.add(Box.createVerticalStrut(10));
 
         // Model capability label
-        promptPresetLabel = new JLabel("Detected Preset: Stable Diffusion 1.5 (SD 1.5)");
+        promptPresetLabel = new JLabel("Detected Preset: Stable Diffusion 1.5 (SD 1.5)") {
+            @Override
+            public void updateUI() {
+                super.updateUI();
+                Color c = UIManager.getColor("PromptLab.presetForeground");
+                if (c != null) {
+                    setForeground(c);
+                }
+            }
+        };
         promptPresetLabel.setFont(new Font("SansSerif", Font.ITALIC | Font.BOLD, 12));
-        promptPresetLabel.setForeground(new Color(58, 117, 196));
+        Color pc = UIManager.getColor("PromptLab.presetForeground");
+        if (pc != null) promptPresetLabel.setForeground(pc);
         promptPresetLabel.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
         leftPanel.add(promptPresetLabel);
         leftPanel.add(Box.createVerticalStrut(10));
@@ -1503,7 +1235,7 @@ public class Main extends JFrame {
         promptAssembleArea.setWrapStyleWord(true);
         promptAssembleArea.setFont(new Font("SansSerif", Font.BOLD, 14));
         promptAssembleArea.setEditable(false);
-        promptAssembleArea.putClientProperty("FlatLaf.style", "background: lighten($Panel.background, 4%)");
+        promptAssembleArea.putClientProperty("FlatLaf.style", "background: $TextField.background");
         
         JScrollPane assembleScroll = new JScrollPane(promptAssembleArea);
         assembleScroll.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
@@ -1559,7 +1291,8 @@ public class Main extends JFrame {
 
         // RIGHT: ComfyUI integration / API payload view
         JPanel rightPanel = new JPanel(new BorderLayout(10, 10));
-        rightPanel.putClientProperty("FlatLaf.style", "arc: 15; background: lighten($Panel.background, 2%); border: 15,15,15,15,$Component.borderColor,1,15");
+        rightPanel.setOpaque(false);
+        rightPanel.putClientProperty("FlatLaf.style", "arc: 16; background: $Card.background; border: 15,15,15,15,$Card.border,1,16");
         rightPanel.setBorder(BorderFactory.createEmptyBorder(15, 15, 15, 15));
 
         // Top controls of right panel
@@ -1584,8 +1317,8 @@ public class Main extends JFrame {
         rightBottomPanel.setOpaque(false);
 
         promptLabConsole = new JTextArea(4, 20);
-        promptLabConsole.setBackground(new Color(25, 25, 25));
-        promptLabConsole.setForeground(new Color(0, 220, 0));
+        promptLabConsole.setBackground(configService.isDarkMode() ? new Color(25, 25, 25) : new Color(245, 247, 250));
+        promptLabConsole.setForeground(configService.isDarkMode() ? new Color(0, 220, 0) : new Color(30, 30, 30));
         promptLabConsole.setFont(new Font("Monospaced", Font.PLAIN, 12));
         promptLabConsole.setEditable(false);
         promptLabConsole.setText("System: Prompt Lab ready.\n");
@@ -2711,12 +2444,14 @@ public class Main extends JFrame {
 
     private JPanel createDashboardPanel(JTabbedPane tabs) {
         JPanel panel = new JPanel(new BorderLayout(20, 20));
+        panel.setOpaque(false);
         panel.setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
 
         // LEFT: Profile List (Card-like)
         JPanel leftPanel = new JPanel(new BorderLayout(10, 10));
+        leftPanel.setOpaque(false);
         leftPanel.setPreferredSize(new Dimension(320, 0));
-        leftPanel.putClientProperty("FlatLaf.style", "arc: 15; background: lighten($Panel.background, 2%); border: 15,15,15,15,$Component.borderColor,1,15");
+        leftPanel.putClientProperty("FlatLaf.style", "arc: 16; background: $Card.background; border: 15,15,15,15,$Card.border,1,16");
         leftPanel.setBorder(BorderFactory.createEmptyBorder(15, 15, 15, 15));
 
         JLabel profilesHeader = new JLabel("Startprofile");
@@ -2783,7 +2518,8 @@ public class Main extends JFrame {
 
         // RIGHT: Control Center
         JPanel rightPanel = new JPanel(new GridBagLayout());
-        rightPanel.putClientProperty("FlatLaf.style", "arc: 15; background: lighten($Panel.background, 2%); border: 20,20,20,20,$Component.borderColor,1,15");
+        rightPanel.setOpaque(false);
+        rightPanel.putClientProperty("FlatLaf.style", "arc: 16; background: $Card.background; border: 20,20,20,20,$Card.border,1,16");
         rightPanel.setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
         
         GridBagConstraints gbc = new GridBagConstraints();
@@ -2887,14 +2623,24 @@ public class Main extends JFrame {
 
         // Console Output
         consoleOutput = new JTextArea();
-        consoleOutput.setBackground(new Color(25, 25, 25));
-        consoleOutput.setForeground(new Color(0, 220, 0));
+        consoleOutput.setBackground(configService.isDarkMode() ? new Color(25, 25, 25) : new Color(245, 247, 250));
+        consoleOutput.setForeground(configService.isDarkMode() ? new Color(0, 220, 0) : new Color(30, 30, 30));
         consoleOutput.setFont(new Font("Monospaced", Font.PLAIN, 13));
         consoleOutput.setEditable(false);
         consoleOutput.setMargin(new Insets(10, 10, 10, 10));
         
-        JScrollPane consoleScroll = new JScrollPane(consoleOutput);
-        consoleScroll.setBorder(BorderFactory.createLineBorder(new Color(60, 60, 60), 1));
+        JScrollPane consoleScroll = new JScrollPane(consoleOutput) {
+            @Override
+            public void updateUI() {
+                super.updateUI();
+                Color c = UIManager.getColor("Component.borderColor");
+                if (c != null) {
+                    setBorder(BorderFactory.createLineBorder(c, 1));
+                }
+            }
+        };
+        Color bc = UIManager.getColor("Component.borderColor");
+        consoleScroll.setBorder(BorderFactory.createLineBorder(bc != null ? bc : new Color(60, 60, 60), 1));
         
         JPanel consoleContainer = new JPanel(new BorderLayout(5, 5));
         consoleContainer.setOpaque(false);
@@ -3039,8 +2785,9 @@ public class Main extends JFrame {
 
         // RIGHT: System Stats & Quick Actions
         JPanel rightPanelEast = new JPanel(new GridBagLayout());
+        rightPanelEast.setOpaque(false);
         rightPanelEast.setPreferredSize(new Dimension(340, 0));
-        rightPanelEast.putClientProperty("FlatLaf.style", "arc: 15; background: lighten($Panel.background, 2%); border: 15,15,15,15,$Component.borderColor,1,15");
+        rightPanelEast.putClientProperty("FlatLaf.style", "arc: 16; background: $Card.background; border: 15,15,15,15,$Card.border,1,16");
         rightPanelEast.setBorder(BorderFactory.createEmptyBorder(15, 15, 15, 15));
 
         GridBagConstraints eastGbc = new GridBagConstraints();
@@ -3056,20 +2803,14 @@ public class Main extends JFrame {
 
         // CPU
         eastGbc.gridy++;
-        eastGbc.insets = new Insets(5, 5, 5, 5);
+        eastGbc.insets = new Insets(5, 5, 8, 5);
         progressCpu = new JProgressBar(0, 100);
-        progressCpu.setStringPainted(true);
-        progressCpu.setString("CPU: --%");
-        progressCpu.setPreferredSize(new Dimension(0, 24));
-        rightPanelEast.add(progressCpu, eastGbc);
+        rightPanelEast.add(createSlimStatPanel("CPU Load", progressCpu), eastGbc);
 
         // RAM
         eastGbc.gridy++;
         progressRam = new JProgressBar(0, 100);
-        progressRam.setStringPainted(true);
-        progressRam.setString("RAM: -- GB / -- GB");
-        progressRam.setPreferredSize(new Dimension(0, 24));
-        rightPanelEast.add(progressRam, eastGbc);
+        rightPanelEast.add(createSlimStatPanel("RAM Usage", progressRam), eastGbc);
 
         // GPU Panel wrapper
         eastGbc.gridy++;
@@ -3081,7 +2822,7 @@ public class Main extends JFrame {
         gpuGbc.weightx = 1.0;
         gpuGbc.gridx = 0;
         gpuGbc.gridy = 0;
-        gpuGbc.insets = new Insets(5, 0, 5, 0);
+        gpuGbc.insets = new Insets(5, 0, 8, 0);
 
         lblGpuName = new JLabel("GPU: N/A");
         lblGpuName.setFont(new Font("SansSerif", Font.BOLD, 12));
@@ -3089,17 +2830,12 @@ public class Main extends JFrame {
 
         gpuGbc.gridy++;
         progressGpu = new JProgressBar(0, 100);
-        progressGpu.setStringPainted(true);
-        progressGpu.setString("GPU Load: --%");
-        progressGpu.setPreferredSize(new Dimension(0, 24));
-        gpuPanel.add(progressGpu, gpuGbc);
+        gpuPanel.add(createSlimStatPanel("GPU Load", progressGpu), gpuGbc);
 
         gpuGbc.gridy++;
+        gpuGbc.insets = new Insets(5, 0, 5, 0);
         progressVram = new JProgressBar(0, 100);
-        progressVram.setStringPainted(true);
-        progressVram.setString("VRAM: -- GB / -- GB");
-        progressVram.setPreferredSize(new Dimension(0, 24));
-        gpuPanel.add(progressVram, gpuGbc);
+        gpuPanel.add(createSlimStatPanel("VRAM Usage", progressVram), gpuGbc);
 
         rightPanelEast.add(gpuPanel, eastGbc);
 
@@ -3504,7 +3240,6 @@ public class Main extends JFrame {
             configService.setOllamaModel(ollamaModelField.getText().trim());
             statusLabel.setText("API keys updated.");
             updateAiModelDisplay();
-            updateGeminiTabVisibility();
             analyzeJsonContent();
             dialog.dispose();
         });
@@ -3830,6 +3565,9 @@ public class Main extends JFrame {
     private void analyzeJsonContent() {
         String text = jsonInputArea.getText();
         if (text == null || text.isEmpty()) return;
+        if (workflowGraphPanel != null) {
+            workflowGraphPanel.setWorkflowJson(text);
+        }
         modelsToDownload = analyzer.analyze(text, currentFileName);
         tableModel.setRowCount(0);
         String base = configService.getModelsPath();
@@ -4419,10 +4157,12 @@ public class Main extends JFrame {
 
     private JPanel createManagerPanel(JTabbedPane tabs) {
         JPanel managerPanel = new JPanel(new BorderLayout(10, 10));
+        managerPanel.setOpaque(false);
         managerPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
 
         JPanel toolbar = new JPanel(new FlowLayout(FlowLayout.LEFT, 12, 8));
-        toolbar.putClientProperty("FlatLaf.style", "background: lighten($Panel.background, 1%)");
+        toolbar.setOpaque(false);
+        toolbar.putClientProperty("FlatLaf.style", "background: $Toolbar.customBg");
         toolbar.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, UIManager.getColor("Separator.foreground")));
 
         JButton verifyBtn = new JButton("🔍 Quick Check");
@@ -4602,7 +4342,18 @@ public class Main extends JFrame {
         tablePanel.setBorder(BorderFactory.createTitledBorder("Detected Models"));
         tablePanel.add(tableScroll, BorderLayout.CENTER);
 
-        splitPane.setTopComponent(jsonPanel);
+        JTabbedPane workflowInputTabs = new JTabbedPane();
+        workflowInputTabs.setFont(new Font("SansSerif", Font.BOLD, 12));
+        workflowInputTabs.putClientProperty("JTabbedPane.tabType", "card");
+        
+        workflowInputTabs.addTab("📝 JSON Source", jsonPanel);
+        
+        workflowGraphPanel = new de.tki.comfymodels.ui.WorkflowGraphPanel();
+        setupDragAndDrop(workflowGraphPanel);
+        workflowInputTabs.addTab("📊 Visual Graph", workflowGraphPanel);
+        
+        splitPane.setOpaque(false);
+        splitPane.setTopComponent(workflowInputTabs);
         splitPane.setBottomComponent(tablePanel);
         splitPane.setDividerLocation(350);
 
@@ -4662,8 +4413,9 @@ public class Main extends JFrame {
         
         // Left Column: General & Paths
         JPanel left = new JPanel();
+        left.setOpaque(false);
         left.setLayout(new BoxLayout(left, BoxLayout.Y_AXIS));
-        left.putClientProperty("FlatLaf.style", "arc: 15; background: lighten($Panel.background, 2%); border: 20,20,20,20,$Component.borderColor,1,15");
+        left.putClientProperty("FlatLaf.style", "arc: 16; background: $Card.background; border: 20,20,20,20,$Card.border,1,16");
         left.setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
 
         JLabel pathsHeader = new JLabel("General & Paths");
@@ -4757,8 +4509,9 @@ public class Main extends JFrame {
 
         // Right Column: AI & Help
         JPanel right = new JPanel();
+        right.setOpaque(false);
         right.setLayout(new BoxLayout(right, BoxLayout.Y_AXIS));
-        right.putClientProperty("FlatLaf.style", "arc: 15; background: lighten($Panel.background, 2%); border: 20,20,20,20,$Component.borderColor,1,15");
+        right.putClientProperty("FlatLaf.style", "arc: 16; background: $Card.background; border: 20,20,20,20,$Card.border,1,16");
         right.setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
 
         JLabel aiHeader = new JLabel("AI & Support");
@@ -4785,7 +4538,6 @@ public class Main extends JFrame {
             int confirm = JOptionPane.showConfirmDialog(this, "This will delete all stored API keys. Continue?", "Reset Vault", JOptionPane.YES_NO_OPTION);
             if (confirm == JOptionPane.YES_OPTION) {
                 configService.resetVault();
-                updateGeminiTabVisibility();
             }
         });
 
@@ -4952,27 +4704,47 @@ public class Main extends JFrame {
     private void updateHardwareUI(de.tki.comfymodels.service.impl.HardwareMonitorService.HardwareStats stats) {
         if (progressCpu != null) {
             progressCpu.setValue((int) stats.cpuLoad);
-            progressCpu.setString(String.format("CPU: %.1f%%", stats.cpuLoad));
+            JLabel label = (JLabel) progressCpu.getClientProperty("valueLabel");
+            if (label != null) {
+                label.setText(String.format("%.1f%%", stats.cpuLoad));
+            } else {
+                progressCpu.setString(String.format("CPU: %.1f%%", stats.cpuLoad));
+            }
         }
         if (progressRam != null) {
             double usedGb = stats.ramUsed / (1024.0 * 1024.0 * 1024.0);
             double totalGb = stats.ramTotal / (1024.0 * 1024.0 * 1024.0);
             int pct = stats.ramTotal > 0 ? (int) ((stats.ramUsed * 100) / stats.ramTotal) : 0;
             progressRam.setValue(pct);
-            progressRam.setString(String.format("RAM: %.1f GB / %.1f GB (%d%%)", usedGb, totalGb, pct));
+            JLabel label = (JLabel) progressRam.getClientProperty("valueLabel");
+            if (label != null) {
+                label.setText(String.format("%.1f GB / %.1f GB (%d%%)", usedGb, totalGb, pct));
+            } else {
+                progressRam.setString(String.format("RAM: %.1f GB / %.1f GB (%d%%)", usedGb, totalGb, pct));
+            }
         }
         if (stats.hasNvidia) {
             if (gpuPanel != null) gpuPanel.setVisible(true);
             if (progressGpu != null) {
                 progressGpu.setValue(stats.gpuUtilization);
-                progressGpu.setString(String.format("GPU Load: %d%%", stats.gpuUtilization));
+                JLabel label = (JLabel) progressGpu.getClientProperty("valueLabel");
+                if (label != null) {
+                    label.setText(String.format("%d%%", stats.gpuUtilization));
+                } else {
+                    progressGpu.setString(String.format("GPU Load: %d%%", stats.gpuUtilization));
+                }
             }
             if (progressVram != null) {
                 double usedGb = stats.vramUsed / (1024.0 * 1024.0 * 1024.0);
                 double totalGb = stats.vramTotal / (1024.0 * 1024.0 * 1024.0);
                 int pct = stats.vramTotal > 0 ? (int) ((stats.vramUsed * 100) / stats.vramTotal) : 0;
                 progressVram.setValue(pct);
-                progressVram.setString(String.format("VRAM: %.1f GB / %.1f GB (%d%%)", usedGb, totalGb, pct));
+                JLabel label = (JLabel) progressVram.getClientProperty("valueLabel");
+                if (label != null) {
+                    label.setText(String.format("%.1f GB / %.1f GB (%d%%)", usedGb, totalGb, pct));
+                } else {
+                    progressVram.setString(String.format("VRAM: %.1f GB / %.1f GB (%d%%)", usedGb, totalGb, pct));
+                }
             }
             if (lblGpuName != null) {
                 lblGpuName.setText("GPU: " + stats.gpuName);
@@ -5116,12 +4888,13 @@ public class Main extends JFrame {
         downloadManager.updateSelection(selected);
     }
 
-    private void setupDragAndDrop(JTextArea area) {
+    private void setupDragAndDrop(java.awt.Component area) {
         new DropTarget(area, new DropTargetListener() {
             public void dragEnter(DropTargetDragEvent dtde) {}
             public void dragOver(DropTargetDragEvent dtde) {}
             public void dropActionChanged(DropTargetDragEvent dtde) {}
             public void dragExit(DropTargetEvent dte) {}
+            @SuppressWarnings("unchecked")
             public void drop(DropTargetDropEvent dtde) {
                 try {
                     dtde.acceptDrop(DnDConstants.ACTION_COPY);
@@ -5130,6 +4903,56 @@ public class Main extends JFrame {
                 } catch (Exception e) {}
             }
         });
+    }
+
+    private JPanel createSlimStatPanel(String title, JProgressBar bar) {
+        JPanel p = new JPanel(new BorderLayout(0, 4));
+        p.setOpaque(false);
+        
+        JLabel titleLbl = new JLabel(title) {
+            @Override
+            public void updateUI() {
+                super.updateUI();
+                Color c = UIManager.getColor("SlimStat.titleForeground");
+                if (c != null) {
+                    setForeground(c);
+                }
+            }
+        };
+        titleLbl.setFont(new Font("SansSerif", Font.BOLD, 12));
+        Color tc = UIManager.getColor("SlimStat.titleForeground");
+        if (tc != null) titleLbl.setForeground(tc);
+        
+        JLabel valLbl = new JLabel("--") {
+            @Override
+            public void updateUI() {
+                super.updateUI();
+                Color c = UIManager.getColor("SlimStat.valueForeground");
+                if (c != null) {
+                    setForeground(c);
+                }
+            }
+        };
+        valLbl.setFont(new Font("SansSerif", Font.BOLD, 12));
+        Color vc = UIManager.getColor("SlimStat.valueForeground");
+        if (vc != null) valLbl.setForeground(vc);
+        
+        // Save references in client properties of the progress bar so we can update the labels in updateHardwareUI
+        bar.putClientProperty("titleLabel", titleLbl);
+        bar.putClientProperty("valueLabel", valLbl);
+        
+        JPanel labelRow = new JPanel(new BorderLayout());
+        labelRow.setOpaque(false);
+        labelRow.add(titleLbl, BorderLayout.WEST);
+        labelRow.add(valLbl, BorderLayout.EAST);
+        
+        bar.setStringPainted(false);
+        bar.setPreferredSize(new Dimension(0, 6));
+        bar.putClientProperty("FlatLaf.style", "arc: 999; foreground: $SlimStat.barForeground; background: $SlimStat.barBackground;");
+        
+        p.add(labelRow, BorderLayout.NORTH);
+        p.add(bar, BorderLayout.CENTER);
+        return p;
     }
 
     private void performSystemShutdown() {

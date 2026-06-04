@@ -22,18 +22,18 @@ From **AI-powered workflow analysis** and **one-click canvas integration** to **
 ### 1. 🚀 1-Click Workflow Import (The Bridge)
 No more saving JSON files and dragging them manually. ComfyUI Companion includes a lightweight custom node extension called the **Bridge**.
 * **Direct Canvas Integration:** Adds a modern floating Rocket button (`🚀`) directly into the ComfyUI interface.
-* **Instant Serialization:** Clicking the button serializes the current active canvas workflow and securely sends it to the Companion app via a local API.
+* **Instant Canvas Syncing:** Clicking the button serializes the current active canvas workflow and securely sends it to the Companion app via a local API.
 * **On-the-Fly Detection:** The app instantly scans the incoming workflow, detects which models are required, and checks if they are installed, archived, or missing.
 
 ### 2. 🧠 AI-Powered Workflow Analysis
 Sometimes workflow files lack metadata, or custom node filenames don't match typical model names. ComfyUI Companion solves this with smart AI analysis:
-* **Gemini & Local AI Support:** Connects securely to Google Gemini AI or a local LLM (like Qwen or Llama via Ollama/Local AI) to inspect the node configurations, widget values, and metadata.
+* **Gemini & Local AI Support:** Connects securely to Google Gemini AI or a local LLM (like Qwen or Llama via Ollama/Local AI) to inspect node configurations, widget values, and metadata.
 * **Smart Name Reconstitution:** The AI reconstructs missing model names, identifies target folders (e.g., distinguishing between a ControlNet and a LoRA), and suggests potential search queries.
 * **Direct Online Lookup:** Performs automated searches on **Civitai** and **Hugging Face** to find matching download links instantly.
 
 ### 3. 📦 Cold Archive & 1-Click Restoration
 High-end models take up massive SSD space (SDXL checkpoints, Flux models, etc. can be 10GB–30GB each). The **Archive Manager** helps you keep your SSD clean:
-* **Cold Storage Moving:** Move rarely used models to a slower external HDD or cold-storage directory with a single click.
+* **Cold Storage Offloading:** Move rarely used models to a slower external HDD or cold-storage directory with a single click.
 * **Automatic Detection:** When you load or import a workflow that requires a model currently in the archive, ComfyUI Companion recognizes it.
 * **1-Click Restoration:** Click "Restore" and the app automatically copies or symlinks the model back to its correct ComfyUI folder, making it instantly available for inference.
 
@@ -53,6 +53,42 @@ Take full control of your ComfyUI server directly from the Companion app:
 Your API keys and download tokens are sensitive. ComfyUI Companion features a secure **Credentials Vault**:
 * **AES-256 Encryption:** All keys (Civitai API keys, Hugging Face tokens, Gemini API credentials) are encrypted locally using industrial-grade AES encryption.
 * **Master Password Lock:** The vault is unlocked via a master password upon app startup, ensuring your credentials are never stored in plain text.
+
+### 7. 🎨 Prompt Lab & Architecture-Tailored AI Optimization
+An interactive environment to design, experiment with, and optimize prompts:
+* **Style Filters & Suggestions:** Quickly apply presets like Photorealistic, Oil Painting, Unreal Engine 5 Render, Anime, Dark Fantasy/Cinematic, and Watercolor Sketch.
+* **Optional Environmental Context:** Pick from curated environments or select `None (Optional)` to skip environmental context formatting.
+* **Model-Specific AI Rewrites:** Built-in "Optimize with AI" utilizes Gemini or local LLMs to rephrase and restructure prompts tailored to the specific target architecture of your selected ComfyUI model (e.g. SD 1.5, SDXL, Flux).
+
+### 8. 📊 Visual Workflow Graph Preview
+Inspect your workflow structure directly inside the Companion application:
+* **Node & Connection Mapping:** Visualizes node configurations, links, and flow directions on an interactive canvas.
+* **Immediate Updates:** Renders the graph layout instantly when dragging and dropping a workflow file or syncing via the Bridge rocket button.
+
+### 9. 🔍 Model Update & Upgrade Checker
+Keep your local model library up-to-date with new versions released on Civitai:
+* **Auto-Matching:** Scans your local models using hashes and queries the Civitai API.
+* **One-Click Upgrades:** Displays newer versions, changelogs, and allows queueing downloads for newer model iterations directly.
+
+### 10. 🖼️ Asynchronous Output Gallery
+A rich visual panel that tracks and manages your generation history:
+* **Live Folder Monitoring:** Automatically scans your ComfyUI output directory and lists generated images and videos.
+* **Interactive Media Viewer:** View images and play video outputs.
+* **Checkboxes & Bulk Operations:** Shift-click or use checkmarks to select multiple outputs for bulk deletion or file operations.
+* **Asynchronous Loading:** Uses background threads for scaling and loading thumbnails, keeping the main interface responsive.
+
+### 11. 📈 Real-Time System Monitoring
+* **Resource Bars:** Displays real-time GPU VRAM, system RAM, and CPU usage on the main companion interface.
+* **Active Hardware Tracking:** Monitors inference system state dynamically.
+
+### 12. 🔌 Auto-Updater for App & Custom Nodes
+Keep the companion app and ComfyUI updated without opening a terminal:
+* **Automated Git Maintenance:** Checks for newer custom node repositories, executes `git pull`, and triggers dependency setups inside your virtual environment.
+* **Self-Updates:** Checks for newer ComfyUI Companion releases and updates the application binaries.
+
+### 13. 🛡️ Port Collision Defense
+* **Active Port Cleaning:** Automatically checks if the target ComfyUI server port is already bound.
+* **Stale Task Termination:** Terminates zombie python processes or conflicting services on the specified port to ensure a smooth, error-free startup.
 
 ---
 

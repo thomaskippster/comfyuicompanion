@@ -611,6 +611,15 @@ public class ConfigService {
         savePersistentSettings();
     }
 
+    public void savePromptLabSession(JSONObject data) {
+        persistentSettings.put("prompt_lab_session", data);
+        savePersistentSettings();
+    }
+
+    public JSONObject getPromptLabSession() {
+        return persistentSettings.optJSONObject("prompt_lab_session");
+    }
+
     public void savePendingDownloads(String json) {
         try {
             Files.writeString(getFileInAppData("pending_downloads.json").toPath(), json, StandardCharsets.UTF_8);
@@ -722,6 +731,9 @@ public class ConfigService {
     public boolean isUseOllama() { return settings.optBoolean("use_ollama", false); }
     public void setUseOllama(boolean enabled) { settings.put("use_ollama", enabled); save(); }
 
+    public boolean isHideComfyUI() { return settings.optBoolean("hide_comfyui", true); }
+    public void setHideComfyUI(boolean enabled) { settings.put("hide_comfyui", enabled); save(); }
+
     public String getOllamaUrl() { return settings.optString("ollama_url", "http://localhost:11434"); }
     public void setOllamaUrl(String url) { settings.put("ollama_url", url); save(); }
 
@@ -790,17 +802,17 @@ public class ConfigService {
                 companionSection.put("checkpoints", "checkpoints");
                 companionSection.put("configs", "configs");
                 companionSection.put("vae", "vae");
-                companionSection.put("loras", "loras");
-                companionSection.put("upscale_models", "upscale_models");
+                companionSection.put("loras", "loras\nlycoris");
+                companionSection.put("upscale_models", "upscale_models\nrealesrgan");
                 companionSection.put("controlnet", "controlnet");
-                companionSection.put("clip", "clip");
+                companionSection.put("clip", "clip\ntext_encoders");
                 companionSection.put("clip_vision", "clip_vision");
                 companionSection.put("style_models", "style_models");
                 companionSection.put("hypernetworks", "hypernetworks");
                 companionSection.put("embeddings", "embeddings");
                 companionSection.put("diffusers", "diffusers");
                 companionSection.put("gligen", "gligen");
-                companionSection.put("unet", "unet");
+                companionSection.put("unet", "unet\ndiffusion_models");
                 companionSection.put("audio_encoders", "audio_encoders");
                 
                 // Add remaining model folders
@@ -809,8 +821,6 @@ public class ConfigService {
                 companionSection.put("ipadapter", "ipadapter");
                 companionSection.put("onnx", "onnx");
                 companionSection.put("llm", "llm");
-                companionSection.put("diffusion_models", "diffusion_models");
-                companionSection.put("text_encoders", "text_encoders");
                 companionSection.put("model_patches", "model_patches");
                 companionSection.put("latent_upscale_models", "latent_upscale_models");
 

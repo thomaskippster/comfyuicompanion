@@ -112,6 +112,11 @@
             <artifactId>jackson-datatype-jdk8</artifactId>
             <version>2.16.1</version>
         </dependency>
+        <dependency>
+            <groupId>de.kherud</groupId>
+            <artifactId>llama</artifactId>
+            <version>4.2.0</version>
+        </dependency>
     </dependencies>
 
     <build>

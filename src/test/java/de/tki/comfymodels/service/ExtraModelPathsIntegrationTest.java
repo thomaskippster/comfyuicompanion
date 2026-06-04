@@ -169,4 +169,55 @@ public class ExtraModelPathsIntegrationTest {
         Path expectedTarget = sd15Dir.resolve("nested.safetensors");
         assertTrue(Files.exists(expectedTarget), "Model should be restored to the nested extra path: " + expectedTarget);
     }
+
+    @Test
+    public void testExtraModelPathsYamlWriting() throws IOException {
+        // 1. Setup ComfyUI Root and models path in the configuration
+        Path comfyRoot = tempDir.resolve("ComfyUI");
+        Files.createDirectories(comfyRoot);
+        configService.setComfyUIPath(comfyRoot.toString());
+
+        Path modelsDir = tempDir.resolve("Models");
+        Files.createDirectories(modelsDir);
+        configService.setModelsPath(modelsDir.toString());
+
+        // 2. Call the method under test
+        configService.updateExtraModelPathsYaml();
+
+        // 3. Verify extra_model_paths.yaml was created
+        Path yamlFile = comfyRoot.resolve("extra_model_paths.yaml");
+        assertTrue(Files.exists(yamlFile), "extra_model_paths.yaml should be created");
+
+        // 4. Read and parse the file with SnakeYAML to ensure correct structure
+        String yamlContent = Files.readString(yamlFile);
+
+        org.yaml.snakeyaml.Yaml yaml = new org.yaml.snakeyaml.Yaml();
+        Object parsedObj = yaml.load(yamlContent);
+        assertTrue(parsedObj instanceof java.util.Map, "YAML should parse to a Map");
+
+        java.util.Map<?, ?> rootMap = (java.util.Map<?, ?>) parsedObj;
+        assertTrue(rootMap.containsKey("comfyui_companion"), "YAML must contain 'comfyui_companion' key");
+
+        Object companionObj = rootMap.get("comfyui_companion");
+        assertTrue(companionObj instanceof java.util.Map, "'comfyui_companion' must be a Map");
+
+        java.util.Map<?, ?> companionMap = (java.util.Map<?, ?>) companionObj;
+
+        // Ensure specific keys that mapped to multiple directories are strings (not lists)
+        String[] multilineKeys = {"unet", "clip", "loras", "upscale_models"};
+        for (String key : multilineKeys) {
+            assertTrue(companionMap.containsKey(key), "Map must contain key: " + key);
+            Object value = companionMap.get(key);
+            assertNotNull(value, "Value for key " + key + " must not be null");
+            assertTrue(value instanceof String, "Value for key '" + key + "' must be a String to prevent 'AttributeError: list object has no attribute split' in ComfyUI");
+
+            // Check that it contains newlines and contains the expected components
+            String strVal = (String) value;
+            assertTrue(strVal.contains("\n"), "Value for key '" + key + "' should contain a newline for multi-folder mapping");
+        }
+
+        // Let's also verify that other standard keys exist and are Strings
+        assertTrue(companionMap.get("checkpoints") instanceof String);
+        assertEquals("checkpoints", companionMap.get("checkpoints"));
+    }
 }

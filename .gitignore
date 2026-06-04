@@ -46,3 +46,5 @@ config.json
 !src/main/resources/known_good_urls.json
 .antigravitycli/
 
+# Agent Rules
+agents.md

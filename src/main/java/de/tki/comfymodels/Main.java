@@ -24,6 +24,7 @@ import org.springframework.stereotype.Component;
 
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
+import javax.imageio.ImageIO;
 import javax.swing.event.TableModelListener;
 import javax.swing.event.TableModelEvent;
 import java.awt.*;
@@ -73,6 +74,9 @@ public class Main extends JFrame {
     private GeminiAIService geminiService;
 
     @Autowired
+    private de.tki.comfymodels.service.impl.LocalAIService localAIService;
+
+    @Autowired
     private ModelListService modelListService;
 
     @Autowired
@@ -107,6 +111,7 @@ public class Main extends JFrame {
     private JCheckBox restartCheck;
     private JCheckBox darkCheck;
     private JCheckBox fastHashCheck;
+    private JCheckBox hideComfyuiCheck;
     private JLabel activeAiModelLabel;
     private JTextArea jsonInputArea;
     private JTextArea consoleOutput; 
@@ -166,6 +171,15 @@ public class Main extends JFrame {
     private JTextArea promptLabConsole;
     private JButton btnSendToComfy;
     private JButton btnOptimizePrompt;
+
+    private JButton btnSuggestSubject;
+    private JPanel promptSubjectSuggestionsWrapper;
+    private JPanel promptSubjectSuggestionsPanel;
+    private JPanel promptLabLeftPanel;
+    private JLabel promptImagePreviewLabel;
+    private JProgressBar promptLabProgressBar;
+    private Image currentPreviewImage;
+    private JTabbedPane promptLabRightTabbedPane;
 
     public Main(IModelAnalyzer analyzer, IDownloadManager downloadManager,
                 IWorkflowService workflowService, IModelSearchService searchService,
@@ -381,7 +395,7 @@ public class Main extends JFrame {
                     "Button.background", "Button.foreground", "Button.focusedBackground",
                     "Button.hoverBackground", "Button.pressedBackground", "Button.borderColor",
                     "ScrollBar.track", "ScrollBar.thumb", "TabbedPane.selectedBackground",
-                    "TabbedPane.selectedForeground"
+                    "TabbedPane.selectedForeground", "ProgressBar.foreground", "ProgressBar.background"
                 };
                 for (String key : keysToClear) {
                     UIManager.put(key, null);
@@ -857,6 +871,7 @@ public class Main extends JFrame {
         if (restartCheck != null) restartCheck.setSelected(configService.isRestartAfterDownloadEnabled());
         if (darkCheck != null) darkCheck.setSelected(configService.isDarkMode());
         if (fastHashCheck != null) fastHashCheck.setSelected(configService.isFastHashEnabled());
+        if (hideComfyuiCheck != null) hideComfyuiCheck.setSelected(configService.isHideComfyUI());
     }
 
     private boolean isGeminiKeyConfigured() {
@@ -864,16 +879,33 @@ public class Main extends JFrame {
         return key != null && !key.trim().isEmpty();
     }
 
+    private boolean isOllamaConfigured() {
+        return configService != null && configService.isUseOllama();
+    }
+
     private void updateAiModelDisplay() {
         new Thread(() -> {
-            String model = geminiService.discoverBestModel();
+            String model;
+            if (configService.isUseOllama()) {
+                model = configService.getOllamaModel() + " (Local)";
+            } else {
+                model = geminiService.discoverBestModel();
+            }
+            final String finalModel = model;
             SwingUtilities.invokeLater(() -> {
-                activeAiModelLabel.setText("Active AI: " + model);
+                activeAiModelLabel.setText("Active AI: " + finalModel);
                 if (btnOptimizePrompt != null) {
-                    if (!isGeminiKeyConfigured()) {
-                        btnOptimizePrompt.setToolTipText("Add a Gemini API key in settings to unlock this feature.");
+                    if (localAIService == null || !localAIService.isLocalGemmaDownloaded()) {
+                        btnOptimizePrompt.setToolTipText("Download local Gemma model to unlock local optimization.");
                     } else {
-                        btnOptimizePrompt.setToolTipText("Optimizes the assembled prompt using Gemini AI for better image quality.");
+                        btnOptimizePrompt.setToolTipText("Optimizes the assembled prompt using local Gemma for better image quality.");
+                    }
+                }
+                if (btnSuggestSubject != null) {
+                    if (localAIService == null || !localAIService.isLocalGemmaDownloaded()) {
+                        btnSuggestSubject.setToolTipText("Download local Gemma model to unlock suggestions.");
+                    } else {
+                        btnSuggestSubject.setToolTipText("Suggest creative expansions for this subject using local Gemma.");
                     }
                 }
             });
@@ -889,7 +921,8 @@ public class Main extends JFrame {
 
         getRootPane().putClientProperty("flatlaf.useWindowDecorations", true);
         
-        this.mainTabs = new JTabbedPane() {
+        // Define rootPanel that paints the premium background gradient and radial glow globally
+        JPanel rootPanel = new JPanel(new BorderLayout()) {
             @Override
             protected void paintComponent(Graphics g) {
                 Graphics2D g2 = (Graphics2D) g.create();
@@ -897,7 +930,6 @@ public class Main extends JFrame {
                 int w = getWidth();
                 int h = getHeight();
                 
-                // Fetch dynamic background gradient colors from UIManager
                 Color start = UIManager.getColor("MainTabs.gradientStart");
                 Color end = UIManager.getColor("MainTabs.gradientEnd");
                 if (start == null) start = new Color(14, 15, 17);
@@ -906,7 +938,6 @@ public class Main extends JFrame {
                 g2.setPaint(bgGrad);
                 g2.fillRect(0, 0, w, h);
                 
-                // Fetch dynamic subtle glowing orb color from UIManager
                 Color glowStart = UIManager.getColor("MainTabs.glowStart");
                 if (glowStart == null) glowStart = new Color(0, 240, 255, 12);
                 float[] dist = {0.0f, 1.0f};
@@ -924,6 +955,144 @@ public class Main extends JFrame {
                 super.paintComponent(g);
             }
         };
+        rootPanel.setOpaque(true);
+
+        // Header Panel with glassmorphism styling
+        JPanel headerPanel = new JPanel(new BorderLayout(15, 10)) {
+            @Override
+            protected void paintComponent(Graphics g) {
+                super.paintComponent(g);
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                int w = getWidth();
+                int h = getHeight();
+                
+                boolean dark = configService.isDarkMode();
+                Color bgColor = dark ? new Color(25, 30, 40, 100) : new Color(255, 255, 255, 120);
+                g2.setColor(bgColor);
+                g2.fillRect(0, 0, w, h);
+                
+                g2.setColor(dark ? new Color(0, 255, 204, 40) : new Color(0, 120, 150, 30));
+                g2.fillRect(0, h - 1, w, 1);
+                
+                g2.dispose();
+            }
+        };
+        headerPanel.setOpaque(false);
+        headerPanel.setPreferredSize(new Dimension(0, 60));
+        headerPanel.setBorder(BorderFactory.createEmptyBorder(10, 20, 10, 20));
+
+        JPanel leftHeader = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
+        leftHeader.setOpaque(false);
+        JLabel logoLabel = new JLabel("🌀");
+        logoLabel.setFont(new Font("Segoe UI Emoji", Font.PLAIN, 22));
+        JLabel titleLabel = new JLabel("ComfyUI Companion") {
+            @Override
+            public void updateUI() {
+                super.updateUI();
+                if (configService != null) {
+                    setForeground(configService.isDarkMode() ? new Color(0, 255, 204) : new Color(0, 102, 204));
+                }
+            }
+        };
+        titleLabel.setFont(new Font("SansSerif", Font.BOLD, 18));
+        titleLabel.setForeground(configService.isDarkMode() ? new Color(0, 255, 204) : new Color(0, 102, 204));
+        
+        JLabel tagline = new JLabel("|  Unified AI Model Manager & Prompt Lab");
+        tagline.setFont(new Font("SansSerif", Font.ITALIC, 11));
+        tagline.setForeground(Color.GRAY);
+        
+        leftHeader.add(logoLabel);
+        leftHeader.add(titleLabel);
+        leftHeader.add(tagline);
+        headerPanel.add(leftHeader, BorderLayout.WEST);
+
+        JPanel rightHeader = new JPanel(new FlowLayout(FlowLayout.RIGHT, 15, 5));
+        rightHeader.setOpaque(false);
+        
+        JLabel activeProfileLabel = new JLabel("👤 Profile: Loading...");
+        activeProfileLabel.setFont(new Font("SansSerif", Font.PLAIN, 12));
+        activeProfileLabel.setForeground(Color.GRAY);
+        
+        JLabel globalStatusIndicator = new JLabel("Server: Offline 🔴");
+        globalStatusIndicator.setFont(new Font("SansSerif", Font.BOLD, 12));
+        globalStatusIndicator.setForeground(Color.GRAY);
+        
+        JButton quickActionBtn = new JButton("▶ Start");
+        quickActionBtn.putClientProperty("JButton.buttonType", "roundRect");
+        quickActionBtn.setFont(new Font("SansSerif", Font.BOLD, 11));
+        quickActionBtn.setFocusable(false);
+        
+        quickActionBtn.addActionListener(e -> {
+            boolean running = processController.isRunning();
+            if (running) {
+                int confirm = JOptionPane.showConfirmDialog(this, "Stop ComfyUI server?", "Stop Server", JOptionPane.YES_NO_OPTION);
+                if (confirm == JOptionPane.YES_OPTION) {
+                    processController.stop();
+                }
+            } else {
+                String activeIdVal = configService.getActiveProfile();
+                List<de.tki.comfymodels.domain.LaunchProfile> profilesVal = profileManager.loadProfiles();
+                de.tki.comfymodels.domain.LaunchProfile activeProfileVal = profilesVal.stream()
+                    .filter(p -> p.id().equals(activeIdVal))
+                    .findFirst()
+                    .orElse(null);
+                if (activeProfileVal == null && !profilesVal.isEmpty()) activeProfileVal = profilesVal.get(0);
+                
+                if (activeProfileVal != null) {
+                    startComfyUI(activeProfileVal, false, !configService.isHideComfyUI());
+                } else {
+                    JOptionPane.showMessageDialog(this, "No launch profile available to start ComfyUI.", "Error", JOptionPane.ERROR_MESSAGE);
+                }
+            }
+        });
+        
+        rightHeader.add(activeProfileLabel);
+        rightHeader.add(globalStatusIndicator);
+        rightHeader.add(quickActionBtn);
+        headerPanel.add(rightHeader, BorderLayout.EAST);
+
+        Timer headerTimer = new Timer(1000, e -> {
+            boolean running = processController.isRunning();
+            boolean starting = false;
+            if (running) {
+                if (processController.isProcessAlive() && !processController.isGuiLineShown()) {
+                    starting = true;
+                } else if (lifecycleService.isProcessAlive() && !lifecycleService.isGuiLineShown()) {
+                    starting = true;
+                }
+            }
+            
+            if (running) {
+                if (starting) {
+                    globalStatusIndicator.setText("Server: Starting 🟡");
+                    globalStatusIndicator.setForeground(new Color(255, 204, 0));
+                    quickActionBtn.setText("⏹ Stop");
+                } else {
+                    globalStatusIndicator.setText("Server: Running 🟢");
+                    globalStatusIndicator.setForeground(new Color(0, 204, 150));
+                    quickActionBtn.setText("⏹ Stop");
+                }
+            } else {
+                globalStatusIndicator.setText("Server: Offline 🔴");
+                globalStatusIndicator.setForeground(Color.GRAY);
+                quickActionBtn.setText("▶ Start");
+            }
+            
+            // Sync active profile name
+            String activeIdVal = configService.getActiveProfile();
+            List<de.tki.comfymodels.domain.LaunchProfile> profilesVal = profileManager.loadProfiles();
+            de.tki.comfymodels.domain.LaunchProfile activeProfileVal = profilesVal.stream()
+                .filter(p -> p.id().equals(activeIdVal))
+                .findFirst()
+                .orElse(null);
+            if (activeProfileVal == null && !profilesVal.isEmpty()) activeProfileVal = profilesVal.get(0);
+            String pName = (activeProfileVal != null) ? activeProfileVal.name() : "None";
+            activeProfileLabel.setText("👤 Profile: " + pName);
+        });
+        headerTimer.start();
+        
+        this.mainTabs = new JTabbedPane();
         mainTabs.setOpaque(false);
         mainTabs.setFont(new Font("SansSerif", Font.BOLD, 13));
         mainTabs.putClientProperty("JTabbedPane.tabType", "card");
@@ -945,7 +1114,9 @@ public class Main extends JFrame {
         // TAB 5: SETTINGS
         mainTabs.addTab("⚙️ Settings", createSettingsPanel());
 
-        setContentPane(mainTabs);
+        rootPanel.add(headerPanel, BorderLayout.NORTH);
+        rootPanel.add(mainTabs, BorderLayout.CENTER);
+        setContentPane(rootPanel);
     }
 
     private static final String DEFAULT_PROMPT_JSON = "{\n" +
@@ -1063,11 +1234,62 @@ public class Main extends JFrame {
         leftPanel.add(lblSubject);
         leftPanel.add(Box.createVerticalStrut(5));
 
+        JPanel subjectRow = new JPanel(new BorderLayout(8, 0));
+        subjectRow.setOpaque(false);
+        subjectRow.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        subjectRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 35));
+
         promptSubjectField = new JTextField("cybernetic tiger");
         promptSubjectField.setFont(new Font("SansSerif", Font.PLAIN, 14));
-        promptSubjectField.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
-        promptSubjectField.setMaximumSize(new Dimension(Integer.MAX_VALUE, 35));
-        leftPanel.add(promptSubjectField);
+        subjectRow.add(promptSubjectField, BorderLayout.CENTER);
+
+        btnSuggestSubject = new JButton("✨ Suggest");
+        btnSuggestSubject.setFont(new Font("SansSerif", Font.BOLD, 12));
+        btnSuggestSubject.putClientProperty("Button.background", new Color(138, 43, 226)); // Purple accent for AI
+        btnSuggestSubject.putClientProperty("Button.foreground", Color.WHITE);
+        if (localAIService == null || !localAIService.isLocalGemmaDownloaded()) {
+            btnSuggestSubject.setToolTipText("Download local Gemma model to unlock suggestions.");
+        } else {
+            btnSuggestSubject.setToolTipText("Suggest creative expansions for this subject using local Gemma.");
+        }
+        btnSuggestSubject.addActionListener(e -> suggestSubjectCompletions());
+        subjectRow.add(btnSuggestSubject, BorderLayout.EAST);
+
+        leftPanel.add(subjectRow);
+        leftPanel.add(Box.createVerticalStrut(5));
+
+        // Hidden suggestions container
+        promptSubjectSuggestionsWrapper = new JPanel(new BorderLayout(5, 5));
+        promptSubjectSuggestionsWrapper.setOpaque(false);
+        promptSubjectSuggestionsWrapper.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        promptSubjectSuggestionsWrapper.setVisible(false);
+        promptSubjectSuggestionsWrapper.setBorder(BorderFactory.createEmptyBorder(5, 0, 10, 0));
+
+        JPanel headerPanel = new JPanel(new BorderLayout());
+        headerPanel.setOpaque(false);
+        JLabel title = new JLabel("Gemma Suggestions:");
+        title.setFont(new Font("SansSerif", Font.BOLD, 11));
+        title.setForeground(Color.GRAY);
+        headerPanel.add(title, BorderLayout.CENTER);
+        
+        JButton btnClose = new JButton("✕");
+        btnClose.setFont(new Font("SansSerif", Font.PLAIN, 10));
+        btnClose.addActionListener(e -> {
+            promptSubjectSuggestionsWrapper.setVisible(false);
+            promptLabLeftPanel.revalidate();
+            promptLabLeftPanel.repaint();
+        });
+        headerPanel.add(btnClose, BorderLayout.EAST);
+        
+        promptSubjectSuggestionsWrapper.add(headerPanel, BorderLayout.NORTH);
+
+        promptSubjectSuggestionsPanel = new JPanel(new GridLayout(0, 1, 0, 5));
+        promptSubjectSuggestionsPanel.setOpaque(false);
+
+        promptSubjectSuggestionsWrapper.add(promptSubjectSuggestionsPanel, BorderLayout.CENTER);
+        leftPanel.add(promptSubjectSuggestionsWrapper);
+
+        promptLabLeftPanel = leftPanel;
         leftPanel.add(Box.createVerticalStrut(15));
 
         // Step 2: Umgebungs-Kontext (Wo?)
@@ -1078,6 +1300,7 @@ public class Main extends JFrame {
         leftPanel.add(Box.createVerticalStrut(5));
 
         DropdownItem[] envs = {
+            new DropdownItem("None (Optional)", ""),
             new DropdownItem("Neon-lit alley", "neon-lit alley"),
             new DropdownItem("Cyberpunk laboratory", "cyberpunk laboratory"),
             new DropdownItem("Steaming jungle", "steaming jungle"),
@@ -1243,18 +1466,18 @@ public class Main extends JFrame {
         leftPanel.add(assembleScroll);
         leftPanel.add(Box.createVerticalStrut(10));
 
-        btnOptimizePrompt = new JButton("✨ Optimize with Gemini");
+        btnOptimizePrompt = new JButton("✨ Optimize with gemma");
         btnOptimizePrompt.setFont(new Font("SansSerif", Font.BOLD, 13));
         btnOptimizePrompt.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
         btnOptimizePrompt.setMaximumSize(new Dimension(Integer.MAX_VALUE, 40));
         btnOptimizePrompt.putClientProperty("Button.background", new Color(58, 117, 196));
         btnOptimizePrompt.putClientProperty("Button.foreground", Color.WHITE);
-        btnOptimizePrompt.addActionListener(e -> optimizePromptWithGemini());
+        btnOptimizePrompt.addActionListener(e -> optimizePromptWithGemma());
 
-        if (!isGeminiKeyConfigured()) {
-            btnOptimizePrompt.setToolTipText("Add a Gemini API key in settings to unlock this feature.");
+        if (localAIService == null || !localAIService.isLocalGemmaDownloaded()) {
+            btnOptimizePrompt.setToolTipText("Download local Gemma model to unlock local optimization.");
         } else {
-            btnOptimizePrompt.setToolTipText("Optimizes the assembled prompt using Gemini AI for better image quality.");
+            btnOptimizePrompt.setToolTipText("Optimizes the assembled prompt using local Gemma for better image quality.");
         }
         leftPanel.add(btnOptimizePrompt);
 
@@ -1306,11 +1529,55 @@ public class Main extends JFrame {
 
         rightPanel.add(rightTopPanel, BorderLayout.NORTH);
 
-        // Center JSON Area
+        // Center JSON/Image area with tabbed pane
+        promptLabRightTabbedPane = new JTabbedPane();
+        promptLabRightTabbedPane.putClientProperty("JTabbedPane.tabType", "card");
+        promptLabRightTabbedPane.setOpaque(false);
+
+        // TAB A: Image Preview
+        JPanel imagePreviewTabPanel = new JPanel(new BorderLayout(10, 10));
+        imagePreviewTabPanel.setOpaque(false);
+
+        promptImagePreviewLabel = new JLabel("Your generated image will appear here", SwingConstants.CENTER);
+        promptImagePreviewLabel.setFont(new Font("SansSerif", Font.ITALIC, 14));
+        promptImagePreviewLabel.setForeground(Color.GRAY);
+        promptImagePreviewLabel.putClientProperty("FlatLaf.style", "background: $TextField.background");
+        promptImagePreviewLabel.setOpaque(true);
+        
+        promptImagePreviewLabel.addComponentListener(new java.awt.event.ComponentAdapter() {
+            @Override
+            public void componentResized(java.awt.event.ComponentEvent e) {
+                if (currentPreviewImage != null) {
+                    scaleAndSetImage(currentPreviewImage);
+                }
+            }
+        });
+
+        JScrollPane previewScroll = new JScrollPane(promptImagePreviewLabel);
+        previewScroll.setOpaque(false);
+        previewScroll.getViewport().setOpaque(false);
+        previewScroll.setBorder(BorderFactory.createEmptyBorder());
+        imagePreviewTabPanel.add(previewScroll, BorderLayout.CENTER);
+
+        // Progress bar inside preview panel bottom
+        promptLabProgressBar = new JProgressBar();
+        promptLabProgressBar.setStringPainted(true);
+        promptLabProgressBar.setVisible(false);
+        promptLabProgressBar.setPreferredSize(new Dimension(0, 25));
+        imagePreviewTabPanel.add(promptLabProgressBar, BorderLayout.SOUTH);
+
+        promptLabRightTabbedPane.addTab("🖼️ Image Preview", imagePreviewTabPanel);
+
+        // TAB B: JSON Workflow
         promptJsonArea = new JTextArea(DEFAULT_PROMPT_JSON);
         promptJsonArea.setFont(new Font("Monospaced", Font.PLAIN, 12));
         JScrollPane jsonScroll = new JScrollPane(promptJsonArea);
-        rightPanel.add(jsonScroll, BorderLayout.CENTER);
+        jsonScroll.setOpaque(false);
+        jsonScroll.getViewport().setOpaque(false);
+        jsonScroll.setBorder(BorderFactory.createEmptyBorder());
+        promptLabRightTabbedPane.addTab("📝 JSON Workflow", jsonScroll);
+
+        rightPanel.add(promptLabRightTabbedPane, BorderLayout.CENTER);
 
         // Bottom panel for console/status and send action
         JPanel rightBottomPanel = new JPanel(new BorderLayout(5, 5));
@@ -1323,6 +1590,9 @@ public class Main extends JFrame {
         promptLabConsole.setEditable(false);
         promptLabConsole.setText("System: Prompt Lab ready.\n");
         JScrollPane consoleScroll = new JScrollPane(promptLabConsole);
+        consoleScroll.setOpaque(false);
+        consoleScroll.getViewport().setOpaque(false);
+        consoleScroll.setBorder(BorderFactory.createEmptyBorder());
         rightBottomPanel.add(consoleScroll, BorderLayout.CENTER);
 
         btnSendToComfy = new JButton("🚀 Send to ComfyUI");
@@ -1341,6 +1611,9 @@ public class Main extends JFrame {
         splitPane.setResizeWeight(0.3);
 
         panel.add(splitPane, BorderLayout.CENTER);
+
+        // Load persisted session inputs
+        loadPromptLabSession();
 
         // Run initial update to align values
         updatePromptLabJson();
@@ -1399,49 +1672,33 @@ public class Main extends JFrame {
 
     private String findExactUnetName(String selectedModel) {
         if (selectedModel == null) return "";
-        String normalized = selectedModel.replace("\\", "/");
         for (String unet : comfyUnetModels) {
-            String uNorm = unet.replace("\\", "/");
-            if (uNorm.equalsIgnoreCase(normalized)) {
+            if (modelsMatch(selectedModel, unet)) {
                 return unet;
             }
         }
-        String clean = normalized;
+        String clean = selectedModel.replace("\\", "/");
         if (clean.startsWith("diffusion_models/")) {
             clean = clean.substring(17);
-        }
-        for (String unet : comfyUnetModels) {
-            String uNorm = unet.replace("\\", "/");
-            if (uNorm.equalsIgnoreCase(clean)) {
-                return unet;
-            }
         }
         return clean;
     }
 
     private String findExactCheckpointName(String selectedModel) {
         if (selectedModel == null) return "";
-        String normalized = selectedModel.replace("\\", "/");
         for (String ckpt : comfyCheckpoints) {
-            String cNorm = ckpt.replace("\\", "/");
-            if (cNorm.equalsIgnoreCase(normalized)) {
+            if (modelsMatch(selectedModel, ckpt)) {
                 return ckpt;
             }
         }
-        String clean = normalized;
+        String clean = selectedModel.replace("\\", "/");
         if (clean.startsWith("checkpoints/")) {
             clean = clean.substring(12);
-        }
-        for (String ckpt : comfyCheckpoints) {
-            String cNorm = ckpt.replace("\\", "/");
-            if (cNorm.equalsIgnoreCase(clean)) {
-                return ckpt;
-            }
         }
         return clean;
     }
 
-    private String resolveClipType(String clipModel) {
+    private String resolveClipType(String clipModel, String selectedModel) {
         if (clipModel == null) return "stable_diffusion";
         String lower = clipModel.toLowerCase();
         String candidate = "stable_diffusion";
@@ -1464,6 +1721,20 @@ public class Main extends JFrame {
             candidate = "cosmos";
         }
         
+        // Contextual overrides based on the selected model
+        if (selectedModel != null) {
+            String selLower = selectedModel.toLowerCase();
+            if (selLower.contains("flux") || selLower.contains("schnell")) {
+                if ("stable_diffusion".equals(candidate)) {
+                    candidate = "flux";
+                }
+            } else if (selLower.contains("sd3") || selLower.contains("stable_diffusion_3")) {
+                if ("stable_diffusion".equals(candidate)) {
+                    candidate = "sd3";
+                }
+            }
+        }
+        
         if (comfyClipTypes.contains(candidate)) {
             return candidate;
         }
@@ -1476,14 +1747,37 @@ public class Main extends JFrame {
         return candidate;
     }
 
+    private boolean modelsMatch(String modelA, String modelB) {
+        if (modelA == null || modelB == null) return false;
+        String a = modelA.replace("\\", "/").toLowerCase();
+        String b = modelB.replace("\\", "/").toLowerCase();
+        
+        if (a.startsWith("checkpoints/")) a = a.substring(12);
+        if (a.startsWith("diffusion_models/")) a = a.substring(17);
+        if (a.startsWith("unet/")) a = a.substring(5);
+        
+        if (b.startsWith("checkpoints/")) b = b.substring(12);
+        if (b.startsWith("diffusion_models/")) b = b.substring(17);
+        if (b.startsWith("unet/")) b = b.substring(5);
+        
+        for (String ext : new String[]{".safetensors", ".ckpt", ".pt", ".bin"}) {
+            if (a.endsWith(ext)) a = a.substring(0, a.length() - ext.length());
+            if (b.endsWith(ext)) b = b.substring(0, b.length() - ext.length());
+        }
+        
+        return a.equals(b);
+    }
+
     private boolean isDiffusionModel(String modelName) {
         if (modelName == null) return false;
         String clean = modelName.replace("\\", "/");
         if (clean.startsWith("diffusion_models/")) {
             clean = clean.substring(17);
         }
-        if (comfyUnetModels.contains(clean) || comfyUnetModels.contains(modelName)) {
-            return true;
+        for (String unet : comfyUnetModels) {
+            if (modelsMatch(modelName, unet)) {
+                return true;
+            }
         }
         String lower = modelName.toLowerCase();
         return lower.contains("diffusion_models") || 
@@ -1502,6 +1796,19 @@ public class Main extends JFrame {
             expected = "qwen_3_4b.safetensors";
         } else if (lower.contains("wan")) {
             expected = "qwen/qwen_2.5_vl_7b_fp8_scaled.safetensors";
+        } else if (lower.contains("flux") || lower.contains("schnell")) {
+            expected = "t5xxl_fp8_e4m3fn.safetensors";
+            for (String clip : comfyClips) {
+                String cLower = clip.toLowerCase();
+                if (cLower.contains("t5xxl") || cLower.contains("t5-xxl")) {
+                    return clip;
+                }
+            }
+            for (String clip : comfyClips) {
+                if (clip.toLowerCase().contains("flux")) {
+                    return clip;
+                }
+            }
         }
         
         String expectedClean = expected.replace("\\", "/");
@@ -1525,8 +1832,13 @@ public class Main extends JFrame {
                 }
             }
         }
-        if (!comfyClips.isEmpty()) {
-            return comfyClips.iterator().next();
+        
+        // Strict fallback logic: only return a clip from comfyClips if its resolved type matches the expected type
+        String expectedType = resolveClipType(expected, modelName);
+        for (String clip : comfyClips) {
+            if (resolveClipType(clip, modelName).equals(expectedType)) {
+                return clip;
+            }
         }
         return expected;
     }
@@ -1554,22 +1866,55 @@ public class Main extends JFrame {
                 return vae;
             }
         }
-        if (expectedName.contains("ae") || expectedName.contains("flux")) {
+        boolean isExpectedAeOrFlux = expectedName.contains("flux") || expectedName.replace("vae", "").contains("ae");
+        if (isExpectedAeOrFlux) {
             for (String vae : comfyVaes) {
                 String vaeLower = vae.toLowerCase();
-                if (vaeLower.contains("ae") || vaeLower.contains("flux")) {
+                if (vaeLower.contains("flux") || vaeLower.replace("vae", "").contains("ae")) {
                     return vae;
                 }
             }
         }
+        // Only fall back to first VAE if it matches compatibility
         if (!comfyVaes.isEmpty()) {
-            return comfyVaes.iterator().next();
+            String candidate = comfyVaes.iterator().next();
+            String cLower = candidate.toLowerCase();
+            if (expectedName.contains("wan") && cLower.contains("wan")) {
+                return candidate;
+            }
+            if (isExpectedAeOrFlux && (cLower.contains("flux") || cLower.replace("vae", "").contains("ae"))) {
+                return candidate;
+            }
         }
         return expected;
     }
 
     private void adaptWorkflowJsonForModel(JSONObject promptObj, String selectedModel) {
         if (promptObj == null || selectedModel == null) return;
+        
+        // Generic fallback for z_image_turbo_bf16.safetensors to avoid Bad Requests
+        if (selectedModel.toLowerCase().contains("z_image_turbo")) {
+            String fallback = null;
+            for (String u : comfyUnetModels) {
+                String ul = u.toLowerCase();
+                if (ul.contains("flux") || ul.contains("schnell") || ul.contains("dev")) {
+                    fallback = u;
+                    break;
+                }
+            }
+            if (fallback != null) {
+                selectedModel = fallback;
+                final String finalFallback = fallback;
+                SwingUtilities.invokeLater(() -> {
+                    if (promptModelCombo != null) {
+                        promptModelCombo.setSelectedItem(finalFallback);
+                    }
+                    if (promptLabConsole != null) {
+                        promptLabConsole.append("⚠️ Generic fallback triggered for z_image_turbo to avoid RuntimeError. Using: " + finalFallback + "\n");
+                    }
+                });
+            }
+        }
         
         boolean isDiff = isDiffusionModel(selectedModel);
         
@@ -1621,7 +1966,7 @@ public class Main extends JFrame {
                 else if (clipModel.startsWith("text_encoders\\")) clipModel = clipModel.substring(14);
                 clipInputs.put("clip_name", clipModel);
                 
-                String clipType = resolveClipType(clipModel);
+                String clipType = resolveClipType(clipModel, selectedModel);
                 clipInputs.put("type", clipType);
                 
                 clipNode.put("inputs", clipInputs);
@@ -1666,12 +2011,27 @@ public class Main extends JFrame {
                     }
                 }
             } else {
+                String unetName = findExactUnetName(selectedModel);
+                String clipModel = resolveClipForModel(selectedModel);
+                if (clipModel.startsWith("clip/")) clipModel = clipModel.substring(5);
+                else if (clipModel.startsWith("clip\\")) clipModel = clipModel.substring(5);
+                else if (clipModel.startsWith("text_encoders/")) clipModel = clipModel.substring(14);
+                else if (clipModel.startsWith("text_encoders\\")) clipModel = clipModel.substring(14);
+
+                String clipType = resolveClipType(clipModel, selectedModel);
+
+                String vaeModel = resolveVaeForModel(selectedModel);
+                if (vaeModel.startsWith("vae/")) vaeModel = vaeModel.substring(4);
+                else if (vaeModel.startsWith("vae\\")) vaeModel = vaeModel.substring(4);
+
                 for (String key : promptObj.keySet()) {
                     JSONObject node = promptObj.getJSONObject(key);
-                    if (node.has("class_type") && "UNETLoader".equals(node.getString("class_type"))) {
+                    if (!node.has("class_type")) continue;
+                    String classType = node.getString("class_type");
+                    
+                    if ("UNETLoader".equals(classType)) {
                         JSONObject inputs = node.optJSONObject("inputs");
                         if (inputs != null) {
-                            String unetName = findExactUnetName(selectedModel);
                             inputs.put("unet_name", unetName);
                             if (!inputs.has("weight_dtype")) {
                                 if (comfyUnetWeightDtypes != null && !comfyUnetWeightDtypes.isEmpty()) {
@@ -1684,6 +2044,45 @@ public class Main extends JFrame {
                                     inputs.put("weight_dtype", "default");
                                 }
                             }
+                        }
+                    } else if ("CLIPLoader".equals(classType)) {
+                        JSONObject inputs = node.optJSONObject("inputs");
+                        if (inputs != null) {
+                            inputs.put("clip_name", clipModel);
+                            inputs.put("type", clipType);
+                        }
+                    } else if ("DualCLIPLoader".equals(classType)) {
+                        JSONObject inputs = node.optJSONObject("inputs");
+                        if (inputs != null) {
+                            if ("lumina2".equals(clipType) || "wan".equals(clipType) || "mochi".equals(clipType) || "ltxv".equals(clipType) || "cosmos".equals(clipType)) {
+                                node.put("class_type", "CLIPLoader");
+                                inputs.remove("clip_name1");
+                                inputs.remove("clip_name2");
+                                inputs.put("clip_name", clipModel);
+                                inputs.put("type", clipType);
+                            } else {
+                                String clipL = "clip_l.safetensors";
+                                for (String c : comfyClips) {
+                                    String cl = c.toLowerCase();
+                                    if (cl.contains("clip_l") || cl.contains("viit") || cl.contains("l_clip")) {
+                                        clipL = c;
+                                        break;
+                                    }
+                                }
+                                if (clipL.startsWith("clip/")) clipL = clipL.substring(5);
+                                else if (clipL.startsWith("clip\\")) clipL = clipL.substring(5);
+                                else if (clipL.startsWith("text_encoders/")) clipL = clipL.substring(14);
+                                else if (clipL.startsWith("text_encoders\\")) clipL = clipL.substring(14);
+
+                                inputs.put("clip_name1", clipL);
+                                inputs.put("clip_name2", clipModel);
+                                inputs.put("type", clipType);
+                            }
+                        }
+                    } else if ("VAELoader".equals(classType)) {
+                        JSONObject inputs = node.optJSONObject("inputs");
+                        if (inputs != null) {
+                            inputs.put("vae_name", vaeModel);
                         }
                     }
                 }
@@ -1750,6 +2149,27 @@ public class Main extends JFrame {
                         if (inputs != null) {
                             String ckptName = findExactCheckpointName(selectedModel);
                             inputs.put("ckpt_name", ckptName);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Auto-adapt KSampler sampler and scheduler for Flux models vs others
+        boolean isFlux = selectedModel.toLowerCase().contains("flux") || selectedModel.toLowerCase().contains("schnell");
+        for (String key : promptObj.keySet()) {
+            JSONObject nodeObj = promptObj.getJSONObject(key);
+            String classType = nodeObj.optString("class_type", "");
+            if ("KSampler".equals(classType) || "KSamplerAdvanced".equals(classType)) {
+                if (nodeObj.has("inputs")) {
+                    JSONObject inputs = nodeObj.getJSONObject("inputs");
+                    if (isFlux) {
+                        inputs.put("sampler_name", "euler");
+                        inputs.put("scheduler", "simple");
+                    } else {
+                        // Restore scheduler to normal if it was simple for SD 1.5/XL models
+                        if ("simple".equals(inputs.optString("scheduler"))) {
+                            inputs.put("scheduler", "normal");
                         }
                     }
                 }
@@ -1855,7 +2275,8 @@ public class Main extends JFrame {
                 if (steps != null && cfg != null) {
                     for (String key : promptObj.keySet()) {
                         JSONObject nodeObj = promptObj.getJSONObject(key);
-                        if (nodeObj.has("class_type") && "KSampler".equals(nodeObj.getString("class_type"))) {
+                        String classType = nodeObj.optString("class_type", "");
+                        if ("KSampler".equals(classType) || "KSamplerAdvanced".equals(classType)) {
                             if (nodeObj.has("inputs")) {
                                 JSONObject inputs = nodeObj.getJSONObject("inputs");
                                 inputs.put("steps", steps);
@@ -1870,6 +2291,7 @@ public class Main extends JFrame {
         } catch (Exception ex) {
             // ignore manually modified JSON errors
         }
+        savePromptLabSession();
     }
 
     private void updateComfyModelSets(JSONObject info) {
@@ -2052,8 +2474,17 @@ public class Main extends JFrame {
                     for (String modelName : list) {
                         promptModelCombo.addItem(modelName);
                     }
-                    if (selected != null && list.contains(selected)) {
-                        promptModelCombo.setSelectedItem(selected);
+                    String matched = null;
+                    if (selected != null) {
+                        for (String m : list) {
+                            if (modelsMatch(selected, m)) {
+                                matched = m;
+                                break;
+                            }
+                        }
+                    }
+                    if (matched != null) {
+                        promptModelCombo.setSelectedItem(matched);
                     } else if (!list.isEmpty()) {
                         promptModelCombo.setSelectedIndex(0);
                     }
@@ -2090,35 +2521,63 @@ public class Main extends JFrame {
                         .GET()
                         .build();
                         
-                java.net.http.HttpResponse<String> infoResponse;
+                java.net.http.HttpResponse<String> infoResponse = null;
+                boolean connected = false;
                 try {
                     infoResponse = client.send(infoRequest, java.net.http.HttpResponse.BodyHandlers.ofString());
-                } catch (java.net.ConnectException | java.net.http.HttpConnectTimeoutException | java.net.UnknownHostException ex) {
-                    SwingUtilities.invokeLater(() -> {
-                        btnSendToComfy.setEnabled(true);
-                        promptLabConsole.append("❌ ComfyUI is offline. Please start ComfyUI in the dashboard first!\n\n");
-                        JOptionPane.showMessageDialog(this, 
-                            "ComfyUI is offline. Please start ComfyUI in the dashboard first!", 
-                            "Connection Failed", JOptionPane.ERROR_MESSAGE);
-                    });
-                    return;
-                } catch (java.io.IOException ex) {
-                    SwingUtilities.invokeLater(() -> {
-                        btnSendToComfy.setEnabled(true);
-                        promptLabConsole.append("❌ ComfyUI is offline or not responding. Please start ComfyUI in the dashboard first!\n\n");
-                        JOptionPane.showMessageDialog(this, 
-                            "ComfyUI is offline or not responding. Please start ComfyUI in the dashboard first!", 
-                            "Connection Failed", JOptionPane.ERROR_MESSAGE);
-                    });
-                    return;
+                    if (infoResponse.statusCode() == 200) {
+                        connected = true;
+                    }
+                } catch (Exception ex) {
+                    // Offline, we will try to start it
                 }
-                
-                if (infoResponse.statusCode() != 200) {
+
+                if (!connected) {
+                    String activeId = configService.getActiveProfile();
+                    List<de.tki.comfymodels.domain.LaunchProfile> profiles = profileManager.loadProfiles();
+                    de.tki.comfymodels.domain.LaunchProfile activeProfile = profiles.stream()
+                        .filter(p -> p.id().equals(activeId))
+                        .findFirst()
+                        .orElse(null);
+                    if (activeProfile == null && !profiles.isEmpty()) {
+                        activeProfile = profiles.get(0);
+                    }
+
+                    if (activeProfile != null) {
+                        final de.tki.comfymodels.domain.LaunchProfile finalProfile = activeProfile;
+                        SwingUtilities.invokeLater(() -> {
+                            promptLabConsole.append("🔌 ComfyUI is offline. Starting ComfyUI automatically with profile: " + finalProfile.name() + "...\n");
+                        });
+                        startComfyUI(activeProfile, false, !configService.isHideComfyUI());
+                        
+                        // Wait up to 45 seconds for ComfyUI to start
+                        for (int i = 1; i <= 45; i++) {
+                            final int attempt = i;
+                            SwingUtilities.invokeLater(() -> {
+                                promptLabConsole.append("⏳ Waiting for ComfyUI to start (Attempt " + attempt + "/45)...\n");
+                            });
+                            try {
+                                Thread.sleep(1000);
+                                infoResponse = client.send(infoRequest, java.net.http.HttpResponse.BodyHandlers.ofString());
+                                if (infoResponse.statusCode() == 200) {
+                                    connected = true;
+                                    SwingUtilities.invokeLater(() -> {
+                                        promptLabConsole.append("🟢 ComfyUI is now online!\n");
+                                    });
+                                    break;
+                                }
+                            } catch (Exception ignored) {
+                            }
+                        }
+                    }
+                }
+
+                if (!connected || infoResponse == null || infoResponse.statusCode() != 200) {
                     SwingUtilities.invokeLater(() -> {
                         btnSendToComfy.setEnabled(true);
-                        promptLabConsole.append("❌ ComfyUI returned error code " + infoResponse.statusCode() + " during status check.\n\n");
+                        promptLabConsole.append("❌ Could not connect to ComfyUI. Automatic startup failed or no profiles exist.\n\n");
                         JOptionPane.showMessageDialog(this, 
-                            "ComfyUI returned error code " + infoResponse.statusCode() + " during status check.", 
+                            "Could not connect to ComfyUI. Please start ComfyUI manually.", 
                             "Connection Failed", JOptionPane.ERROR_MESSAGE);
                     });
                     return;
@@ -2149,39 +2608,32 @@ public class Main extends JFrame {
                 String selectedModel = selectedModelVal;
                 boolean isDiff = isDiffusionModel(selectedModel);
                 boolean isValid = false;
+                String matchedModel = null;
                 
                 if (selectedModel != null && !selectedModel.trim().isEmpty()) {
-                    String cleanModelName = selectedModel.replace("\\", "/");
+                    final String sel = selectedModel;
                     if (isDiff) {
-                        if (cleanModelName.startsWith("diffusion_models/")) {
-                            cleanModelName = cleanModelName.substring(17);
-                        }
-                        final String finalClean = cleanModelName;
-                        final String finalSelected = selectedModel.replace("\\", "/");
-                        isValid = unetModels.stream().anyMatch(u -> {
-                            String normalized = u.replace("\\", "/");
-                            if (normalized.startsWith("diffusion_models/")) {
-                                return normalized.substring(17).equalsIgnoreCase(finalClean) || normalized.equalsIgnoreCase(finalSelected);
+                        for (String u : unetModels) {
+                            if (modelsMatch(sel, u)) {
+                                isValid = true;
+                                matchedModel = u;
+                                break;
                             }
-                            return normalized.equalsIgnoreCase(finalClean) || normalized.equalsIgnoreCase(finalSelected);
-                        });
+                        }
                     } else {
-                        if (cleanModelName.startsWith("checkpoints/")) {
-                            cleanModelName = cleanModelName.substring(12);
-                        }
-                        final String finalClean = cleanModelName;
-                        final String finalSelected = selectedModel.replace("\\", "/");
-                        isValid = checkpoints.stream().anyMatch(c -> {
-                            String normalized = c.replace("\\", "/");
-                            if (normalized.startsWith("checkpoints/")) {
-                                return normalized.substring(12).equalsIgnoreCase(finalClean) || normalized.equalsIgnoreCase(finalSelected);
+                        for (String c : checkpoints) {
+                            if (modelsMatch(sel, c)) {
+                                isValid = true;
+                                matchedModel = c;
+                                break;
                             }
-                            return normalized.equalsIgnoreCase(finalClean) || normalized.equalsIgnoreCase(finalSelected);
-                        });
+                        }
                     }
                 }
                 
-                if (!isValid) {
+                if (isValid && matchedModel != null) {
+                    selectedModel = matchedModel;
+                } else {
                     if (isDiff && !unetModels.isEmpty()) {
                         selectedModel = unetModels.get(0);
                         final String fallback = selectedModel;
@@ -2225,14 +2677,30 @@ public class Main extends JFrame {
                         }
                     }
 
-                    // Update KSampler steps & cfg
+                    // Update KSampler / KSamplerAdvanced steps, cfg, and randomize seed to force execution
                     for (String key : promptObj.keySet()) {
                         JSONObject nodeObj = promptObj.getJSONObject(key);
-                        if (nodeObj.has("class_type") && "KSampler".equals(nodeObj.getString("class_type"))) {
-                            if (nodeObj.has("inputs")) {
-                                JSONObject inputs = nodeObj.getJSONObject("inputs");
+                        String classType = nodeObj.optString("class_type", "");
+                        if (nodeObj.has("inputs")) {
+                            JSONObject inputs = nodeObj.getJSONObject("inputs");
+                            
+                            // Update steps and cfg for standard samplers
+                            if ("KSampler".equals(classType) || "KSamplerAdvanced".equals(classType)) {
                                 inputs.put("steps", stepsVal);
                                 inputs.put("cfg", cfgVal);
+                            }
+                            
+                            // Randomize any seed/noise_seed field in any node (including custom samplers) to bypass ComfyUI caching
+                            java.util.List<String> inputKeys = new java.util.ArrayList<>(inputs.keySet());
+                            long randomSeed = Math.abs(new java.util.Random().nextLong()) % 9007199254740991L;
+                            for (String inputKey : inputKeys) {
+                                String lowerKey = inputKey.toLowerCase();
+                                if (lowerKey.equals("seed") || lowerKey.equals("noise_seed") || lowerKey.endsWith("_seed") || lowerKey.startsWith("seed_")) {
+                                    Object existingVal = inputs.get(inputKey);
+                                    if (existingVal instanceof Number) {
+                                        inputs.put(inputKey, randomSeed);
+                                    }
+                                }
                             }
                         }
                     }
@@ -2295,9 +2763,16 @@ public class Main extends JFrame {
                     if (response.statusCode() == 200) {
                         promptLabConsole.append("Successfully sent! Status Code: 200\n");
                         promptLabConsole.append("Response: " + response.body() + "\n\n");
-                        JOptionPane.showMessageDialog(this, 
-                            "Prompt successfully queued in ComfyUI!\nResponse: " + response.body(), 
-                            "Image Generation Started", JOptionPane.INFORMATION_MESSAGE);
+                        
+                        try {
+                            JSONObject respObj = new JSONObject(response.body());
+                            String promptId = respObj.optString("prompt_id");
+                            if (promptId != null && !promptId.isEmpty()) {
+                                startPollingPromptStatus(promptId);
+                            }
+                        } catch (Exception e) {
+                            System.err.println("Failed to parse prompt response: " + e.getMessage());
+                        }
                     } else if (response.statusCode() == 400) {
                         promptLabConsole.append("Error! Status Code: 400\n");
                         promptLabConsole.append("Response: " + response.body() + "\n\n");
@@ -2341,11 +2816,15 @@ public class Main extends JFrame {
         }).start();
     }
 
-    private void optimizePromptWithGemini() {
-        if (!isGeminiKeyConfigured()) {
-            JOptionPane.showMessageDialog(this, 
-                "Please add a Gemini API key in settings to optimize prompts.", 
-                "Gemini API key missing", JOptionPane.WARNING_MESSAGE);
+    private void optimizePromptWithGemma() {
+        if (localAIService == null || !localAIService.isLocalGemmaDownloaded()) {
+            int choice = JOptionPane.showConfirmDialog(this,
+                "The local Gemma model is not downloaded.\n" +
+                "Would you like to download the Gemma-2-2B GGUF model (approx. 1.6 GB) now to run optimizations directly in Java?",
+                "Download Local Gemma Model?", JOptionPane.YES_NO_OPTION, JOptionPane.QUESTION_MESSAGE);
+            if (choice == JOptionPane.YES_OPTION) {
+                downloadLocalGemmaModel();
+            }
             return;
         }
         
@@ -2361,85 +2840,460 @@ public class Main extends JFrame {
         
         btnOptimizePrompt.setEnabled(false);
         btnOptimizePrompt.setText("✨ Optimizing...");
-        promptLabConsole.append("Optimizing prompt with Gemini AI...\n");
+        promptLabConsole.append("Optimizing prompt with local Gemma...\n");
         
         new Thread(() -> {
+            String optimized = null;
+            StringBuilder errorLogs = new StringBuilder();
             try {
-                geminiService.discoverBestModel();
-                String optimized = geminiService.optimizePrompt(rawPrompt, selectedModel);
-                
-                SwingUtilities.invokeLater(() -> {
-                    btnOptimizePrompt.setEnabled(true);
-                    btnOptimizePrompt.setText("✨ Optimize with Gemini");
-                    if (optimized != null && !optimized.isEmpty()) {
-                        promptAssembleArea.setText(optimized);
-                        
-                        // Manually inject optimized prompt into JSON prompt area
-                        try {
-                            String currentJsonStr = promptJsonArea.getText();
-                            JSONObject mainObj = new JSONObject(currentJsonStr);
-                            if (mainObj.has("prompt")) {
-                                JSONObject promptObj = mainObj.getJSONObject("prompt");
-                                String positiveNodeId = null;
-                                for (String key : promptObj.keySet()) {
-                                    JSONObject nodeObj = promptObj.getJSONObject(key);
-                                    if (nodeObj.has("class_type") && "CLIPTextEncode".equals(nodeObj.getString("class_type"))) {
-                                        if (nodeObj.has("inputs")) {
-                                            JSONObject inputs = nodeObj.getJSONObject("inputs");
-                                            if (inputs.has("text")) {
-                                                String textVal = inputs.getString("text").toLowerCase();
-                                                if (textVal.contains("bad") || textVal.contains("blurry") || textVal.contains("low quality") || textVal.contains("worst")) {
-                                                    continue;
-                                                }
-                                                positiveNodeId = key;
-                                                break;
+                promptLabConsole.append("Running direct local Gemma optimizer...\n");
+                optimized = localAIService.optimizePromptDirectly(rawPrompt, selectedModel);
+            } catch (Throwable ex) {
+                java.io.StringWriter sw = new java.io.StringWriter();
+                ex.printStackTrace(new java.io.PrintWriter(sw));
+                errorLogs.append("Local Gemma optimization failed:\n").append(sw.toString()).append("\n");
+                System.err.println("Local Gemma optimization failed: " + ex.getMessage());
+            }
+            
+            final String finalOptimized = optimized;
+            final String finalErrors = errorLogs.toString();
+            SwingUtilities.invokeLater(() -> {
+                btnOptimizePrompt.setEnabled(true);
+                btnOptimizePrompt.setText("✨ Optimize with gemma");
+                if (finalOptimized != null && !finalOptimized.isEmpty()) {
+                    promptAssembleArea.setText(finalOptimized);
+                    
+                    // Manually inject optimized prompt into JSON prompt area
+                    try {
+                        String currentJsonStr = promptJsonArea.getText();
+                        JSONObject mainObj = new JSONObject(currentJsonStr);
+                        if (mainObj.has("prompt")) {
+                            JSONObject promptObj = mainObj.getJSONObject("prompt");
+                            String positiveNodeId = null;
+                            for (String key : promptObj.keySet()) {
+                                JSONObject nodeObj = promptObj.getJSONObject(key);
+                                if (nodeObj.has("class_type") && "CLIPTextEncode".equals(nodeObj.getString("class_type"))) {
+                                    if (nodeObj.has("inputs")) {
+                                        JSONObject inputs = nodeObj.getJSONObject("inputs");
+                                        if (inputs.has("text")) {
+                                            String textVal = inputs.getString("text").toLowerCase();
+                                            if (textVal.contains("bad") || textVal.contains("blurry") || textVal.contains("low quality") || textVal.contains("worst")) {
+                                                continue;
                                             }
-                                        }
-                                    }
-                                }
-                                
-                                if (positiveNodeId == null) {
-                                    for (String key : promptObj.keySet()) {
-                                        JSONObject nodeObj = promptObj.getJSONObject(key);
-                                        if (nodeObj.has("class_type") && "CLIPTextEncode".equals(nodeObj.getString("class_type"))) {
                                             positiveNodeId = key;
                                             break;
                                         }
                                     }
                                 }
-                                
-                                if (positiveNodeId != null) {
-                                    JSONObject nodeObj = promptObj.getJSONObject(positiveNodeId);
-                                    if (nodeObj.has("inputs")) {
-                                        JSONObject inputs = nodeObj.getJSONObject("inputs");
-                                        inputs.put("text", optimized);
+                            }
+                            
+                            if (positiveNodeId == null) {
+                                for (String key : promptObj.keySet()) {
+                                    JSONObject nodeObj = promptObj.getJSONObject(key);
+                                    if (nodeObj.has("class_type") && "CLIPTextEncode".equals(nodeObj.getString("class_type"))) {
+                                        positiveNodeId = key;
+                                        break;
                                     }
                                 }
-                                promptJsonArea.setText(mainObj.toString(2));
                             }
-                        } catch (Exception ex) {
-                            // ignore json error
+                            
+                            if (positiveNodeId != null) {
+                                JSONObject nodeObj = promptObj.getJSONObject(positiveNodeId);
+                                if (nodeObj.has("inputs")) {
+                                    JSONObject inputs = nodeObj.getJSONObject("inputs");
+                                    inputs.put("text", finalOptimized);
+                                }
+                            }
+                            promptJsonArea.setText(mainObj.toString(2));
                         }
-                        
-                        promptLabConsole.append("Prompt successfully optimized with Gemini!\n\n");
-                    } else {
-                        promptLabConsole.append("❌ Error: Prompt could not be optimized.\n\n");
-                        JOptionPane.showMessageDialog(this, 
-                            "Prompt optimization failed.", 
-                            "Error", JOptionPane.ERROR_MESSAGE);
+                    } catch (Exception ex) {
+                        // ignore json error
                     }
-                });
-            } catch (Exception ex) {
-                SwingUtilities.invokeLater(() -> {
-                    btnOptimizePrompt.setEnabled(true);
-                    btnOptimizePrompt.setText("✨ Optimize with Gemini");
-                    promptLabConsole.append("❌ Error: " + ex.getMessage() + "\n\n");
+                    
+                    promptLabConsole.append("Prompt successfully optimized with local Gemma!\n\n");
+                } else {
+                    promptLabConsole.append("❌ Error: Prompt could not be optimized.\n");
+                    if (!finalErrors.isEmpty()) {
+                        promptLabConsole.append(finalErrors + "\n");
+                    }
                     JOptionPane.showMessageDialog(this, 
-                        "Error during prompt optimization: " + ex.getMessage(), 
+                        "Prompt optimization failed. Please ensure the local Gemma model is downloaded correctly.", 
                         "Error", JOptionPane.ERROR_MESSAGE);
+                }
+            });
+        }).start();
+    }
+
+    private void downloadLocalGemmaModel() {
+        btnOptimizePrompt.setEnabled(false);
+        btnOptimizePrompt.setText("⏳ Downloading...");
+        promptLabConsole.append("Starting download of Gemma-2-2B GGUF model (1.6 GB) from Hugging Face...\n");
+        
+        localAIService.getLocalGemmaService().downloadModel(
+            (percent, status) -> SwingUtilities.invokeLater(() -> {
+                promptLabConsole.append("Download: " + status + "\n");
+            }),
+            () -> SwingUtilities.invokeLater(() -> {
+                btnOptimizePrompt.setEnabled(true);
+                btnOptimizePrompt.setText("✨ Optimize with gemma");
+                promptLabConsole.append("✅ Local Gemma model downloaded successfully! You can now use local Gemma optimization.\n");
+                JOptionPane.showMessageDialog(this,
+                    "Local Gemma model downloaded successfully!",
+                    "Download Complete", JOptionPane.INFORMATION_MESSAGE);
+                updateAiModelDisplay();
+            }),
+            (errorMsg, ex) -> SwingUtilities.invokeLater(() -> {
+                btnOptimizePrompt.setEnabled(true);
+                btnOptimizePrompt.setText("✨ Optimize with gemma");
+                promptLabConsole.append("❌ Download failed: " + errorMsg + "\n");
+                JOptionPane.showMessageDialog(this,
+                    "Failed to download Gemma model: " + errorMsg,
+                    "Download Failed", JOptionPane.ERROR_MESSAGE);
+            })
+        );
+    }
+
+    private void suggestSubjectCompletions() {
+        if (localAIService == null || !localAIService.isLocalGemmaDownloaded()) {
+            int choice = JOptionPane.showConfirmDialog(this,
+                "The local Gemma model is not downloaded.\n" +
+                "Would you like to download the Gemma-2-2B GGUF model (approx. 1.6 GB) now to get suggestions directly in Java?",
+                "Download Local Gemma Model?", JOptionPane.YES_NO_OPTION, JOptionPane.QUESTION_MESSAGE);
+            if (choice == JOptionPane.YES_OPTION) {
+                downloadLocalGemmaModel();
+            }
+            return;
+        }
+
+        String currentSubject = promptSubjectField.getText().trim();
+        if (currentSubject.isEmpty()) {
+            JOptionPane.showMessageDialog(this, 
+                "Please enter a basic subject first (e.g. 'cat', 'cybernetic tiger').", 
+                "Empty Subject", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
+        btnSuggestSubject.setEnabled(false);
+        btnSuggestSubject.setText("✨ Suggesting...");
+        promptLabConsole.append("Generating subject completion suggestions using local Gemma...\n");
+
+        new Thread(() -> {
+            java.util.List<String> suggestions = null;
+            StringBuilder errorLogs = new StringBuilder();
+            try {
+                promptLabConsole.append("Running direct local Gemma suggestions...\n");
+                suggestions = localAIService.getDirectGemmaCompletions(currentSubject);
+            } catch (Throwable ex) {
+                java.io.StringWriter sw = new java.io.StringWriter();
+                ex.printStackTrace(new java.io.PrintWriter(sw));
+                errorLogs.append("Local Gemma suggestions failed:\n").append(sw.toString()).append("\n");
+            }
+
+            final java.util.List<String> finalSuggestions = suggestions;
+            final String finalErrors = errorLogs.toString();
+            SwingUtilities.invokeLater(() -> {
+                btnSuggestSubject.setEnabled(true);
+                btnSuggestSubject.setText("✨ Suggest");
+                
+                if (finalSuggestions != null && !finalSuggestions.isEmpty()) {
+                    promptSubjectSuggestionsPanel.removeAll();
+                    for (String suggestion : finalSuggestions) {
+                        JButton sugBtn = new JButton(suggestion);
+                        sugBtn.setHorizontalAlignment(SwingConstants.LEFT);
+                        sugBtn.setFont(new Font("SansSerif", Font.PLAIN, 12));
+                        sugBtn.putClientProperty("FlatLaf.style", "arc: 8; background: $TextField.background; border: 8,12,8,12,$Card.border,1,8");
+                        sugBtn.setCursor(new Cursor(Cursor.HAND_CURSOR));
+                        sugBtn.setToolTipText("Click to use this suggestion");
+                        sugBtn.addActionListener(e -> {
+                            promptSubjectField.setText(suggestion);
+                            promptSubjectSuggestionsWrapper.setVisible(false);
+                            promptLabLeftPanel.revalidate();
+                            promptLabLeftPanel.repaint();
+                        });
+                        promptSubjectSuggestionsPanel.add(sugBtn);
+                    }
+                    promptSubjectSuggestionsWrapper.setVisible(true);
+                    promptLabLeftPanel.revalidate();
+                    promptLabLeftPanel.repaint();
+                    promptLabConsole.append("Subject suggestions loaded successfully using local Gemma.\n");
+                } else {
+                    promptLabConsole.append("❌ Error: Could not generate suggestions.\n");
+                    if (!finalErrors.isEmpty()) {
+                        promptLabConsole.append(finalErrors + "\n");
+                    }
+                    JOptionPane.showMessageDialog(Main.this,
+                        "Could not generate suggestions. Please ensure the local Gemma model is downloaded correctly.",
+                        "Suggestions Failed", JOptionPane.WARNING_MESSAGE);
+                }
+            });
+        }).start();
+    }
+
+    private void startPollingPromptStatus(String promptId) {
+        String comfyUrl = configService.getComfyUIUrl();
+        SwingUtilities.invokeLater(() -> {
+            if (promptLabRightTabbedPane != null) {
+                promptLabRightTabbedPane.setSelectedIndex(0); // Auto-switch to Image Preview tab
+            }
+            if (promptLabProgressBar != null) {
+                promptLabProgressBar.setVisible(true);
+                promptLabProgressBar.setIndeterminate(true);
+                promptLabProgressBar.setString("Queued...");
+            }
+            if (promptImagePreviewLabel != null) {
+                promptImagePreviewLabel.setText("Generating image... Please wait.");
+                promptImagePreviewLabel.setIcon(null);
+            }
+        });
+
+        new Thread(() -> {
+            boolean done = false;
+            int pollAttempts = 0;
+            java.net.http.HttpClient client = java.net.http.HttpClient.newBuilder()
+                    .connectTimeout(java.time.Duration.ofSeconds(3))
+                    .build();
+
+            while (!done && pollAttempts < 180) { // Timeout after 3 minutes
+                try {
+                    Thread.sleep(1000);
+                    pollAttempts++;
+
+                    // 1. Check history
+                    java.net.http.HttpRequest histReq = java.net.http.HttpRequest.newBuilder()
+                            .uri(java.net.URI.create(comfyUrl + "/history/" + promptId))
+                            .GET()
+                            .build();
+                    java.net.http.HttpResponse<String> histResp = client.send(histReq, java.net.http.HttpResponse.BodyHandlers.ofString());
+                    
+                    if (histResp.statusCode() == 200) {
+                        JSONObject histObj = new JSONObject(histResp.body());
+                        if (histObj.has(promptId)) {
+                            JSONObject promptHistory = histObj.getJSONObject(promptId);
+                            JSONObject outputs = promptHistory.optJSONObject("outputs");
+                            if (outputs != null) {
+                                String filename = null;
+                                String subfolder = "";
+                                String type = "output";
+
+                                for (String nodeKey : outputs.keySet()) {
+                                    JSONObject nodeOutputs = outputs.getJSONObject(nodeKey);
+                                    if (nodeOutputs.has("images")) {
+                                        JSONArray images = nodeOutputs.getJSONArray("images");
+                                        if (images.length() > 0) {
+                                            JSONObject img = images.getJSONObject(0);
+                                            filename = img.optString("filename");
+                                            subfolder = img.optString("subfolder", "");
+                                            type = img.optString("type", "output");
+                                            break;
+                                        }
+                                    }
+                                }
+
+                                if (filename != null) {
+                                    final String finalFilename = filename;
+                                    final String finalSubfolder = subfolder;
+                                    final String finalType = type;
+                                    
+                                    SwingUtilities.invokeLater(() -> {
+                                        loadAndDisplayImage(finalFilename, finalSubfolder, finalType);
+                                        if (promptLabProgressBar != null) promptLabProgressBar.setVisible(false);
+                                        promptLabConsole.append("Image generated and loaded successfully!\n\n");
+                                    });
+                                    done = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
+                    // 2. Check queue position
+                    if (!done) {
+                        java.net.http.HttpRequest qReq = java.net.http.HttpRequest.newBuilder()
+                                .uri(java.net.URI.create(comfyUrl + "/queue"))
+                                .GET()
+                                .build();
+                        java.net.http.HttpResponse<String> qResp = client.send(qReq, java.net.http.HttpResponse.BodyHandlers.ofString());
+                        if (qResp.statusCode() == 200) {
+                            JSONObject qObj = new JSONObject(qResp.body());
+                            JSONArray pending = qObj.optJSONArray("queue_pending");
+                            JSONArray running = qObj.optJSONArray("queue_running");
+                            
+                            boolean found = false;
+                            if (running != null) {
+                                for (int i = 0; i < running.length(); i++) {
+                                    JSONArray item = running.getJSONArray(i);
+                                    if (item.length() > 1 && promptId.equals(item.getString(1))) {
+                                        SwingUtilities.invokeLater(() -> {
+                                            if (promptLabProgressBar != null) promptLabProgressBar.setString("Generating...");
+                                        });
+                                        found = true;
+                                        break;
+                                    }
+                                }
+                            }
+                            if (!found && pending != null) {
+                                for (int i = 0; i < pending.length(); i++) {
+                                    JSONArray item = pending.getJSONArray(i);
+                                    if (item.length() > 1 && promptId.equals(item.getString(1))) {
+                                        final int pos = i + 1;
+                                        SwingUtilities.invokeLater(() -> {
+                                            if (promptLabProgressBar != null) promptLabProgressBar.setString("Queued (Position: " + pos + ")");
+                                        });
+                                        found = true;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                } catch (Exception e) {
+                    System.err.println("Error polling ComfyUI status: " + e.getMessage());
+                }
+            }
+
+            if (!done) {
+                SwingUtilities.invokeLater(() -> {
+                    if (promptLabProgressBar != null) promptLabProgressBar.setVisible(false);
+                    if (promptImagePreviewLabel != null) promptImagePreviewLabel.setText("Generation timed out or failed.");
+                    promptLabConsole.append("❌ Generation timed out or failed to load image.\n\n");
                 });
             }
         }).start();
+    }
+
+    private void loadAndDisplayImage(String filename, String subfolder, String type) {
+        String comfyUrl = configService.getComfyUIUrl();
+        String imageUrl = comfyUrl + "/view?filename=" + filename + "&subfolder=" + subfolder + "&type=" + type;
+        
+        new Thread(() -> {
+            try {
+                java.net.URL url = new java.net.URL(imageUrl);
+                Image img = ImageIO.read(url);
+                if (img != null) {
+                    SwingUtilities.invokeLater(() -> {
+                        scaleAndSetImage(img);
+                    });
+                }
+            } catch (Exception ex) {
+                System.err.println("Failed to download image: " + ex.getMessage());
+                SwingUtilities.invokeLater(() -> {
+                    if (promptImagePreviewLabel != null) promptImagePreviewLabel.setText("Failed to load generated image.");
+                });
+            }
+        }).start();
+    }
+
+    private void scaleAndSetImage(Image img) {
+        currentPreviewImage = img;
+        if (img == null || promptImagePreviewLabel == null) return;
+        
+        int labelWidth = promptImagePreviewLabel.getWidth();
+        int labelHeight = promptImagePreviewLabel.getHeight();
+        
+        if (labelWidth < 50) labelWidth = 500;
+        if (labelHeight < 50) labelHeight = 500;
+        
+        int imgWidth = img.getWidth(null);
+        int imgHeight = img.getHeight(null);
+        
+        if (imgWidth <= 0 || imgHeight <= 0) return;
+        
+        double ratioX = (double) labelWidth / imgWidth;
+        double ratioY = (double) labelHeight / imgHeight;
+        double ratio = Math.min(ratioX, ratioY);
+        
+        int targetWidth = (int) (imgWidth * ratio);
+        int targetHeight = (int) (imgHeight * ratio);
+        
+        targetWidth = Math.max(10, targetWidth);
+        targetHeight = Math.max(10, targetHeight);
+        
+        Image scaled = img.getScaledInstance(targetWidth, targetHeight, Image.SCALE_SMOOTH);
+        promptImagePreviewLabel.setIcon(new ImageIcon(scaled));
+        promptImagePreviewLabel.setText("");
+    }
+
+    private void savePromptLabSession() {
+        if (configService == null) return;
+        try {
+            JSONObject session = new JSONObject();
+            if (promptEnvCombo != null) {
+                session.put("environment_index", promptEnvCombo.getSelectedIndex());
+            }
+            session.put("photorealistic", chkPhotorealistic.isSelected());
+            session.put("oil_painting", chkOil.isSelected());
+            session.put("unreal_engine", chkEngine.isSelected());
+            session.put("anime", chkAnime.isSelected());
+            session.put("dark_fantasy", chkFantasy.isSelected());
+            session.put("watercolor", chkSketch.isSelected());
+            if (promptModelCombo != null && promptModelCombo.getSelectedItem() != null) {
+                session.put("model", promptModelCombo.getSelectedItem());
+            }
+            if (promptWidthSpinner != null) {
+                session.put("width", promptWidthSpinner.getValue());
+            }
+            if (promptHeightSpinner != null) {
+                session.put("height", promptHeightSpinner.getValue());
+            }
+            if (promptStepsSpinner != null) {
+                session.put("steps", promptStepsSpinner.getValue());
+            }
+            if (promptCfgSpinner != null) {
+                session.put("cfg", promptCfgSpinner.getValue());
+            }
+            configService.savePromptLabSession(session);
+        } catch (Exception e) {
+            System.err.println("Failed to save Prompt Lab session: " + e.getMessage());
+        }
+    }
+
+    private void loadPromptLabSession() {
+        if (configService == null) return;
+        try {
+            JSONObject session = configService.getPromptLabSession();
+            if (session == null) return;
+            
+            if (session.has("environment_index") && promptEnvCombo != null) {
+                int idx = session.getInt("environment_index");
+                if (idx >= 0 && idx < promptEnvCombo.getItemCount()) {
+                    promptEnvCombo.setSelectedIndex(idx);
+                }
+            }
+            if (session.has("photorealistic")) chkPhotorealistic.setSelected(session.getBoolean("photorealistic"));
+            if (session.has("oil_painting")) chkOil.setSelected(session.getBoolean("oil_painting"));
+            if (session.has("unreal_engine")) chkEngine.setSelected(session.getBoolean("unreal_engine"));
+            if (session.has("anime")) chkAnime.setSelected(session.getBoolean("anime"));
+            if (session.has("dark_fantasy")) chkFantasy.setSelected(session.getBoolean("dark_fantasy"));
+            if (session.has("watercolor")) chkSketch.setSelected(session.getBoolean("watercolor"));
+            
+            if (session.has("model") && promptModelCombo != null) {
+                String model = session.getString("model");
+                boolean found = false;
+                for (int i = 0; i < promptModelCombo.getItemCount(); i++) {
+                    if (model.equals(promptModelCombo.getItemAt(i))) {
+                        promptModelCombo.setSelectedIndex(i);
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found && !model.isEmpty()) {
+                    promptModelCombo.addItem(model);
+                    promptModelCombo.setSelectedItem(model);
+                }
+            }
+            if (session.has("width") && promptWidthSpinner != null) promptWidthSpinner.setValue(session.getInt("width"));
+            if (session.has("height") && promptHeightSpinner != null) promptHeightSpinner.setValue(session.getInt("height"));
+            if (session.has("steps") && promptStepsSpinner != null) promptStepsSpinner.setValue(session.getInt("steps"));
+            if (session.has("cfg") && promptCfgSpinner != null) {
+                Object cfgVal = session.get("cfg");
+                if (cfgVal instanceof Number) {
+                    promptCfgSpinner.setValue(((Number) cfgVal).doubleValue());
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("Failed to load Prompt Lab session: " + e.getMessage());
+        }
     }
 
     private JPanel createDashboardPanel(JTabbedPane tabs) {
@@ -2744,7 +3598,7 @@ public class Main extends JFrame {
                 processController.stop();
                 try { Thread.sleep(1500); } catch (InterruptedException ignored) {}
                 SwingUtilities.invokeLater(() -> {
-                    startComfyUI(selected, false);
+                    startComfyUI(selected, false, true);
                 });
             }).start();
         });
@@ -2778,7 +3632,7 @@ public class Main extends JFrame {
         launchBtn.addActionListener(e -> {
             de.tki.comfymodels.domain.LaunchProfile selected = profileList.getSelectedValue();
             if (selected == null) { JOptionPane.showMessageDialog(this, "Please select a launch profile."); return; }
-            startComfyUI(selected, true);
+            startComfyUI(selected, true, true);
         });
 
         stopBtn.addActionListener(e -> { consoleOutput.append("\n⏹ Stopping ComfyUI process...\n"); processController.stop(); });
@@ -4222,11 +5076,19 @@ public class Main extends JFrame {
 
         JSplitPane splitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
         JPanel jsonPanel = new JPanel(new BorderLayout());
-        jsonPanel.setBorder(BorderFactory.createTitledBorder("Workflow (Drag & Drop JSON/PNG)"));
+        jsonPanel.putClientProperty("FlatLaf.style", "arc: 16; background: $Card.background; border: 15,15,15,15,$Card.border,1,16");
+        jsonPanel.setOpaque(false);
+        jsonPanel.setBorder(BorderFactory.createTitledBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5), "Workflow (Drag & Drop JSON/PNG)"));
+        
         jsonInputArea = new JTextArea();
         setupDragAndDrop(jsonInputArea);
         JScrollPane jsonScroll = new JScrollPane(jsonInputArea);
+        jsonScroll.setOpaque(false);
+        jsonScroll.getViewport().setOpaque(false);
+        jsonScroll.setBorder(BorderFactory.createEmptyBorder());
+        
         JPanel jsonButtons = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+        jsonButtons.setOpaque(false);
         JButton loadJsonBtn = new JButton("Load Workflow...");
         loadJsonBtn.addActionListener(e -> {
             FileDialog fd = new FileDialog(this, "Select Workflow", FileDialog.LOAD);
@@ -4338,17 +5200,26 @@ public class Main extends JFrame {
             }
         });
         JScrollPane tableScroll = new JScrollPane(modelTable);
+        tableScroll.setOpaque(false);
+        tableScroll.getViewport().setOpaque(false);
+        tableScroll.setBorder(BorderFactory.createEmptyBorder());
+        
         JPanel tablePanel = new JPanel(new BorderLayout());
-        tablePanel.setBorder(BorderFactory.createTitledBorder("Detected Models"));
+        tablePanel.putClientProperty("FlatLaf.style", "arc: 16; background: $Card.background; border: 15,15,15,15,$Card.border,1,16");
+        tablePanel.setOpaque(false);
+        tablePanel.setBorder(BorderFactory.createTitledBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5), "Detected Models"));
         tablePanel.add(tableScroll, BorderLayout.CENTER);
 
         JTabbedPane workflowInputTabs = new JTabbedPane();
         workflowInputTabs.setFont(new Font("SansSerif", Font.BOLD, 12));
         workflowInputTabs.putClientProperty("JTabbedPane.tabType", "card");
+        workflowInputTabs.setOpaque(false);
         
         workflowInputTabs.addTab("📝 JSON Source", jsonPanel);
         
         workflowGraphPanel = new de.tki.comfymodels.ui.WorkflowGraphPanel();
+        workflowGraphPanel.putClientProperty("FlatLaf.style", "arc: 16; background: $Card.background; border: 15,15,15,15,$Card.border,1,16");
+        workflowGraphPanel.setOpaque(false);
         setupDragAndDrop(workflowGraphPanel);
         workflowInputTabs.addTab("📊 Visual Graph", workflowGraphPanel);
         
@@ -4358,9 +5229,11 @@ public class Main extends JFrame {
         splitPane.setDividerLocation(350);
 
         JPanel bottomPanel = new JPanel(new BorderLayout());
+        bottomPanel.setOpaque(false);
         statusLabel = new JLabel("Ready");
         
         JPanel progressPanel = new JPanel(new GridLayout(2, 1));
+        progressPanel.setOpaque(false);
         activeAiModelLabel = new JLabel("Active AI: Loading...");
         activeAiModelLabel.setFont(new Font("SansSerif", Font.ITALIC, 11));
         activeAiModelLabel.setForeground(Color.GRAY);
@@ -4368,6 +5241,7 @@ public class Main extends JFrame {
         progressPanel.add(activeAiModelLabel);
         
         JPanel actionButtons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 5));
+        actionButtons.setOpaque(false);
         downloadButton = new JButton("Start queue");
         downloadButton.putClientProperty("JButton.buttonType", "accent");
         downloadButton.setFont(new Font("SansSerif", Font.BOLD, 13));
@@ -4403,6 +5277,7 @@ public class Main extends JFrame {
 
     private JPanel createSettingsPanel() {
         JPanel panel = new JPanel(new BorderLayout(15, 15));
+        panel.setOpaque(false);
         panel.setBorder(BorderFactory.createEmptyBorder(25, 25, 25, 25));
 
         Font btnFont = new Font("SansSerif", Font.BOLD, 14);
@@ -4484,6 +5359,12 @@ public class Main extends JFrame {
         fastHashCheck.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
         fastHashCheck.addActionListener(e -> configService.setFastHashEnabled(fastHashCheck.isSelected()));
 
+        hideComfyuiCheck = new JCheckBox("Hide ComfyUI Web Client (Replacement Mode)");
+        hideComfyuiCheck.setFont(checkFont);
+        hideComfyuiCheck.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        hideComfyuiCheck.setSelected(configService.isHideComfyUI());
+        hideComfyuiCheck.addActionListener(e -> configService.setHideComfyUI(hideComfyuiCheck.isSelected()));
+
         checksPanel.add(backgroundCheck);
         checksPanel.add(Box.createVerticalStrut(8));
         checksPanel.add(shutdownCheck);
@@ -4493,6 +5374,8 @@ public class Main extends JFrame {
         checksPanel.add(darkCheck);
         checksPanel.add(Box.createVerticalStrut(8));
         checksPanel.add(fastHashCheck);
+        checksPanel.add(Box.createVerticalStrut(8));
+        checksPanel.add(hideComfyuiCheck);
 
         left.add(pathsHeader);
         left.add(Box.createVerticalStrut(20));
@@ -4620,7 +5503,7 @@ public class Main extends JFrame {
                     if (consoleOutput != null) {
                         consoleOutput.append("\n🔄 Restarting ComfyUI...\n");
                     }
-                    startComfyUI(activeProfile, false);
+                    startComfyUI(activeProfile, false, true);
                 } else {
                     statusLabel.setText("⚠️ No launch profile available to start ComfyUI.");
                 }
@@ -4988,38 +5871,39 @@ public class Main extends JFrame {
         sb.append("<div style='background-color: ").append(boxBg).append("; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 1px solid ").append(boxBorder).append(";'>");
         sb.append("<h2 style='color: ").append(accentColor).append("; margin-top: 0;'>🛠️ Getting Started (Setup)</h2>");
         sb.append("<ol>");
-        sb.append("<li><b>Set Directories:</b> Go to <i>Settings -> Directories</i> and set your ComfyUI 'models' path. " +
-                  "Additionally, choose an 'Archive' path (ideally on a large HDD) to offload models you aren't currently using.</li>");
-        sb.append("<li><b>Unlock Vault:</b> On the first start, you set a master password. This securely encrypts your API keys on your disk.</li>");
-        sb.append("<li><b>Store API Keys:</b> Go to <i>Settings -> AI & API Keys</i>. A <b>Gemini API Key</b> is highly recommended, " +
-                  "as the AI reads workflows like a human and intelligently finds missing download links.</li>");
-        sb.append("<li><b>Install Bridge:</b> Use <i>Settings -> ComfyUI Bridge</i> to add the 🚀 button directly into your ComfyUI interface.</li>");
+        sb.append("<li><b>Set Directories:</b> Navigate to <i>Settings -> Directories</i> and specify your ComfyUI root and 'models' paths. Choose a 'Cold Archive' path (e.g. on a high-capacity HDD) to offload unused models.</li>");
+        sb.append("<li><b>Unlock Vault:</b> Establish a Master Password on first startup. This AES-256 encrypted vault securely stores your sensitive API keys.</li>");
+        sb.append("<li><b>Configure API Keys:</b> Go to <i>Settings -> AI & API Keys</i> to add your Civitai API Key, Hugging Face Token, and Gemini API Key. A Gemini key is highly recommended for prompt optimizations.</li>");
+        sb.append("<li><b>Install Canvas Bridge:</b> Click <i>Settings -> ComfyUI Bridge...</i> to add the 🚀 floating button to your ComfyUI workspace for seamless 1-click canvas syncing.</li>");
         sb.append("</ol></div>");
 
         sb.append("<h2 style='color: ").append(accentColor).append(";'>✨ Core Features</h2>");
         
-        sb.append("<p><b>📦 Archive Manager:</b> Models you don't need right now can be moved to the archive via <i>Archive...</i>. " +
-                  "If a workflow needs them later, the Downloader detects them in the archive and offers a <b>one-click restoration</b>.</p>");
+        sb.append("<p><b>📦 Archive Manager:</b> Reclaim SSD space. Move massive, rarely used models (SDXL checkpoints, Flux models, etc.) to your cold storage archive. The app automatically detects when a loaded workflow needs archived models and offers <b>one-click restoration</b>.</p>");
         
-        sb.append("<p><b>👯 Storage Optimizer:</b> Scans your library for duplicates. " +
-                  "Using SHA-256 hash comparison, it identifies identical files even if they have different names. Duplicates are replaced with NTFS hardlinks to save space while keeping files accessible. Supports fast initial scanning.</p>");
+        sb.append("<p><b>🧼 Storage Optimizer:</b> Automatically scans model folders for duplicate files using SHA-256 and Fast AutoV1 Hashing. Clean up redundant copies or instantly merge duplicates into NTFS hardlinks to preserve folder structure while freeing up physical space.</p>");
         
-        sb.append("<p><b>🔍 Fast Verify:</b> Quickly checks if your model files are valid or have corrupted headers.</p>");
+        sb.append("<p><b>🎨 Prompt Lab & AI Optimization:</b> Draft and refine prompts, select styles, and pick optional environmental contexts (including 'None (Optional)'). Features a powerful <b>Optimize with AI</b> button which detects the target model architecture (SD 1.5, SDXL, Flux) and rewrites prompts to suit that target.</p>");
 
-        sb.append("<p><b>🧠 AI Search:</b> When loading a workflow, the AI automatically tries to identify models. " +
-                  "Use <i>Deep Search</i> to have the AI specifically search for download sources.</p>");
+        sb.append("<p><b>🔍 Model Update Checker & Tracker:</b> Scans your local models and checks Civitai to see if newer versions or upgrades are available. Download and update your models with a single click.</p>");
 
-        sb.append("<p><b>🖼️ Output Gallery:</b> Displays generated output images and videos with asynchronous background loading and scaling to keep the interface smooth and responsive.</p>");
+        sb.append("<p><b>🖼️ Output Gallery:</b> Live monitoring of the ComfyUI output directory. Renders images and videos asynchronously with support for selection checkboxes, bulk deletion, and file actions without slowing down the UI.</p>");
 
-        sb.append("<div style='background-color: ").append(tipBg).append("; padding: 10px; border-radius: 5px; margin-top: 20px;'>");
+        sb.append("<p><b>📊 Workflow Graph Preview:</b> Displays a visual diagram of the ComfyUI nodes and linkages directly in the companion app whenever a workflow is loaded or synced.</p>");
+
+        sb.append("<p><b>⚡ System Monitoring & Server Lifecycle:</b> Keeps track of real-time CPU, RAM, and VRAM utilization. Automatically cleans up active ports to resolve server startup crashes, streams server logs, and refreshes the browser automatically upon reconnect.</p>");
+
+        sb.append("<p><b>🔌 Automatic App & Node Updater:</b> Keeps ComfyUI and installed Custom Nodes up-to-date with 1-click updates that run `git pull` and set up virtual environments automatically.</p>");
+
+        sb.append("<div style='background-color: ").append(tipBg).append("; padding: 15px; border-radius: 8px; margin-top: 20px; border: 1px solid ").append(boxBorder).append(";'>");
         sb.append("<b>💡 Pro Tips:</b><br>");
-        sb.append("• Use <b>Drag & Drop</b> for images (.png) to directly read their embedded workflow.<br>");
-        sb.append("• Enable <b>Shutdown after Queue</b> for overnight downloads.<br>");
-        sb.append("• The app minimizes to the <b>System Tray</b> (bottom right) if 'Stay in Background' is active.<br>");
-        sb.append("• Windows users benefit from automatic active port cleaning to prevent launch conflicts.");
+        sb.append("• <b>Drag & Drop:</b> Drag any workflow JSON or generated image (.png with metadata) directly into the app window to import its model list.<br>");
+        sb.append("• <b>Overnight Queue:</b> Enable 'Shutdown after Queue' in the downloader to automatically turn off the computer when downloads are done.<br>");
+        sb.append("• <b>System Tray:</b> Enable 'Stay in Background' so the app minimizes to the system tray instead of closing.<br>");
+        sb.append("• <b>Launch Profiles:</b> Select from 10 optimized launch arguments (like CPU Mode, Low VRAM, Beast Mode, or FP8 Flux optimizations) matching your hardware.");
         sb.append("</div>");
         
-        sb.append("<p style='margin-top: 30px; color: #888; font-style: italic; text-align: center;'>Version 1.1.0 - developed by TKI</p>");
+        sb.append("<p style='margin-top: 30px; color: #888; font-style: italic; text-align: center;'>Version 1.1.0 - Open Source Software developed by TKI</p>");
         sb.append("</body></html>");
 
         editorPane.setText(sb.toString());
@@ -5070,7 +5954,7 @@ public class Main extends JFrame {
         }
     }
 
-    private void startComfyUI(de.tki.comfymodels.domain.LaunchProfile selected, boolean clearConsole) {
+    private void startComfyUI(de.tki.comfymodels.domain.LaunchProfile selected, boolean clearConsole, boolean openBrowser) {
         if (selected == null) return;
         if (launchBtn != null) launchBtn.setEnabled(false);
         if (clearConsole && consoleOutput != null) {
@@ -5089,7 +5973,7 @@ public class Main extends JFrame {
                     String url = log.substring(idx).trim();
                     new Thread(() -> {
                         try {
-                            if (Desktop.isDesktopSupported()) {
+                            if (Desktop.isDesktopSupported() && openBrowser) {
                                 Desktop.getDesktop().browse(new java.net.URI(url));
                             }
                         } catch (Exception e) {
@@ -5128,7 +6012,7 @@ public class Main extends JFrame {
                             if (profileList != null) {
                                 profileList.setSelectedValue(cpuProfile, true);
                             }
-                            startComfyUI(cpuProfile, true);
+                            startComfyUI(cpuProfile, true, true);
                         } else {
                             JOptionPane.showMessageDialog(this, "CPU Mode profile not found. Please add or use a custom profile with '--cpu'.");
                         }

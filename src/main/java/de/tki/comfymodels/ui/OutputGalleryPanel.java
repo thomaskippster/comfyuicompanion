@@ -9,6 +9,11 @@ import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.ArrayList;
+import java.util.Set;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.HashMap;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -79,28 +84,61 @@ public class OutputGalleryPanel extends JPanel {
     private final ConfigService configService;
     private final JPanel galleryPanel;
     private final JLabel pathLabel;
+    
+    private final Set<Path> selectedFiles = new HashSet<>();
+    private final List<Path> loadedFiles = new ArrayList<>();
+    private final Map<Path, JPanel> tileMap = new HashMap<>();
+    private final Map<Path, JCheckBox> checkboxMap = new HashMap<>();
+    
+    private JButton deleteBtn;
+    private JButton selectAllBtn;
+    private JButton clearBtn;
 
     public OutputGalleryPanel(ConfigService configService) {
         this.configService = configService;
         setLayout(new BorderLayout());
+        setOpaque(false);
         
         JPanel headerPanel = new JPanel(new BorderLayout());
         headerPanel.setBorder(BorderFactory.createEmptyBorder(5, 10, 5, 10));
+        headerPanel.setOpaque(false);
         
         pathLabel = new JLabel("Output Directory: ");
         headerPanel.add(pathLabel, BorderLayout.CENTER);
         
+        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 5, 0));
+        buttonPanel.setOpaque(false);
+        
+        selectAllBtn = new JButton("Select All");
+        selectAllBtn.addActionListener(e -> selectAll());
+        buttonPanel.add(selectAllBtn);
+        
+        clearBtn = new JButton("Clear");
+        clearBtn.addActionListener(e -> clearSelection());
+        buttonPanel.add(clearBtn);
+        
+        deleteBtn = new JButton("Delete Selected (0) 🗑️");
+        deleteBtn.setEnabled(false);
+        deleteBtn.addActionListener(e -> deleteSelectedFiles());
+        buttonPanel.add(deleteBtn);
+        
         JButton refreshBtn = new JButton("Refresh 🔄");
         refreshBtn.addActionListener(e -> refresh());
-        headerPanel.add(refreshBtn, BorderLayout.EAST);
+        buttonPanel.add(refreshBtn);
+        
+        headerPanel.add(buttonPanel, BorderLayout.EAST);
         
         add(headerPanel, BorderLayout.NORTH);
         
         galleryPanel = new ScrollablePanel(new WrapLayout(FlowLayout.LEFT, 10, 10));
+        galleryPanel.setOpaque(false);
         
         JScrollPane scrollPane = new JScrollPane(galleryPanel);
         scrollPane.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
         scrollPane.getVerticalScrollBar().setUnitIncrement(20);
+        scrollPane.setOpaque(false);
+        scrollPane.getViewport().setOpaque(false);
+        scrollPane.setBorder(BorderFactory.createEmptyBorder());
         add(scrollPane, BorderLayout.CENTER);
         
         addComponentListener(new java.awt.event.ComponentAdapter() {
@@ -115,9 +153,103 @@ public class OutputGalleryPanel extends JPanel {
 
     public void refresh() {
         galleryPanel.removeAll();
+        tileMap.clear();
+        checkboxMap.clear();
+        loadedFiles.clear();
+        selectedFiles.clear();
+        updateDeleteButton();
+        
         loadFiles(configService.getResolvedOutputDir());
         galleryPanel.revalidate();
         galleryPanel.repaint();
+    }
+
+    private void updateDeleteButton() {
+        if (deleteBtn != null) {
+            int count = selectedFiles.size();
+            deleteBtn.setText("Delete Selected (" + count + ") 🗑️");
+            deleteBtn.setEnabled(count > 0);
+            if (count > 0) {
+                deleteBtn.putClientProperty("Button.background", new Color(180, 50, 50));
+                deleteBtn.putClientProperty("Button.foreground", Color.WHITE);
+            } else {
+                deleteBtn.putClientProperty("Button.background", null);
+                deleteBtn.putClientProperty("Button.foreground", null);
+            }
+        }
+    }
+
+    private void selectAll() {
+        selectedFiles.addAll(loadedFiles);
+        refreshTileVisuals();
+        updateDeleteButton();
+    }
+
+    private void clearSelection() {
+        selectedFiles.clear();
+        refreshTileVisuals();
+        updateDeleteButton();
+    }
+
+    private void refreshTileVisuals() {
+        for (Path file : loadedFiles) {
+            JPanel tile = tileMap.get(file);
+            JCheckBox cb = checkboxMap.get(file);
+            if (tile != null) {
+                updateTileBorder(tile, file);
+                tile.repaint();
+            }
+            if (cb != null) {
+                cb.setSelected(selectedFiles.contains(file));
+            }
+        }
+    }
+
+    private void updateTileBorder(JPanel tile, Path file) {
+        if (selectedFiles.contains(file)) {
+            tile.setBorder(BorderFactory.createLineBorder(new Color(0, 204, 204), 2));
+        } else {
+            Color cardBorder = UIManager.getColor("Card.border");
+            if (cardBorder == null) cardBorder = UIManager.getColor("Component.borderColor");
+            if (cardBorder == null) cardBorder = Color.GRAY;
+            tile.setBorder(BorderFactory.createLineBorder(cardBorder, 1));
+        }
+    }
+
+    private void deleteSelectedFiles() {
+        int count = selectedFiles.size();
+        if (count == 0) return;
+        
+        String message = "Are you sure you want to permanently delete " + count + " selected file(s)?";
+        int confirm = JOptionPane.showConfirmDialog(this, message, "Confirm Delete", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
+        if (confirm != JOptionPane.YES_OPTION) {
+            return;
+        }
+        
+        int deletedCount = 0;
+        int failedCount = 0;
+        StringBuilder failedFiles = new StringBuilder();
+        
+        for (Path file : selectedFiles) {
+            try {
+                Files.deleteIfExists(file);
+                deletedCount++;
+            } catch (Exception ex) {
+                failedCount++;
+                failedFiles.append(file.getFileName().toString()).append("\n");
+            }
+        }
+        
+        selectedFiles.clear();
+        refresh();
+        
+        if (failedCount > 0) {
+            JOptionPane.showMessageDialog(this, 
+                "Successfully deleted " + deletedCount + " file(s).\nFailed to delete " + failedCount + " file(s):\n" + failedFiles.toString(),
+                "Deletion Summary", JOptionPane.WARNING_MESSAGE);
+        } else {
+            JOptionPane.showMessageDialog(this, "Successfully deleted " + deletedCount + " file(s).", "Success", JOptionPane.INFORMATION_MESSAGE);
+        }
     }
 
     private void loadFiles(String outputDir) {
@@ -141,7 +273,10 @@ public class OutputGalleryPanel extends JPanel {
                 galleryPanel.add(new JLabel("No images or videos found in output directory."));
             } else {
                 for (Path file : files) {
-                    galleryPanel.add(createFileTile(file));
+                    loadedFiles.add(file);
+                    JPanel tile = createFileTile(file);
+                    tileMap.put(file, tile);
+                    galleryPanel.add(tile);
                 }
             }
         } catch (Exception e) {
@@ -150,12 +285,50 @@ public class OutputGalleryPanel extends JPanel {
     }
 
     private JPanel createFileTile(Path file) {
-        JPanel tile = new JPanel(new BorderLayout());
-        tile.setPreferredSize(new Dimension(120, 140));
-        tile.setBorder(BorderFactory.createLineBorder(Color.GRAY));
+        JPanel tile = new JPanel(new BorderLayout()) {
+            @Override
+            public void updateUI() {
+                super.updateUI();
+                updateTileBorder(this, file);
+            }
+            
+            @Override
+            protected void paintComponent(Graphics g) {
+                super.paintComponent(g);
+                if (selectedFiles.contains(file)) {
+                    g.setColor(new Color(0, 204, 204, 30));
+                    g.fillRect(0, 0, getWidth(), getHeight());
+                }
+            }
+        };
+        tile.putClientProperty("FlatLaf.style", "arc: 12; background: $Card.background");
+        tile.setOpaque(false);
+        tile.setPreferredSize(new Dimension(130, 160));
         tile.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
         
         String name = file.getFileName().toString();
+        
+        JPanel topPanel = new JPanel(new BorderLayout());
+        topPanel.setOpaque(false);
+        
+        JCheckBox selectCheck = new JCheckBox();
+        selectCheck.setOpaque(false);
+        selectCheck.setSelected(selectedFiles.contains(file));
+        selectCheck.setFocusable(false);
+        selectCheck.addActionListener(e -> {
+            if (selectCheck.isSelected()) {
+                selectedFiles.add(file);
+            } else {
+                selectedFiles.remove(file);
+            }
+            updateTileBorder(tile, file);
+            tile.repaint();
+            updateDeleteButton();
+        });
+        topPanel.add(selectCheck, BorderLayout.WEST);
+        tile.add(topPanel, BorderLayout.NORTH);
+        
+        checkboxMap.put(file, selectCheck);
         
         if (name.toLowerCase().endsWith(".mp4")) {
             tile.add(new JLabel("<html><center>🎥<br>" + name + "</center></html>", SwingConstants.CENTER), BorderLayout.CENTER);
@@ -168,7 +341,7 @@ public class OutputGalleryPanel extends JPanel {
                     ImageIcon rawIcon = new ImageIcon(file.toString());
                     Image rawImage = rawIcon.getImage();
                     if (rawImage != null) {
-                        Image scaledImage = rawImage.getScaledInstance(110, 110, Image.SCALE_FAST);
+                        Image scaledImage = rawImage.getScaledInstance(120, 120, Image.SCALE_FAST);
                         ImageIcon icon = new ImageIcon(scaledImage);
                         SwingUtilities.invokeLater(() -> {
                             imageLabel.setText("");
@@ -178,16 +351,34 @@ public class OutputGalleryPanel extends JPanel {
                 } catch (Exception ignored) {}
             });
             
-            tile.add(new JLabel(name, SwingConstants.CENTER), BorderLayout.SOUTH);
+            JLabel nameLabel = new JLabel(name, SwingConstants.CENTER);
+            nameLabel.setFont(new Font("SansSerif", Font.PLAIN, 10));
+            tile.add(nameLabel, BorderLayout.SOUTH);
         }
         
         tile.addMouseListener(new MouseAdapter() {
             @Override
             public void mouseClicked(MouseEvent e) {
-                showMediaViewer(file);
+                if (SwingUtilities.isLeftMouseButton(e)) {
+                    if (e.getClickCount() == 2) {
+                        showMediaViewer(file);
+                    } else {
+                        if (selectedFiles.contains(file)) {
+                            selectedFiles.remove(file);
+                            selectCheck.setSelected(false);
+                        } else {
+                            selectedFiles.add(file);
+                            selectCheck.setSelected(true);
+                        }
+                        updateTileBorder(tile, file);
+                        tile.repaint();
+                        updateDeleteButton();
+                    }
+                }
             }
         });
         
+        updateTileBorder(tile, file);
         return tile;
     }
 

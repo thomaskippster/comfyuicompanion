@@ -49,6 +49,14 @@ public class ModelSearchService implements IModelSearchService {
                              BiConsumer<Integer, String> onStatusUpdate,
                              BiConsumer<Integer, ModelInfo> onModelFound,
                              Runnable onFinished) {
+        searchOnline(modelsToDownload, selectedIndices, workflowContext, fileName, false, onStatusUpdate, onModelFound, onFinished);
+    }
+
+    @Override
+    public void searchOnline(List<ModelInfo> modelsToDownload, boolean[] selectedIndices, String workflowContext, String fileName, boolean manual,
+                             BiConsumer<Integer, String> onStatusUpdate,
+                             BiConsumer<Integer, ModelInfo> onModelFound,
+                             Runnable onFinished) {
         if (modelsToDownload == null) {
             if (onFinished != null) onFinished.run();
             return;
@@ -71,7 +79,7 @@ public class ModelSearchService implements IModelSearchService {
             ModelInfo info = modelsToDownload.get(index);
             searchExecutor.submit(() -> {
                 try {
-                    performSearch(info, index, fileName, workflowContext, onStatusUpdate, onModelFound);
+                    performSearch(info, index, fileName, workflowContext, manual, onStatusUpdate, onModelFound);
                 } catch (Exception e) {
                     onStatusUpdate.accept(index, "Error: " + e.getMessage());
                 } finally {
@@ -101,7 +109,7 @@ public class ModelSearchService implements IModelSearchService {
         return "https://huggingface.co";
     }
 
-    private void performSearch(ModelInfo info, int index, String fileName, String workflowContext,
+    private void performSearch(ModelInfo info, int index, String fileName, String workflowContext, boolean manual,
                                BiConsumer<Integer, String> onStatusUpdate,
                                BiConsumer<Integer, ModelInfo> onModelFound) {
         // Priority 1: User defined Model List
@@ -122,14 +130,16 @@ public class ModelSearchService implements IModelSearchService {
             }
         }
 
-        onStatusUpdate.accept(index, "✨ Gemini Scouting...");
-        String aiHint = geminiService.discoverBestRepo(info.getName(), fileName, workflowContext);
-        if (aiHint != null && !aiHint.equalsIgnoreCase("UNKNOWN")) {
-            if (aiHint.startsWith("http")) {
-                if (validateAndSetUrl(info, index, aiHint, "✨ AI DIRECT", onStatusUpdate, onModelFound)) return;
+        if (manual) {
+            onStatusUpdate.accept(index, "✨ Gemini Scouting...");
+            String aiHint = geminiService.discoverBestRepo(info.getName(), fileName, workflowContext);
+            if (aiHint != null && !aiHint.equalsIgnoreCase("UNKNOWN")) {
+                if (aiHint.startsWith("http")) {
+                    if (validateAndSetUrl(info, index, aiHint, "✨ AI DIRECT", onStatusUpdate, onModelFound)) return;
+                }
+                onStatusUpdate.accept(index, "🔍 Validating Repo: " + aiHint);
+                if (fetchHuggingFaceUrlInSpecificRepo(info, index, aiHint, onStatusUpdate, onModelFound)) return;
             }
-            onStatusUpdate.accept(index, "🔍 Validating Repo: " + aiHint);
-            if (fetchHuggingFaceUrlInSpecificRepo(info, index, aiHint, onStatusUpdate, onModelFound)) return;
         }
 
         String modelName = info.getName();

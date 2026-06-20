@@ -34,20 +34,16 @@ public class UpdaterService {
     private ConfigService configService;
 
     public List<RepoStatus> scanRepositories() {
-        List<RepoStatus> list = new ArrayList<>();
+        List<RepoStatus> list = new java.util.concurrent.CopyOnWriteArrayList<>();
         String comfyPathStr = configService.getComfyUIPath();
-        if (comfyPathStr == null || comfyPathStr.isEmpty()) return list;
+        if (comfyPathStr == null || comfyPathStr.isEmpty()) return new ArrayList<>();
 
         File comfyRoot = new File(comfyPathStr);
-        if (!comfyRoot.exists() || !comfyRoot.isDirectory()) return list;
+        if (!comfyRoot.exists() || !comfyRoot.isDirectory()) return new ArrayList<>();
 
-        // 1. Scan ComfyUI Core
-        RepoStatus coreStatus = checkRepo(comfyRoot, "ComfyUI Core");
-        if (coreStatus != null) {
-            list.add(coreStatus);
-        }
+        List<File[]> reposToScan = new ArrayList<>();
+        reposToScan.add(new File[]{comfyRoot, new File("ComfyUI Core")});
 
-        // 2. Scan Custom Nodes
         File customNodesDir = new File(comfyRoot, "custom_nodes");
         if (customNodesDir.exists() && customNodesDir.isDirectory()) {
             File[] children = customNodesDir.listFiles();
@@ -56,16 +52,31 @@ public class UpdaterService {
                     if (child.isDirectory()) {
                         File gitFolder = new File(child, ".git");
                         if (gitFolder.exists()) {
-                            RepoStatus nodeStatus = checkRepo(child, child.getName());
-                            if (nodeStatus != null) {
-                                list.add(nodeStatus);
-                            }
+                            reposToScan.add(new File[]{child, new File(child.getName())});
                         }
                     }
                 }
             }
         }
-        return list;
+
+        // Scan repositories in parallel to avoid long sequential git fetch delays over the network
+        reposToScan.parallelStream().forEach(item -> {
+            File dir = item[0];
+            String displayName = item[1].getName();
+            RepoStatus status = checkRepo(dir, displayName);
+            if (status != null) {
+                list.add(status);
+            }
+        });
+
+        // Sort: ComfyUI Core first, then others alphabetically
+        List<RepoStatus> sortedList = new ArrayList<>(list);
+        sortedList.sort((a, b) -> {
+            if ("ComfyUI Core".equals(a.name)) return -1;
+            if ("ComfyUI Core".equals(b.name)) return 1;
+            return a.name.compareToIgnoreCase(b.name);
+        });
+        return sortedList;
     }
 
     private RepoStatus checkRepo(File dir, String displayName) {

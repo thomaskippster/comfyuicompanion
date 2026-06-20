@@ -34,10 +34,8 @@ if not is_registered:
             if hasattr(folder_paths, "filename_list_cache"):
                 folder_paths.filename_list_cache.clear()
                 
-            try:
-                importlib.reload(folder_paths)
-            except Exception:
-                pass
+            if hasattr(folder_paths, "cache_helper"):
+                folder_paths.cache_helper.clear()
 
             # Object Info Reset
             server.PromptServer.instance.object_info = None

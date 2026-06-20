@@ -24,40 +24,6 @@ public class LocalAIService {
             .connectTimeout(Duration.ofSeconds(10))
             .build();
 
-    private String queryOllama(String queryText) {
-        if (configService == null || !configService.isUseOllama()) return null;
-        try {
-            String baseUrl = configService.getOllamaUrl();
-            String model = configService.getOllamaModel();
-            String prompt = "You are a model metadata analyzer for ComfyUI. Given a model filename or download URL, identify its creator or architecture. " +
-                            "Respond ONLY with the author or project name (e.g. 'black-forest-labs', 'stabilityai', 'PonyDiffusion', 'city96', 'Kijai', 'lllyasviel', etc.). " +
-                            "If you cannot determine it, respond 'community'. " +
-                            "Input: " + queryText + "\n" +
-                            "Response:";
-            JSONObject payload = new JSONObject();
-            payload.put("model", model);
-            payload.put("prompt", prompt);
-            payload.put("stream", false);
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(baseUrl + "/api/generate"))
-                    .header("Content-Type", "application/json")
-                    .POST(HttpRequest.BodyPublishers.ofString(payload.toString()))
-                    .build();
-            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
-            if (response.statusCode() == 200) {
-                JSONObject json = new JSONObject(response.body());
-                String resText = json.optString("response", "").trim();
-                resText = resText.replaceAll("[\"'\\.`\\*\\n\\r]", "").trim();
-                if (!resText.isEmpty()) {
-                    return resText;
-                }
-            }
-        } catch (Exception e) {
-            System.err.println("Ollama prediction failed: " + e.getMessage());
-        }
-        return null;
-    }
-
     private final Map<String, String[]> KNOWLEDGE_BASE = new LinkedHashMap<>();
     private final Map<String, Double> GLOBAL_IDF = new HashMap<>();
 
@@ -108,10 +74,16 @@ public class LocalAIService {
     }
 
     private Prediction predict(String input, boolean isUrl) {
-        if (configService != null && configService.isUseOllama()) {
-            String ollamaRes = queryOllama(input);
-            if (ollamaRes != null && !ollamaRes.equalsIgnoreCase("community") && !ollamaRes.isEmpty()) {
-                return new Prediction(ollamaRes, 0.95);
+        if (localGemmaService != null && localGemmaService.isModelDownloaded()) {
+            try {
+                String prompt = "Identify the creator or architecture. Respond ONLY with the creator name (e.g. 'black-forest-labs', 'stabilityai', 'PonyDiffusion', etc.). If you cannot determine it, respond 'community'.\nInput: " + input;
+                String resText = localGemmaService.generateCompletion("You are a model metadata analyzer for ComfyUI. Respond with ONLY the single creator name or 'community', no formatting, no sentences.", prompt, 0.2f, 15);
+                resText = resText.replaceAll("[\"'\\.`\\*\\n\\r]", "").trim();
+                if (!resText.isEmpty() && !resText.equalsIgnoreCase("community")) {
+                    return new Prediction(resText, 0.95);
+                }
+            } catch (Exception e) {
+                System.err.println("Local Gemma prediction failed: " + e.getMessage());
             }
         }
 
@@ -224,15 +196,15 @@ public class LocalAIService {
         String arch = "SD15";
         if (modelName != null) {
             String lower = modelName.toLowerCase();
-            if (lower.contains("z_image_turbo") || lower.contains("acestep") || lower.contains("longcat") || lower.contains("lumina")) {
+            if (lower.contains("z_image_turbo") || lower.contains("acestep") || lower.contains("longcat") || lower.contains("lumina") || lower.contains("qwen") || lower.contains("firered")) {
                 arch = "Lumina2";
-            } else if (lower.contains("wan")) {
+            } else if (lower.contains("wan") || lower.contains("ltx")) {
                 arch = "Wan";
             } else if (lower.contains("flux")) {
                 arch = "Flux";
             } else if (lower.contains("sd3") || lower.contains("stable_diffusion_3")) {
                 arch = "SD3";
-            } else if (lower.contains("xl") || lower.contains("sdxl")) {
+            } else if (lower.contains("xl") || lower.contains("sdxl") || lower.contains("ernie")) {
                 arch = "SDXL";
             }
         }
@@ -284,5 +256,16 @@ public class LocalAIService {
                 + "3. Respond ONLY with the optimized prompt text. Do not use explanations, annotations, markdown code blocks, or quotes.";
                 
         return localGemmaService.generateCompletion(systemInstruction, "Original prompt: " + rawPrompt, 0.7f, 256);
+    }
+
+    public String generateText(String promptText, float temperature, int maxTokens) {
+        if (localGemmaService != null && localGemmaService.isModelDownloaded()) {
+            try {
+                return localGemmaService.generateCompletion("You are a helpful assistant.", promptText, temperature, maxTokens);
+            } catch (Throwable t) {
+                System.err.println("Local Gemma generation failed: " + t.getMessage());
+            }
+        }
+        return null;
     }
 }

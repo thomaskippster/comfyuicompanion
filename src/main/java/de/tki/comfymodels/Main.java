@@ -71,6 +71,9 @@ public class Main extends JFrame {
     private ConfigService configService;
 
     @Autowired
+    private de.tki.comfymodels.service.IComfyTemplateService comfyTemplateService;
+
+    @Autowired
     private GeminiAIService geminiService;
 
     @Autowired
@@ -91,6 +94,9 @@ public class Main extends JFrame {
     @Autowired
     private de.tki.comfymodels.service.impl.VersionService versionService;
 
+    @Autowired(required = false)
+    private de.tki.comfymodels.service.IModelArchitectureService modelArchitectureService;
+
 
 
     @Autowired
@@ -98,6 +104,15 @@ public class Main extends JFrame {
 
     @Autowired
     private de.tki.comfymodels.service.impl.UpdaterService updaterService;
+
+    @Autowired
+    private de.tki.comfymodels.ui.VideoArchitectTab videoArchitectTab;
+
+    @Autowired
+    private de.tki.comfymodels.ui.BlueprintGalleryTab blueprintGalleryTab;
+
+    @Autowired
+    private de.tki.comfymodels.service.impl.DependencyService dependencyService;
 
     private JProgressBar progressCpu;
     private JProgressBar progressRam;
@@ -120,9 +135,13 @@ public class Main extends JFrame {
     private JList<de.tki.comfymodels.domain.LaunchProfile> profileList;
     private JLabel statusLabel;
     private JButton downloadButton, pauseButton, stopButton;
-    private List<ModelInfo> modelsToDownload;
+    private boolean isDownloading = false;
+    private List<ModelInfo> modelsToDownload = new ArrayList<>();
     private String currentFileName = "input.json";
     private Image appIcon;
+    private JPanel blueprintPanel;
+    private JProgressBar blueprintBar;
+    private JLabel blueprintStatusLabel;
 
     private JTabbedPane mainTabs;
     private de.tki.comfymodels.ui.WorkflowGraphPanel workflowGraphPanel;
@@ -204,13 +223,16 @@ public class Main extends JFrame {
             SwingUtilities.invokeLater(() -> {
                 if (mainTabs != null) {
                     for (int i = 0; i < mainTabs.getTabCount(); i++) {
-                        if (mainTabs.getTitleAt(i).contains("Model Manager")) {
+                        if (mainTabs.getTitleAt(i).contains("Blueprint Gallery")) {
                             mainTabs.setSelectedIndex(i);
                             break;
                         }
                     }
                 }
                 refreshPromptLabModels();
+                if (blueprintGalleryTab != null) {
+                    blueprintGalleryTab.refreshAllData();
+                }
             });
         });
         this.diagnosticService = diagnosticService;
@@ -307,7 +329,7 @@ public class Main extends JFrame {
         });
     }
 
-    private void setupTheme(boolean darkMode) {
+    public void setupTheme(boolean darkMode) {
         try {
             // Global arcs for a modern feel - rounded corners
             UIManager.put("Button.arc", 12);
@@ -453,6 +475,13 @@ public class Main extends JFrame {
                     promptLabConsole.setBackground(new Color(245, 247, 250));
                     promptLabConsole.setForeground(new Color(30, 30, 30));
                 }
+            }
+            
+            if (videoArchitectTab != null) {
+                videoArchitectTab.updateTheme(darkMode);
+            }
+            if (blueprintGalleryTab != null) {
+                blueprintGalleryTab.updateTheme(darkMode);
             }
             
             FlatLaf.updateUI();
@@ -880,32 +909,34 @@ public class Main extends JFrame {
     }
 
     private boolean isOllamaConfigured() {
-        return configService != null && configService.isUseOllama();
+        return false;
     }
 
     private void updateAiModelDisplay() {
         new Thread(() -> {
-            String model;
-            if (configService.isUseOllama()) {
-                model = configService.getOllamaModel() + " (Local)";
-            } else {
-                model = geminiService.discoverBestModel();
-            }
+            String model = geminiService.discoverBestModel();
             final String finalModel = model;
+            final boolean hasGemini = isGeminiKeyConfigured();
+            final boolean hasGemma = localAIService != null && localAIService.isLocalGemmaDownloaded();
             SwingUtilities.invokeLater(() -> {
                 activeAiModelLabel.setText("Active AI: " + finalModel);
                 if (btnOptimizePrompt != null) {
-                    if (localAIService == null || !localAIService.isLocalGemmaDownloaded()) {
-                        btnOptimizePrompt.setToolTipText("Download local Gemma model to unlock local optimization.");
-                    } else {
+                    if (hasGemini) {
+                        btnOptimizePrompt.setText("✨ Optimize with Gemini");
+                        btnOptimizePrompt.setToolTipText("Optimizes the assembled prompt using Google Gemini for better image quality.");
+                    } else if (hasGemma) {
+                        btnOptimizePrompt.setText("✨ Optimize with Gemma");
                         btnOptimizePrompt.setToolTipText("Optimizes the assembled prompt using local Gemma for better image quality.");
+                    } else {
+                        btnOptimizePrompt.setText("✨ Optimize with Gemma");
+                        btnOptimizePrompt.setToolTipText("Download local Gemma model or configure a Gemini API key to unlock optimization.");
                     }
                 }
                 if (btnSuggestSubject != null) {
-                    if (localAIService == null || !localAIService.isLocalGemmaDownloaded()) {
-                        btnSuggestSubject.setToolTipText("Download local Gemma model to unlock suggestions.");
-                    } else {
+                    if (hasGemma) {
                         btnSuggestSubject.setToolTipText("Suggest creative expansions for this subject using local Gemma.");
+                    } else {
+                        btnSuggestSubject.setToolTipText("Download local Gemma model to unlock suggestions.");
                     }
                 }
             });
@@ -1093,6 +1124,7 @@ public class Main extends JFrame {
         headerTimer.start();
         
         this.mainTabs = new JTabbedPane();
+        mainTabs.setName("mainTabbedPane");
         mainTabs.setOpaque(false);
         mainTabs.setFont(new Font("SansSerif", Font.BOLD, 13));
         mainTabs.putClientProperty("JTabbedPane.tabType", "card");
@@ -1102,8 +1134,8 @@ public class Main extends JFrame {
         // TAB 1: DASHBOARD
         mainTabs.addTab("🏠 Dashboard", createDashboardPanel(mainTabs));
 
-        // TAB 2: MODEL MANAGER
-        mainTabs.addTab("📥 Model Manager", createManagerPanel(mainTabs));
+        // TAB 2: DOWNLOAD MANAGER
+        mainTabs.addTab("📥 Download Manager", createManagerPanel(mainTabs));
 
         // TAB 3: PROMPT LAB
         mainTabs.addTab("🔬 Prompt Lab", createPromptLabPanel());
@@ -1111,7 +1143,142 @@ public class Main extends JFrame {
         // TAB 4: GALLERY
         mainTabs.addTab("🖼️ Gallery", new de.tki.comfymodels.ui.OutputGalleryPanel(configService));
 
-        // TAB 5: SETTINGS
+        // TAB 5: VIDEO ARCHITECT
+        JPanel videoArchitectWrapper = new JPanel(new BorderLayout());
+        videoArchitectWrapper.setName("videoArchitectWrapper");
+        videoArchitectWrapper.setOpaque(false);
+        if (videoArchitectTab != null) {
+            videoArchitectWrapper.add(videoArchitectTab, BorderLayout.CENTER);
+        } else {
+            videoArchitectWrapper.add(new JPanel(), BorderLayout.CENTER);
+        }
+
+        // Swing Optimization Panel for AssertJ UI Tests and AI Optimization Loops
+        JPanel swingOptPanel = new JPanel(new GridBagLayout());
+        swingOptPanel.setName("swingOptPanel");
+        swingOptPanel.setBorder(BorderFactory.createTitledBorder(
+                BorderFactory.createLineBorder(new Color(60, 60, 60), 1, true),
+                "AI Video Optimization Parameters",
+                javax.swing.border.TitledBorder.LEFT,
+                javax.swing.border.TitledBorder.TOP,
+                new Font("SansSerif", Font.BOLD, 11),
+                new Color(0, 180, 160) // Teal accent
+        ));
+        swingOptPanel.setBackground(new Color(25, 25, 27)); // Sleek dark gray
+        swingOptPanel.setOpaque(true);
+
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.insets = new Insets(6, 10, 6, 10);
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+
+        // Row 0: Prompt Text Area (single line text component for testing)
+        gbc.gridx = 0; gbc.gridy = 0; gbc.weightx = 0.0;
+        JLabel lblPromptOpt = new JLabel("Prompt:");
+        lblPromptOpt.setForeground(Color.LIGHT_GRAY);
+        lblPromptOpt.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        swingOptPanel.add(lblPromptOpt, gbc);
+
+        gbc.gridx = 1; gbc.gridy = 0; gbc.weightx = 1.0;
+        JTextField promptTextArea = new JTextField("A fluid cyberpunk city panning shot");
+        promptTextArea.setName("promptTextArea");
+        promptTextArea.setBackground(new Color(40, 40, 42));
+        promptTextArea.setForeground(Color.WHITE);
+        promptTextArea.setCaretColor(Color.WHITE);
+        promptTextArea.setBorder(BorderFactory.createLineBorder(new Color(70, 70, 72)));
+        swingOptPanel.add(promptTextArea, gbc);
+
+        // Row 1: CFG Scale
+        gbc.gridx = 0; gbc.gridy = 1; gbc.weightx = 0.0;
+        JLabel lblCfgOpt = new JLabel("CFG Scale:");
+        lblCfgOpt.setForeground(Color.LIGHT_GRAY);
+        lblCfgOpt.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        swingOptPanel.add(lblCfgOpt, gbc);
+
+        gbc.gridx = 1; gbc.gridy = 1; gbc.weightx = 1.0;
+        JSlider cfgSlider = new JSlider(1, 20, 8);
+        cfgSlider.setName("cfgSlider");
+        cfgSlider.setOpaque(false);
+        cfgSlider.setForeground(new Color(0, 180, 160));
+        swingOptPanel.add(cfgSlider, gbc);
+
+        // Row 2: Steps
+        gbc.gridx = 0; gbc.gridy = 2; gbc.weightx = 0.0;
+        JLabel lblStepsOpt = new JLabel("Steps:");
+        lblStepsOpt.setForeground(Color.LIGHT_GRAY);
+        lblStepsOpt.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        swingOptPanel.add(lblStepsOpt, gbc);
+
+        gbc.gridx = 1; gbc.gridy = 2; gbc.weightx = 1.0;
+        JSlider stepsSlider = new JSlider(10, 50, 20);
+        stepsSlider.setName("stepsSlider");
+        stepsSlider.setOpaque(false);
+        stepsSlider.setForeground(new Color(0, 180, 160));
+        swingOptPanel.add(stepsSlider, gbc);
+
+        // Row 3: Motion Bucket ID
+        gbc.gridx = 0; gbc.gridy = 3; gbc.weightx = 0.0;
+        JLabel lblMotionOpt = new JLabel("Motion Bucket:");
+        lblMotionOpt.setForeground(Color.LIGHT_GRAY);
+        lblMotionOpt.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        swingOptPanel.add(lblMotionOpt, gbc);
+
+        gbc.gridx = 1; gbc.gridy = 3; gbc.weightx = 1.0;
+        JTextField motionBucketField = new JTextField("127");
+        motionBucketField.setName("motionBucketField");
+        motionBucketField.setBackground(new Color(40, 40, 42));
+        motionBucketField.setForeground(Color.WHITE);
+        motionBucketField.setCaretColor(Color.WHITE);
+        motionBucketField.setBorder(BorderFactory.createLineBorder(new Color(70, 70, 72)));
+        swingOptPanel.add(motionBucketField, gbc);
+
+        // Row 4: Action Buttons and Status
+        JPanel actionRow = new JPanel(new BorderLayout(15, 0));
+        actionRow.setOpaque(false);
+
+        JButton generateVideoBtn = new JButton("Generate Video");
+        generateVideoBtn.setName("generateVideoBtn");
+        generateVideoBtn.setBackground(new Color(0, 150, 136));
+        generateVideoBtn.setForeground(Color.WHITE);
+        generateVideoBtn.setFocusPainted(false);
+        actionRow.add(generateVideoBtn, BorderLayout.WEST);
+
+        JLabel statusLabelOpt = new JLabel("Ready");
+        statusLabelOpt.setName("statusLabel");
+        statusLabelOpt.setForeground(new Color(0, 210, 190));
+        statusLabelOpt.setFont(new Font("SansSerif", Font.BOLD, 12));
+        actionRow.add(statusLabelOpt, BorderLayout.CENTER);
+
+        gbc.gridx = 0; gbc.gridy = 4; gbc.gridwidth = 2; gbc.weightx = 1.0;
+        swingOptPanel.add(actionRow, gbc);
+
+        // Action Listener to trigger the actual video generation
+        generateVideoBtn.addActionListener(e -> {
+            String pStr = promptTextArea.getText();
+            int cfgVal = cfgSlider.getValue();
+            int stepsVal = stepsSlider.getValue();
+            int motionVal = 127;
+            try {
+                motionVal = Integer.parseInt(motionBucketField.getText().trim());
+            } catch (NumberFormatException nfe) {}
+            
+            videoArchitectTab.startGenerationWithParams(pStr, cfgVal, stepsVal, motionVal, statusLabelOpt);
+        });
+
+        videoArchitectWrapper.add(swingOptPanel, BorderLayout.SOUTH);
+        mainTabs.addTab("🎬 Video Architect", videoArchitectWrapper);
+
+        // TAB 6: MODEL MANAGER (Blueprint Gallery)
+        JPanel blueprintGalleryWrapper = new JPanel(new BorderLayout());
+        blueprintGalleryWrapper.setName("blueprintGalleryWrapper");
+        blueprintGalleryWrapper.setOpaque(false);
+        if (blueprintGalleryTab != null) {
+            blueprintGalleryWrapper.add(blueprintGalleryTab, BorderLayout.CENTER);
+        } else {
+            blueprintGalleryWrapper.add(new JPanel(), BorderLayout.CENTER);
+        }
+        mainTabs.addTab("📂 Blueprint Gallery", blueprintGalleryWrapper);
+
+        // TAB 7: SETTINGS
         mainTabs.addTab("⚙️ Settings", createSettingsPanel());
 
         rootPanel.add(headerPanel, BorderLayout.NORTH);
@@ -1360,7 +1527,7 @@ public class Main extends JFrame {
         modelRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 35));
 
         promptModelCombo = new JComboBox<>(new String[]{"v1-5-pruned-emaonly.safetensors"});
-        promptModelCombo.setEditable(true);
+        promptModelCombo.setEditable(false);
         promptModelCombo.setFont(new Font("SansSerif", Font.PLAIN, 14));
         modelRow.add(promptModelCombo, BorderLayout.CENTER);
 
@@ -1466,18 +1633,22 @@ public class Main extends JFrame {
         leftPanel.add(assembleScroll);
         leftPanel.add(Box.createVerticalStrut(10));
 
-        btnOptimizePrompt = new JButton("✨ Optimize with gemma");
+        boolean hasGeminiInit = isGeminiKeyConfigured();
+        boolean hasGemmaInit = localAIService != null && localAIService.isLocalGemmaDownloaded();
+        btnOptimizePrompt = new JButton(hasGeminiInit ? "✨ Optimize with Gemini" : "✨ Optimize with gemma");
         btnOptimizePrompt.setFont(new Font("SansSerif", Font.BOLD, 13));
         btnOptimizePrompt.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
         btnOptimizePrompt.setMaximumSize(new Dimension(Integer.MAX_VALUE, 40));
         btnOptimizePrompt.putClientProperty("Button.background", new Color(58, 117, 196));
         btnOptimizePrompt.putClientProperty("Button.foreground", Color.WHITE);
-        btnOptimizePrompt.addActionListener(e -> optimizePromptWithGemma());
+        btnOptimizePrompt.addActionListener(e -> optimizePromptWithAI());
 
-        if (localAIService == null || !localAIService.isLocalGemmaDownloaded()) {
-            btnOptimizePrompt.setToolTipText("Download local Gemma model to unlock local optimization.");
-        } else {
+        if (hasGeminiInit) {
+            btnOptimizePrompt.setToolTipText("Optimizes the assembled prompt using Google Gemini for better image quality.");
+        } else if (hasGemmaInit) {
             btnOptimizePrompt.setToolTipText("Optimizes the assembled prompt using local Gemma for better image quality.");
+        } else {
+            btnOptimizePrompt.setToolTipText("Download local Gemma model or configure a Gemini API key to unlock optimization.");
         }
         leftPanel.add(btnOptimizePrompt);
 
@@ -1500,6 +1671,12 @@ public class Main extends JFrame {
 
         promptModelCombo.addActionListener(e -> {
             String selected = (String) promptModelCombo.getSelectedItem();
+            if (selected != null && comfyTemplateService != null) {
+                de.tki.comfymodels.domain.ComfyTemplate template = comfyTemplateService.determineTemplateForModel(selected);
+                if (template != null) {
+                    promptJsonArea.setText(template.getContent());
+                }
+            }
             applyModelPreset(selected);
             updatePromptLabJson();
         });
@@ -1624,6 +1801,13 @@ public class Main extends JFrame {
     private void applyModelPreset(String modelName) {
         if (modelName == null || modelName.isEmpty()) return;
         
+        if (comfyTemplateService != null) {
+            de.tki.comfymodels.domain.ComfyTemplate template = comfyTemplateService.determineTemplateForModel(modelName);
+            if (template != null) {
+                promptJsonArea.setText(template.getContent());
+            }
+        }
+        
         String lower = modelName.toLowerCase();
         if (lower.contains("flux1-schnell") || lower.contains("flux_schnell") || lower.contains("schnell")) {
             promptPresetLabel.setText("Detected Preset: FLUX.1 Schnell (Fast 4-Step)");
@@ -1643,6 +1827,12 @@ public class Main extends JFrame {
             promptHeightSpinner.setValue(1024);
             promptStepsSpinner.setValue(30);
             promptCfgSpinner.setValue(6.0);
+        } else if (lower.contains("longcat") || lower.contains("lumina")) {
+            promptPresetLabel.setText("Detected Preset: Lumina2 / LongCat (1024x1024)");
+            promptWidthSpinner.setValue(1024);
+            promptHeightSpinner.setValue(1024);
+            promptStepsSpinner.setValue(20);
+            promptCfgSpinner.setValue(4.0);
         } else if (lower.contains("ltx")) {
             promptPresetLabel.setText("Detected Preset: LTX-Video / Image Transformer");
             promptWidthSpinner.setValue(768);
@@ -1723,14 +1913,23 @@ public class Main extends JFrame {
         
         // Contextual overrides based on the selected model
         if (selectedModel != null) {
-            String selLower = selectedModel.toLowerCase();
-            if (selLower.contains("flux") || selLower.contains("schnell")) {
-                if ("stable_diffusion".equals(candidate)) {
-                    candidate = "flux";
+            if (modelArchitectureService != null) {
+                de.tki.comfymodels.service.IModelArchitectureService.ModelDefaults defaults = modelArchitectureService.getDefaultsForModel(selectedModel);
+                if (defaults != null && defaults.clipType != null) {
+                    candidate = defaults.clipType;
                 }
-            } else if (selLower.contains("sd3") || selLower.contains("stable_diffusion_3")) {
-                if ("stable_diffusion".equals(candidate)) {
-                    candidate = "sd3";
+            } else {
+                String selLower = selectedModel.toLowerCase();
+                if (selLower.contains("flux") || selLower.contains("schnell")) {
+                    if ("stable_diffusion".equals(candidate)) {
+                        candidate = "flux";
+                    }
+                } else if (selLower.contains("sd3") || selLower.contains("stable_diffusion_3")) {
+                    if ("stable_diffusion".equals(candidate)) {
+                        candidate = "sd3";
+                    }
+                } else if (selLower.contains("longcat") || selLower.contains("lumina") || selLower.contains("acestep") || selLower.contains("z_image")) {
+                    candidate = "longcat_image";
                 }
             }
         }
@@ -1785,6 +1984,7 @@ public class Main extends JFrame {
                lower.contains("acestep") || 
                lower.contains("flux-2-klein") || 
                lower.contains("longcat") || 
+               lower.contains("lumina") || 
                lower.contains("wan2.1") || 
                lower.contains("wan2.2");
     }
@@ -1792,7 +1992,7 @@ public class Main extends JFrame {
     private String resolveClipForModel(String modelName) {
         String lower = modelName.toLowerCase();
         String expected = "qwen_3_4b.safetensors";
-        if (lower.contains("z_image_turbo") || lower.contains("acestep") || lower.contains("longcat")) {
+        if (lower.contains("z_image_turbo") || lower.contains("acestep") || lower.contains("longcat") || lower.contains("lumina")) {
             expected = "qwen_3_4b.safetensors";
         } else if (lower.contains("wan")) {
             expected = "qwen/qwen_2.5_vl_7b_fp8_scaled.safetensors";
@@ -1844,12 +2044,19 @@ public class Main extends JFrame {
     }
 
     private String resolveVaeForModel(String modelName) {
-        String lower = modelName.toLowerCase();
         String expected = "FLUX1/ae.safetensors";
-        if (lower.contains("z_image_turbo") || lower.contains("acestep") || lower.contains("longcat")) {
-            expected = "FLUX1/ae.safetensors";
-        } else if (lower.contains("wan")) {
-            expected = "wan_2.1_vae.safetensors";
+        if (modelArchitectureService != null) {
+            de.tki.comfymodels.service.IModelArchitectureService.ModelDefaults defaults = modelArchitectureService.getDefaultsForModel(modelName);
+            if (defaults != null && defaults.vaeName != null) {
+                expected = defaults.vaeName;
+            }
+        } else {
+            String lower = modelName.toLowerCase();
+            if (lower.contains("z_image_turbo") || lower.contains("acestep") || lower.contains("longcat") || lower.contains("lumina")) {
+                expected = "ae.safetensors";
+            } else if (lower.contains("wan")) {
+                expected = "wan_2.1_vae.safetensors";
+            }
         }
         
         String expectedClean = expected.replace("\\", "/");
@@ -1902,18 +2109,23 @@ public class Main extends JFrame {
                     break;
                 }
             }
-            if (fallback != null) {
-                selectedModel = fallback;
-                final String finalFallback = fallback;
-                SwingUtilities.invokeLater(() -> {
-                    if (promptModelCombo != null) {
-                        promptModelCombo.setSelectedItem(finalFallback);
-                    }
-                    if (promptLabConsole != null) {
-                        promptLabConsole.append("⚠️ Generic fallback triggered for z_image_turbo to avoid RuntimeError. Using: " + finalFallback + "\n");
-                    }
-                });
+            if (fallback == null && !comfyUnetModels.isEmpty()) {
+                fallback = comfyUnetModels.iterator().next();
             }
+            if (fallback == null) {
+                fallback = "flux1-schnell.safetensors";
+            }
+            
+            selectedModel = fallback;
+            final String finalFallback = fallback;
+            SwingUtilities.invokeLater(() -> {
+                if (promptModelCombo != null) {
+                    promptModelCombo.setSelectedItem(finalFallback);
+                }
+                if (promptLabConsole != null) {
+                    promptLabConsole.append("⚠️ Generic fallback triggered for z_image_turbo to avoid RuntimeError. Using: " + finalFallback + "\n");
+                }
+            });
         }
         
         boolean isDiff = isDiffusionModel(selectedModel);
@@ -2156,22 +2368,32 @@ public class Main extends JFrame {
         }
 
         // Auto-adapt KSampler sampler and scheduler for Flux models vs others
+        String resolvedSampler = null;
+        String resolvedScheduler = null;
+        if (modelArchitectureService != null) {
+            de.tki.comfymodels.service.IModelArchitectureService.ModelDefaults defaults = modelArchitectureService.getDefaultsForModel(selectedModel);
+            if (defaults != null) {
+                resolvedSampler = defaults.samplerName;
+                resolvedScheduler = defaults.scheduler;
+            }
+        }
+        
         boolean isFlux = selectedModel.toLowerCase().contains("flux") || selectedModel.toLowerCase().contains("schnell");
+        if (resolvedScheduler == null) {
+            resolvedScheduler = isFlux ? "simple" : "normal";
+        }
+        if (resolvedSampler == null) {
+            resolvedSampler = "euler";
+        }
+
         for (String key : promptObj.keySet()) {
             JSONObject nodeObj = promptObj.getJSONObject(key);
             String classType = nodeObj.optString("class_type", "");
             if ("KSampler".equals(classType) || "KSamplerAdvanced".equals(classType)) {
                 if (nodeObj.has("inputs")) {
                     JSONObject inputs = nodeObj.getJSONObject("inputs");
-                    if (isFlux) {
-                        inputs.put("sampler_name", "euler");
-                        inputs.put("scheduler", "simple");
-                    } else {
-                        // Restore scheduler to normal if it was simple for SD 1.5/XL models
-                        if ("simple".equals(inputs.optString("scheduler"))) {
-                            inputs.put("scheduler", "normal");
-                        }
-                    }
+                    inputs.put("sampler_name", resolvedSampler);
+                    inputs.put("scheduler", resolvedScheduler);
                 }
             }
         }
@@ -2261,7 +2483,7 @@ public class Main extends JFrame {
                 if (width != null && height != null) {
                     for (String key : promptObj.keySet()) {
                         JSONObject nodeObj = promptObj.getJSONObject(key);
-                        if (nodeObj.has("class_type") && "EmptyLatentImage".equals(nodeObj.getString("class_type"))) {
+                        if (nodeObj.has("class_type") && ("EmptyLatentImage".equals(nodeObj.getString("class_type")) || "EmptySD3LatentImage".equals(nodeObj.getString("class_type")))) {
                             if (nodeObj.has("inputs")) {
                                 JSONObject inputs = nodeObj.getJSONObject("inputs");
                                 inputs.put("width", width);
@@ -2271,16 +2493,20 @@ public class Main extends JFrame {
                     }
                 }
 
-                // Update KSampler Steps & CFG
+                // Update KSampler / BasicScheduler / FluxGuidance Steps & CFG
                 if (steps != null && cfg != null) {
                     for (String key : promptObj.keySet()) {
                         JSONObject nodeObj = promptObj.getJSONObject(key);
                         String classType = nodeObj.optString("class_type", "");
-                        if ("KSampler".equals(classType) || "KSamplerAdvanced".equals(classType)) {
-                            if (nodeObj.has("inputs")) {
-                                JSONObject inputs = nodeObj.getJSONObject("inputs");
+                        if (nodeObj.has("inputs")) {
+                            JSONObject inputs = nodeObj.getJSONObject("inputs");
+                            if ("KSampler".equals(classType) || "KSamplerAdvanced".equals(classType)) {
                                 inputs.put("steps", steps);
                                 inputs.put("cfg", cfg);
+                            } else if ("BasicScheduler".equals(classType)) {
+                                inputs.put("steps", steps);
+                            } else if ("FluxGuidance".equals(classType)) {
+                                inputs.put("guidance", cfg);
                             }
                         }
                     }
@@ -2462,7 +2688,25 @@ public class Main extends JFrame {
                 // silent fallback
             }
 
-            java.util.List<String> list = new java.util.ArrayList<>(apiModels);
+            java.util.List<String> list = new java.util.ArrayList<>();
+            for (String modelName : apiModels) {
+                if (!isVideoModel(modelName)) {
+                    list.add(modelName);
+                }
+            }
+            if (list.isEmpty()) {
+                String modelsPath = configService.getModelsPath();
+                if (modelsPath != null && !modelsPath.isEmpty()) {
+                    java.io.File checkpointsDir = new java.io.File(modelsPath, "checkpoints");
+                    if (checkpointsDir.exists() && checkpointsDir.isDirectory()) {
+                        scanModelsRecursively(checkpointsDir, "", list);
+                    }
+                    java.io.File unetDir = new java.io.File(modelsPath, "unet");
+                    if (unetDir.exists() && unetDir.isDirectory()) {
+                        scanModelsRecursively(unetDir, "", list);
+                    }
+                }
+            }
             if (list.isEmpty()) {
                 list.add("v1-5-pruned-emaonly.safetensors");
             }
@@ -2495,6 +2739,39 @@ public class Main extends JFrame {
                 }
             });
         }).start();
+    }
+
+    private void scanModelsRecursively(java.io.File dir, String prefix, java.util.List<String> list) {
+        java.io.File[] files = dir.listFiles();
+        if (files != null) {
+            for (java.io.File f : files) {
+                if (f.isDirectory()) {
+                    scanModelsRecursively(f, prefix.isEmpty() ? f.getName() : prefix + "/" + f.getName(), list);
+                } else {
+                    String name = f.getName().toLowerCase();
+                    if (name.endsWith(".safetensors") || name.endsWith(".ckpt") || name.endsWith(".bin") || name.endsWith(".pt")) {
+                        String relativePath = prefix.isEmpty() ? f.getName() : prefix + "/" + f.getName();
+                        if (!isVideoModel(relativePath) && !list.contains(relativePath)) {
+                            list.add(relativePath);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private boolean isVideoModel(String modelPath) {
+        if (modelPath == null) return false;
+        String lower = modelPath.toLowerCase();
+        return lower.contains("i2v") 
+                || lower.contains("t2v") 
+                || lower.contains("ti2v") 
+                || lower.contains("video") 
+                || lower.contains("svd") 
+                || lower.contains("animatediff")
+                || lower.contains("mochi") 
+                || lower.contains("cogvideo")
+                || lower.contains("ltx");
     }
 
 
@@ -2668,7 +2945,7 @@ public class Main extends JFrame {
                     // Update EmptyLatentImage width & height
                     for (String key : promptObj.keySet()) {
                         JSONObject nodeObj = promptObj.getJSONObject(key);
-                        if (nodeObj.has("class_type") && "EmptyLatentImage".equals(nodeObj.getString("class_type"))) {
+                        if (nodeObj.has("class_type") && ("EmptyLatentImage".equals(nodeObj.getString("class_type")) || "EmptySD3LatentImage".equals(nodeObj.getString("class_type")))) {
                             if (nodeObj.has("inputs")) {
                                 JSONObject inputs = nodeObj.getJSONObject("inputs");
                                 inputs.put("width", widthVal);
@@ -2684,10 +2961,14 @@ public class Main extends JFrame {
                         if (nodeObj.has("inputs")) {
                             JSONObject inputs = nodeObj.getJSONObject("inputs");
                             
-                            // Update steps and cfg for standard samplers
+                            // Update steps and cfg for standard samplers / custom schedulers
                             if ("KSampler".equals(classType) || "KSamplerAdvanced".equals(classType)) {
                                 inputs.put("steps", stepsVal);
                                 inputs.put("cfg", cfgVal);
+                            } else if ("BasicScheduler".equals(classType)) {
+                                inputs.put("steps", stepsVal);
+                            } else if ("FluxGuidance".equals(classType)) {
+                                inputs.put("guidance", cfgVal);
                             }
                             
                             // Randomize any seed/noise_seed field in any node (including custom samplers) to bypass ComfyUI caching
@@ -2816,18 +3097,21 @@ public class Main extends JFrame {
         }).start();
     }
 
-    private void optimizePromptWithGemma() {
-        if (localAIService == null || !localAIService.isLocalGemmaDownloaded()) {
+    private void optimizePromptWithAI() {
+        boolean hasGemini = isGeminiKeyConfigured();
+        boolean hasGemma = localAIService != null && localAIService.isLocalGemmaDownloaded();
+
+        if (!hasGemini && !hasGemma) {
             int choice = JOptionPane.showConfirmDialog(this,
-                "The local Gemma model is not downloaded.\n" +
-                "Would you like to download the Gemma-2-2B GGUF model (approx. 1.6 GB) now to run optimizations directly in Java?",
+                "Neither a Gemini API Key is configured nor the local Gemma model is downloaded.\n" +
+                "Would you like to download the Gemma-2-2B GGUF model (approx. 1.6 GB) now to run optimizations locally?",
                 "Download Local Gemma Model?", JOptionPane.YES_NO_OPTION, JOptionPane.QUESTION_MESSAGE);
             if (choice == JOptionPane.YES_OPTION) {
                 downloadLocalGemmaModel();
             }
             return;
         }
-        
+
         String rawPrompt = promptAssembleArea.getText().trim();
         if (rawPrompt.isEmpty()) {
             JOptionPane.showMessageDialog(this, 
@@ -2839,27 +3123,37 @@ public class Main extends JFrame {
         String selectedModel = (promptModelCombo != null) ? (String) promptModelCombo.getSelectedItem() : null;
         
         btnOptimizePrompt.setEnabled(false);
+        String originalText = btnOptimizePrompt.getText();
         btnOptimizePrompt.setText("✨ Optimizing...");
-        promptLabConsole.append("Optimizing prompt with local Gemma...\n");
+        
+        if (hasGemini) {
+            promptLabConsole.append("Optimizing prompt with Google Gemini API...\n");
+        } else {
+            promptLabConsole.append("Optimizing prompt with local Gemma...\n");
+        }
         
         new Thread(() -> {
             String optimized = null;
             StringBuilder errorLogs = new StringBuilder();
             try {
-                promptLabConsole.append("Running direct local Gemma optimizer...\n");
-                optimized = localAIService.optimizePromptDirectly(rawPrompt, selectedModel);
+                if (hasGemini) {
+                    optimized = geminiService.optimizePrompt(rawPrompt, selectedModel);
+                } else {
+                    promptLabConsole.append("Running direct local Gemma optimizer...\n");
+                    optimized = localAIService.optimizePromptDirectly(rawPrompt, selectedModel);
+                }
             } catch (Throwable ex) {
                 java.io.StringWriter sw = new java.io.StringWriter();
                 ex.printStackTrace(new java.io.PrintWriter(sw));
-                errorLogs.append("Local Gemma optimization failed:\n").append(sw.toString()).append("\n");
-                System.err.println("Local Gemma optimization failed: " + ex.getMessage());
+                errorLogs.append("AI prompt optimization failed:\n").append(sw.toString()).append("\n");
+                System.err.println("AI prompt optimization failed: " + ex.getMessage());
             }
             
             final String finalOptimized = optimized;
             final String finalErrors = errorLogs.toString();
             SwingUtilities.invokeLater(() -> {
                 btnOptimizePrompt.setEnabled(true);
-                btnOptimizePrompt.setText("✨ Optimize with gemma");
+                btnOptimizePrompt.setText(originalText);
                 if (finalOptimized != null && !finalOptimized.isEmpty()) {
                     promptAssembleArea.setText(finalOptimized);
                     
@@ -2910,14 +3204,18 @@ public class Main extends JFrame {
                         // ignore json error
                     }
                     
-                    promptLabConsole.append("Prompt successfully optimized with local Gemma!\n\n");
+                    if (hasGemini) {
+                        promptLabConsole.append("Prompt successfully optimized with Google Gemini API!\n\n");
+                    } else {
+                        promptLabConsole.append("Prompt successfully optimized with local Gemma!\n\n");
+                    }
                 } else {
                     promptLabConsole.append("❌ Error: Prompt could not be optimized.\n");
                     if (!finalErrors.isEmpty()) {
                         promptLabConsole.append(finalErrors + "\n");
                     }
                     JOptionPane.showMessageDialog(this, 
-                        "Prompt optimization failed. Please ensure the local Gemma model is downloaded correctly.", 
+                        "Prompt optimization failed. Please check your API credentials or local Gemma status.", 
                         "Error", JOptionPane.ERROR_MESSAGE);
                 }
             });
@@ -3277,9 +3575,8 @@ public class Main extends JFrame {
                         break;
                     }
                 }
-                if (!found && !model.isEmpty()) {
-                    promptModelCombo.addItem(model);
-                    promptModelCombo.setSelectedItem(model);
+                if (!found && promptModelCombo.getItemCount() > 0) {
+                    promptModelCombo.setSelectedIndex(0);
                 }
             }
             if (session.has("width") && promptWidthSpinner != null) promptWidthSpinner.setValue(session.getInt("width"));
@@ -3452,6 +3749,8 @@ public class Main extends JFrame {
         
         gbc.gridy = 3; gbc.gridheight = 1; gbc.insets = new Insets(20, 0, 20, 0);
         rightPanel.add(actionPanel, gbc);
+
+
 
         // Environment Versions section
         JPanel versionPanel = new JPanel();
@@ -3922,9 +4221,15 @@ public class Main extends JFrame {
         JButton save = new JButton("Save");
         save.putClientProperty("JButton.buttonType", "accent");
         save.addActionListener(e -> {
-            configService.setModelsPath(field1.getText().trim());
+            String oldModelsPath = configService.getExtraComfyUIPath();
+            String oldComfyUIPath = configService.getComfyUIPath();
+            
+            String newModelsPath = field1.getText().trim();
+            String newComfyUIPath = field3.getText().trim();
+            
+            configService.setModelsPath(newModelsPath);
             configService.setArchivePath(field2.getText().trim());
-            configService.setComfyUIPath(field3.getText().trim());
+            configService.setComfyUIPath(newComfyUIPath);
             configService.setPythonPath(field4.getText().trim());
             configService.setUseSymlinksOnRestore(symlinkCheck.isSelected());
             configService.setComfyLaunchCommand(""); 
@@ -3933,6 +4238,15 @@ public class Main extends JFrame {
             statusLabel.setText("Settings updated.");
             analyzeJsonContent();
             dialog.dispose();
+            
+            boolean pathsChanged = !newModelsPath.equalsIgnoreCase(oldModelsPath) || !newComfyUIPath.equalsIgnoreCase(oldComfyUIPath);
+            if (pathsChanged && lifecycleService != null && lifecycleService.isHealthy()) {
+                new Thread(() -> {
+                    System.out.println("🔄 [Lifecycle] Custom paths updated. Restarting ComfyUI server to apply changes...");
+                    lifecycleService.stop();
+                    lifecycleService.start();
+                }, "ComfyRestartThread").start();
+            }
         });
         buttons.add(cancel);
         buttons.add(save);
@@ -4018,9 +4332,52 @@ public class Main extends JFrame {
         dialog.setVisible(true);
     }
 
+    private void showVideoArchitectAutoconfigDialog() {
+        JDialog dialog = new JDialog(this, "Video Architect Autoconfig", true);
+        dialog.setSize(500, 350);
+        dialog.setLocationRelativeTo(this);
+        
+        JPanel content = new JPanel(new BorderLayout(10, 10));
+        content.setBorder(BorderFactory.createEmptyBorder(15, 15, 15, 15));
+        
+        JLabel header = new JLabel("Installing Video Architect Dependencies (FFmpeg, etc.)");
+        header.setFont(new Font("SansSerif", Font.BOLD, 14));
+        content.add(header, BorderLayout.NORTH);
+        
+        JTextArea progressArea = new JTextArea("Initializing...\n");
+        progressArea.setEditable(false);
+        JScrollPane scroll = new JScrollPane(progressArea);
+        content.add(scroll, BorderLayout.CENTER);
+        
+        dialog.add(content);
+        
+        new Thread(() -> {
+            try {
+                dependencyService.installFfmpeg(msg -> {
+                    SwingUtilities.invokeLater(() -> {
+                        progressArea.append(msg + "\n");
+                        progressArea.setCaretPosition(progressArea.getDocument().getLength());
+                    });
+                });
+                
+                SwingUtilities.invokeLater(() -> {
+                    progressArea.append("Dependencies successfully configured!\n");
+                    JOptionPane.showMessageDialog(dialog, "Dependency installation completed successfully!", "Success", JOptionPane.INFORMATION_MESSAGE);
+                });
+            } catch (Exception ex) {
+                SwingUtilities.invokeLater(() -> {
+                    progressArea.append("Error: " + ex.getMessage() + "\n");
+                    JOptionPane.showMessageDialog(dialog, "Failed to install dependencies: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+                });
+            }
+        }).start();
+        
+        dialog.setVisible(true);
+    }
+
     private void showApiKeysDialog() {
         de.tki.comfymodels.ui.StandardDialog dialog = new de.tki.comfymodels.ui.StandardDialog(this, "AI & API Keys");
-        dialog.setSize(600, 520);
+        dialog.setSize(600, 680);
         dialog.setLocationRelativeTo(this);
 
         JPanel panel = dialog.createContentPanel();
@@ -4051,28 +4408,58 @@ public class Main extends JFrame {
         panel.add(civitaiField, gbc);
 
         gbc.gridy++;
-        gbc.insets = new Insets(0, 0, 5, 0);
-        JCheckBox ollamaCheck = new JCheckBox("Use Local Ollama LLM for Author Identification", configService.isUseOllama());
-        panel.add(ollamaCheck, gbc);
+        gbc.insets = new Insets(0, 0, 0, 0);
+        panel.add(new JLabel("TTS Provider:"), gbc);
+        gbc.gridy++;
+        gbc.insets = new Insets(5, 0, 15, 0);
+        JComboBox<String> ttsProviderCombo = new JComboBox<>(new String[]{"Local Piper", "ComfyUI KokoroTTS", "ComfyUI ElevenLabs"});
+        ttsProviderCombo.setSelectedItem(configService.getTtsProvider());
+        panel.add(ttsProviderCombo, gbc);
 
         gbc.gridy++;
-        gbc.insets = new Insets(0, 20, 5, 0);
-        JPanel ollamaRow = new JPanel(new GridLayout(2, 2, 10, 5));
-        ollamaRow.setOpaque(false);
-        ollamaRow.add(new JLabel("Ollama Server URL:"));
-        ollamaRow.add(new JLabel("Ollama Model:"));
-        JTextField ollamaUrlField = new JTextField(configService.getOllamaUrl());
-        JTextField ollamaModelField = new JTextField(configService.getOllamaModel());
-        ollamaRow.add(ollamaUrlField);
-        ollamaRow.add(ollamaModelField);
-        panel.add(ollamaRow, gbc);
+        gbc.insets = new Insets(0, 0, 0, 0);
+        panel.add(new JLabel("Piper TTS Binary Path (if using Local Piper):"), gbc);
+        gbc.gridy++;
+        gbc.insets = new Insets(5, 0, 10, 0);
+        JTextField piperPathField = new JTextField(configService.getPiperPath());
+        panel.add(piperPathField, gbc);
 
-        ollamaUrlField.setEnabled(ollamaCheck.isSelected());
-        ollamaModelField.setEnabled(ollamaCheck.isSelected());
-        ollamaCheck.addActionListener(e -> {
-            ollamaUrlField.setEnabled(ollamaCheck.isSelected());
-            ollamaModelField.setEnabled(ollamaCheck.isSelected());
-        });
+        gbc.gridy++;
+        gbc.insets = new Insets(0, 0, 0, 0);
+        panel.add(new JLabel("Piper TTS ONNX Model Path (if using Local Piper):"), gbc);
+        gbc.gridy++;
+        gbc.insets = new Insets(5, 0, 15, 0);
+        JTextField piperModelField = new JTextField(configService.getPiperModelPath());
+        panel.add(piperModelField, gbc);
+
+        gbc.gridy++;
+        gbc.insets = new Insets(0, 0, 0, 0);
+        panel.add(new JLabel("ElevenLabs API Key (if using ComfyUI ElevenLabs):"), gbc);
+        gbc.gridy++;
+        gbc.insets = new Insets(5, 0, 15, 0);
+        JPasswordField elevenLabsApiKeyField = new JPasswordField(configService.getElevenLabsApiKey());
+        panel.add(elevenLabsApiKeyField, gbc);
+
+        gbc.gridy++;
+        gbc.insets = new Insets(0, 0, 0, 0);
+        panel.add(new JLabel("ElevenLabs Voice ID (if using ComfyUI ElevenLabs):"), gbc);
+        gbc.gridy++;
+        gbc.insets = new Insets(5, 0, 15, 0);
+        JTextField elevenLabsVoiceField = new JTextField(configService.getElevenLabsVoiceId());
+        panel.add(elevenLabsVoiceField, gbc);
+
+        // Dynamic UI enabling/disabling based on selected provider
+        Runnable updateTtsVisibility = () -> {
+            boolean isEleven = "ComfyUI ElevenLabs".equals(ttsProviderCombo.getSelectedItem());
+            elevenLabsApiKeyField.setEnabled(isEleven);
+            elevenLabsVoiceField.setEnabled(isEleven);
+            
+            boolean isPiper = "Local Piper".equals(ttsProviderCombo.getSelectedItem());
+            piperPathField.setEnabled(isPiper);
+            piperModelField.setEnabled(isPiper);
+        };
+        ttsProviderCombo.addActionListener(e -> updateTtsVisibility.run());
+        updateTtsVisibility.run();
 
         gbc.gridy++;
         gbc.weighty = 1.0;
@@ -4089,10 +4476,12 @@ public class Main extends JFrame {
             configService.setGeminiApiKey(new String(geminiField.getPassword()).trim());
             configService.setHfToken(new String(hfField.getPassword()).trim());
             configService.setCivitaiApiKey(new String(civitaiField.getPassword()).trim());
-            configService.setUseOllama(ollamaCheck.isSelected());
-            configService.setOllamaUrl(ollamaUrlField.getText().trim());
-            configService.setOllamaModel(ollamaModelField.getText().trim());
-            statusLabel.setText("API keys updated.");
+            configService.setTtsProvider((String) ttsProviderCombo.getSelectedItem());
+            configService.setPiperPath(piperPathField.getText().trim());
+            configService.setPiperModelPath(piperModelField.getText().trim());
+            configService.setElevenLabsApiKey(new String(elevenLabsApiKeyField.getPassword()).trim());
+            configService.setElevenLabsVoiceId(elevenLabsVoiceField.getText().trim());
+            statusLabel.setText("Settings updated.");
             updateAiModelDisplay();
             analyzeJsonContent();
             dialog.dispose();
@@ -4116,7 +4505,8 @@ public class Main extends JFrame {
             if (url != null && !url.equals("MISSING")) modelsToDownload.get(i).setUrl(url);
         }
 
-        downloadButton.setEnabled(false);
+        isDownloading = true;
+        updateDownloadButtonsState();
 
         // Process archive restores FIRST as they are part of the visual queue
         new Thread(() -> {
@@ -4174,7 +4564,8 @@ public class Main extends JFrame {
                         tableModel.setValueAt(status, idx, 7);
                     }),
                     () -> SwingUtilities.invokeLater(() -> {
-                        downloadButton.setEnabled(true);
+                        isDownloading = false;
+                        updateDownloadButtonsState();
                         statusLabel.setText("Queue finished.");
                         
                         triggerPostOperationActions();
@@ -4523,7 +4914,7 @@ public class Main extends JFrame {
             tableModel.addRow(new Object[]{isSelected, info.getType(), info.getName(), info.getSize(), info.getPopularity(), "models/" + normalizedFolder, info.getUrl(), status});
         }
         
-        downloadButton.setEnabled(!modelsToDownload.isEmpty());
+        updateDownloadButtonsState();
         
         // NEW: Automatically fetch missing sizes for remote models in background
         fetchMissingRemoteSizes();
@@ -4623,11 +5014,15 @@ public class Main extends JFrame {
     }
 
     private void searchMissingOnline() {
+        searchMissingOnline(false);
+    }
+
+    private void searchMissingOnline(boolean manual) {
         if (modelsToDownload == null) return;
         statusLabel.setText("Searching...");
         boolean[] selected = new boolean[tableModel.getRowCount()];
         for (int i = 0; i < selected.length; i++) selected[i] = (Boolean) tableModel.getValueAt(i, 0);
-        searchService.searchOnline(modelsToDownload, selected, jsonInputArea.getText(), currentFileName,
+        searchService.searchOnline(modelsToDownload, selected, jsonInputArea.getText(), currentFileName, manual,
             (idx, status) -> SwingUtilities.invokeLater(() -> {
                 String current = (String) tableModel.getValueAt(idx, 7);
                 // Protection: Don't overwrite successful detection (local or archive) with search progress/failure
@@ -5113,7 +5508,7 @@ public class Main extends JFrame {
 
         JButton analyzeBtn = new JButton("Deep Search");
         analyzeBtn.putClientProperty("JButton.buttonType", "accent");
-        analyzeBtn.addActionListener(e -> { analyzeJsonContent(); searchMissingOnline(); });
+        analyzeBtn.addActionListener(e -> { analyzeJsonContent(); searchMissingOnline(true); });
         jsonButtons.add(loadJsonBtn);
         jsonButtons.add(importModelListBtn);
         jsonButtons.add(analyzeBtn);
@@ -5132,7 +5527,10 @@ public class Main extends JFrame {
             }
         };
         tableModel.addTableModelListener(e -> {
-            if (e.getType() == TableModelEvent.UPDATE && e.getColumn() == 0) updateDownloadManagerSelection();
+            if (e.getType() == TableModelEvent.UPDATE && e.getColumn() == 0) {
+                updateDownloadManagerSelection();
+            }
+            updateDownloadButtonsState();
         });
         JTable modelTable = new JTable(tableModel);
         modelTable.putClientProperty("terminateEditOnFocusLost", Boolean.TRUE);
@@ -5251,14 +5649,17 @@ public class Main extends JFrame {
         pauseButton = new JButton("Pause");
         pauseButton.putClientProperty("JButton.buttonType", "roundRect");
         pauseButton.setFont(new Font("SansSerif", Font.BOLD, 13));
+        pauseButton.setEnabled(false);
         pauseButton.addActionListener(e -> {
             downloadManager.togglePause();
-            SwingUtilities.invokeLater(() -> pauseButton.setText(downloadManager.isPaused() ? "Resume" : "Pause"));
+            pauseButton.setText(downloadManager.isPaused() ? "Resume" : "Pause");
+            updateDownloadButtonsState();
         });
         
         stopButton = new JButton("Stop");
         stopButton.putClientProperty("JButton.buttonType", "roundRect");
         stopButton.setFont(new Font("SansSerif", Font.BOLD, 13));
+        stopButton.setEnabled(false);
         stopButton.addActionListener(e -> downloadManager.stop());
         
         actionButtons.add(downloadButton);
@@ -5309,6 +5710,12 @@ public class Main extends JFrame {
         repairBtn.setMaximumSize(new Dimension(360, 40));
         repairBtn.addActionListener(e -> triggerEnvironmentRepair());
 
+        JButton fixWslBtn = new JButton("🐧 Fix WSL [wsl-pip] Dependencies...");
+        fixWslBtn.setFont(btnFont);
+        fixWslBtn.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        fixWslBtn.setMaximumSize(new Dimension(360, 40));
+        fixWslBtn.addActionListener(e -> triggerWslDependencyFix());
+
         JButton downloadSettingsBtn = new JButton("📥 Download Settings...");
         downloadSettingsBtn.setFont(btnFont);
         downloadSettingsBtn.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
@@ -5320,6 +5727,12 @@ public class Main extends JFrame {
         bridgeBtn.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
         bridgeBtn.setMaximumSize(new Dimension(360, 40));
         bridgeBtn.addActionListener(e -> showInstallationDialog());
+
+        JButton videoArchitectAutoconfigBtn = new JButton("🎬 Autoconfig Video Architect...");
+        videoArchitectAutoconfigBtn.setFont(btnFont);
+        videoArchitectAutoconfigBtn.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        videoArchitectAutoconfigBtn.setMaximumSize(new Dimension(360, 40));
+        videoArchitectAutoconfigBtn.addActionListener(e -> showVideoArchitectAutoconfigDialog());
 
         JPanel checksPanel = new JPanel();
         checksPanel.setOpaque(false);
@@ -5383,9 +5796,13 @@ public class Main extends JFrame {
         left.add(Box.createVerticalStrut(10));
         left.add(repairBtn);
         left.add(Box.createVerticalStrut(10));
+        left.add(fixWslBtn);
+        left.add(Box.createVerticalStrut(10));
         left.add(downloadSettingsBtn);
         left.add(Box.createVerticalStrut(10));
         left.add(bridgeBtn);
+        left.add(Box.createVerticalStrut(10));
+        left.add(videoArchitectAutoconfigBtn);
         left.add(Box.createVerticalStrut(25));
         left.add(checksPanel);
         left.add(Box.createVerticalGlue());
@@ -5424,11 +5841,102 @@ public class Main extends JFrame {
             }
         });
 
+        JButton parseBlueprintsBtn = new JButton("🔍 Parse blueprints");
+        parseBlueprintsBtn.setFont(btnFont);
+        parseBlueprintsBtn.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        parseBlueprintsBtn.setMaximumSize(new Dimension(360, 40));
+        parseBlueprintsBtn.addActionListener(e -> {
+            if (modelArchitectureService != null) {
+                modelArchitectureService.runBlueprintAnalysis();
+                JOptionPane.showMessageDialog(this, 
+                    "Blueprint parsing started in the background. You can track progress below on this Settings tab.", 
+                    "Blueprint Parsing", 
+                    JOptionPane.INFORMATION_MESSAGE);
+            }
+        });
+
+        // Blueprint Analysis Progress section
+        blueprintPanel = new JPanel(new BorderLayout(10, 5)) {
+            @Override
+            public void updateUI() {
+                super.updateUI();
+                putClientProperty("FlatLaf.style", "arc: 12; background: $Card.background; border: 12,12,12,12,$Card.border,1,12");
+            }
+        };
+        blueprintPanel.setOpaque(false);
+        blueprintPanel.setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
+        blueprintPanel.setVisible(modelArchitectureService != null && !modelArchitectureService.isBlueprintAnalysisCompleted());
+        blueprintPanel.setMaximumSize(new Dimension(360, 80));
+        blueprintPanel.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+
+        JLabel blueprintTitle = new JLabel("Blueprint Parsing") {
+            @Override
+            public void updateUI() {
+                super.updateUI();
+                Color c = UIManager.getColor("SlimStat.titleForeground");
+                if (c != null) setForeground(c);
+            }
+        };
+        blueprintTitle.setFont(new Font("SansSerif", Font.BOLD, 12));
+        Color tc = UIManager.getColor("SlimStat.titleForeground");
+        if (tc != null) blueprintTitle.setForeground(tc);
+
+        blueprintStatusLabel = new JLabel("Initializing...") {
+            @Override
+            public void updateUI() {
+                super.updateUI();
+                Color c = UIManager.getColor("SlimStat.valueForeground");
+                if (c != null) setForeground(c);
+            }
+        };
+        blueprintStatusLabel.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        Color vc = UIManager.getColor("SlimStat.valueForeground");
+        if (vc != null) blueprintStatusLabel.setForeground(vc);
+
+        blueprintBar = new JProgressBar(0, 100) {
+            @Override
+            public void updateUI() {
+                super.updateUI();
+                putClientProperty("FlatLaf.style", "arc: 999; foreground: $SlimStat.barForeground; background: $SlimStat.barBackground;");
+            }
+        };
+        blueprintBar.setPreferredSize(new Dimension(0, 8));
+        blueprintBar.setStringPainted(true);
+
+        JPanel textPanel = new JPanel(new BorderLayout(5, 2));
+        textPanel.setOpaque(false);
+        textPanel.add(blueprintTitle, BorderLayout.WEST);
+        textPanel.add(blueprintStatusLabel, BorderLayout.EAST);
+
+        blueprintPanel.add(textPanel, BorderLayout.NORTH);
+        blueprintPanel.add(blueprintBar, BorderLayout.CENTER);
+
+        if (modelArchitectureService != null) {
+            modelArchitectureService.addProgressListener((percent, currentFileName, completed) -> {
+                SwingUtilities.invokeLater(() -> {
+                    blueprintBar.setValue(percent);
+                    if (completed) {
+                        blueprintStatusLabel.setText("Completed");
+                        blueprintPanel.setVisible(false);
+                    } else {
+                        blueprintStatusLabel.setText(currentFileName);
+                        blueprintPanel.setVisible(true);
+                    }
+                    blueprintPanel.revalidate();
+                    blueprintPanel.repaint();
+                });
+            });
+        }
+
         right.add(aiHeader);
         right.add(Box.createVerticalStrut(20));
         right.add(apiBtn);
         right.add(Box.createVerticalStrut(10));
         right.add(resetVaultBtn);
+        right.add(Box.createVerticalStrut(10));
+        right.add(parseBlueprintsBtn);
+        right.add(Box.createVerticalStrut(20));
+        right.add(blueprintPanel);
         right.add(Box.createVerticalStrut(25));
         right.add(helpBtn);
         right.add(Box.createVerticalGlue());
@@ -5457,6 +5965,32 @@ public class Main extends JFrame {
             updaterService.repairEnvironment(log -> SwingUtilities.invokeLater(() -> {
                 if (consoleOutput != null) {
                     consoleOutput.append(log);
+                    consoleOutput.setCaretPosition(consoleOutput.getDocument().getLength());
+                }
+            }));
+        }).start();
+    }
+
+    private void triggerWslDependencyFix() {
+        if (mainTabs != null) {
+            mainTabs.setSelectedIndex(0);
+        } else if (getContentPane() instanceof JTabbedPane) {
+            ((JTabbedPane) getContentPane()).setSelectedIndex(0);
+        } else {
+            findAndSelectTab(getContentPane(), 0);
+        }
+        
+        if (consoleOutput != null) {
+            consoleOutput.setText("");
+        }
+        
+        String comfyPathStr = configService.getComfyUIPath();
+        java.nio.file.Path comfyDir = (comfyPathStr != null && !comfyPathStr.isEmpty()) ? java.nio.file.Paths.get(comfyPathStr) : null;
+        
+        new Thread(() -> {
+            bootstrapper.fixWslDependencies(comfyDir, log -> SwingUtilities.invokeLater(() -> {
+                if (consoleOutput != null) {
+                    consoleOutput.append(log.endsWith("\n") ? log : log + "\n");
                     consoleOutput.setCaretPosition(consoleOutput.getDocument().getLength());
                 }
             }));
@@ -5606,7 +6140,7 @@ public class Main extends JFrame {
                 progressRam.setString(String.format("RAM: %.1f GB / %.1f GB (%d%%)", usedGb, totalGb, pct));
             }
         }
-        if (stats.hasNvidia) {
+        if (stats.gpuName != null && !"N/A".equals(stats.gpuName)) {
             if (gpuPanel != null) gpuPanel.setVisible(true);
             if (progressGpu != null) {
                 progressGpu.setValue(stats.gpuUtilization);
@@ -5624,9 +6158,17 @@ public class Main extends JFrame {
                 progressVram.setValue(pct);
                 JLabel label = (JLabel) progressVram.getClientProperty("valueLabel");
                 if (label != null) {
-                    label.setText(String.format("%.1f GB / %.1f GB (%d%%)", usedGb, totalGb, pct));
+                    if (stats.vramTotal > 0) {
+                        label.setText(String.format("%.1f GB / %.1f GB (%d%%)", usedGb, totalGb, pct));
+                    } else {
+                        label.setText("N/A");
+                    }
                 } else {
-                    progressVram.setString(String.format("VRAM: %.1f GB / %.1f GB (%d%%)", usedGb, totalGb, pct));
+                    if (stats.vramTotal > 0) {
+                        progressVram.setString(String.format("VRAM: %.1f GB / %.1f GB (%d%%)", usedGb, totalGb, pct));
+                    } else {
+                        progressVram.setString("VRAM: N/A");
+                    }
                 }
             }
             if (lblGpuName != null) {
@@ -5649,7 +6191,7 @@ public class Main extends JFrame {
                 analyzeJsonContent();
                 searchMissingOnline();
                 
-                // Switch to Model Manager Tab (index 1)
+                // Switch to Download Manager Tab (index 1)
                 if (getContentPane() instanceof JTabbedPane) {
                     ((JTabbedPane) getContentPane()).setSelectedIndex(1);
                 } else {
@@ -5769,6 +6311,224 @@ public class Main extends JFrame {
         boolean[] selected = new boolean[tableModel.getRowCount()];
         for (int i = 0; i < selected.length; i++) selected[i] = (Boolean) tableModel.getValueAt(i, 0);
         downloadManager.updateSelection(selected);
+    }
+
+    private void updateDownloadButtonsState() {
+        SwingUtilities.invokeLater(() -> {
+            if (downloadButton == null || pauseButton == null || stopButton == null) return;
+            
+            if (isDownloading) {
+                downloadButton.setEnabled(false);
+                pauseButton.setEnabled(true);
+                stopButton.setEnabled(true);
+                pauseButton.setText(downloadManager != null && downloadManager.isPaused() ? "Resume" : "Pause");
+            } else {
+                // Find if there is at least one row selected that is not already completed/installed
+                boolean hasSelectable = false;
+                if (tableModel != null) {
+                    for (int i = 0; i < tableModel.getRowCount(); i++) {
+                        Boolean sel = (Boolean) tableModel.getValueAt(i, 0);
+                        String status = (String) tableModel.getValueAt(i, 7);
+                        if (Boolean.TRUE.equals(sel) && status != null && 
+                            !status.equals("✅ Already exists") && !status.equals("✅ Finished") && !status.startsWith("Skipped")) {
+                            hasSelectable = true;
+                            break;
+                        }
+                    }
+                }
+                downloadButton.setEnabled(hasSelectable);
+                pauseButton.setEnabled(false);
+                stopButton.setEnabled(false);
+                pauseButton.setText("Pause");
+            }
+        });
+    }
+
+    public void focusDownloadTabAndSelectModels(List<ModelInfo> missingModels) {
+        if (missingModels == null || missingModels.isEmpty()) return;
+        if (modelsToDownload == null) {
+            modelsToDownload = new ArrayList<>();
+        }
+
+        // 1. Focus the Download Manager tab (Index 1)
+        if (mainTabs != null) {
+            mainTabs.setSelectedIndex(1);
+        }
+
+        String base = configService.getModelsPath();
+        String archive = configService.getArchivePath();
+
+        // 2. Select the models in the table model, or add them if they don't exist
+        for (ModelInfo req : missingModels) {
+            String name = req.getName();
+            String url = req.getUrl();
+            if (name == null || name.isBlank()) continue;
+
+            // Determine correct status & folder
+            String type = req.getType() != null ? req.getType() : de.tki.comfymodels.domain.ModelFolder.CHECKPOINTS.getDefaultFolderName();
+            String folder = req.getSave_path() != null ? req.getSave_path() : type;
+            String normalizedFolder = archiveService.normalizeFolder(folder);
+            String sizeStr = req.getSize() != null ? req.getSize() : "Unknown";
+            String pop = req.getPopularity() != null ? req.getPopularity() : "📂 BLUEPRINT REQUIRED";
+            String dlUrl = (url != null) ? url : "MISSING";
+            long byteSize = req.getByteSize();
+
+            // 1. Primary path check (Standard Models Path)
+            boolean exists = false;
+            Path local = null;
+            if (base != null && !base.isEmpty()) {
+                local = "root".equals(normalizedFolder) ? Paths.get(base, name) : Paths.get(base, normalizedFolder, name);
+                exists = Files.exists(local) && Files.isRegularFile(local);
+            }
+
+            // 2. Primary archive check (Standard Archive Path)
+            boolean inArchive = false;
+            Path archivedPath = null;
+            if (archive != null && !archive.trim().isEmpty()) {
+                archivedPath = "root".equals(normalizedFolder) ? Paths.get(archive, name) : Paths.get(archive, normalizedFolder, name);
+                inArchive = Files.exists(archivedPath) && Files.isRegularFile(archivedPath);
+            }
+            
+            boolean sizeMismatch = false;
+
+            // 3. Robust existence and archive cross-check (Safety Guard)
+            if (archive != null && !archive.isEmpty()) {
+                try {
+                    Path absArchive = Paths.get(archive).toAbsolutePath().normalize();
+                    
+                    // If 'local' is actually inside the archive, it's NOT a local active model
+                    if (exists && local != null && local.toAbsolutePath().normalize().startsWith(absArchive)) {
+                        exists = false;
+                        inArchive = true;
+                    }
+                    
+                    // If we found it in the primary archive location, verify size if known
+                    if (inArchive && byteSize > 0 && archivedPath != null) {
+                        if (Files.size(archivedPath) != byteSize) {
+                            inArchive = false; // Size mismatch in archive doesn't count as "found"
+                        }
+                    }
+                } catch (Exception ignored) {}
+            }
+
+            // 4. Fallback: Recursive search in ARCHIVE if not found at primary archive location
+            if (!inArchive && archive != null && !archive.isEmpty()) {
+                java.util.Optional<Path> foundInArchive = localScanner.findModelWithPrefSize(Paths.get(archive), name, byteSize);
+                if (foundInArchive.isPresent()) {
+                    archivedPath = foundInArchive.get();
+                    inArchive = true;
+                }
+            }
+
+            // 5. Fallback: Recursive search in LOCAL MODELS if not found OR size mismatch at primary location
+            if ((!exists || sizeMismatch) && base != null && !base.isEmpty()) {
+                java.util.Optional<Path> foundLocally = localScanner.findModelWithPrefSizeAndType(Paths.get(base), name, byteSize, type);
+                if (foundLocally.isPresent()) {
+                    Path potentialLocal = foundLocally.get();
+                    try {
+                        long potSize = Files.size(potentialLocal);
+                        if (byteSize <= 0 || potSize == byteSize) {
+                            local = potentialLocal;
+                            exists = true;
+                            sizeMismatch = false;
+                            
+                            Path root = Paths.get(base).toAbsolutePath().normalize();
+                            Path absPotential = potentialLocal.toAbsolutePath().normalize();
+                            
+                            if (absPotential.startsWith(root)) {
+                                Path rel = root.relativize(absPotential);
+                                normalizedFolder = (rel.getParent() != null) ? rel.getParent().toString().replace("\\", "/") : "root";
+                            } else {
+                                normalizedFolder = "extra/" + potentialLocal.getParent().getFileName();
+                            }
+                            req.setSave_path(normalizedFolder);
+                        }
+                    } catch (Exception ignored) {}
+                }
+            }
+
+            // 6. Final Status Determination
+            String status;
+            boolean isSelected;
+            if (exists) {
+                status = "✅ Already exists";
+                isSelected = false;
+            } else if (inArchive) {
+                status = "📦 Archived";
+                isSelected = true;
+            } else if (sizeMismatch) {
+                status = "🔄 Size Mismatch";
+                isSelected = true;
+            } else if (dlUrl == null || dlUrl.equals("MISSING") || dlUrl.isBlank()) {
+                status = "Queued";
+                isSelected = true;
+            } else {
+                status = "✅ Known Good";
+                isSelected = true;
+            }
+
+            // Search for existing row
+            int foundRow = -1;
+            for (int i = 0; i < tableModel.getRowCount(); i++) {
+                String rowName = (String) tableModel.getValueAt(i, 2);
+                if (name.equalsIgnoreCase(rowName)) {
+                    foundRow = i;
+                    break;
+                }
+            }
+
+            if (foundRow != -1) {
+                // Update existing row
+                tableModel.setValueAt(isSelected, foundRow, 0);
+                if (url != null && !url.equals("MISSING")) {
+                    tableModel.setValueAt(url, foundRow, 6);
+                }
+                tableModel.setValueAt("models/" + normalizedFolder, foundRow, 5);
+                tableModel.setValueAt(status, foundRow, 7);
+
+                if (foundRow < modelsToDownload.size()) {
+                    ModelInfo existingInfo = modelsToDownload.get(foundRow);
+                    existingInfo.setSave_path(normalizedFolder);
+                    if (url != null && !url.equals("MISSING")) {
+                        existingInfo.setUrl(url);
+                    }
+                }
+            } else {
+                // Add new row
+                tableModel.addRow(new Object[]{
+                    isSelected,                    // Selected
+                    req.getType(),                 // Type
+                    name,                          // Name
+                    sizeStr,                       // Size
+                    pop,                           // Popularity
+                    "models/" + normalizedFolder,  // Path
+                    dlUrl,                         // URL
+                    status                         // Status
+                });
+
+                // Add corresponding ModelInfo entry to modelsToDownload to keep indices aligned
+                ModelInfo newInfo = new ModelInfo();
+                newInfo.setName(name);
+                newInfo.setType(req.getType());
+                newInfo.setSize(sizeStr);
+                newInfo.setUrl(dlUrl);
+                newInfo.setPopularity(pop);
+                newInfo.setSave_path(normalizedFolder);
+                newInfo.setByteSize(byteSize);
+                modelsToDownload.add(newInfo);
+            }
+        }
+
+        // Trigger updating the selection arrays in download manager
+        updateDownloadManagerSelection();
+        updateDownloadButtonsState();
+
+        // Notify user
+        JOptionPane.showMessageDialog(this,
+            "Added " + missingModels.size() + " missing model(s) to the Download Manager queue.\n" +
+            "Please click 'Start queue' to start.",
+            "Downloads Queued",
+            JOptionPane.INFORMATION_MESSAGE);
     }
 
     private void setupDragAndDrop(java.awt.Component area) {
@@ -5983,7 +6743,7 @@ public class Main extends JFrame {
                     SwingUtilities.invokeLater(() -> {
                         if (mainTabs != null) {
                             for (int i = 0; i < mainTabs.getTabCount(); i++) {
-                                if (mainTabs.getTitleAt(i).contains("Model Manager")) {
+                                if (mainTabs.getTitleAt(i).contains("Blueprint Gallery")) {
                                     mainTabs.setSelectedIndex(i);
                                     break;
                                 }

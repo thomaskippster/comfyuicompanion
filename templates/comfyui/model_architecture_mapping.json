@@ -1,0 +1,18 @@
+{
+  "rules": [
+    { "pattern": ".*flux.*", "architecture": "ARCH_FLUX" },
+    { "pattern": ".*schnell.*", "architecture": "ARCH_FLUX" },
+    { "pattern": ".*sd[_-]?xl.*", "architecture": "ARCH_SDXL" },
+    { "pattern": ".*pony.*", "architecture": "ARCH_SDXL" },
+    { "pattern": ".*juggernaut.*", "architecture": "ARCH_SDXL" },
+    { "pattern": ".*sd[_-]?3.*", "architecture": "ARCH_SD3" },
+    { "pattern": ".*stable[_-]?diffusion[_-]?3.*", "architecture": "ARCH_SD3" },
+    { "pattern": ".*hunyuan.*", "architecture": "ARCH_HUNYUAN" },
+    { "pattern": ".*wan2.*", "architecture": "ARCH_WAN" },
+    { "pattern": ".*wan_.*", "architecture": "ARCH_WAN" },
+    { "pattern": ".*longcat.*", "architecture": "ARCH_LUMINA2" },
+    { "pattern": ".*lumina.*", "architecture": "ARCH_LUMINA2" },
+    { "pattern": ".*1[_-]?5.*", "architecture": "ARCH_SD15" },
+    { "pattern": ".*sd[_-]?15.*", "architecture": "ARCH_SD15" }
+  ]
+}

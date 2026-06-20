@@ -1,0 +1,102 @@
+{
+  "prompt": {
+    "3": {
+      "inputs": {
+        "seed": 42,
+        "steps": 20,
+        "cfg": 5.0,
+        "sampler_name": "euler",
+        "scheduler": "normal",
+        "denoise": 1.0,
+        "model": [
+          "4",
+          0
+        ],
+        "positive": [
+          "6",
+          0
+        ],
+        "negative": [
+          "7",
+          0
+        ],
+        "latent_image": [
+          "5",
+          0
+        ]
+      },
+      "class_type": "KSampler"
+    },
+    "4": {
+      "inputs": {
+        "unet_name": "wan2.1_hybrid.safetensors",
+        "weight_dtype": "default"
+      },
+      "class_type": "UNETLoader"
+    },
+    "4_clip": {
+      "inputs": {
+        "clip_name": "umt5_xxl.safetensors",
+        "type": "wan"
+      },
+      "class_type": "CLIPLoader"
+    },
+    "4_vae": {
+      "inputs": {
+        "vae_name": "wan_2.1_vae.safetensors"
+      },
+      "class_type": "VAELoader"
+    },
+    "5": {
+      "inputs": {
+        "width": 1024,
+        "height": 1024,
+        "batch_size": 1
+      },
+      "class_type": "EmptySD3LatentImage"
+    },
+    "6": {
+      "inputs": {
+        "text": "beautiful scenery, mountain, sunset, hyperrealistic, 8k",
+        "clip": [
+          "4_clip",
+          0
+        ]
+      },
+      "class_type": "CLIPTextEncode"
+    },
+    "7": {
+      "inputs": {
+        "text": "bad hands, blurry, worst quality, low quality",
+        "clip": [
+          "4_clip",
+          0
+        ]
+      },
+      "class_type": "CLIPTextEncode"
+    },
+    "8": {
+      "inputs": {
+        "samples": [
+          "3",
+          0
+        ],
+        "vae": [
+          "4_vae",
+          0
+        ]
+      },
+      "class_type": "VAEDecode"
+    },
+    "9": {
+      "inputs": {
+        "filename_prefix": "ComfyUI_Wan",
+        "images": [
+          "8",
+          0
+        ]
+      },
+      "class_type": "SaveImage"
+    }
+  }
+}

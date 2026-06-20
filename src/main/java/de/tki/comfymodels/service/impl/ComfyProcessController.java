@@ -70,32 +70,57 @@ public class ComfyProcessController {
                                     for (java.io.File pthFile : pthFiles) {
                                         String absoluteComfyPath = comfyDir.toAbsolutePath().toString();
                                         String normalizedPath = absoluteComfyPath.replace("\\", "/").toLowerCase();
-                                        String content = java.nio.file.Files.readString(pthFile.toPath(), java.nio.charset.StandardCharsets.UTF_8);
-                                        String normalizedContent = content.replace("\\", "/").toLowerCase();
                                         
-                                        if (!normalizedContent.contains(normalizedPath)) {
-                                            java.util.List<String> lines = new java.util.ArrayList<>();
-                                            boolean hasSite = false;
-                                            boolean hasComfy = false;
-                                            for (String line : java.nio.file.Files.readAllLines(pthFile.toPath(), java.nio.charset.StandardCharsets.UTF_8)) {
-                                                String trimmed = line.trim();
-                                                if (trimmed.equals("import site") || trimmed.equals("#import site")) {
-                                                    lines.add("import site");
-                                                    hasSite = true;
-                                                } else if (trimmed.replace("\\", "/").toLowerCase().equals(normalizedPath)) {
-                                                    lines.add(line);
-                                                    hasComfy = true;
-                                                } else {
+                                        java.util.List<String> lines = new java.util.ArrayList<>();
+                                        boolean hasSite = false;
+                                        boolean hasComfy = false;
+                                        boolean changed = false;
+                                        
+                                        for (String line : java.nio.file.Files.readAllLines(pthFile.toPath(), java.nio.charset.StandardCharsets.UTF_8)) {
+                                            String trimmed = line.trim();
+                                            if (trimmed.equals("import site") || trimmed.equals("#import site")) {
+                                                lines.add("import site");
+                                                hasSite = true;
+                                            } else {
+                                                boolean isStaleComfy = false;
+                                                try {
+                                                    java.nio.file.Path p = java.nio.file.Paths.get(trimmed);
+                                                    if (p.isAbsolute()) {
+                                                        String lineNormalized = p.toAbsolutePath().toString().replace("\\", "/").toLowerCase();
+                                                        if (lineNormalized.equals(normalizedPath)) {
+                                                            hasComfy = true;
+                                                            lines.add(trimmed);
+                                                        } else {
+                                                            java.io.File dir = p.toFile();
+                                                            if (dir.exists() && dir.isDirectory() && new java.io.File(dir, "main.py").exists()) {
+                                                                isStaleComfy = true;
+                                                            } else {
+                                                                lines.add(line);
+                                                            }
+                                                        }
+                                                    } else {
+                                                        lines.add(line);
+                                                    }
+                                                } catch (Exception ex) {
                                                     lines.add(line);
                                                 }
+                                                if (isStaleComfy) {
+                                                    changed = true;
+                                                    logConsumer.accept("🧹 Removing stale ComfyUI path from ._pth file: " + trimmed);
+                                                }
                                             }
-                                            if (!hasSite) {
-                                                lines.add("import site");
-                                            }
-                                            if (!hasComfy) {
-                                                lines.add(absoluteComfyPath);
-                                            }
+                                        }
+                                        if (!hasSite) {
+                                            lines.add("import site");
+                                            changed = true;
+                                        }
+                                        if (!hasComfy) {
+                                            lines.add(absoluteComfyPath);
+                                            changed = true;
+                                        }
+                                        if (changed) {
                                             java.nio.file.Files.write(pthFile.toPath(), lines, java.nio.charset.StandardCharsets.UTF_8);
+                                            logConsumer.accept("📝 Updated python _pth file: " + pthFile.getName());
                                         }
                                     }
                                 }

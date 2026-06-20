@@ -127,7 +127,7 @@ public class GuiStatusTransitionTest {
         // Wait for searchService to be called (it's called in a separate thread)
         Thread.sleep(1000);
         
-        verify(searchService, atLeastOnce()).searchOnline(eq(mockModels), any(), anyString(), anyString(), any(), any(), any());
+        verify(searchService, atLeastOnce()).searchOnline(eq(mockModels), any(), anyString(), anyString(), anyBoolean(), any(), any(), any());
         
         SwingUtilities.invokeAndWait(() -> {
             JLabel statusLabel = (JLabel) ReflectionTestUtils.getField(mainFrame, "statusLabel");
@@ -166,9 +166,11 @@ public class GuiStatusTransitionTest {
         });
         
         when(downloadManager.isPaused()).thenReturn(true);
+        ReflectionTestUtils.setField(mainFrame, "isDownloading", true);
         
         SwingUtilities.invokeAndWait(() -> {
             JButton pauseButton = (JButton) ReflectionTestUtils.getField(mainFrame, "pauseButton");
+            pauseButton.setEnabled(true);
             pauseButton.doClick();
         });
         
@@ -184,6 +186,7 @@ public class GuiStatusTransitionTest {
     public void testStopButtonAction() throws Exception {
         SwingUtilities.invokeAndWait(() -> {
             JButton stopButton = (JButton) ReflectionTestUtils.getField(mainFrame, "stopButton");
+            stopButton.setEnabled(true);
             stopButton.doClick();
         });
         verify(downloadManager).stop();

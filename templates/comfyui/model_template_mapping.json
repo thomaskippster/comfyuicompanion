@@ -1,0 +1,7 @@
+{
+  "mappings": {
+    "v1-5-pruned-emaonly.safetensors": "sd15_base_api.json",
+    "sd_xl_base_1.0.safetensors": "sdxl_base_api.json",
+    "flux1-schnell-fp8.safetensors": "flux_base_api.json"
+  }
+}

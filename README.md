@@ -90,6 +90,21 @@ Keep the companion app and ComfyUI updated without opening a terminal:
 * **Active Port Cleaning:** Automatically checks if the target ComfyUI server port is already bound.
 * **Stale Task Termination:** Terminates zombie python processes or conflicting services on the specified port to ensure a smooth, error-free startup.
 
+### 14. 🗂️ Blueprint Gallery (Model Manager Redesign)
+A high-performance visual workflow manager that organizes and displays your reusable templates and node workflows.
+* **Smart Cards & Categories:** Parses `*.json` templates from the `companion_blueprints` folder, extracting node metadata, category info, and descriptions to render a modern visual grid.
+* **Dynamic Grid Layout:** Features a responsive card layout that automatically wraps to avoid clipping, sorting by model availability (installed first, followed by partially installed, then missing).
+* **Local Model Availability Badge:** Scans your model directories and overlays status badges directly on blueprint cards, indicating if all required models are locally ready.
+* **Instant Missing Model Downloads:** Detects required models for any given blueprint and provides a one-click download option to fetch them directly.
+* **Preview Media Resolution:** Automatically resolves local images or videos (using Video4j/OpenCV) as card backgrounds, with direct fallback querying to the ComfyUI server templates endpoint.
+
+### 15. 🎬 Video Architect: Story-to-Video Production
+An advanced timeline-based director and editing workspace designed to build cohesive stories and stitch them into video tracks.
+* **Gemma-2-2B Local Script Writer:** Integrates a local **Gemma 2 2B Instruct GGUF** model using the `llama.cpp` Java wrapper. It downloads and runs locally on CPU (preventing conflicts with ComfyUI's VRAM usage) to parse abstract script ideas into a structured JSON timeline of visual scenes and narration cues. The model automatically unloads from RAM after 5 minutes of inactivity to conserve memory.
+* **Text-to-Speech Narration (TTS):** Generates voiceovers for timeline scenes automatically using local **Piper TTS** (with automatic Windows binaries/models bootstrap) or online/ComfyUI-integrated **KokoroTTS** / **ElevenLabs** nodes.
+* **OpenCV-Powered Visual Enhancement:** Allows frame-by-frame contrast and brightness adjustment on timeline scenes with real-time feedback using Video4j native OpenCV bindings.
+* **Automated FFmpeg Stitching (Master Render):** Cuts, trims, and scales clips (handling static images and moving videos) to match narrations, burns subtitle overlays via the FFmpeg `drawtext` filter, and merges segments into a final `master_export.mp4`.
+
 ---
 
 ## ⚙️ Launch Configurations Reference

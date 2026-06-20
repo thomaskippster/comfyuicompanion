@@ -18,15 +18,15 @@ public class HardwareMonitorService {
         return t;
     });
 
-    private double cpuLoad = 0.0;
-    private long ramUsed = 0L;
-    private long ramTotal = 0L;
+    private volatile double cpuLoad = 0.0;
+    private volatile long ramUsed = 0L;
+    private volatile long ramTotal = 0L;
     
-    private String gpuName = "N/A";
-    private int gpuUtilization = 0;
-    private long vramUsed = 0L;
-    private long vramTotal = 0L;
-    private boolean hasNvidia = false;
+    private volatile String gpuName = "N/A";
+    private volatile int gpuUtilization = 0;
+    private volatile long vramUsed = 0L;
+    private volatile long vramTotal = 0L;
+    private volatile boolean hasNvidia = false;
 
     public static class HardwareStats {
         public double cpuLoad;
@@ -91,22 +91,89 @@ public class HardwareMonitorService {
             }
             
             Process p = pb.start();
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()))) {
-                String line = reader.readLine();
-                if (line != null && !line.trim().isEmpty()) {
-                    String[] parts = line.split(",");
-                    if (parts.length >= 4) {
-                        this.gpuName = parts[0].trim();
-                        this.gpuUtilization = Integer.parseInt(parts[1].trim());
-                        this.vramUsed = Long.parseLong(parts[2].trim()) * 1024L * 1024L; // in MB to Bytes
-                        this.vramTotal = Long.parseLong(parts[3].trim()) * 1024L * 1024L;
-                        this.hasNvidia = true;
-                        return;
+            try {
+                try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream(), java.nio.charset.StandardCharsets.UTF_8))) {
+                    String line = reader.readLine();
+                    if (line != null && !line.trim().isEmpty()) {
+                        String[] parts = line.split(",");
+                        if (parts.length >= 4) {
+                            this.gpuName = parts[0].trim();
+                            this.gpuUtilization = Integer.parseInt(parts[1].trim());
+                            this.vramUsed = Long.parseLong(parts[2].trim()) * 1024L * 1024L; // in MB to Bytes
+                            this.vramTotal = Long.parseLong(parts[3].trim()) * 1024L * 1024L;
+                            this.hasNvidia = true;
+                            return;
+                        }
                     }
+                }
+                p.waitFor(2, TimeUnit.SECONDS);
+            } finally {
+                if (p.isAlive()) {
+                    p.destroyForcibly();
                 }
             }
         } catch (Exception ignored) {}
         this.hasNvidia = false;
-        this.gpuName = "N/A";
+        queryFallbackGpu();
+    }
+
+    private boolean fallbackInitialized = false;
+
+    private void queryFallbackGpu() {
+        if (fallbackInitialized) return;
+        fallbackInitialized = true;
+        
+        try {
+            String os = System.getProperty("os.name").toLowerCase();
+            if (os.contains("win")) {
+                // Query primary GPU name using PowerShell (fast one-time call)
+                ProcessBuilder pb = new ProcessBuilder("powershell", "-Command", 
+                    "Get-CimInstance Win32_VideoController | Sort-Object AdapterRAM -Descending | Select-Object -First 1 -ExpandProperty Name");
+                Process p = pb.start();
+                try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream(), java.nio.charset.StandardCharsets.UTF_8))) {
+                    String line = reader.readLine();
+                    if (line != null && !line.trim().isEmpty()) {
+                        this.gpuName = line.trim();
+                    }
+                }
+                p.waitFor(3, TimeUnit.SECONDS);
+
+                // Query AdapterRAM
+                pb = new ProcessBuilder("powershell", "-Command", 
+                    "Get-CimInstance Win32_VideoController | Sort-Object AdapterRAM -Descending | Select-Object -First 1 -ExpandProperty AdapterRAM");
+                p = pb.start();
+                try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream(), java.nio.charset.StandardCharsets.UTF_8))) {
+                    String line = reader.readLine();
+                    if (line != null && !line.trim().isEmpty()) {
+                        try {
+                            this.vramTotal = Long.parseLong(line.trim());
+                        } catch (NumberFormatException ignored) {}
+                    }
+                }
+                p.waitFor(3, TimeUnit.SECONDS);
+            } else if (os.contains("mac")) {
+                // Mac display info
+                ProcessBuilder pb = new ProcessBuilder("sh", "-c", "system_profiler SPDisplaysDataType | grep 'Chipset Model'");
+                Process p = pb.start();
+                try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream(), java.nio.charset.StandardCharsets.UTF_8))) {
+                    String line = reader.readLine();
+                    if (line != null && line.contains(":")) {
+                        this.gpuName = line.substring(line.indexOf(":") + 1).trim();
+                    }
+                }
+                p.waitFor(3, TimeUnit.SECONDS);
+            } else {
+                // Linux fallback via lspci
+                ProcessBuilder pb = new ProcessBuilder("sh", "-c", "lspci | grep -i -E 'vga|3d'");
+                Process p = pb.start();
+                try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream(), java.nio.charset.StandardCharsets.UTF_8))) {
+                    String line = reader.readLine();
+                    if (line != null && line.contains(":")) {
+                        this.gpuName = line.substring(line.lastIndexOf(":") + 1).trim();
+                    }
+                }
+                p.waitFor(3, TimeUnit.SECONDS);
+            }
+        } catch (Exception ignored) {}
     }
 }

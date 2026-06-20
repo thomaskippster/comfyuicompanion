@@ -48,3 +48,17 @@ config.json
 
 # Agent Rules
 agents.md
+
+# Cloned helper repositories
+comfyfs/
+
+# Log files
+*.log
+
+# Video / Output files
+*.mp4
+*.gif
+*.wav
+output/
+*.onnx
+*.onnx.json

@@ -17,7 +17,7 @@ import java.util.Optional;
 @Service
 public class ModelListService {
     private static final String STORAGE_FILE = "uploaded_models.json";
-    private List<ModelInfo> models = new ArrayList<>();
+    private final List<ModelInfo> models = new java.util.concurrent.CopyOnWriteArrayList<>();
 
     @Autowired
     private ConfigService configService;
@@ -56,7 +56,8 @@ public class ModelListService {
             newModels.add(info);
         }
         
-        this.models = newModels;
+        this.models.clear();
+        this.models.addAll(newModels);
         saveToStorage();
     }
 
@@ -135,7 +136,7 @@ public class ModelListService {
             if (file.exists()) {
                 String content = Files.readString(file.toPath(), StandardCharsets.UTF_8);
                 JSONArray array = new JSONArray(content);
-                models.clear();
+                List<ModelInfo> loadedModels = new ArrayList<>();
                 for (int i = 0; i < array.length(); i++) {
                     JSONObject m = array.getJSONObject(i);
                     ModelInfo info = new ModelInfo(
@@ -151,8 +152,10 @@ public class ModelListService {
                     String sizeStr = m.optString("size", "Unknown");
                     info.setSize(sizeStr);
                     info.setByteSize(parseSize(sizeStr));
-                    models.add(info);
+                    loadedModels.add(info);
                 }
+                models.clear();
+                models.addAll(loadedModels);
             }
         } catch (Exception e) {
             e.printStackTrace();

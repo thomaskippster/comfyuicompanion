@@ -6,6 +6,7 @@ import org.eclipse.jgit.api.errors.GitAPIException;
 import org.springframework.stereotype.Service;
 
 import java.io.FileInputStream;
+import java.io.IOException;
 import java.io.PrintWriter;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -51,6 +52,7 @@ public class EnvironmentBootstrapperImpl {
                         }
                         if (pullSuccess) {
                             progressCallback.accept("✅ ComfyUI successfully updated.");
+                            ensureVideoHelperSuiteInstalled(targetDir, null, progressCallback);
                             return;
                         }
                     } else {
@@ -72,6 +74,7 @@ public class EnvironmentBootstrapperImpl {
                         .call()
                         .close();
                 progressCallback.accept("✅ Clone successfully completed.");
+                ensureVideoHelperSuiteInstalled(targetDir, null, progressCallback);
             } catch (Exception e) {
                 throw new RuntimeException("Git clone failed: " + e.getMessage(), e);
             }
@@ -261,7 +264,19 @@ public class EnvironmentBootstrapperImpl {
                     }
                 }
 
-                // 5. WSL-Abhängigkeiten installieren, falls WSL auf dem System vorhanden ist
+                // 5. Video-Helper-Suite requirements (if present)
+                Path videoHelperReq = comfyDir.resolve("custom_nodes").resolve("ComfyUI-Video-Helper-Suite").resolve("requirements.txt");
+                if (Files.exists(videoHelperReq)) {
+                    progressCallback.accept("🚀 Installing custom_nodes/ComfyUI-Video-Helper-Suite dependencies...");
+                    int exitCode = runPipCommand(pythonExe, videoHelperReq.getParent(), progressCallback, "install", "-r", "requirements.txt", "--no-warn-script-location");
+                    if (exitCode == 0) {
+                        progressCallback.accept("✅ custom_nodes/ComfyUI-Video-Helper-Suite dependencies successfully installed.");
+                    } else {
+                        progressCallback.accept("⚠️ pip finished with code " + exitCode + " on custom_nodes/ComfyUI-Video-Helper-Suite/requirements.txt.");
+                    }
+                }
+
+                // 6. WSL-Abhängigkeiten installieren, falls WSL auf dem System vorhanden ist
                 if (isWslAvailable()) {
                     progressCallback.accept("🚀 WSL support detected on system. Setting up WSL Python environment...");
                     
@@ -292,6 +307,16 @@ public class EnvironmentBootstrapperImpl {
                             progressCallback.accept("✅ custom_nodes/ComfyUI-Manager dependencies in WSL successfully installed.");
                         } else {
                             progressCallback.accept("⚠️ WSL pip finished with code " + exitCode + " on custom_nodes/ComfyUI-Manager/requirements.txt.");
+                        }
+                    }
+
+                    if (Files.exists(videoHelperReq)) {
+                        progressCallback.accept("🚀 Installing custom_nodes/ComfyUI-Video-Helper-Suite dependencies in WSL...");
+                        int exitCode = runWslPipCommand(videoHelperReq.getParent(), progressCallback, "install", "-r", "requirements.txt", "--break-system-packages");
+                        if (exitCode == 0) {
+                            progressCallback.accept("✅ custom_nodes/ComfyUI-Video-Helper-Suite dependencies in WSL successfully installed.");
+                        } else {
+                            progressCallback.accept("⚠️ WSL pip finished with code " + exitCode + " on custom_nodes/ComfyUI-Video-Helper-Suite/requirements.txt.");
                         }
                     }
                 }
@@ -389,6 +414,340 @@ public class EnvironmentBootstrapperImpl {
                 }
                 zis.closeEntry();
             }
+        }
+    }
+
+    private void runSystemGitClone(String repoUrl, Path targetDir, String branch, Consumer<String> progressCallback) throws Exception {
+        progressCallback.accept("Executing system git clone for " + repoUrl + "...");
+        ProcessBuilder pb = new ProcessBuilder("git", "clone", "-b", branch, repoUrl, targetDir.toAbsolutePath().toString());
+        pb.redirectErrorStream(true);
+        Process p = pb.start();
+        try (java.io.BufferedReader reader = new java.io.BufferedReader(
+                new java.io.InputStreamReader(p.getInputStream(), java.nio.charset.StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                progressCallback.accept("[git] " + line);
+            }
+        }
+        int exitCode = p.waitFor();
+        if (exitCode != 0) {
+            throw new IOException("System git clone failed with exit code " + exitCode);
+        }
+    }
+
+    private void runSystemGitPull(Path targetDir, Consumer<String> progressCallback) throws Exception {
+        progressCallback.accept("Executing system git pull in " + targetDir + "...");
+        ProcessBuilder pb = new ProcessBuilder("git", "pull");
+        pb.directory(targetDir.toFile());
+        pb.redirectErrorStream(true);
+        Process p = pb.start();
+        try (java.io.BufferedReader reader = new java.io.BufferedReader(
+                new java.io.InputStreamReader(p.getInputStream(), java.nio.charset.StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                progressCallback.accept("[git] " + line);
+            }
+        }
+        int exitCode = p.waitFor();
+        if (exitCode != 0) {
+            throw new IOException("System git pull failed with exit code " + exitCode);
+        }
+    }
+
+    public void ensureVideoHelperSuiteInstalled(Path comfyDir, Path pythonExe, Consumer<String> progressCallback) {
+        Path videoHelperSuiteDir = comfyDir.resolve("custom_nodes").resolve("ComfyUI-Video-Helper-Suite");
+        if (Files.exists(videoHelperSuiteDir)) {
+            Path gitDir = videoHelperSuiteDir.resolve(".git");
+            if (Files.exists(gitDir) && Files.isDirectory(gitDir)) {
+                boolean success = false;
+                try {
+                    runSystemGitPull(videoHelperSuiteDir, progressCallback);
+                    success = true;
+                    progressCallback.accept("✅ ComfyUI-Video-Helper-Suite successfully updated via system git.");
+                } catch (Exception e) {
+                    progressCallback.accept("⚠️ System git pull failed: " + e.getMessage() + ". Trying JGit...");
+                    try (Git git = Git.open(videoHelperSuiteDir.toFile())) {
+                        git.pull()
+                           .setProgressMonitor(new TextProgressMonitor(new PrintWriter(System.out) {
+                               @Override
+                               public void println(String x) { progressCallback.accept(x); }
+                           }))
+                           .call();
+                        success = true;
+                        progressCallback.accept("✅ ComfyUI-Video-Helper-Suite successfully updated via JGit.");
+                    } catch (Exception ex) {
+                        progressCallback.accept("⚠️ JGit pull failed: " + ex.getMessage() + ". Re-installing...");
+                    }
+                }
+                if (!success) {
+                    try {
+                        deleteDirectoryRecursively(videoHelperSuiteDir);
+                        cloneVideoHelperSuite(videoHelperSuiteDir, pythonExe, progressCallback);
+                    } catch (Exception ex) {
+                        progressCallback.accept("❌ Failed to re-clone Video-Helper-Suite: " + ex.getMessage());
+                    }
+                }
+            } else {
+                progressCallback.accept("⚠️ Video-Helper-Suite folder exists but is not a Git repo. Re-installing...");
+                try {
+                    deleteDirectoryRecursively(videoHelperSuiteDir);
+                    cloneVideoHelperSuite(videoHelperSuiteDir, pythonExe, progressCallback);
+                } catch (Exception ex) {
+                    progressCallback.accept("❌ Failed to re-clone Video-Helper-Suite: " + ex.getMessage());
+                }
+            }
+        } else {
+            try {
+                cloneVideoHelperSuite(videoHelperSuiteDir, pythonExe, progressCallback);
+            } catch (Exception ex) {
+                progressCallback.accept("❌ Failed to clone Video-Helper-Suite: " + ex.getMessage());
+            }
+        }
+    }
+
+    private void cloneVideoHelperSuite(Path videoHelperSuiteDir, Path pythonExe, Consumer<String> progressCallback) throws Exception {
+        progressCallback.accept("Starting Clone of ComfyUI-Video-Helper-Suite...");
+        boolean success = false;
+        try {
+            runSystemGitClone("https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git", videoHelperSuiteDir, "main", progressCallback);
+            success = true;
+            progressCallback.accept("✅ ComfyUI-Video-Helper-Suite successfully cloned via system git.");
+        } catch (Exception e) {
+            progressCallback.accept("⚠️ System git clone failed or git is not in PATH: " + e.getMessage() + ". Falling back to JGit...");
+            try (Git git = Git.cloneRepository()
+                    .setURI("https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git")
+                    .setDirectory(videoHelperSuiteDir.toFile())
+                    .setBranch("main")
+                    .setProgressMonitor(new TextProgressMonitor(new PrintWriter(System.out) {
+                        @Override
+                        public void println(String x) { progressCallback.accept(x); }
+                    }))
+                    .call()) {
+                success = true;
+                progressCallback.accept("✅ ComfyUI-Video-Helper-Suite successfully cloned via JGit.");
+            }
+        }
+
+        if (!success) {
+            throw new IOException("Failed to clone ComfyUI-Video-Helper-Suite using both system Git and JGit.");
+        }
+        
+        // Now install its requirements
+        Path videoHelperReq = videoHelperSuiteDir.resolve("requirements.txt");
+        if (Files.exists(videoHelperReq) && pythonExe != null) {
+            progressCallback.accept("🚀 Installing custom_nodes/ComfyUI-Video-Helper-Suite dependencies...");
+            int exitCode = runPipCommand(pythonExe, videoHelperReq.getParent(), progressCallback, "install", "-r", "requirements.txt", "--no-warn-script-location");
+            if (exitCode == 0) {
+                progressCallback.accept("✅ custom_nodes/ComfyUI-Video-Helper-Suite dependencies successfully installed.");
+            } else {
+                progressCallback.accept("⚠️ pip finished with code " + exitCode + " on custom_nodes/ComfyUI-Video-Helper-Suite/requirements.txt.");
+            }
+        }
+        
+        if (isWslAvailable()) {
+            progressCallback.accept("🚀 Installing custom_nodes/ComfyUI-Video-Helper-Suite dependencies in WSL...");
+            int exitCode = runWslPipCommand(videoHelperSuiteDir, progressCallback, "install", "-r", "requirements.txt", "--break-system-packages");
+            if (exitCode == 0) {
+                progressCallback.accept("✅ custom_nodes/ComfyUI-Video-Helper-Suite dependencies in WSL successfully installed.");
+            } else {
+                progressCallback.accept("⚠️ WSL pip finished with code " + exitCode + " on custom_nodes/ComfyUI-Video-Helper-Suite/requirements.txt.");
+            }
+        }
+    }
+
+    public void ensureKokoroTtsInstalled(Path comfyDir, Path pythonExe, Consumer<String> progressCallback) {
+        Path kokoroTtsDir = comfyDir.resolve("custom_nodes").resolve("ComfyUI-KokoroTTS");
+        if (Files.exists(kokoroTtsDir)) {
+            Path gitDir = kokoroTtsDir.resolve(".git");
+            if (Files.exists(gitDir) && Files.isDirectory(gitDir)) {
+                boolean success = false;
+                try {
+                    runSystemGitPull(kokoroTtsDir, progressCallback);
+                    success = true;
+                    progressCallback.accept("✅ ComfyUI-KokoroTTS successfully updated via system git.");
+                } catch (Exception e) {
+                    progressCallback.accept("⚠️ System git pull failed: " + e.getMessage() + ". Trying JGit...");
+                    try (Git git = Git.open(kokoroTtsDir.toFile())) {
+                        git.pull()
+                           .setProgressMonitor(new TextProgressMonitor(new PrintWriter(System.out) {
+                               @Override
+                               public void println(String x) { progressCallback.accept(x); }
+                           }))
+                           .call();
+                        success = true;
+                        progressCallback.accept("✅ ComfyUI-KokoroTTS successfully updated via JGit.");
+                    } catch (Exception ex) {
+                        progressCallback.accept("⚠️ JGit pull failed: " + ex.getMessage() + ". Re-installing...");
+                    }
+                }
+                if (!success) {
+                    try {
+                        deleteDirectoryRecursively(kokoroTtsDir);
+                        cloneKokoroTts(kokoroTtsDir, pythonExe, progressCallback);
+                    } catch (Exception ex) {
+                        progressCallback.accept("❌ Failed to re-clone ComfyUI-KokoroTTS: " + ex.getMessage());
+                    }
+                }
+            } else {
+                progressCallback.accept("⚠️ ComfyUI-KokoroTTS folder exists but is not a Git repo. Re-installing...");
+                try {
+                    deleteDirectoryRecursively(kokoroTtsDir);
+                    cloneKokoroTts(kokoroTtsDir, pythonExe, progressCallback);
+                } catch (Exception ex) {
+                    progressCallback.accept("❌ Failed to re-clone ComfyUI-KokoroTTS: " + ex.getMessage());
+                }
+            }
+        } else {
+            try {
+                cloneKokoroTts(kokoroTtsDir, pythonExe, progressCallback);
+            } catch (Exception ex) {
+                progressCallback.accept("❌ Failed to clone ComfyUI-KokoroTTS: " + ex.getMessage());
+            }
+        }
+    }
+
+    private void cloneKokoroTts(Path kokoroTtsDir, Path pythonExe, Consumer<String> progressCallback) throws Exception {
+        progressCallback.accept("Starting Clone of ComfyUI-KokoroTTS...");
+        boolean success = false;
+        try {
+            runSystemGitClone("https://github.com/1038lab/ComfyUI-KokoroTTS.git", kokoroTtsDir, "main", progressCallback);
+            success = true;
+            progressCallback.accept("✅ ComfyUI-KokoroTTS successfully cloned via system git.");
+        } catch (Exception e) {
+            progressCallback.accept("⚠️ System git clone failed or git is not in PATH: " + e.getMessage() + ". Falling back to JGit...");
+            try (Git git = Git.cloneRepository()
+                    .setURI("https://github.com/1038lab/ComfyUI-KokoroTTS.git")
+                    .setDirectory(kokoroTtsDir.toFile())
+                    .setBranch("main")
+                    .setProgressMonitor(new TextProgressMonitor(new PrintWriter(System.out) {
+                        @Override
+                        public void println(String x) { progressCallback.accept(x); }
+                    }))
+                    .call()) {
+                success = true;
+                progressCallback.accept("✅ ComfyUI-KokoroTTS successfully cloned via JGit.");
+            }
+        }
+
+        if (!success) {
+            throw new IOException("Failed to clone ComfyUI-KokoroTTS using both system Git and JGit.");
+        }
+
+        Path reqFile = kokoroTtsDir.resolve("requirements.txt");
+        if (Files.exists(reqFile) && pythonExe != null) {
+            progressCallback.accept("🚀 Installing custom_nodes/ComfyUI-KokoroTTS dependencies...");
+            int exitCode = runPipCommand(pythonExe, reqFile.getParent(), progressCallback, "install", "-r", "requirements.txt", "--no-warn-script-location");
+            if (exitCode == 0) {
+                progressCallback.accept("✅ custom_nodes/ComfyUI-KokoroTTS dependencies successfully installed.");
+            } else {
+                progressCallback.accept("⚠️ pip finished with code " + exitCode + " on requirements.txt.");
+            }
+        } else if (pythonExe != null) {
+            progressCallback.accept("🚀 Installing kokoro-onnx soundfile...");
+            runPipCommand(pythonExe, kokoroTtsDir, progressCallback, "install", "kokoro-onnx", "soundfile", "--no-warn-script-location");
+        }
+
+        if (isWslAvailable()) {
+            progressCallback.accept("🚀 Installing custom_nodes/ComfyUI-KokoroTTS dependencies in WSL...");
+            if (Files.exists(reqFile)) {
+                runWslPipCommand(kokoroTtsDir, progressCallback, "install", "-r", "requirements.txt", "--break-system-packages");
+            } else {
+                runWslPipCommand(kokoroTtsDir, progressCallback, "install", "kokoro-onnx", "soundfile", "--break-system-packages");
+            }
+        }
+    }
+
+    public void fixWslDependencies(Path comfyDir, Consumer<String> progressCallback) {
+        if (!isWslAvailable()) {
+            progressCallback.accept("❌ WSL is not available or not enabled on this system.\n");
+            return;
+        }
+
+        progressCallback.accept("⚙️ Starting WSL Dependency Fix...\n");
+
+        // 1. Install libsndfile1 and libsndfile1-dev inside WSL using apt-get
+        progressCallback.accept("📦 Updating system package lists in WSL (wsl sudo apt-get update)... (this may take a moment)\n");
+        int updateExit = runWslCommand(progressCallback, "sudo", "apt-get", "update");
+        if (updateExit != 0) {
+            progressCallback.accept("⚠️ wsl sudo apt-get update returned exit code: " + updateExit + "\n");
+        }
+
+        progressCallback.accept("📦 Installing libsndfile1 inside WSL (wsl sudo apt-get install -y libsndfile1 libsndfile1-dev)... (this may take a moment)\n");
+        int installExit = runWslCommand(progressCallback, "sudo", "apt-get", "install", "-y", "libsndfile1", "libsndfile1-dev");
+        if (installExit == 0) {
+            progressCallback.accept("✅ libsndfile1 and libsndfile1-dev successfully installed in WSL.\n");
+        } else {
+            progressCallback.accept("⚠️ wsl sudo apt-get install returned exit code: " + installExit + ". If sudo requires a password, please configure WSL to be passwordless for sudo, or run it manually inside WSL.\n");
+        }
+
+        // 2. Re-install Python package dependencies inside WSL (pip install)
+        if (comfyDir == null) {
+            progressCallback.accept("⚠️ ComfyUI path not configured. Skipping Python dependencies installation.\n");
+            return;
+        }
+
+        progressCallback.accept("🐍 Upgrading pip inside WSL...\n");
+        runWslPipCommand(comfyDir, progressCallback, "install", "--upgrade", "pip", "--break-system-packages");
+
+        // Reinstall all requirements
+        Path reqFile = comfyDir.resolve("requirements.txt");
+        if (Files.exists(reqFile)) {
+            progressCallback.accept("🚀 Installing ComfyUI core dependencies in WSL...\n");
+            runWslPipCommand(comfyDir, progressCallback, "install", "-r", "requirements.txt", "--break-system-packages");
+        }
+
+        Path managerReq = comfyDir.resolve("manager_requirements.txt");
+        if (Files.exists(managerReq)) {
+            progressCallback.accept("🚀 Installing ComfyUI-Manager dependencies in WSL...\n");
+            runWslPipCommand(comfyDir, progressCallback, "install", "-r", "manager_requirements.txt", "--break-system-packages");
+        }
+
+        Path kokoroTtsDir = comfyDir.resolve("custom_nodes").resolve("ComfyUI-KokoroTTS");
+        Path kokoroReqFile = kokoroTtsDir.resolve("requirements.txt");
+        if (Files.exists(kokoroTtsDir)) {
+            progressCallback.accept("🚀 Installing ComfyUI-KokoroTTS dependencies in WSL...\n");
+            if (Files.exists(kokoroReqFile)) {
+                runWslPipCommand(kokoroTtsDir, progressCallback, "install", "-r", "requirements.txt", "--break-system-packages");
+            } else {
+                runWslPipCommand(kokoroTtsDir, progressCallback, "install", "kokoro-onnx", "soundfile", "--break-system-packages");
+            }
+        }
+
+        Path videoHelperSuiteDir = comfyDir.resolve("custom_nodes").resolve("ComfyUI-Video-Helper-Suite");
+        Path videoHelperReq = videoHelperSuiteDir.resolve("requirements.txt");
+        if (Files.exists(videoHelperSuiteDir)) {
+            progressCallback.accept("🚀 Installing ComfyUI-Video-Helper-Suite dependencies in WSL...\n");
+            if (Files.exists(videoHelperReq)) {
+                runWslPipCommand(videoHelperSuiteDir, progressCallback, "install", "-r", "requirements.txt", "--break-system-packages");
+            }
+        }
+
+        progressCallback.accept("✅ WSL dependencies fix completed!\n");
+    }
+
+    private int runWslCommand(Consumer<String> progressCallback, String... args) {
+        try {
+            java.util.List<String> command = new java.util.ArrayList<>();
+            command.add("wsl");
+            for (String arg : args) {
+                command.add(arg);
+            }
+            
+            ProcessBuilder pb = new ProcessBuilder(command);
+            pb.redirectErrorStream(true);
+            
+            Process p = pb.start();
+            try (java.io.BufferedReader reader = new java.io.BufferedReader(
+                    new java.io.InputStreamReader(p.getInputStream(), java.nio.charset.StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    progressCallback.accept("[wsl] " + line);
+                }
+            }
+            return p.waitFor();
+        } catch (Exception e) {
+            progressCallback.accept("❌ Error running WSL command: " + e.getMessage());
+            return -1;
         }
     }
 }

@@ -71,13 +71,7 @@ public class ComfyModelAnalyzer implements IModelAnalyzer {
                     info.setPopularity("📂 MODEL LIST MATCH");
                 } else {
                     String popularity = null;
-                    if (geminiService != null) {
-                        try {
-                            popularity = geminiService.analyzeModel(info.getName());
-                        } catch (Exception ignored) {}
-                    }
-
-                    if (popularity == null && aiService != null) {
+                    if (aiService != null) {
                         LocalAIService.Prediction prediction = aiService.predictProvider(info.getName());
                         popularity = prediction.getLabel();
                     }

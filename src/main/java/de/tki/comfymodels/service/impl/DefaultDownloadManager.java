@@ -75,7 +75,7 @@ public class DefaultDownloadManager implements IDownloadManager {
     public void startQueue(List<ModelInfo> models, boolean[] selectedIndices, String baseDir, BiConsumer<Integer, String> statusUpdater, Runnable onFinished) {
         isStopped = false;
         isPaused = false;
-        this.currentSelection = selectedIndices;
+        this.currentSelection = selectedIndices != null ? java.util.Arrays.copyOf(selectedIndices, selectedIndices.length) : null;
         completedIndices.clear();
         statusMap.clear();
 
@@ -215,13 +215,13 @@ public class DefaultDownloadManager implements IDownloadManager {
         return false;
     }
 
-    private boolean isSelected(int index) {
+    private synchronized boolean isSelected(int index) {
         return currentSelection == null || (index < currentSelection.length && currentSelection[index]);
     }
 
     @Override
-    public void updateSelection(boolean[] selectedIndices) {
-        this.currentSelection = selectedIndices;
+    public synchronized void updateSelection(boolean[] selectedIndices) {
+        this.currentSelection = selectedIndices != null ? java.util.Arrays.copyOf(selectedIndices, selectedIndices.length) : null;
     }
 
     private String appendCivitaiTokenIfNeeded(String url) {
@@ -262,7 +262,7 @@ public class DefaultDownloadManager implements IDownloadManager {
                 }
             } catch (Exception ignored) {}
 
-            if (file.exists() && (file.length() < 10240 || isActuallyInArchive)) {
+            if (file.exists() && (file.length() == 0 || isActuallyInArchive)) {
                 // If it's in the archive, we don't treat it as "local existing model" for the download manager.
                 if (!isActuallyInArchive) file.delete();
             }
@@ -303,14 +303,20 @@ public class DefaultDownloadManager implements IDownloadManager {
             } catch (Exception ignored) {}
 
             if (existingFileSize > 0 && totalRemoteSize > 0 && existingFileSize == totalRemoteSize) {
-                // Verification of existing file
-                if (info.getName().endsWith(".safetensors") && (existingFileSize % 2 != 0)) {
-                     if (retryCount < 1) {
-                          safeUpdateStatus(index, "🔄 Fixing Corrupted File...", statusUpdater);
-                          file.delete();
-                          downloadWithResumeInternal(info, targetFile, index, statusUpdater, retryCount + 1);
-                          return;
-                     }
+                // Verification of existing file using modelValidator
+                if (modelValidator != null) {
+                    IModelValidator.ValidationResult valResult = modelValidator.validateFile(file);
+                    if (!valResult.ok) {
+                        if (retryCount < 1) {
+                            safeUpdateStatus(index, "🔄 Fixing Corrupted File...", statusUpdater);
+                            file.delete();
+                            downloadWithResumeInternal(info, targetFile, index, statusUpdater, retryCount + 1);
+                            return;
+                        } else {
+                            safeUpdateStatus(index, "❌ Validation failed: " + valResult.message, statusUpdater);
+                            return;
+                        }
+                    }
                 }
                 safeUpdateStatus(index, "✅ Already exists", statusUpdater);
                 return;
@@ -464,17 +470,13 @@ public class DefaultDownloadManager implements IDownloadManager {
         } else {
             long finalSize = pFile.length();
             boolean sizeMismatch = totalBytes > 0 && finalSize < totalBytes;
-            boolean corruptedSafetensor = info.getName().endsWith(".safetensors") && (finalSize % 2 != 0);
 
-            if ((sizeMismatch || corruptedSafetensor) && retryCount < 1) {
+            if (sizeMismatch && retryCount < 1) {
                 safeUpdateStatus(index, "🔄 Verification failed, redownloading...", statusUpdater);
                 pFile.delete();
                 downloadWithResumeInternal(info, targetFile, index, statusUpdater, retryCount + 1);
             } else if (sizeMismatch) {
                 safeUpdateStatus(index, "❌ Incomplete (" + formatSize(finalSize) + "/" + formatSize(totalBytes) + ")", statusUpdater);
-                pFile.delete(); // Delete temp file
-            } else if (corruptedSafetensor) {
-                safeUpdateStatus(index, "❌ Corrupted (Odd Size)", statusUpdater);
                 pFile.delete(); // Delete temp file
             } else {
                 Files.move(partFile, targetFile, StandardCopyOption.REPLACE_EXISTING);
@@ -650,23 +652,29 @@ public class DefaultDownloadManager implements IDownloadManager {
         }
         
         safeUpdateStatus(index, "Merging segments...", statusUpdater);
-        try (java.nio.channels.FileChannel outChannel = new java.io.FileOutputStream(targetFile.toFile()).getChannel()) {
-            for (int i = 0; i < numSegments; i++) {
-                try (java.nio.channels.FileChannel inChannel = new java.io.FileInputStream(partFiles[i].toFile()).getChannel()) {
-                    inChannel.transferTo(0, inChannel.size(), outChannel);
+        Path tempMergeFile = targetFile.resolveSibling(targetFile.getFileName().toString() + ".cmfd_merge");
+        try {
+            try (java.nio.channels.FileChannel outChannel = new java.io.FileOutputStream(tempMergeFile.toFile()).getChannel()) {
+                for (int i = 0; i < numSegments; i++) {
+                    try (java.nio.channels.FileChannel inChannel = new java.io.FileInputStream(partFiles[i].toFile()).getChannel()) {
+                        inChannel.transferTo(0, inChannel.size(), outChannel);
+                    }
+                    Files.delete(partFiles[i]);
                 }
-                Files.delete(partFiles[i]);
             }
             
-            // Deep validation using modelValidator
+            // Deep validation using modelValidator on the merged temp file
             if (modelValidator != null) {
-                IModelValidator.ValidationResult valResult = modelValidator.validateFile(targetFile.toFile());
+                IModelValidator.ValidationResult valResult = modelValidator.validateFile(tempMergeFile.toFile());
                 if (!valResult.ok) {
-                    targetFile.toFile().delete(); // Clean up corrupted file
+                    tempMergeFile.toFile().delete(); // Clean up corrupted file
                     safeUpdateStatus(index, "❌ Validation failed: " + valResult.message, statusUpdater);
                     return;
                 }
             }
+            
+            // Atomically move the temp file to the final destination
+            Files.move(tempMergeFile, targetFile, StandardCopyOption.REPLACE_EXISTING);
             
             // Pre-compute and register the file hash in registry cache
             if (hashRegistry != null) {
@@ -676,6 +684,7 @@ public class DefaultDownloadManager implements IDownloadManager {
             onDownloadComplete(info, targetFile);
             safeUpdateStatus(index, "✅ Finished", statusUpdater);
         } catch (Exception e) {
+            try { Files.deleteIfExists(tempMergeFile); } catch (Exception ignored) {}
             for (int i = 0; i < numSegments; i++) {
                 try { Files.deleteIfExists(partFiles[i]); } catch (Exception ignored) {}
             }
@@ -718,7 +727,18 @@ public class DefaultDownloadManager implements IDownloadManager {
         }
     }
 
-    @Override public void togglePause() { isPaused = !isPaused; }
+    @jakarta.annotation.PreDestroy
+    public void shutdown() {
+        System.out.println("Stopping DownloadManager executors...");
+        try {
+            executor.shutdownNow();
+            segmentExecutor.shutdownNow();
+            executor.awaitTermination(2, java.util.concurrent.TimeUnit.SECONDS);
+            segmentExecutor.awaitTermination(2, java.util.concurrent.TimeUnit.SECONDS);
+        } catch (Exception ignored) {}
+    }
+
+    @Override public synchronized void togglePause() { isPaused = !isPaused; }
     @Override public void stop() { isStopped = true; isPaused = false; }
     @Override public boolean isPaused() { return isPaused; }
 }

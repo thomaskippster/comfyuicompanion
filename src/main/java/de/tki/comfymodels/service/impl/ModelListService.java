@@ -1,5 +1,8 @@
 package de.tki.comfymodels.service.impl;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import de.tki.comfymodels.domain.ModelInfo;
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -16,6 +19,7 @@ import java.util.Optional;
 
 @Service
 public class ModelListService {
+    private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(ModelListService.class);
     private static final String STORAGE_FILE = "uploaded_models.json";
     private final List<ModelInfo> models = new java.util.concurrent.CopyOnWriteArrayList<>();
 
@@ -81,11 +85,11 @@ public class ModelListService {
                 
                 if (response.statusCode() == 200) {
                     importJsonContent(response.body());
-                    System.out.println("[Auto-Import] Successfully updated model list (" + models.size() + " models).");
+                    logger.info("[Auto-Import] Successfully updated model list (" + models.size() + " models).");
                 }
             } catch (Exception ignored) {
                 // Silent fail as requested - no stacktrace, no dialog
-                System.out.println("[Auto-Import] Optional model list update skipped (source unreachable or invalid).");
+                logger.info("[Auto-Import] Optional model list update skipped (source unreachable or invalid).");
             }
         }).start();
     }

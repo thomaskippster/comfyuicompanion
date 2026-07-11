@@ -1,5 +1,8 @@
 package de.tki.comfymodels.service.impl;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import de.tki.comfymodels.domain.ModelInfo;
 import org.json.JSONObject;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -15,6 +18,7 @@ import java.util.List;
 
 @Service
 public class ComfyDiagnosticService {
+    private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(ComfyDiagnosticService.class);
 
     @Autowired
     private ConfigService configService;
@@ -75,7 +79,7 @@ public class ComfyDiagnosticService {
                 }
             }
         } catch (Exception e) {
-            System.err.println("[Diagnostic] API Check failed: " + e.getMessage());
+            logger.error("[Diagnostic] API Check failed: " + e.getMessage());
         }
         return false;
     }

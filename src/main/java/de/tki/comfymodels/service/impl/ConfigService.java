@@ -1,6 +1,10 @@
 package de.tki.comfymodels.service.impl;
 
+import de.tki.comfymodels.service.IConfigService;
+import de.tki.comfymodels.util.ConfigConstants;
 import org.json.JSONObject;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.yaml.snakeyaml.Yaml;
@@ -16,9 +20,11 @@ import java.util.List;
 import java.util.Map;
 
 @Service
-public class ConfigService {
-    private final String CONFIG_FILE = "app_settings.json";
-    private final String VAULT_FILE = "settings.vault";
+public class ConfigService implements IConfigService {
+    private static final Logger logger = LoggerFactory.getLogger(ConfigService.class);
+    
+    private final String CONFIG_FILE = ConfigConstants.SETTINGS_FILE;
+    private final String VAULT_FILE = ConfigConstants.VAULT_FILE;
     private JSONObject settings = new JSONObject();
     private JSONObject persistentSettings = new JSONObject(); // Plain settings (not in vault)
     private String masterPassword = null;
@@ -41,7 +47,7 @@ public class ConfigService {
                 String content = Files.readString(file.toPath(), StandardCharsets.UTF_8);
                 persistentSettings = new JSONObject(content);
             } catch (Exception e) {
-                System.err.println("Error loading persistent settings: " + e.getMessage());
+                logger.error("Error loading persistent settings: {}", e.getMessage(), e);
             }
         }
     }
@@ -50,7 +56,7 @@ public class ConfigService {
         try {
             Files.writeString(getFileInAppData(CONFIG_FILE).toPath(), persistentSettings.toString(4), StandardCharsets.UTF_8);
         } catch (Exception e) {
-            System.err.println("Error saving persistent settings: " + e.getMessage());
+            logger.error("Error saving persistent settings: {}", e.getMessage(), e);
         }
     }
 
@@ -72,7 +78,7 @@ public class ConfigService {
         }
 
         if (Files.exists(extraPathsFile)) {
-            System.out.println("📄 [Config] Loading extra model paths from: " + extraPathsFile.toAbsolutePath());
+            logger.info("📄 [Config] Loading extra model paths from: " + extraPathsFile.toAbsolutePath());
             try (InputStream is = new FileInputStream(extraPathsFile.toFile())) {
                 Yaml yaml = new Yaml();
                 Map<String, Object> data = yaml.load(is);
@@ -91,7 +97,7 @@ public class ConfigService {
                                 basePath = yamlDir.resolve(basePath).toAbsolutePath().normalize();
                             }
                             
-                            System.out.println("📂 [Config] Section '" + entry.getKey() + "' base_path: " + basePath);
+                            logger.info("📂 [Config] Section '" + entry.getKey() + "' base_path: " + basePath);
 
                             for (Map.Entry<String, Object> config : section.entrySet()) {
                                 if (config.getKey().equals("base_path")) continue;
@@ -106,10 +112,10 @@ public class ConfigService {
                                         if (!trimmed.isEmpty()) {
                                             Path fullPath = basePath.resolve(trimmed).toAbsolutePath().normalize();
                                             if (!Files.exists(fullPath)) {
-                                                System.err.println("   ⚠️ [Config] Warning: Path does not exist: " + fullPath);
+                                                logger.error("   ⚠️ [Config] Warning: Path does not exist: " + fullPath);
                                             }
                                             pathResolver.addExtraModelPath(type, fullPath);
-                                            System.out.println("   -> Mapping [" + type + "] to: " + fullPath);
+                                            logger.info("   -> Mapping [" + type + "] to: " + fullPath);
                                         }
                                     }
                                 }
@@ -118,7 +124,7 @@ public class ConfigService {
                     }
                 }
             } catch (Exception e) {
-                System.err.println("❌ [Config] Error parsing extra_model_paths.yaml: " + e.getMessage());
+                logger.error("Error parsing extra_model_paths.yaml: {}", e.getMessage(), e);
             }
         }
     }
@@ -128,23 +134,23 @@ public class ConfigService {
         String userHome = System.getProperty("user.home");
         String currentDir = System.getProperty("user.dir");
 
-        System.out.println("🔍 [Config] Starting auto-discovery. Stored Root: " + root);
+        logger.info("🔍 [Config] Starting auto-discovery. Stored Root: " + root);
 
         // 1. VALIDATE AND DISCOVER COMFYUI ROOT
         boolean rootValid = !root.isEmpty() && new File(root, "main.py").exists();
         
         if (!rootValid && !root.isEmpty()) {
-            System.out.println("⚠️ [Config] main.py not found in current root. Checking subdirectories...");
+            logger.info("⚠️ [Config] main.py not found in current root. Checking subdirectories...");
             // Check for nested Pinokio structure: resources/ComfyUI
             File nested = new File(root, "resources/ComfyUI");
             if (new File(nested, "main.py").exists()) {
                 root = nested.getAbsolutePath();
                 rootValid = true;
-                System.out.println("✨ [Config] Found main.py in nested Pinokio path: " + root);
+                logger.info("✨ [Config] Found main.py in nested Pinokio path: " + root);
                 setComfyUIPath(root);
             } else {
                 // Current root is definitively wrong, reset it to allow re-discovery
-                System.out.println("🚫 [Config] Current root is invalid. Resetting for re-discovery.");
+                logger.info("🚫 [Config] Current root is invalid. Resetting for re-discovery.");
                 root = "";
             }
         }
@@ -158,7 +164,7 @@ public class ConfigService {
                     File f = new File(val);
                     if (new File(f, "main.py").exists()) {
                         root = f.getAbsolutePath();
-                        System.out.println("✨ [Config] Found Root via Env Var " + var + ": " + root);
+                        logger.info("✨ [Config] Found Root via Env Var " + var + ": " + root);
                         break;
                     }
                 }
@@ -169,7 +175,7 @@ public class ConfigService {
                 File possibleRoot = findMainPyNearby(new File(currentDir));
                 if (possibleRoot != null) {
                     root = possibleRoot.getAbsolutePath();
-                    System.out.println("✨ [Config] Found Root via Nearby Search: " + root);
+                    logger.info("✨ [Config] Found Root via Nearby Search: " + root);
                 }
             }
             
@@ -188,14 +194,14 @@ public class ConfigService {
                     File f = new File(p);
                     if (new File(f, "main.py").exists()) {
                         root = f.getAbsolutePath();
-                        System.out.println("✨ [Config] Found Root via Pattern: " + root);
+                        logger.info("✨ [Config] Found Root via Pattern: " + root);
                         break;
                     } else {
                         // Try nested resources/ComfyUI for patterns too
                         File nested = new File(f, "resources/ComfyUI");
                         if (new File(nested, "main.py").exists()) {
                             root = nested.getAbsolutePath();
-                            System.out.println("✨ [Config] Found Root via Nested Pattern: " + root);
+                            logger.info("✨ [Config] Found Root via Nested Pattern: " + root);
                             break;
                         }
                     }
@@ -218,14 +224,14 @@ public class ConfigService {
                 if (parent != null) {
                     File dataModels = new File(parent, "comfyuidata/models");
                     if (dataModels.exists() && dataModels.isDirectory()) {
-                        System.out.println("✨ [Config] Found models via Pinokio Data Path: " + dataModels.getAbsolutePath());
+                        logger.info("✨ [Config] Found models via Pinokio Data Path: " + dataModels.getAbsolutePath());
                         setModelsPath(dataModels.getAbsolutePath());
                         break;
                     }
                     // Try case-insensitive variant or simplified name
                     File altData = new File(parent, "data/models");
                     if (altData.exists() && altData.isDirectory()) {
-                        System.out.println("✨ [Config] Found models via Data Path: " + altData.getAbsolutePath());
+                        logger.info("✨ [Config] Found models via Data Path: " + altData.getAbsolutePath());
                         setModelsPath(altData.getAbsolutePath());
                         break;
                     }
@@ -238,7 +244,7 @@ public class ConfigService {
         // 3. DISCOVER WORKING DIR
         if ((getComfyWorkingDir().isEmpty() || !rootValid) && !root.isEmpty()) {
             setComfyWorkingDir(root);
-            System.out.println("📁 [Config] Set Working Dir: " + root);
+            logger.info("📁 [Config] Set Working Dir: " + root);
         }
 
         // 3. DISCOVER PYTHON & CONSTRUCT COMMAND
@@ -266,12 +272,12 @@ public class ConfigService {
                 String cmd = String.format("\"%s\" \"%s\" --listen 127.0.0.1 --port %d --enable-manager --extra-model-paths-config \"%s\"", 
                     python, mainPy.getAbsolutePath(), port, new File(root, "extra_model_paths.yaml").getAbsolutePath());
                 setComfyLaunchCommand(cmd);
-                System.out.println("🚀 [Config] Generated Launch Command: " + cmd);
+                logger.info("🚀 [Config] Generated Launch Command: " + cmd);
             } else {
-                System.err.println("❌ [Config] Could not find main.py in " + root);
+                logger.error("Could not find main.py in {}", root);
             }
         } else if (!getComfyLaunchCommand().isEmpty()) {
-            System.out.println("✅ [Config] Launch command already present and likely valid: " + getComfyLaunchCommand());
+            logger.info("✅ [Config] Launch command already present and likely valid: " + getComfyLaunchCommand());
         }
 
         // 4. RELOAD EXTRA PATHS
@@ -298,7 +304,7 @@ public class ConfigService {
     }
 
     public String discoverPython(String comfyRoot) {
-        System.out.println("🐍 [Config] Searching for Python in/near: " + comfyRoot);
+        logger.info("🐍 [Config] Searching for Python in/near: " + comfyRoot);
         if (comfyRoot == null || comfyRoot.trim().isEmpty()) {
             return isWindows() ? "python" : "python3";
         }
@@ -314,7 +320,7 @@ public class ConfigService {
 
         for (File venv : venvLocations) {
             if (venv != null && venv.exists()) {
-                System.out.println("📂 [Config] Found venv at: " + venv.getAbsolutePath());
+                logger.info("📂 [Config] Found venv at: " + venv.getAbsolutePath());
                 boolean isWin = isWindows();
                 File bin = new File(venv, isWin ? "Scripts/python.exe" : "bin/python3");
                 if (bin.exists()) return bin.getAbsolutePath();
@@ -326,11 +332,11 @@ public class ConfigService {
         // Priority 2: Check for python_embeded (Portable ComfyUI style)
         File portablePython = new File(new File(comfyRoot).getParentFile(), "python_embeded/python.exe");
         if (portablePython.exists()) {
-            System.out.println("📂 [Config] Found portable python at: " + portablePython.getAbsolutePath());
+            logger.info("📂 [Config] Found portable python at: " + portablePython.getAbsolutePath());
             return portablePython.getAbsolutePath();
         }
 
-        System.out.println("⚠️ [Config] No venv found, falling back to system python.");
+        logger.info("⚠️ [Config] No venv found, falling back to system python.");
         return isWindows() ? "python" : "python3";
     }
 
@@ -359,7 +365,7 @@ public class ConfigService {
 
     public void unlock(String password) throws Exception {
         File vault = getFileInAppData(VAULT_FILE);
-        System.out.println("Attempting to unlock vault at: " + vault.getAbsolutePath());
+        logger.info("Attempting to unlock vault at: {}", vault.getAbsolutePath());
         
         if (vault.exists()) {
             String encrypted = Files.readString(vault.toPath(), StandardCharsets.UTF_8);
@@ -368,7 +374,7 @@ public class ConfigService {
                 JSONObject decryptedJson = new JSONObject(decrypted);
                 this.settings = decryptedJson;
                 this.masterPassword = password;
-                System.out.println("Vault unlocked successfully. Keys found: " + settings.keySet());
+                logger.info("Vault unlocked successfully. Keys found: {}", settings.keySet());
                 
                 // Clean up side-effects (port migration and api token generation)
                 boolean needsSave = false;
@@ -390,7 +396,7 @@ public class ConfigService {
                 pathResolver.setComfyUIRoot(getComfyUIPath());
                 ensureExtraComfyUIDirectories();
             } catch (Exception e) {
-                System.err.println("Failed to unlock vault: " + e.getMessage());
+                logger.error("Failed to unlock vault: {}", e.getMessage(), e);
                 throw new Exception("Wrong password or corrupted vault!");
             }
         } else {
@@ -425,16 +431,16 @@ public class ConfigService {
                         } else {
                             Files.writeString(oldFile.toPath(), oldJson.toString(4), StandardCharsets.UTF_8);
                         }
-                        System.out.println("Migrated old settings to encrypted vault.");
+                        logger.info("Migrated old settings to encrypted vault.");
                         migrated = true;
                     }
                 } catch (Exception e) {
-                    System.err.println("Failed to migrate old settings: " + e.getMessage());
+                    logger.error("Failed to migrate old settings: " + e.getMessage());
                 }
             }
             
             if (!migrated) {
-                System.out.println("No vault found, initialized new empty vault at: " + vault.getAbsolutePath());
+                logger.info("No vault found, initialized new empty vault at: " + vault.getAbsolutePath());
                 this.vaultFresh = true;
                 save();
             }
@@ -462,16 +468,15 @@ public class ConfigService {
 
     public synchronized void save() {
         if (masterPassword == null) {
-            System.err.println("Cannot save: Vault not unlocked.");
+            logger.error("Cannot save: Vault not unlocked.");
             return;
         }
         try {
             String encrypted = encryptionUtils.encrypt(settings.toString(), masterPassword);
             Files.writeString(getFileInAppData(VAULT_FILE).toPath(), encrypted, StandardCharsets.UTF_8);
-            System.out.println("Vault saved successfully to: " + getFileInAppData(VAULT_FILE).getAbsolutePath());
+            logger.info("Vault saved successfully to: {}", getFileInAppData(VAULT_FILE).getAbsolutePath());
         } catch (Exception e) {
-            System.err.println("Error saving vault: " + e.getMessage());
-            e.printStackTrace();
+            logger.error("Error saving vault: {}", e.getMessage(), e);
         }
     }
 
@@ -539,7 +544,7 @@ public class ConfigService {
                 if (!Files.exists(output)) Files.createDirectories(output);
             }
         } catch (Exception e) {
-            System.err.println("⚠️ [Config] Failed to create extra ComfyUI directories: " + e.getMessage());
+            logger.warn("Failed to create extra ComfyUI directories: {}", e.getMessage(), e);
         }
     }
 
@@ -679,7 +684,7 @@ public class ConfigService {
         try {
             Files.writeString(getFileInAppData("pending_downloads.json").toPath(), json, StandardCharsets.UTF_8);
         } catch (Exception e) {
-            System.err.println("Error saving pending downloads: " + e.getMessage());
+            logger.error("Error saving pending downloads: {}", e.getMessage(), e);
         }
     }
 
@@ -690,7 +695,7 @@ public class ConfigService {
                 return Files.readString(file.toPath(), StandardCharsets.UTF_8);
             }
         } catch (Exception e) {
-            System.err.println("Error loading pending downloads: " + e.getMessage());
+            logger.error("Error loading pending downloads: {}", e.getMessage(), e);
         }
         return null;
     }
@@ -741,7 +746,7 @@ public class ConfigService {
     public synchronized void setRestartAfterDownloadEnabled(boolean enabled) { settings.put("restart_after_download", enabled); save(); }
 
     public synchronized String getComfyUIUrl() {
-        String url = settings.optString("comfyui_url", "http://127.0.0.1:8188");
+        String url = settings.optString("comfyui_url", ConfigConstants.DEFAULT_COMFYUI_URL);
         return url.endsWith("/") ? url.substring(0, url.length() - 1) : url;
     }
     public synchronized void setComfyUIUrl(String url) { 
@@ -989,7 +994,7 @@ public class ConfigService {
         this.settings = new JSONObject();
         this.masterPassword = null;
         this.vaultFresh = true;
-        System.out.println("Vault has been reset.");
+        logger.info("Vault has been reset.");
     }
 
     public void updateExtraModelPathsYaml() {
@@ -1027,7 +1032,7 @@ public class ConfigService {
                     try (InputStream is = new FileInputStream(yamlPath.toFile())) {
                         data = yaml.load(is);
                     } catch (Exception ex) {
-                        System.err.println("⚠️ [Config] Failed to load existing YAML at " + yamlPath + ": " + ex.getMessage());
+                        logger.warn("Failed to load existing YAML at {}: {}", yamlPath, ex.getMessage(), ex);
                     }
                 }
                 
@@ -1071,10 +1076,9 @@ public class ConfigService {
 
                 String yamlContent = yamlDump.dump(data);
                 Files.writeString(yamlPath, yamlContent, StandardCharsets.UTF_8);
-                System.out.println("📄 [Config] Successfully updated YAML at: " + yamlPath.toAbsolutePath());
+                logger.info("📄 [Config] Successfully updated YAML at: " + yamlPath.toAbsolutePath());
             } catch (Exception e) {
-                System.err.println("❌ [Config] Failed to update YAML at " + yamlPath + ": " + e.getMessage());
-                e.printStackTrace();
+                logger.error("Failed to update YAML at {}: {}", yamlPath, e.getMessage(), e);
             }
         }
     }

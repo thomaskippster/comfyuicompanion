@@ -1,5 +1,8 @@
 package de.tki.comfymodels.service.impl;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import de.kherud.llama.LlamaModel;
 import de.kherud.llama.ModelParameters;
 import de.kherud.llama.InferenceParameters;
@@ -27,6 +30,7 @@ import jakarta.annotation.PreDestroy;
 
 @Service
 public class LocalGemmaService {
+    private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(LocalGemmaService.class);
 
     private final ConfigService configService;
     private LlamaModel model = null;
@@ -84,7 +88,7 @@ public class LocalGemmaService {
             File tempFile = new File(parentDir, MODEL_FILENAME + ".download");
             
             try {
-                System.out.println("Downloading Gemma GGUF from: " + MODEL_DOWNLOAD_URL);
+                logger.info("Downloading Gemma GGUF from: " + MODEL_DOWNLOAD_URL);
                 URL url = new URL(MODEL_DOWNLOAD_URL);
                 URLConnection connection = url.openConnection();
                 connection.setConnectTimeout(15000);
@@ -122,7 +126,7 @@ public class LocalGemmaService {
                 }
                 tempFile.renameTo(targetFile);
                 
-                System.out.println("Gemma model download completed successfully.");
+                logger.info("Gemma model download completed successfully.");
                 onFinished.run();
                 
             } catch (Exception e) {
@@ -147,7 +151,7 @@ public class LocalGemmaService {
                     throw new IOException("Gemma model file not found at: " + modelFile.getAbsolutePath());
                 }
 
-                System.out.println("Loading Gemma model from: " + modelFile.getAbsolutePath());
+                logger.info("Loading Gemma model from: " + modelFile.getAbsolutePath());
                 
                 ModelParameters modelParams = new ModelParameters()
                     .setModel(modelFile.getAbsolutePath())
@@ -155,7 +159,7 @@ public class LocalGemmaService {
                     .setGpuLayers(0); // Run on CPU to prevent VRAM conflict with ComfyUI
                 
                 model = new LlamaModel(modelParams);
-                System.out.println("Gemma model loaded successfully into RAM.");
+                logger.info("Gemma model loaded successfully into RAM.");
             }
             startUnloadTimer();
         }
@@ -228,13 +232,13 @@ public class LocalGemmaService {
             synchronized (lock) {
                 wasLoaded = model != null;
                 if (model != null) {
-                    System.out.println("Unloading Gemma model from memory...");
+                    logger.info("Unloading Gemma model from memory...");
                     model.close();
                     model = null;
                 }
             }
             if (wasLoaded) {
-                System.out.println("Gemma model unloaded.");
+                logger.info("Gemma model unloaded.");
             }
         });
     }

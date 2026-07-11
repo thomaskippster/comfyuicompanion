@@ -1,5 +1,8 @@
 package de.tki.comfymodels.ui;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import de.tki.comfymodels.domain.Scene;
 import de.tki.comfymodels.service.impl.ConfigService;
 import de.tki.comfymodels.service.impl.ComfyPipelineService;
@@ -25,6 +28,7 @@ import java.util.List;
 
 @Component
 public class VideoArchitectTab extends JFXPanel {
+    private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(VideoArchitectTab.class);
 
     private final ConfigService configService;
     private final ComfyPipelineService comfyPipelineService;
@@ -290,7 +294,7 @@ public class VideoArchitectTab extends JFXPanel {
                     updateMessage("Narration Agent (Scene " + (ni + 1) + "/" + generatedScenes.size() + "): " + ns.getSceneId());
                     if (generateNarrationAudio(ns, narrationDir)) narrationOk++;
                 }
-                System.out.println("[VideoArchitect] Narration: " + narrationOk + "/" + generatedScenes.size() + " scenes have audio.");
+                logger.info("[VideoArchitect] Narration: " + narrationOk + "/" + generatedScenes.size() + " scenes have audio.");
 
                 updateMessage("Generation Agent: Processing " + generatedScenes.size() + " scenes...");
                 updateProgress(0, generatedScenes.size());
@@ -553,7 +557,7 @@ public class VideoArchitectTab extends JFXPanel {
                 for (Scene s : scenes) {
                     if (generateNarrationAudio(s, narrationDir2)) narrationOk2++;
                 }
-                System.out.println("[VideoArchitect] Narration: " + narrationOk2 + "/" + scenes.size() + " scenes have audio.");
+                logger.info("[VideoArchitect] Narration: " + narrationOk2 + "/" + scenes.size() + " scenes have audio.");
                 updateMessage("All scenes generated successfully!");
                 return null;
             }
@@ -646,7 +650,7 @@ public class VideoArchitectTab extends JFXPanel {
                             }
                         }
                         if (found != null) {
-                            System.out.println("[VideoArchitect] Re-attached scene " + scene.getSceneId() + " video: " + found.getAbsolutePath());
+                            logger.info("[VideoArchitect] Re-attached scene " + scene.getSceneId() + " video: " + found.getAbsolutePath());
                             scene.setVideoPath(found.getAbsolutePath());
                         } else {
                             needsRegen.add(scene);
@@ -753,7 +757,7 @@ public class VideoArchitectTab extends JFXPanel {
                 return true;
             }
         } catch (Exception ttsEx) {
-            System.err.println("TTS generation failed for scene " + scene.getSceneId() + ": " + ttsEx.getMessage());
+            logger.error("TTS generation failed for scene " + scene.getSceneId() + ": " + ttsEx.getMessage());
         }
         return false;
     }

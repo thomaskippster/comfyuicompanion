@@ -1,5 +1,8 @@
 package de.tki.comfymodels.service.impl;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -22,6 +25,7 @@ import de.tki.comfymodels.service.impl.HardwareMonitorService;
 
 @Service
 public class LocalTTSService {
+    private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(LocalTTSService.class);
 
     private static final java.util.Set<String> ATTEMPTED_INSTALLS = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
@@ -62,10 +66,10 @@ public class LocalTTSService {
             if (current != null && current.equals(spec.hfRepo)) {
                 return; // already on the recommended model
             }
-            System.out.println("[LocalTTSService] Auto-selecting Qwen-TTS model for " + QwenTtsModelRecommender.formatVram(vram) + " VRAM: " + spec);
+            logger.info("[LocalTTSService] Auto-selecting Qwen-TTS model for " + QwenTtsModelRecommender.formatVram(vram) + " VRAM: " + spec);
             configService.setQwenTtsModelRepo(spec.hfRepo);
         } catch (Exception ex) {
-            System.err.println("[LocalTTSService] Auto-select failed: " + ex.getMessage());
+            logger.error("[LocalTTSService] Auto-select failed: " + ex.getMessage());
         }
     }
     public void generateSpeech(String text, String outputPath) throws Exception {
@@ -89,10 +93,10 @@ public class LocalTTSService {
         if (!provider.startsWith("ComfyUI ")) {
             // Allow users who still have a stale Piper entry in their settings
             // to fall back to ComfyUI without re-saving the config.
-            System.out.println("[LocalTTSService] Provider '" + provider + "' is no longer supported. Switching to ComfyUI Qwen-TTS.");
+            logger.info("[LocalTTSService] Provider '" + provider + "' is no longer supported. Switching to ComfyUI Qwen-TTS.");
             provider = "ComfyUI Qwen-TTS";
         }
-        System.out.println("[LocalTTSService] Generating TTS via " + provider + "...");
+        logger.info("[LocalTTSService] Generating TTS via " + provider + "...");
         boolean success = generateSpeechViaComfyUI(provider, text, outputPath);
         if (!success) {
             throw new java.io.IOException("ComfyUI TTS generation failed for provider: " + provider);
@@ -121,7 +125,7 @@ public class LocalTTSService {
     private boolean generateSpeechViaComfyUI(String provider, String text, String outputPath) {
         try {
             if (lifecycleService != null && !lifecycleService.isHealthy()) {
-                System.out.println("🔄 [LocalTTSService] ComfyUI server is offline. Attempting auto-start...");
+                logger.info("🔄 [LocalTTSService] ComfyUI server is offline. Attempting auto-start...");
                 lifecycleService.start();
                 
                 int maxWaitSeconds = 90;
@@ -134,15 +138,15 @@ public class LocalTTSService {
                     Thread.sleep(1000);
                 }
                 if (!started) {
-                    System.out.println("⚠️ [LocalTTSService] Failed to auto-start ComfyUI.");
+                    logger.info("⚠️ [LocalTTSService] Failed to auto-start ComfyUI.");
                     return false;
                 }
-                System.out.println("✅ [LocalTTSService] ComfyUI successfully started and healthy.");
+                logger.info("✅ [LocalTTSService] ComfyUI successfully started and healthy.");
             }
 
             String comfyUrl = configService.getComfyUIUrl();
             if (comfyUrl == null || comfyUrl.trim().isEmpty()) {
-                System.out.println("⚠️ [LocalTTSService] ComfyUI URL is empty.");
+                logger.info("⚠️ [LocalTTSService] ComfyUI URL is empty.");
                 return false;
             }
 
@@ -175,12 +179,12 @@ public class LocalTTSService {
 
                 if (!nodeAvailable) {
                     if (ATTEMPTED_INSTALLS.contains("ComfyUI-KokoroTTS")) {
-                        System.out.println("⚠️ [LocalTTSService] ComfyUI-KokoroTTS installation/load was already attempted in this session. Skipping to avoid restart loop.");
+                        logger.info("⚠️ [LocalTTSService] ComfyUI-KokoroTTS installation/load was already attempted in this session. Skipping to avoid restart loop.");
                     } else {
                         ATTEMPTED_INSTALLS.add("ComfyUI-KokoroTTS");
                         if (!folderExists) {
-                            System.out.println("⚠️ [LocalTTSService] KokoroTTS is missing and folder does not exist. Installing ComfyUI-KokoroTTS...");
-                            System.out.println("🔄 [LocalTTSService] Stopping ComfyUI server to install custom nodes...");
+                            logger.info("⚠️ [LocalTTSService] KokoroTTS is missing and folder does not exist. Installing ComfyUI-KokoroTTS...");
+                            logger.info("🔄 [LocalTTSService] Stopping ComfyUI server to install custom nodes...");
                             lifecycleService.stop();
                             
                             String pythonPath = configService.getPythonPath();
@@ -190,10 +194,10 @@ public class LocalTTSService {
                                 bootstrapper.ensureKokoroTtsInstalled(comfyDir, pythonExe, System.out::println);
                             }
                             
-                            System.out.println("🔄 [LocalTTSService] Restarting ComfyUI server after installation...");
+                            logger.info("🔄 [LocalTTSService] Restarting ComfyUI server after installation...");
                             lifecycleService.start();
                         } else {
-                            System.out.println("🔄 [LocalTTSService] KokoroTTS node is not active but folder exists. Restarting ComfyUI server to load it...");
+                            logger.info("🔄 [LocalTTSService] KokoroTTS node is not active but folder exists. Restarting ComfyUI server to load it...");
                             lifecycleService.restart();
                         }
                         
@@ -209,7 +213,7 @@ public class LocalTTSService {
                         if (!started) {
                             throw new RuntimeException("Failed to restart ComfyUI after KokoroTTS installation.");
                         }
-                        System.out.println("✅ [LocalTTSService] ComfyUI successfully restarted and healthy.");
+                        logger.info("✅ [LocalTTSService] ComfyUI successfully restarted and healthy.");
                     }
                 }
             }
@@ -238,12 +242,12 @@ public class LocalTTSService {
 
                 if (!qwenNodeAvailable) {
                     if (ATTEMPTED_INSTALLS.contains("ComfyUI-Qwen-TTS")) {
-                        System.out.println("[LocalTTSService] ComfyUI-Qwen-TTS installation/load was already attempted in this session. Skipping to avoid restart loop.");
+                        logger.info("[LocalTTSService] ComfyUI-Qwen-TTS installation/load was already attempted in this session. Skipping to avoid restart loop.");
                     } else {
                         ATTEMPTED_INSTALLS.add("ComfyUI-Qwen-TTS");
                         if (!qwenFolderExists) {
-                            System.out.println("[LocalTTSService] Qwen-TTS is missing and folder does not exist. Installing ComfyUI-Qwen-TTS...");
-                            System.out.println("[LocalTTSService] Stopping ComfyUI server to install custom node...");
+                            logger.info("[LocalTTSService] Qwen-TTS is missing and folder does not exist. Installing ComfyUI-Qwen-TTS...");
+                            logger.info("[LocalTTSService] Stopping ComfyUI server to install custom node...");
                             lifecycleService.stop();
                             String pythonPathQ = configService.getPythonPath();
                             if (comfyPathQ != null && !comfyPathQ.trim().isEmpty()) {
@@ -251,10 +255,10 @@ public class LocalTTSService {
                                 java.nio.file.Path pythonExeQ = (pythonPathQ != null && !pythonPathQ.trim().isEmpty()) ? java.nio.file.Paths.get(pythonPathQ) : null;
                                 bootstrapper.ensureQwenTtsInstalled(comfyDirQ, pythonExeQ, System.out::println);
                             }
-                            System.out.println("[LocalTTSService] Restarting ComfyUI server after Qwen-TTS installation...");
+                            logger.info("[LocalTTSService] Restarting ComfyUI server after Qwen-TTS installation...");
                             lifecycleService.start();
                         } else {
-                            System.out.println("[LocalTTSService] Qwen-TTS folder exists but node not active. Restarting ComfyUI to load it...");
+                            logger.info("[LocalTTSService] Qwen-TTS folder exists but node not active. Restarting ComfyUI to load it...");
                             lifecycleService.restart();
                         }
                         int maxWait = 90; boolean startedQ = false;
@@ -263,7 +267,7 @@ public class LocalTTSService {
                             Thread.sleep(1000);
                         }
                         if (!startedQ) throw new RuntimeException("Failed to restart ComfyUI after Qwen-TTS installation.");
-                        System.out.println("[LocalTTSService] ComfyUI successfully restarted with Qwen-TTS.");
+                        logger.info("[LocalTTSService] ComfyUI successfully restarted with Qwen-TTS.");
                     }
                 }
             }
@@ -275,7 +279,7 @@ public class LocalTTSService {
 
             HttpResponse<String> infoResponse = client.send(infoRequest, HttpResponse.BodyHandlers.ofString());
             if (infoResponse.statusCode() != 200) {
-                System.out.println("⚠️ [LocalTTSService] ComfyUI server returned status " + infoResponse.statusCode() + ".");
+                logger.info("⚠️ [LocalTTSService] ComfyUI server returned status " + infoResponse.statusCode() + ".");
                 return false;
             }
 
@@ -295,7 +299,7 @@ public class LocalTTSService {
                 }
 
                 if (nodeClass.isEmpty()) {
-                    System.out.println("⚠️ [LocalTTSService] No Kokoro TTS custom node class found in ComfyUI.");
+                    logger.info("⚠️ [LocalTTSService] No Kokoro TTS custom node class found in ComfyUI.");
                     return false;
                 }
 
@@ -318,14 +322,14 @@ public class LocalTTSService {
 
             } else if ("ComfyUI ElevenLabs".equals(provider)) {
                 if (!info.has("ElevenLabsTextToSpeech")) {
-                    System.out.println("⚠️ [LocalTTSService] ElevenLabsTextToSpeech node not found in ComfyUI.");
+                    logger.info("⚠️ [LocalTTSService] ElevenLabsTextToSpeech node not found in ComfyUI.");
                     return false;
                 }
 
                 String apiKey = configService.getElevenLabsApiKey();
                 String voiceId = configService.getElevenLabsVoiceId();
                 if (apiKey.isEmpty()) {
-                    System.out.println("⚠️ [LocalTTSService] ElevenLabs API Key is not configured.");
+                    logger.info("⚠️ [LocalTTSService] ElevenLabs API Key is not configured.");
                     return false;
                 }
 
@@ -353,7 +357,7 @@ public class LocalTTSService {
                 else if (info.has("QwenTTSNode")) { nodeClass = "QwenTTSNode"; }
 
                 if (nodeClass.isEmpty()) {
-                    System.out.println("[LocalTTSService] No Qwen-TTS custom node class found in ComfyUI.");
+                    logger.info("[LocalTTSService] No Qwen-TTS custom node class found in ComfyUI.");
                     return false;
                 }
 
@@ -413,7 +417,7 @@ public class LocalTTSService {
             } else {
                 return false;
             }
-            System.out.println("🚀 [LocalTTSService] Submitting TTS workflow to ComfyUI...");
+            logger.info("🚀 [LocalTTSService] Submitting TTS workflow to ComfyUI...");
             HttpRequest promptRequest = HttpRequest.newBuilder()
                     .uri(URI.create(comfyUrl + "/prompt"))
                     .header("Content-Type", "application/json")
@@ -422,14 +426,14 @@ public class LocalTTSService {
 
             HttpResponse<String> promptResponse = client.send(promptRequest, HttpResponse.BodyHandlers.ofString());
             if (promptResponse.statusCode() != 200) {
-                System.out.println("⚠️ [LocalTTSService] Failed to send prompt to ComfyUI: " + promptResponse.body());
+                logger.info("⚠️ [LocalTTSService] Failed to send prompt to ComfyUI: " + promptResponse.body());
                 return false;
             }
 
             JSONObject respObj = new JSONObject(promptResponse.body());
             String promptId = respObj.getString("prompt_id");
 
-            System.out.println("⏳ [LocalTTSService] Polling ComfyUI history for prompt " + promptId + "...");
+            logger.info("⏳ [LocalTTSService] Polling ComfyUI history for prompt " + promptId + "...");
             String finishedFilename = null;
             int timeoutCount = 0;
             while (timeoutCount < 40) {
@@ -476,11 +480,11 @@ public class LocalTTSService {
             }
 
             if (finishedFilename == null || finishedFilename.trim().isEmpty()) {
-                System.out.println("⚠️ [LocalTTSService] Polling timed out or did not return audio filename.");
+                logger.info("⚠️ [LocalTTSService] Polling timed out or did not return audio filename.");
                 return false;
             }
 
-            System.out.println("📥 [LocalTTSService] Downloading generated audio: " + finishedFilename);
+            logger.info("📥 [LocalTTSService] Downloading generated audio: " + finishedFilename);
             String downloadUrl = comfyUrl + "/view?filename=" + finishedFilename + "&type=output";
             HttpRequest dlRequest = HttpRequest.newBuilder()
                     .uri(URI.create(downloadUrl))
@@ -498,15 +502,15 @@ public class LocalTTSService {
                 try (java.io.InputStream is = dlResponse.body()) {
                     java.nio.file.Files.copy(is, outFile.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
                 }
-                System.out.println("🎵 [LocalTTSService] Generated ComfyUI audio saved to: " + outFile.getAbsolutePath());
+                logger.info("🎵 [LocalTTSService] Generated ComfyUI audio saved to: " + outFile.getAbsolutePath());
                 return true;
             } else {
-                System.out.println("⚠️ [LocalTTSService] Failed to download audio. Status: " + dlResponse.statusCode());
+                logger.info("⚠️ [LocalTTSService] Failed to download audio. Status: " + dlResponse.statusCode());
                 return false;
             }
 
         } catch (Exception e) {
-            System.out.println("⚠️ [LocalTTSService] ComfyUI TTS failed: " + e.getMessage());
+            logger.info("⚠️ [LocalTTSService] ComfyUI TTS failed: " + e.getMessage());
             return false;
         }
     }

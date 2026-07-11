@@ -1,5 +1,8 @@
 package de.tki.comfymodels.service.impl;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -17,6 +20,7 @@ import java.util.List;
 
 @Service
 public class GeminiAIService {
+    private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(GeminiAIService.class);
 
     @Autowired
     private ConfigService configService;
@@ -63,10 +67,10 @@ public class GeminiAIService {
                     if (available.contains(preferred)) { activeModel = preferred; return activeModel; }
                 }
             } else {
-                System.err.println("❌ [Gemini] Failed to discover best model. HTTP Status: " + response.statusCode() + " - " + response.body());
+                logger.error("❌ [Gemini] Failed to discover best model. HTTP Status: " + response.statusCode() + " - " + response.body());
             }
         } catch (Exception e) {
-            System.err.println("❌ [Gemini] Failed to discover best model: " + e.getMessage());
+            logger.error("❌ [Gemini] Failed to discover best model: " + e.getMessage());
         }
         return activeModel;
     }
@@ -74,10 +78,10 @@ public class GeminiAIService {
     private String generateWithLocalGemma(String systemInstruction, String userPrompt, float temp, int maxTokens) {
         if (localGemmaService != null && localGemmaService.isModelDownloaded()) {
             try {
-                System.out.println("ℹ️ [Gemini Fallback] Performing inference with local Gemma model...");
+                logger.info("ℹ️ [Gemini Fallback] Performing inference with local Gemma model...");
                 return localGemmaService.generateCompletion(systemInstruction, userPrompt, temp, maxTokens);
             } catch (Exception e) {
-                System.err.println("❌ [Gemma Fallback] Local Gemma inference failed: " + e.getMessage());
+                logger.error("❌ [Gemma Fallback] Local Gemma inference failed: " + e.getMessage());
             }
         }
         return null;
@@ -122,13 +126,13 @@ public class GeminiAIService {
                         .getJSONObject(0).getString("text").trim();
                 return result;
             } else {
-                System.err.println("❌ [Gemini] Failed to discover best repo. HTTP Status: " + response.statusCode() + " - " + response.body());
+                logger.error("❌ [Gemini] Failed to discover best repo. HTTP Status: " + response.statusCode() + " - " + response.body());
                 if (response.statusCode() == 429 || response.statusCode() == 503) {
                     return generateWithLocalGemma("", prompt, 0.7f, 150);
                 }
             }
         } catch (Exception e) {
-            System.err.println("❌ [Gemini] Failed to discover best repo for model " + modelName + ": " + e.getMessage());
+            logger.error("❌ [Gemini] Failed to discover best repo for model " + modelName + ": " + e.getMessage());
             return generateWithLocalGemma("", prompt, 0.7f, 150);
         }
         return null;

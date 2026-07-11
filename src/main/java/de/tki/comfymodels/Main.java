@@ -1,5 +1,8 @@
 package de.tki.comfymodels;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import de.tki.comfymodels.domain.ModelInfo;
 import de.tki.comfymodels.service.IDownloadManager;
 import de.tki.comfymodels.service.IModelAnalyzer;
@@ -49,6 +52,7 @@ import java.util.concurrent.CompletableFuture;
 
 @Component
 public class Main extends JFrame {
+    private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(Main.class);
     private static volatile org.springframework.context.ConfigurableApplicationContext appContext;
     private final IModelAnalyzer analyzer;
     private final IDownloadManager downloadManager;
@@ -268,7 +272,7 @@ public class Main extends JFrame {
         // Initialize REST Bridge consumer EARLY
         restBridge.setWorkflowConsumer(workflowJson -> {
             SwingUtilities.invokeLater(() -> {
-                System.out.println("[Main] WorkflowConsumer triggered - bringing to front.");
+                logger.info("[Main] WorkflowConsumer triggered - bringing to front.");
                 if (jsonInputArea != null) {
                     jsonInputArea.setText(workflowJson);
                     currentFileName = "remote_workflow.json";
@@ -311,7 +315,7 @@ public class Main extends JFrame {
                     try {
                         Runtime.getRuntime().exec(new String[]{"wsl", "--shutdown"});
                     } catch (Exception e) {
-                        System.err.println("Failed to execute wsl --shutdown: " + e.getMessage());
+                        logger.error("Failed to execute wsl --shutdown: " + e.getMessage());
                     }
                 }, "wsl-shutdown");
                 wslShutdown.setDaemon(true);
@@ -322,7 +326,7 @@ public class Main extends JFrame {
                     appContext.close();
                 }
             } catch (Throwable t) {
-                System.err.println("Shutdown hook error: " + t);
+                logger.error("Shutdown hook error: " + t);
             }
         }, "comfy-shutdown-hook");
         shutdownHook.setDaemon(true);
@@ -533,7 +537,7 @@ public class Main extends JFrame {
             FlatLaf.updateUI();
             SwingUtilities.updateComponentTreeUI(this);
         } catch (Exception e) {
-            System.err.println("Theme setup failed: " + e.getMessage());
+            logger.error("Theme setup failed: " + e.getMessage());
         }
     }
 
@@ -546,13 +550,13 @@ public class Main extends JFrame {
                 }
             }
         } catch (IOException e) {
-            System.err.println("Could not load app icon: " + e.getMessage());
+            logger.error("Could not load app icon: " + e.getMessage());
         }
     }
 
     private void setupTrayIcon() {
         if (!de.tki.comfymodels.util.PlatformUtils.isSystemTraySupported()) {
-            System.err.println("[System-Tray] Not supported on this platform (e.g. Wayland). Background mode disabled.");
+            logger.error("[System-Tray] Not supported on this platform (e.g. Wayland). Background mode disabled.");
             if (backgroundCheck != null) {
                 backgroundCheck.setSelected(false);
                 backgroundCheck.setEnabled(false);
@@ -592,7 +596,7 @@ public class Main extends JFrame {
         try {
             tray.add(trayIcon);
         } catch (AWTException e) {
-            System.err.println("TrayIcon could not be added.");
+            logger.error("TrayIcon could not be added.");
         }
     }
 
@@ -3063,7 +3067,7 @@ public class Main extends JFrame {
                                 startPollingPromptStatus(promptId);
                             }
                         } catch (Exception e) {
-                            System.err.println("Failed to parse prompt response: " + e.getMessage());
+                            logger.error("Failed to parse prompt response: " + e.getMessage());
                         }
                     } else if (response.statusCode() == 400) {
                         promptLabConsole.append("Error! Status Code: 400\n");
@@ -3157,7 +3161,7 @@ public class Main extends JFrame {
                 java.io.StringWriter sw = new java.io.StringWriter();
                 ex.printStackTrace(new java.io.PrintWriter(sw));
                 errorLogs.append("AI prompt optimization failed:\n").append(sw.toString()).append("\n");
-                System.err.println("AI prompt optimization failed: " + ex.getMessage());
+                logger.error("AI prompt optimization failed: " + ex.getMessage());
             }
             
             final String finalOptimized = optimized;
@@ -3521,7 +3525,7 @@ public class Main extends JFrame {
                     }
 
                 } catch (Exception e) {
-                    System.err.println("Error polling ComfyUI status: " + e.getMessage());
+                    logger.error("Error polling ComfyUI status: " + e.getMessage());
                 }
             }
 
@@ -3549,7 +3553,7 @@ public class Main extends JFrame {
                     });
                 }
             } catch (Exception ex) {
-                System.err.println("Failed to download image: " + ex.getMessage());
+                logger.error("Failed to download image: " + ex.getMessage());
                 SwingUtilities.invokeLater(() -> {
                     if (promptImagePreviewLabel != null) promptImagePreviewLabel.setText("Failed to load generated image.");
                 });
@@ -3617,7 +3621,7 @@ public class Main extends JFrame {
             }
             configService.savePromptLabSession(session);
         } catch (Exception e) {
-            System.err.println("Failed to save Prompt Lab session: " + e.getMessage());
+            logger.error("Failed to save Prompt Lab session: " + e.getMessage());
         }
     }
 
@@ -3664,7 +3668,7 @@ public class Main extends JFrame {
                 }
             }
         } catch (Exception e) {
-            System.err.println("Failed to load Prompt Lab session: " + e.getMessage());
+            logger.error("Failed to load Prompt Lab session: " + e.getMessage());
         }
     }
 
@@ -4317,7 +4321,7 @@ public class Main extends JFrame {
             boolean pathsChanged = !newModelsPath.equalsIgnoreCase(oldModelsPath) || !newComfyUIPath.equalsIgnoreCase(oldComfyUIPath);
             if (pathsChanged && lifecycleService != null && lifecycleService.isHealthy()) {
                 backgroundExecutor.execute(() -> {
-                    System.out.println("🔄 [Lifecycle] Custom paths updated. Restarting ComfyUI server to apply changes...");
+                    logger.info("🔄 [Lifecycle] Custom paths updated. Restarting ComfyUI server to apply changes...");
                     lifecycleService.stop();
                     lifecycleService.start();
                 });
@@ -4808,7 +4812,7 @@ public class Main extends JFrame {
             try {
                 if (Files.exists(conflictFile)) {
                     Files.delete(conflictFile);
-                    System.out.println("Cleaned up legacy script: " + conflictFile);
+                    logger.info("Cleaned up legacy script: " + conflictFile);
                 }
             } catch (IOException ignored) {}
         }
@@ -4826,11 +4830,11 @@ public class Main extends JFrame {
                 .collect(Collectors.toList());
             
             for (Path oldDir : oldDirs) {
-                System.out.println("Removing existing bridge directory: " + oldDir);
+                logger.info("Removing existing bridge directory: " + oldDir);
                 deleteDirectory(oldDir.toFile());
             }
         } catch (IOException e) {
-            System.err.println("Error during bridge cleanup: " + e.getMessage());
+            logger.error("Error during bridge cleanup: " + e.getMessage());
         }
 
         configService.setComfyUIPath(comfyPath);
@@ -4902,9 +4906,9 @@ public class Main extends JFrame {
             config.put("token", configService.getApiToken());
             Path configFile = new File(webDir, "config.json").toPath();
             Files.writeString(configFile, config.toString(4));
-            System.out.println("[Bridge-Sync] Successfully wrote config to: " + configFile.toAbsolutePath());
+            logger.info("[Bridge-Sync] Successfully wrote config to: " + configFile.toAbsolutePath());
         } catch (Exception e) { 
-            System.err.println("[Bridge-Sync] Failed to write config: " + e.getMessage());
+            logger.error("[Bridge-Sync] Failed to write config: " + e.getMessage());
             e.printStackTrace(); 
         }
     }
@@ -6864,9 +6868,9 @@ public class Main extends JFrame {
             // Also update config
             writeExtensionConfig(targetDir.toFile());
             configService.updateExtraModelPathsYaml();
-            System.out.println("[Bridge-Sync] Successfully synchronized latest bridge code and token.");
+            logger.info("[Bridge-Sync] Successfully synchronized latest bridge code and token.");
         } catch (IOException e) {
-            System.err.println("[Bridge-Sync] Failed to sync code: " + e.getMessage());
+            logger.error("[Bridge-Sync] Failed to sync code: " + e.getMessage());
         }
     }
 
@@ -6893,7 +6897,7 @@ public class Main extends JFrame {
                                 Desktop.getDesktop().browse(new java.net.URI(url));
                             }
                         } catch (Exception e) {
-                            System.err.println("Failed to open browser automatically: " + e.getMessage());
+                            logger.error("Failed to open browser automatically: " + e.getMessage());
                         }
                     });
                 }

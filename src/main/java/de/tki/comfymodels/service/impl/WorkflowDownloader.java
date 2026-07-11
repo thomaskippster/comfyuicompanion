@@ -1,5 +1,8 @@
 package de.tki.comfymodels.service.impl;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import de.tki.comfymodels.domain.ComfyRegistryWorkflow;
 import de.tki.comfymodels.service.IComfyRegistryClient;
 import de.tki.comfymodels.service.IWorkflowDownloader;
@@ -14,6 +17,7 @@ import java.util.concurrent.CompletableFuture;
 
 @Service
 public class WorkflowDownloader implements IWorkflowDownloader {
+    private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(WorkflowDownloader.class);
 
     private final IComfyRegistryClient registryClient;
 
@@ -53,14 +57,14 @@ public class WorkflowDownloader implements IWorkflowDownloader {
             try {
                 // Save JSON File
                 Files.write(jsonFile.toPath(), jsonBytes);
-                System.out.println("💾 [WorkflowDownloader] Saved workflow JSON to: " + jsonFile.getAbsolutePath());
+                logger.info("💾 [WorkflowDownloader] Saved workflow JSON to: " + jsonFile.getAbsolutePath());
 
                 // Save Thumbnail if downloaded successfully
                 if (thumbBytes != null && thumbBytes.length > 0) {
                     String ext = extractExtension(thumbUrl, "png");
                     File thumbFile = new File(workflowsDir, baseName + "." + ext);
                     Files.write(thumbFile.toPath(), thumbBytes);
-                    System.out.println("💾 [WorkflowDownloader] Saved thumbnail to: " + thumbFile.getAbsolutePath());
+                    logger.info("💾 [WorkflowDownloader] Saved thumbnail to: " + thumbFile.getAbsolutePath());
                 }
 
                 return jsonFile;

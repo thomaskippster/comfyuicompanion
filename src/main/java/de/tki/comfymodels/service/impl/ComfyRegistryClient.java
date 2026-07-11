@@ -1,5 +1,8 @@
 package de.tki.comfymodels.service.impl;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -19,6 +22,7 @@ import java.util.concurrent.CompletableFuture;
 
 @Service
 public class ComfyRegistryClient implements IComfyRegistryClient {
+    private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(ComfyRegistryClient.class);
 
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
@@ -55,7 +59,7 @@ public class ComfyRegistryClient implements IComfyRegistryClient {
                     return parseWorkflowsJson(response.body());
                 })
                 .exceptionally(ex -> {
-                    System.err.println("❌ [ComfyRegistryClient] Error fetching workflows from API: " + ex.getMessage());
+                    logger.error("❌ [ComfyRegistryClient] Error fetching workflows from API: " + ex.getMessage());
                     return getFallbackWorkflows();
                 });
     }
@@ -151,10 +155,10 @@ public class ComfyRegistryClient implements IComfyRegistryClient {
                     }
                 }
             }
-            System.out.println("ℹ️ [ComfyRegistryClient] Parsed " + workflows.size() + " templates from GitHub index.json");
+            logger.info("ℹ️ [ComfyRegistryClient] Parsed " + workflows.size() + " templates from GitHub index.json");
             return workflows;
         } catch (Exception e) {
-            System.err.println("❌ [ComfyRegistryClient] Failed to parse workflow JSON: " + e.getMessage());
+            logger.error("❌ [ComfyRegistryClient] Failed to parse workflow JSON: " + e.getMessage());
             throw new RuntimeException(e);
         }
     }
@@ -163,7 +167,7 @@ public class ComfyRegistryClient implements IComfyRegistryClient {
      * Provides fallback/mock workflows if the API is unreachable, ensuring local testing remains fully operational.
      */
     private List<ComfyRegistryWorkflow> getFallbackWorkflows() {
-        System.out.println("ℹ️ [ComfyRegistryClient] Loading mock fallback workflows for development/testing.");
+        logger.info("ℹ️ [ComfyRegistryClient] Loading mock fallback workflows for development/testing.");
         List<ComfyRegistryWorkflow> fallbacks = new ArrayList<>();
 
         ComfyRegistryWorkflow fluxWorkflow = new ComfyRegistryWorkflow();

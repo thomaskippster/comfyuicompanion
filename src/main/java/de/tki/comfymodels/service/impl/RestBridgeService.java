@@ -1,5 +1,9 @@
 package de.tki.comfymodels.service.impl;
 
+import de.tki.comfymodels.util.ConfigConstants;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
@@ -31,6 +35,7 @@ import java.util.Optional;
 
 @Service
 public class RestBridgeService {
+    private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(RestBridgeService.class);
 
     private HttpServer server;
     private ExecutorService serverExecutor;
@@ -71,9 +76,9 @@ public class RestBridgeService {
             server.createContext("/api/templates", new TemplatesHandler());
             server.createContext("/api/preview", new PreviewHandler());
             server.start();
-            System.out.println("REST Bridge started on port " + port);
+            logger.info("REST Bridge started on port " + port);
         } catch (IOException e) {
-            System.err.println("Failed to start REST Bridge: " + e.getMessage());
+            logger.error("Failed to start REST Bridge: " + e.getMessage());
         }
     }
 
@@ -111,7 +116,7 @@ public class RestBridgeService {
         if (expectedApiToken != null && !expectedApiToken.isEmpty()) {
             String expected = "Bearer " + expectedApiToken.trim();
             if (authHeader == null || !authHeader.trim().equals(expected)) {
-                System.err.println("REST Bridge: 401 Unauthorized request from " + exchange.getRemoteAddress());
+                logger.error("REST Bridge: 401 Unauthorized request from " + exchange.getRemoteAddress());
                 exchange.sendResponseHeaders(401, -1);
                 return false;
             }
@@ -300,7 +305,7 @@ public class RestBridgeService {
                     }
                 }
                 if (baseUrl == null || baseUrl.isEmpty()) {
-                    baseUrl = "http://127.0.0.1:8188";
+                    baseUrl = ConfigConstants.DEFAULT_COMFYUI_URL;
                 }
                 
                 java.net.http.HttpClient client = java.net.http.HttpClient.newBuilder()
@@ -460,7 +465,7 @@ public class RestBridgeService {
                     in.transferTo(out);
                 }
             } catch (Exception e) {
-                System.err.println("REST Bridge: Error fetching preview: " + e.getMessage());
+                logger.error("REST Bridge: Error fetching preview: " + e.getMessage());
                 e.printStackTrace();
                 exchange.sendResponseHeaders(500, -1);
             } finally {

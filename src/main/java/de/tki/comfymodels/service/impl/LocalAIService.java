@@ -1,5 +1,8 @@
 package de.tki.comfymodels.service.impl;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import org.springframework.stereotype.Service;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.json.JSONObject;
@@ -14,6 +17,7 @@ import java.util.*;
 
 @Service
 public class LocalAIService {
+    private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(LocalAIService.class);
     @Autowired
     private ConfigService configService;
 
@@ -85,7 +89,7 @@ public class LocalAIService {
                     return new Prediction(resText, 0.95);
                 }
             } catch (Exception e) {
-                System.err.println("Local Gemma prediction failed: " + e.getMessage());
+                logger.error("Local Gemma prediction failed: " + e.getMessage());
             }
         }
 
@@ -192,7 +196,7 @@ public class LocalAIService {
                 return list;
             }
         } catch (Throwable e) {
-            System.err.println("Direct local Gemma completions failed: " + e.getMessage());
+            logger.error("Direct local Gemma completions failed: " + e.getMessage());
             e.printStackTrace();
         }
         return null;
@@ -281,7 +285,7 @@ public class LocalAIService {
             try {
                 return localGemmaService.generateCompletion("You are a helpful assistant.", promptText, temperature, maxTokens);
             } catch (Throwable t) {
-                System.err.println("Local Gemma generation failed: " + t.getMessage());
+                logger.error("Local Gemma generation failed: " + t.getMessage());
             }
         }
         return null;

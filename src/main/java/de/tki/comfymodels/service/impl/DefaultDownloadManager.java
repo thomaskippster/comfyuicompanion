@@ -1,8 +1,12 @@
 package de.tki.comfymodels.service.impl;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import de.tki.comfymodels.domain.ModelInfo;
 import de.tki.comfymodels.service.IDownloadManager;
 import de.tki.comfymodels.service.IModelValidator;
+import de.tki.comfymodels.util.ConfigConstants;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -25,6 +29,7 @@ import java.util.function.BiConsumer;
 
 @Service
 public class DefaultDownloadManager implements IDownloadManager {
+    private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(DefaultDownloadManager.class);
     private final ThreadPoolExecutor executor = new ThreadPoolExecutor(
             3, 3, 0L, TimeUnit.MILLISECONDS,
             new LinkedBlockingQueue<>()
@@ -152,20 +157,20 @@ public class DefaultDownloadManager implements IDownloadManager {
 
     @Override
     public void notifyComfyUI(boolean forceReload) {
-        String comfyUrl = configService != null ? configService.getComfyUIUrl() : "http://127.0.0.1:8188";
+        String comfyUrl = configService != null ? configService.getComfyUIUrl() : ConfigConstants.DEFAULT_COMFYUI_URL;
         if (sendRefreshPing(comfyUrl, forceReload)) {
             return;
         }
 
         // Auto-Discovery: If configured URL fails, search for ComfyUI on common ports
-        System.out.println("🔍 [Companion] ComfyUI not reached at " + comfyUrl + ". Searching automatically...");
+        logger.info("🔍 [Companion] ComfyUI not reached at " + comfyUrl + ". Searching automatically...");
         String discoveredUrl = discoverComfyUrl();
         if (discoveredUrl != null) {
-            System.out.println("✨ [Companion] ComfyUI automatically found at: " + discoveredUrl);
+            logger.info("✨ [Companion] ComfyUI automatically found at: " + discoveredUrl);
             if (configService != null) configService.setComfyUIUrl(discoveredUrl);
             sendRefreshPing(discoveredUrl, forceReload);
         } else {
-            System.err.println("❌ [Companion] ComfyUI could not be found automatically. Please make sure it is running.");
+            logger.error("❌ [Companion] ComfyUI could not be found automatically. Please make sure it is running.");
         }
     }
 
@@ -181,7 +186,7 @@ public class DefaultDownloadManager implements IDownloadManager {
             
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() == 200) {
-                System.out.println("✅ [Companion] ComfyUI (" + url + ") successfully notified (Force: " + forceReload + ").");
+                logger.info("✅ [Companion] ComfyUI (" + url + ") successfully notified (Force: " + forceReload + ").");
                 return true;
             }
         } catch (Exception ignored) {}
@@ -332,7 +337,7 @@ public class DefaultDownloadManager implements IDownloadManager {
                     downloadMultiSegment(info, targetFile, index, statusUpdater, totalRemoteSize, downloadUrl);
                     return;
                 } catch (Exception e) {
-                    System.err.println("Multi-segment download failed: " + e.getMessage() + ". Falling back to single-segment.");
+                    logger.error("Multi-segment download failed: " + e.getMessage() + ". Falling back to single-segment.");
                 }
             }
 
@@ -723,14 +728,14 @@ public class DefaultDownloadManager implements IDownloadManager {
             try {
                 civitaiService.downloadMetadataAndPreview(info.getUrl(), targetFile);
             } catch (Exception e) {
-                System.err.println("Error downloading Civitai metadata: " + e.getMessage());
+                logger.error("Error downloading Civitai metadata: " + e.getMessage());
             }
         }
     }
 
     @jakarta.annotation.PreDestroy
     public void shutdown() {
-        System.out.println("Stopping DownloadManager executors...");
+        logger.info("Stopping DownloadManager executors...");
         try {
             executor.shutdownNow();
             segmentExecutor.shutdownNow();

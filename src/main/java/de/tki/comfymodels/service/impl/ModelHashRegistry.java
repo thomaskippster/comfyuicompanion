@@ -1,5 +1,8 @@
 package de.tki.comfymodels.service.impl;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import de.tki.comfymodels.service.IModelValidator;
 import org.json.JSONObject;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -20,6 +23,7 @@ import java.util.concurrent.TimeUnit;
 
 @Service
 public class ModelHashRegistry {
+    private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(ModelHashRegistry.class);
     private final String HASH_FILE = "model_hashes.json";
     private final Map<String, CacheEntry> cache = new HashMap<>();
     private final Map<String, String> hashToPath = new HashMap<>();
@@ -69,7 +73,7 @@ public class ModelHashRegistry {
                 }
             }
         } catch (Exception e) {
-            System.err.println("Error loading hash registry: " + e.getMessage());
+            logger.error("Error loading hash registry: " + e.getMessage());
         }
         
         // Schedule periodic save check every 5 seconds
@@ -124,7 +128,7 @@ public class ModelHashRegistry {
             
             dirty = false;
         } catch (Exception e) {
-            System.err.println("Error saving hash registry: " + e.getMessage());
+            logger.error("Error saving hash registry: " + e.getMessage());
             e.printStackTrace();
         }
     }

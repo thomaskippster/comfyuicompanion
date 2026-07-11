@@ -9,6 +9,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
+import org.springframework.beans.factory.annotation.Autowired;
 
 @Service
 public class HardwareMonitorService {
@@ -39,6 +40,9 @@ public class HardwareMonitorService {
         public boolean hasNvidia;
     }
 
+
+    @Autowired(required = false)
+    private ProcessTracker processTracker;
     public void start(Consumer<HardwareStats> callback) {
         scheduler.scheduleAtFixedRate(() -> {
             try {
@@ -90,7 +94,7 @@ public class HardwareMonitorService {
                 pb = new ProcessBuilder("nvidia-smi", "--query-gpu=name,utilization.gpu,memory.used,memory.total", "--format=csv,noheader,nounits");
             }
             
-            Process p = pb.start();
+            Process p = processTracker.start(pb);
             try {
                 try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream(), java.nio.charset.StandardCharsets.UTF_8))) {
                     String line = reader.readLine();
@@ -129,7 +133,7 @@ public class HardwareMonitorService {
                 // Query primary GPU name using PowerShell (fast one-time call)
                 ProcessBuilder pb = new ProcessBuilder("powershell", "-Command", 
                     "Get-CimInstance Win32_VideoController | Sort-Object AdapterRAM -Descending | Select-Object -First 1 -ExpandProperty Name");
-                Process p = pb.start();
+                Process p = processTracker.start(pb);
                 try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream(), java.nio.charset.StandardCharsets.UTF_8))) {
                     String line = reader.readLine();
                     if (line != null && !line.trim().isEmpty()) {
@@ -141,7 +145,7 @@ public class HardwareMonitorService {
                 // Query AdapterRAM
                 pb = new ProcessBuilder("powershell", "-Command", 
                     "Get-CimInstance Win32_VideoController | Sort-Object AdapterRAM -Descending | Select-Object -First 1 -ExpandProperty AdapterRAM");
-                p = pb.start();
+                p = processTracker.start(pb);
                 try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream(), java.nio.charset.StandardCharsets.UTF_8))) {
                     String line = reader.readLine();
                     if (line != null && !line.trim().isEmpty()) {
@@ -154,7 +158,7 @@ public class HardwareMonitorService {
             } else if (os.contains("mac")) {
                 // Mac display info
                 ProcessBuilder pb = new ProcessBuilder("sh", "-c", "system_profiler SPDisplaysDataType | grep 'Chipset Model'");
-                Process p = pb.start();
+                Process p = processTracker.start(pb);
                 try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream(), java.nio.charset.StandardCharsets.UTF_8))) {
                     String line = reader.readLine();
                     if (line != null && line.contains(":")) {
@@ -165,7 +169,7 @@ public class HardwareMonitorService {
             } else {
                 // Linux fallback via lspci
                 ProcessBuilder pb = new ProcessBuilder("sh", "-c", "lspci | grep -i -E 'vga|3d'");
-                Process p = pb.start();
+                Process p = processTracker.start(pb);
                 try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream(), java.nio.charset.StandardCharsets.UTF_8))) {
                     String line = reader.readLine();
                     if (line != null && line.contains(":")) {
@@ -176,4 +180,25 @@ public class HardwareMonitorService {
             }
         } catch (Exception ignored) {}
     }
-}
+
+    /**
+     * Returns the most recently observed total VRAM in bytes. Returns 0 if
+     * the monitor has not yet queried the GPU or no NVIDIA GPU is present.
+     * Triggers an immediate refresh on first call so callers that need a
+     * synchronous answer at startup do not have to wait for the periodic
+     * scheduler to fire.
+     */
+    public synchronized long getVramBytes() {
+        if (vramTotal == 0 && !hasNvidia) {
+            // One-shot synchronous refresh so the very first caller gets a
+            // real value instead of zero. The scheduler also runs this in
+            // the background, but we cannot assume it has fired yet.
+            queryNvidiaGpu();
+        }
+        return vramTotal;
+    }
+
+    /** Returns the GPU model name as last reported by the monitor. */
+    public synchronized String getGpuName() {
+        return gpuName;
+    }}

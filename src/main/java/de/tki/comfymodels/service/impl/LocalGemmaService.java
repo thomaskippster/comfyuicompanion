@@ -20,7 +20,10 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Timer;
 import java.util.TimerTask;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.function.BiConsumer;
+import jakarta.annotation.PreDestroy;
 
 @Service
 public class LocalGemmaService {
@@ -29,9 +32,16 @@ public class LocalGemmaService {
     private LlamaModel model = null;
     private Timer unloadTimer = null;
     private final Object lock = new Object();
-    private static final String MODEL_DOWNLOAD_URL = "https://huggingface.co/bartowski/gemma-2-2b-it-GGUF/resolve/main/gemma-2-2b-it-Q4_K_M.gguf";
-    private static final String MODEL_FILENAME = "gemma-2-2b-it-Q4_K_M.gguf";
+    private static final String MODEL_DOWNLOAD_URL = "https://huggingface.co/bartowski/google_gemma-3-4b-it-GGUF/resolve/main/google_gemma-3-4b-it-Q4_K_M.gguf";
+    private static final String MODEL_FILENAME = "google_gemma-3-4b-it-Q4_K_M.gguf";
     private static final long INACTIVITY_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+
+    private final ExecutorService gemmaExecutor = Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r, "LocalGemma-Worker");
+        t.setDaemon(true);
+        t.setPriority(Thread.MIN_PRIORITY);
+        return t;
+    });
 
     @Autowired
     public LocalGemmaService(ConfigService configService) {
@@ -64,7 +74,7 @@ public class LocalGemmaService {
      * Downloads the Gemma GGUF model in a background thread, updating progress.
      */
     public void downloadModel(BiConsumer<Double, String> progressListener, Runnable onFinished, BiConsumer<String, Exception> onError) {
-        new Thread(() -> {
+        gemmaExecutor.submit(() -> {
             File targetFile = getModelFile();
             File parentDir = targetFile.getParentFile();
             if (!parentDir.exists()) {
@@ -116,16 +126,17 @@ public class LocalGemmaService {
                 onFinished.run();
                 
             } catch (Exception e) {
-                if (tempFile.exists()) {
+                if (tempFile != null && tempFile.exists()) {
                     tempFile.delete();
                 }
                 onError.accept("Download failed: " + e.getMessage(), e);
             }
-        }).start();
+        });
     }
 
     /**
      * Initializes and loads the Gemma model in memory.
+     * Note: Must be called from the gemmaExecutor thread.
      */
     private void ensureModelLoaded() throws IOException {
         synchronized (lock) {
@@ -154,41 +165,57 @@ public class LocalGemmaService {
      * Runs inference on the local Gemma model.
      */
     public String generateCompletion(String systemInstruction, String userPrompt, float temperature, int maxTokens) throws IOException {
-        ensureModelLoaded();
-        
-        // Build instruction format for Gemma-2-Instruct
-        StringBuilder promptBuilder = new StringBuilder();
-        if (systemInstruction != null && !systemInstruction.trim().isEmpty()) {
-            promptBuilder.append("<start_of_turn>user\n")
-                         .append(systemInstruction.trim())
-                         .append("\n\n")
-                         .append(userPrompt.trim())
-                         .append("<end_of_turn>\n")
-                         .append("<start_of_turn>model\n");
-        } else {
-            promptBuilder.append("<start_of_turn>user\n")
-                         .append(userPrompt.trim())
-                         .append("<end_of_turn>\n")
-                         .append("<start_of_turn>model\n");
-        }
-        
-        synchronized (lock) {
-            resetUnloadTimer();
-            
-            InferenceParameters inferParams = new InferenceParameters(promptBuilder.toString())
-                .setTemperature(temperature)
-                .setNPredict(maxTokens);
-            
-            StringBuilder response = new StringBuilder();
-            try {
-                for (de.kherud.llama.LlamaOutput output : model.generate(inferParams)) {
-                    response.append(output.toString());
+        try {
+            return gemmaExecutor.submit(() -> {
+                ensureModelLoaded();
+                
+                // Build instruction format for Gemma-3-Instruct
+                StringBuilder promptBuilder = new StringBuilder();
+                if (systemInstruction != null && !systemInstruction.trim().isEmpty()) {
+                    promptBuilder.append("<start_of_turn>user\n")
+                                 .append(systemInstruction.trim())
+                                 .append("\n\n")
+                                 .append(userPrompt.trim())
+                                 .append("<end_of_turn>\n")
+                                 .append("<start_of_turn>model\n");
+                } else {
+                    promptBuilder.append("<start_of_turn>user\n")
+                                 .append(userPrompt.trim())
+                                 .append("<end_of_turn>\n")
+                                 .append("<start_of_turn>model\n");
                 }
-            } finally {
-                startUnloadTimer();
+                
+                synchronized (lock) {
+                    resetUnloadTimer();
+                    
+                    InferenceParameters inferParams = new InferenceParameters(promptBuilder.toString())
+                        .setTemperature(temperature)
+                        .setNPredict(maxTokens);
+                    
+                    StringBuilder response = new StringBuilder();
+                    try {
+                        for (de.kherud.llama.LlamaOutput output : model.generate(inferParams)) {
+                            response.append(output.toString());
+                        }
+                    } finally {
+                        startUnloadTimer();
+                    }
+                    
+                    return response.toString().trim();
+                }
+            }).get();
+        } catch (java.util.concurrent.ExecutionException e) {
+            Throwable cause = e.getCause();
+            if (cause instanceof IOException) {
+                throw (IOException) cause;
+            } else if (cause instanceof RuntimeException) {
+                throw (RuntimeException) cause;
+            } else {
+                throw new IOException(cause);
             }
-            
-            return response.toString().trim();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException("Interrupted waiting for Gemma completion", e);
         }
     }
 
@@ -196,14 +223,42 @@ public class LocalGemmaService {
      * Unloads the model to release RAM.
      */
     public void unloadModel() {
-        synchronized (lock) {
-            if (model != null) {
-                System.out.println("Unloading Gemma model from memory...");
-                model.close();
-                model = null;
-                System.gc(); // Encourage JVM to free memory immediately
+        gemmaExecutor.submit(() -> {
+            boolean wasLoaded;
+            synchronized (lock) {
+                wasLoaded = model != null;
+                if (model != null) {
+                    System.out.println("Unloading Gemma model from memory...");
+                    model.close();
+                    model = null;
+                }
+            }
+            if (wasLoaded) {
                 System.out.println("Gemma model unloaded.");
             }
+        });
+    }
+
+    @PreDestroy
+    public void shutdown() {
+        synchronized (lock) {
+            if (unloadTimer != null) {
+                unloadTimer.cancel();
+                unloadTimer = null;
+            }
+            if (model != null) {
+                model.close();
+                model = null;
+            }
+        }
+        gemmaExecutor.shutdown();
+        try {
+            if (!gemmaExecutor.awaitTermination(5, java.util.concurrent.TimeUnit.SECONDS)) {
+                gemmaExecutor.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            gemmaExecutor.shutdownNow();
+            Thread.currentThread().interrupt();
         }
     }
 

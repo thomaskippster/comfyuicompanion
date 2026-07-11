@@ -2,11 +2,18 @@ package de.tki.comfymodels.ui;
 
 import de.tki.comfymodels.Main;
 import de.tki.comfymodels.domain.ModelInfo;
+import de.tki.comfymodels.domain.ComfyRegistryWorkflow;
 import de.tki.comfymodels.service.impl.ConfigService;
+import de.tki.comfymodels.service.impl.ProcessTracker;
+import de.tki.comfymodels.service.impl.LocalModelScanner;
+import de.tki.comfymodels.service.impl.ArchiveService;
 import de.tki.comfymodels.service.IModelArchitectureService;
 import de.tki.comfymodels.service.IComfyLifecycleService;
+import de.tki.comfymodels.service.IComfyRegistryClient;
+import de.tki.comfymodels.service.ILocalModelValidator;
+import de.tki.comfymodels.service.IWorkflowDownloader;
+import org.json.JSONObject;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
@@ -20,19 +27,17 @@ import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.*;
 import java.util.List;
-import java.util.stream.Stream;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import io.metaloom.video4j.Video4j;
 import io.metaloom.video4j.VideoFile;
@@ -47,11 +52,9 @@ import javax.imageio.ImageIO;
 /**
  * Blueprint Gallery – redesigned Model Manager tab.
  *
- * Loads every *.json workflow from the companion_blueprints folder,
- * extracts the category / description metadata, and renders a visual
- * card gallery with an overlay badge showing local model availability.
- *
- * Layout uses a dynamic column grid so cards never get clipped horizontally.
+ * Fetches workflow metadata from the Comfy.org cloud registry API,
+ * validates required model files against the local filesystem,
+ * and allows saving templates with their offline previews.
  */
 @Component
 public class BlueprintGalleryTab extends JPanel {
@@ -60,6 +63,13 @@ public class BlueprintGalleryTab extends JPanel {
     private final ConfigService configService;
     private final IModelArchitectureService modelArchitectureService;
     private final IComfyLifecycleService lifecycleService;
+    private final IComfyRegistryClient registryClient;
+    private final ILocalModelValidator localModelValidator;
+    private final IWorkflowDownloader workflowDownloader;
+    private final LocalModelScanner localModelScanner;
+    private final ArchiveService archiveService;
+    private final de.tki.comfymodels.service.impl.LocalAIService localAIService;
+    private final ProcessTracker processTracker;
     private final ObjectMapper mapper = new ObjectMapper();
 
     // ── ui ────────────────────────────────────────────────────────────────────
@@ -67,16 +77,32 @@ public class BlueprintGalleryTab extends JPanel {
     private JLabel lblSummary;
     private JLabel lblStatus;
     private JTextField txtSearch;
+    private JComboBox<String> cbCategory;
+    private JCheckBox chkReadyOnly;
+    private JCheckBox chkHideCloud;
     private JLabel lblTitle;
+    private JScrollPane scroll;
+
+    private static final ExecutorService imageLoadExecutor = Executors.newFixedThreadPool(4, r -> {
+        Thread t = new Thread(r, "BlueprintPreviewLoader");
+        t.setDaemon(true);
+        return t;
+    });
 
     // ── data ──────────────────────────────────────────────────────────────────
     private final List<BlueprintEntry> allEntries = new CopyOnWriteArrayList<>();
-    private final Set<String> localModelBaseNames  = ConcurrentHashMap.newKeySet();
+    private final javax.swing.Timer filterDebounceTimer = new javax.swing.Timer(250, e -> {
+        applyFilter();
+        updateSummary();
+    });
+    private final List<JPanel> categoryGridPanels = new CopyOnWriteArrayList<>();
     private final Map<String, Image> previewCache = new ConcurrentHashMap<>();
+    private final Map<String, Image> scaledPreviewCache = new ConcurrentHashMap<>();
     private final Set<String> loadingPaths = ConcurrentHashMap.newKeySet();
     private boolean hasScanned = false;
-    private volatile long lastServerConnectionFailureTime = 0;
-    private static final long SERVER_FAILURE_COOLDOWN_MS = 10000;
+    private boolean initialLoadComplete = false;
+    private boolean hasSetInitialDefaultCategory = false;
+    private final Set<String> failedPaths = ConcurrentHashMap.newKeySet();
 
     // ── design ────────────────────────────────────────────────────────────────
     private Color bgPage          = new Color(15, 16, 21);
@@ -98,9 +124,7 @@ public class BlueprintGalleryTab extends JPanel {
     private static final int CARD_GAP   = 14;
 
     // ── category palette map ─────────────────────────────────────────────────
-    /** Maps a keyword found in category / filename to a gradient palette. */
     private static final List<String[]> CAT_PALETTES = List.of(
-        // keyword, dark-bg, mid, accent
         new String[]{"text to image",     "#0A1440", "#1A5CD4", "#55AAFF"},
         new String[]{"text to video",     "#100A35", "#6B2CE0", "#C080FF"},
         new String[]{"image to video",    "#280A40", "#B030D0", "#FF80FF"},
@@ -127,17 +151,32 @@ public class BlueprintGalleryTab extends JPanel {
     );
     private static final String[] DEFAULT_PALETTE = {"#0C0E16", "#2A3060", "#5060A0"};
 
-    // ════════════════════════════════════════════════════════════════════════
     @Autowired
     public BlueprintGalleryTab(ConfigService configService,
                                IModelArchitectureService modelArchitectureService,
-                               IComfyLifecycleService lifecycleService) {
+                               IComfyLifecycleService lifecycleService,
+                               IComfyRegistryClient registryClient,
+                               ILocalModelValidator localModelValidator,
+                               IWorkflowDownloader workflowDownloader,
+                               LocalModelScanner localModelScanner,
+                               ArchiveService archiveService,
+                               de.tki.comfymodels.service.impl.LocalAIService localAIService,
+                               @org.springframework.beans.factory.annotation.Autowired(required = false) ProcessTracker processTracker) {
         this.configService = configService;
         this.modelArchitectureService = modelArchitectureService;
         this.lifecycleService = lifecycleService;
+        this.registryClient = registryClient;
+        this.localModelValidator = localModelValidator;
+        this.workflowDownloader = workflowDownloader;
+        this.localModelScanner = localModelScanner;
+        this.archiveService = archiveService;
+        this.localAIService = localAIService;
+        this.processTracker = processTracker;
+        this.filterDebounceTimer.setRepeats(false);
 
         setLayout(new BorderLayout());
-        setOpaque(false);
+        setOpaque(true);
+        setBackground(bgPage);
 
         buildUI();
         addComponentListener(new java.awt.event.ComponentAdapter() {
@@ -145,34 +184,12 @@ public class BlueprintGalleryTab extends JPanel {
             public void componentShown(java.awt.event.ComponentEvent e) {
                 if (!hasScanned) {
                     refreshAllData();
+                } else {
+                    updateStatusAsync();
                 }
             }
         });
-
-        // Register progress listener
-        modelArchitectureService.addProgressListener((percent, currentFileName, completed) -> {
-            SwingUtilities.invokeLater(() -> {
-                if (completed) {
-                    hasScanned = true;
-                    lblStatus.setText("Scanning complete. Loading gallery...");
-                    new Thread(() -> {
-                        loadScanResultsFromCache();
-                        scanLocalModels();
-                        SwingUtilities.invokeLater(() -> {
-                            applyFilter();
-                            updateSummary();
-                        });
-                    }, "BlueprintGalleryReload").start();
-                } else {
-                    lblStatus.setText("⏳  Scanning blueprints (" + percent + "%): " + currentFileName);
-                }
-            });
-        });
     }
-
-    // ════════════════════════════════════════════════════════════════════════
-    //  UI BUILD
-    // ════════════════════════════════════════════════════════════════════════
 
     private void buildUI() {
         // ── TOP BAR ──────────────────────────────────────────────────────────
@@ -198,11 +215,11 @@ public class BlueprintGalleryTab extends JPanel {
         titleBlock.add(lblSummary);
         topBar.add(titleBlock, BorderLayout.WEST);
 
-        // Right: search + refresh
-        JPanel controls = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+        // Right: controls (Search + Sort + Filter + Refresh)
+        JPanel controls = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
         controls.setOpaque(false);
 
-        txtSearch = new JTextField(18);
+        txtSearch = new JTextField(12);
         txtSearch.putClientProperty("JTextField.placeholderText", "Search blueprints…");
         txtSearch.setFont(new Font("SansSerif", Font.PLAIN, 12));
         txtSearch.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
@@ -211,12 +228,40 @@ public class BlueprintGalleryTab extends JPanel {
             public void changedUpdate(javax.swing.event.DocumentEvent e) { SwingUtilities.invokeLater(() -> applyFilter()); }
         });
 
+        cbCategory = new JComboBox<>(new String[]{"All Categories"});
+        cbCategory.setFont(new Font("SansSerif", Font.PLAIN, 12));
+        cbCategory.addActionListener(e -> applyFilter());
+
+        chkReadyOnly = new JCheckBox("Only workflows with no missing models");
+        chkReadyOnly.setFont(new Font("SansSerif", Font.BOLD, 12));
+        chkReadyOnly.setForeground(textSecondary);
+        chkReadyOnly.setOpaque(false);
+        chkReadyOnly.addActionListener(e -> {
+            chkReadyOnly.revalidate();
+            chkReadyOnly.repaint();
+            applyFilter();
+        });
+
+        chkHideCloud = new JCheckBox("Hide cloud-only workflows");
+        chkHideCloud.setFont(new Font("SansSerif", Font.BOLD, 12));
+        chkHideCloud.setForeground(textSecondary);
+        chkHideCloud.setOpaque(false);
+        chkHideCloud.setSelected(true);
+        chkHideCloud.addActionListener(e -> {
+            chkHideCloud.revalidate();
+            chkHideCloud.repaint();
+            applyFilter();
+        });
+
         JButton btnRefresh = new JButton("🔄  Refresh");
         btnRefresh.setFont(new Font("SansSerif", Font.PLAIN, 12));
         btnRefresh.putClientProperty("Button.arc", 999);
         btnRefresh.addActionListener(e -> refreshAllData(true));
 
         controls.add(txtSearch);
+        controls.add(cbCategory);
+        controls.add(chkReadyOnly);
+        controls.add(chkHideCloud);
         controls.add(btnRefresh);
         topBar.add(controls, BorderLayout.EAST);
 
@@ -233,22 +278,11 @@ public class BlueprintGalleryTab extends JPanel {
         add(northPanel, BorderLayout.NORTH);
 
         // ── GALLERY AREA ─────────────────────────────────────────────────────
-        // galleryWrapper is a panel whose layout is dynamically adjusted to
-        // fit the available width without horizontal scrolling.
-        galleryWrapper = new JPanel() {
-            @Override
-            public Dimension getPreferredSize() {
-                // Required so the scroll-pane reports correct height
-                return super.getPreferredSize();
-            }
-        };
+        galleryWrapper = new ScrollablePanel(null);
         galleryWrapper.setOpaque(false);
         galleryWrapper.setBorder(new EmptyBorder(10, 16, 20, 16));
+        galleryWrapper.setLayout(new BoxLayout(galleryWrapper, BoxLayout.Y_AXIS));
 
-        // Use a 1-column GridLayout initially; columns are recomputed on resize
-        galleryWrapper.setLayout(new GridLayout(0, 3, CARD_GAP, CARD_GAP));
-
-        // Recompute columns when the panel is resized
         galleryWrapper.addComponentListener(new ComponentAdapter() {
             @Override
             public void componentResized(ComponentEvent e) {
@@ -256,34 +290,37 @@ public class BlueprintGalleryTab extends JPanel {
             }
         });
 
-        JScrollPane scroll = new JScrollPane(galleryWrapper,
+        scroll = new JScrollPane(galleryWrapper,
                 JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED,
                 JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
-        scroll.setOpaque(false);
-        scroll.getViewport().setOpaque(false);
+        scroll.setOpaque(true);
+        scroll.setBackground(bgPage);
+        scroll.getViewport().setOpaque(true);
+        scroll.getViewport().setBackground(bgPage);
+        scroll.getViewport().setScrollMode(JViewport.SIMPLE_SCROLL_MODE);
         scroll.setBorder(null);
         scroll.getVerticalScrollBar().setUnitIncrement(20);
         add(scroll, BorderLayout.CENTER);
     }
 
-    /** Adjusts the GridLayout column count to fill the available width. */
     private void recomputeColumns() {
         int available = galleryWrapper.getWidth()
                 - galleryWrapper.getInsets().left
                 - galleryWrapper.getInsets().right;
         if (available <= 0) return;
         int cols = Math.max(1, available / (CARD_W + CARD_GAP));
-        if (galleryWrapper.getLayout() instanceof GridLayout gl) {
-            if (gl.getColumns() != cols) {
-                gl.setColumns(cols);
-                galleryWrapper.revalidate();
+        
+        for (JPanel grid : categoryGridPanels) {
+            if (grid.getLayout() instanceof GridLayout gl) {
+                if (gl.getColumns() != cols) {
+                    gl.setColumns(cols);
+                    grid.revalidate();
+                }
             }
         }
     }
 
-    // ════════════════════════════════════════════════════════════════════════
-    //  DATA
-    // ════════════════════════════════════════════════════════════════════════
+    // ── DATA LOADING ─────────────────────────────────────────────────────────
 
     public void refreshAllData() {
         refreshAllData(false);
@@ -291,136 +328,304 @@ public class BlueprintGalleryTab extends JPanel {
 
     public void refreshAllData(boolean forceRefresh) {
         hasScanned = true;
-        lblStatus.setText("⏳  Scanning blueprints and local models…");
+        lblStatus.setText("⏳  Fetching workflows and checking local models…");
         previewCache.clear();
+        scaledPreviewCache.clear();
         loadingPaths.clear();
+        failedPaths.clear();
 
-        if (forceRefresh) {
-            modelArchitectureService.runBlueprintAnalysis();
-        } else {
-            new Thread(() -> {
-                boolean loadedFromCache = loadScanResultsFromCache();
-                if (!loadedFromCache) {
-                    modelArchitectureService.runBlueprintAnalysis();
-                } else {
-                    scanLocalModels();
-                    SwingUtilities.invokeLater(() -> {
-                        applyFilter();
-                        updateSummary();
-                    });
+        // Clear gallery and show a modern loading indicator/progress bar in the background
+        galleryWrapper.removeAll();
+        JPanel loadingPanel = new JPanel(new GridBagLayout());
+        loadingPanel.setOpaque(false);
+        loadingPanel.setPreferredSize(new Dimension(800, 400));
+        
+        JProgressBar spinner = new JProgressBar();
+        spinner.setIndeterminate(true);
+        spinner.setPreferredSize(new Dimension(240, 6));
+        spinner.putClientProperty("FlatLaf.style", "arc: 999; foreground: $SlimStat.barForeground; background: $SlimStat.barBackground;");
+        
+        JLabel loadingLabel = new JLabel("Loading Blueprint Gallery...");
+        loadingLabel.setFont(new Font("SansSerif", Font.BOLD, 14));
+        loadingLabel.setForeground(textSecondary);
+        loadingLabel.setAlignmentX(java.awt.Component.CENTER_ALIGNMENT);
+        
+        JPanel inner = new JPanel();
+        inner.setLayout(new BoxLayout(inner, BoxLayout.Y_AXIS));
+        inner.setOpaque(false);
+        inner.add(loadingLabel);
+        inner.add(Box.createVerticalStrut(12));
+        inner.add(spinner);
+        
+        loadingPanel.add(inner);
+        galleryWrapper.add(loadingPanel);
+        galleryWrapper.revalidate();
+        galleryWrapper.repaint();
+
+        new Thread(() -> {
+            try {
+                // 1. Scan local models
+                localModelValidator.scanLocalModels();
+
+                // 2. Fetch cloud workflows from Comfy.org API
+                List<ComfyRegistryWorkflow> workflows = registryClient.fetchWorkflowsAsync().get();
+
+                // 3. Map to internal entries (skipping full JSON parsing of all entries on startup)
+                allEntries.clear();
+                List<Map<String, Object>> scanResults = Collections.emptyList();
+                if (modelArchitectureService != null) {
+                    try {
+                        List<Map<String, Object>> res = modelArchitectureService.getBlueprintScanResults();
+                        if (res != null) {
+                            scanResults = res;
+                        }
+                    } catch (Exception ignored) {}
                 }
-            }, "BlueprintGalleryRefresh").start();
-        }
-    }
 
-    private boolean loadScanResultsFromCache() {
-        File cacheFile = new File(configService.getAppDataPath(), "templates/comfyui/blueprint_scan_results.json");
-        if (!cacheFile.exists()) {
-            return false;
-        }
-        try {
-            allEntries.clear();
-            String content = Files.readString(cacheFile.toPath(), java.nio.charset.StandardCharsets.UTF_8);
-            JsonNode root = mapper.readTree(content);
-            if (root.isArray()) {
-                for (JsonNode node : root) {
-                    String name = node.path("name").asText("");
-                    String filename = node.path("filename").asText("");
-                    String filePath = node.path("filePath").asText("");
-                    String category = node.path("category").asText("");
-                    String description = node.path("description").asText("");
+                for (ComfyRegistryWorkflow wf : workflows) {
+                    BlueprintEntry entry = new BlueprintEntry(wf);
                     
-                    List<ModelInfo> requiredModels = new ArrayList<>();
-                    JsonNode modelsNode = node.path("requiredModels");
-                    if (modelsNode.isArray()) {
-                        for (JsonNode mNode : modelsNode) {
-                            ModelInfo info = new ModelInfo();
-                            info.setName(mNode.path("name").asText(null));
-                            info.setType(mNode.path("type").asText(null));
-                            info.setUrl(mNode.path("url").asText(null));
-                            info.setSize(mNode.path("size").asText("Unknown"));
-                            info.setByteSize(mNode.path("byteSize").asLong(-1));
-                            info.setBase(mNode.path("base").asText(null));
-                            info.setSave_path(mNode.path("save_path").asText(null));
-                            info.setDescription(mNode.path("description").asText(null));
-                            requiredModels.add(info);
+                    // Match with scanned results from ModelArchitectureService
+                    Map<String, Object> matchedScan = null;
+                    String wfId = wf.getId();
+                    String wfTitle = wf.getTitle();
+                    for (Map<String, Object> scan : scanResults) {
+                        String scanFilename = (String) scan.get("filename");
+                        String scanName = (String) scan.get("name");
+                        
+                        // Check match by title
+                        if (scanName != null && wfTitle != null && scanName.equalsIgnoreCase(wfTitle)) {
+                            matchedScan = scan;
+                            break;
+                        }
+                        // Check match by ID / filename
+                        if (scanFilename != null && wfId != null && 
+                            (scanFilename.equalsIgnoreCase(wfId + ".json") || scanFilename.equalsIgnoreCase(wfId))) {
+                            matchedScan = scan;
+                            break;
+                        }
+                        if (scanName != null && wfId != null && scanName.equalsIgnoreCase(wfId)) {
+                            matchedScan = scan;
+                            break;
                         }
                     }
-                    
-                    String mediaType = node.path("mediaType").asText("");
-                    String mediaSubtype = node.path("mediaSubtype").asText("");
-                    String previewPath = node.path("previewPath").asText("");
-                    
-                    BlueprintEntry entry = new BlueprintEntry(name, filename, filePath, category, description, requiredModels, mediaType, mediaSubtype, previewPath);
+
+                    if (matchedScan != null) {
+                        Object reqObj = matchedScan.get("requiredModels");
+                        List<ModelInfo> resolved = extractModelInfos(reqObj, mapper);
+                        if (!resolved.isEmpty()) {
+                            entry.requiredModels.clear();
+                            entry.requiredModels.addAll(resolved);
+                        }
+                    } else if (wf.getRequiredModelInfos() != null && !wf.getRequiredModelInfos().isEmpty()) {
+                        entry.requiredModels.clear();
+                        entry.requiredModels.addAll(wf.getRequiredModelInfos());
+                    } else if (wf.getRequiredModels() != null && !wf.getRequiredModels().isEmpty()) {
+                        // Populate entry.requiredModels with high-level models from index.json directly
+                        for (String mName : wf.getRequiredModels()) {
+                            ModelInfo info = new ModelInfo();
+                            info.setName(mName);
+                            info.setType(inferTypeFromFilename(mName));
+                            entry.requiredModels.add(info);
+                        }
+                    }
+
+                    entry.status = computeStatusInternal(entry);
                     allEntries.add(entry);
+
+                    // If empty requiredModels OR no actual model files (high-level fallback), download/validate async in background
+                    boolean needDetailedValidation = entry.requiredModels.isEmpty() || !hasActualModelFiles(entry.requiredModels);
+                    if (needDetailedValidation && wf.getJsonDownloadUrl() != null) {
+                        localModelValidator.validateWorkflowModelsAsync(wf).thenRun(() -> {
+                            entry.requiredModels.clear();
+                            if (wf.getRequiredModelInfos() != null && !wf.getRequiredModelInfos().isEmpty()) {
+                                entry.requiredModels.addAll(wf.getRequiredModelInfos());
+                            } else if (wf.getRequiredModels() != null) {
+                                for (String mName : wf.getRequiredModels()) {
+                                    ModelInfo info = new ModelInfo();
+                                    info.setName(mName);
+                                    info.setType(inferTypeFromFilename(mName));
+                                    entry.requiredModels.add(info);
+                                }
+                            }
+                            entry.status = computeStatusInternal(entry);
+                            SwingUtilities.invokeLater(() -> {
+                                filterDebounceTimer.restart();
+                            });
+                        });
+                    }
+                }
+
+                SwingUtilities.invokeLater(() -> {
+                    updateCategoryComboBox();
+                    applyFilter();
+                    updateSummary();
+                    lblStatus.setText(" ");
+                    initialLoadComplete = true;
+                    if (localAIService != null) {
+                        localAIService.setGemmaEnabled(true);
+                    }
+                });
+            } catch (Exception e) {
+                System.err.println("❌ [BlueprintGallery] Refresh failed: " + e.getMessage());
+                SwingUtilities.invokeLater(() -> {
+                    lblStatus.setText("❌ Failed to fetch registry data: " + e.getMessage());
+                });
+            }
+        }, "BlueprintGalleryRefresh").start();
+    }
+
+    private void updateStatusAsync() {
+        new Thread(() -> {
+            try {
+                localModelValidator.scanLocalModels();
+                for (BlueprintEntry entry : allEntries) {
+                    entry.status = computeStatusInternal(entry);
+                }
+                SwingUtilities.invokeLater(() -> {
+                    applyFilter();
+                });
+            } catch (Exception e) {
+                System.err.println("❌ [BlueprintGallery] Status update failed: " + e.getMessage());
+            }
+        }, "BlueprintGalleryStatusUpdate").start();
+    }
+
+    // ── GALLERY RENDERING ─────────────────────────────────────────────────────
+
+    private void updateCategoryComboBox() {
+        if (cbCategory == null) return;
+
+        // Prevent ActionEvents while rebuilding items
+        java.awt.event.ActionListener[] listeners = cbCategory.getActionListeners();
+        for (java.awt.event.ActionListener l : listeners) {
+            cbCategory.removeActionListener(l);
+        }
+
+        String selected = (String) cbCategory.getSelectedItem();
+
+        cbCategory.removeAllItems();
+        cbCategory.addItem("All Categories");
+
+        Set<String> categories = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        for (BlueprintEntry entry : allEntries) {
+            String cat = entry.category != null && !entry.category.isEmpty() ? entry.category : "General";
+            categories.add(cat);
+        }
+
+        for (String cat : categories) {
+            cbCategory.addItem(cat);
+        }
+
+        if (!hasSetInitialDefaultCategory) {
+            String imageCat = null;
+            for (String cat : categories) {
+                if ("Image".equalsIgnoreCase(cat)) {
+                    imageCat = cat;
+                    break;
                 }
             }
-            System.out.println("📂 [BlueprintGallery] Loaded " + allEntries.size() + " blueprints from scan results JSON.");
-            return true;
-        } catch (Exception e) {
-            System.err.println("❌ [BlueprintGallery] Failed to load blueprints from cache: " + e.getMessage());
-            return false;
+            if (imageCat != null) {
+                selected = imageCat;
+                hasSetInitialDefaultCategory = true;
+            }
+        }
+
+        if (selected != null) {
+            cbCategory.setSelectedItem(selected);
+        } else {
+            cbCategory.setSelectedIndex(0);
+        }
+
+        for (java.awt.event.ActionListener l : listeners) {
+            cbCategory.addActionListener(l);
         }
     }
 
-
-    /** Walk the configured ComfyUI model directories and collect base file names. */
-    private void scanLocalModels() {
-        localModelBaseNames.clear();
-        String comfyPath = configService.getComfyUIPath();
-        if (comfyPath == null || comfyPath.isEmpty()) return;
-
-        Path modelsDir = Paths.get(comfyPath, "models");
-        if (!Files.exists(modelsDir)) return;
-
-        try (Stream<Path> walk = Files.walk(modelsDir)) {
-            walk.filter(Files::isRegularFile)
-                .filter(p -> isSupportedModel(p.getFileName().toString()))
-                .forEach(p -> localModelBaseNames.add(baseName(p.getFileName().toString())));
-        } catch (IOException ignored) {}
-    }
-
-    // ════════════════════════════════════════════════════════════════════════
-    //  GALLERY RENDERING
-    // ════════════════════════════════════════════════════════════════════════
-
     private void applyFilter() {
+        if (txtSearch == null || cbCategory == null) return; // UI initialization guard
+        
+        final int scrollVal = scroll != null ? scroll.getVerticalScrollBar().getValue() : 0;
+
+        scaledPreviewCache.clear();
         String filter = txtSearch.getText().toLowerCase(Locale.ROOT).trim();
+        String selectedCategory = (String) cbCategory.getSelectedItem();
         galleryWrapper.removeAll();
+        categoryGridPanels.clear();
 
         List<BlueprintEntry> visible = new ArrayList<>();
         for (BlueprintEntry e : allEntries) {
-            if (filter.isEmpty()
+            boolean matchesSearch = filter.isEmpty()
                     || (e.name != null && e.name.toLowerCase(Locale.ROOT).contains(filter))
-                    || (e.category != null && e.category.toLowerCase(Locale.ROOT).contains(filter))) {
-                visible.add(e);
+                    || (e.description != null && e.description.toLowerCase(Locale.ROOT).contains(filter));
+
+            if (!matchesSearch) continue;
+
+            // Option: Only workflows with no missing models
+            if (chkReadyOnly.isSelected() && computeStatus(e).missingCount > 0) {
+                continue;
             }
+
+            // Option: Hide cloud-only workflows
+            if (chkHideCloud.isSelected() && e.registryWorkflow.isCloudOnly()) {
+                continue;
+            }
+
+            // Category filter
+            if (selectedCategory != null && !"All Categories".equals(selectedCategory)) {
+                String entryCat = e.category != null && !e.category.isEmpty() ? e.category : "General";
+                if (!selectedCategory.equalsIgnoreCase(entryCat)) {
+                    continue;
+                }
+            }
+
+            visible.add(e);
         }
 
-        // Sort: Ready first, then Partial, then Missing. Alphabetical by name within each group.
+        // Sort implementation: Runnable workflows first, then by popularity/popularScore
         visible.sort((e1, e2) -> {
-            BlueprintStatus s1 = computeStatus(e1);
-            BlueprintStatus s2 = computeStatus(e2);
-            
-            int score1 = (s1.missingCount == 0) ? 0 : ((s1.presentCount > 0) ? 1 : 2);
-            int score2 = (s2.missingCount == 0) ? 0 : ((s2.presentCount > 0) ? 1 : 2);
-            
-            if (score1 != score2) {
-                return Integer.compare(score1, score2);
+            boolean run1 = computeStatus(e1).missingCount == 0;
+            boolean run2 = computeStatus(e2).missingCount == 0;
+            if (run1 != run2) {
+                return run1 ? -1 : 1;
             }
-            String n1 = e1.name != null ? e1.name : "";
-            String n2 = e2.name != null ? e2.name : "";
-            return n1.compareToIgnoreCase(n2);
+            return Double.compare(e2.registryWorkflow.getPopularScore(), e1.registryWorkflow.getPopularScore());
         });
 
         if (visible.isEmpty()) {
-            JLabel empty = new JLabel("No blueprints match your search.");
+            JLabel empty = new JLabel("No blueprints match your filter criteria.");
             empty.setFont(new Font("SansSerif", Font.ITALIC, 13));
             empty.setForeground(textSecondary);
+            empty.setBorder(new EmptyBorder(10, 4, 10, 4));
             galleryWrapper.add(empty);
         } else {
+            // Group by category (preserving original order via LinkedHashMap)
+            Map<String, List<BlueprintEntry>> grouped = new LinkedHashMap<>();
             for (BlueprintEntry entry : visible) {
-                galleryWrapper.add(buildCard(entry));
+                String cat = entry.category != null && !entry.category.isEmpty() ? entry.category : "General";
+                grouped.computeIfAbsent(cat, k -> new ArrayList<>()).add(entry);
+            }
+
+            for (Map.Entry<String, List<BlueprintEntry>> groupEntry : grouped.entrySet()) {
+                String categoryName = groupEntry.getKey();
+                List<BlueprintEntry> items = groupEntry.getValue();
+
+                // 1. Add Category Header Panel
+                galleryWrapper.add(buildCategoryHeader(categoryName));
+
+                // 2. Add Category Grid Panel
+                JPanel gridPanel = new JPanel();
+                gridPanel.setOpaque(false);
+                gridPanel.setBorder(new EmptyBorder(8, 4, 14, 4));
+                // Grid layout with dynamic columns, updated on resize
+                gridPanel.setLayout(new GridLayout(0, 3, CARD_GAP, CARD_GAP));
+
+                for (BlueprintEntry entry : items) {
+                    gridPanel.add(buildCard(entry));
+                }
+
+                categoryGridPanels.add(gridPanel);
+                galleryWrapper.add(gridPanel);
             }
         }
 
@@ -429,6 +634,46 @@ public class BlueprintGalleryTab extends JPanel {
         galleryWrapper.repaint();
 
         updateSummary();
+
+        if (scroll != null) {
+            SwingUtilities.invokeLater(() -> {
+                int max = scroll.getVerticalScrollBar().getMaximum() - scroll.getVerticalScrollBar().getModel().getExtent();
+                scroll.getVerticalScrollBar().setValue(Math.min(scrollVal, max));
+            });
+        }
+    }
+
+    private JPanel buildCategoryHeader(String categoryName) {
+        JPanel headerPanel = new JPanel(new BorderLayout());
+        headerPanel.setOpaque(false);
+        headerPanel.setBorder(new EmptyBorder(12, 4, 6, 4));
+        headerPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 40));
+
+        String emoji = "⚙️";
+        String lower = categoryName.toLowerCase();
+        if (lower.contains("image")) emoji = "🖼️";
+        else if (lower.contains("video")) emoji = "🎬";
+        else if (lower.contains("audio") || lower.contains("sound")) emoji = "🎵";
+        else if (lower.contains("3d") || lower.contains("mesh")) emoji = "🎲";
+        else if (lower.contains("use cases") || lower.contains("star")) emoji = "⭐";
+
+        JLabel lblHeader = new JLabel(emoji + "  " + categoryName);
+        lblHeader.setFont(new Font("SansSerif", Font.BOLD, 15));
+        lblHeader.setForeground(textPrimary);
+        headerPanel.add(lblHeader, BorderLayout.WEST);
+
+        // Thin line under the category title
+        JPanel line = new JPanel() {
+            @Override
+            protected void paintComponent(Graphics g) {
+                g.setColor(cardBorder);
+                g.drawLine(0, 0, getWidth(), 0);
+            }
+        };
+        line.setPreferredSize(new Dimension(0, 1));
+        headerPanel.add(line, BorderLayout.SOUTH);
+
+        return headerPanel;
     }
 
     private void updateSummary() {
@@ -440,20 +685,16 @@ public class BlueprintGalleryTab extends JPanel {
             else if (s.presentCount > 0) partial++;
             else missing++;
         }
-        lblSummary.setText(total + " blueprints  ·  "
+        lblSummary.setText(total + " workflows on Comfy.org  ·  "
                 + ready + " ready  ·  "
                 + partial + " partial  ·  "
                 + missing + " not installed");
-        lblStatus.setText(" ");
     }
-
-    // ── Card builder ──────────────────────────────────────────────────────────
 
     private JPanel buildCard(BlueprintEntry entry) {
         BlueprintStatus status = computeStatus(entry);
         Color[] palette = resolvePalette(entry);
 
-        // ── Outer card panel with custom painting ─────────────────────────
         JPanel card = new JPanel(new BorderLayout()) {
             private boolean hovered = false;
 
@@ -485,37 +726,41 @@ public class BlueprintGalleryTab extends JPanel {
         card.setMinimumSize(new Dimension(160, CARD_H));
         card.setMaximumSize(new Dimension(400, CARD_H));
 
-        // ── Preview panel ─────────────────────────────────────────────────
         JPanel preview = buildPreviewPanel(entry, palette, status, PREVIEW_H);
         card.add(preview, BorderLayout.NORTH);
 
-        // ── Info area ─────────────────────────────────────────────────────
         JPanel info = new JPanel();
         info.setLayout(new BoxLayout(info, BoxLayout.Y_AXIS));
         info.setOpaque(false);
         info.setBorder(new EmptyBorder(8, 10, 8, 10));
 
-        // Blueprint name (possibly multi-line if long)
-        JLabel lblName = new JLabel("<html><body style='width:180px'>" +
-                escapeHtml(entry.name) + "</body></html>");
+        JTextArea lblName = new JTextArea(entry.name);
         lblName.setFont(new Font("SansSerif", Font.BOLD, 12));
         lblName.setForeground(textPrimary);
+        lblName.setLineWrap(true);
+        lblName.setWrapStyleWord(true);
+        lblName.setEditable(false);
+        lblName.setFocusable(false);
+        lblName.setOpaque(false);
+        lblName.setBorder(null);
+        lblName.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        lblName.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                showDetails(entry, status);
+            }
+        });
         info.add(lblName);
         info.add(Box.createVerticalStrut(3));
 
-        // Category tag
         if (!entry.category.isEmpty()) {
-            String cat = entry.category.contains("/")
-                    ? entry.category.substring(entry.category.lastIndexOf('/') + 1)
-                    : entry.category;
-            JLabel lblCat = new JLabel(cat);
+            JLabel lblCat = new JLabel(entry.category);
             lblCat.setFont(new Font("SansSerif", Font.PLAIN, 10));
             lblCat.setForeground(textDim);
             info.add(lblCat);
             info.add(Box.createVerticalStrut(4));
         }
 
-        // Model status line
         int totalReqs = entry.requiredModels.size();
         String reqText;
         Color reqColor;
@@ -529,6 +774,7 @@ public class BlueprintGalleryTab extends JPanel {
             reqText  = "⚠  " + status.missingCount + " / " + totalReqs + " missing";
             reqColor = AMBER_PARTIAL;
         }
+        
         JPanel statusRow = new JPanel(new BorderLayout());
         statusRow.setOpaque(false);
 
@@ -537,37 +783,11 @@ public class BlueprintGalleryTab extends JPanel {
         lblReq.setForeground(reqColor);
         statusRow.add(lblReq, BorderLayout.WEST);
 
-        if (status.missingCount > 0) {
-            JButton btnCardDl = new JButton("⬇ Download");
-            btnCardDl.setFont(new Font("SansSerif", Font.BOLD, 9));
-            btnCardDl.putClientProperty("Button.arc", 999);
-            btnCardDl.setMargin(new Insets(2, 6, 2, 6));
-            btnCardDl.setBackground(new Color(30, 40, 55));
-            btnCardDl.setForeground(AMBER_PARTIAL);
-            btnCardDl.setFocusable(false);
-            btnCardDl.addActionListener(e -> {
-                Window ownerWin = SwingUtilities.getWindowAncestor(this);
-                if (ownerWin instanceof Main mainApp) {
-                    List<ModelInfo> missingModels = new ArrayList<>();
-                    for (ModelInfo req : entry.requiredModels) {
-                        if (req.getName() != null && status.missingNames.contains(req.getName())) {
-                            missingModels.add(req);
-                        }
-                    }
-                    mainApp.focusDownloadTabAndSelectModels(missingModels);
-                }
-            });
-            statusRow.add(btnCardDl, BorderLayout.EAST);
-        }
         info.add(statusRow);
 
         card.add(info, BorderLayout.CENTER);
         return card;
     }
-
-    // ── Preview panel (Java2D generated) ─────────────────────────────────────
-
-    // ── Preview panel (Java2D / Loaded Image) ─────────────────────────────────
 
     private JPanel buildPreviewPanel(BlueprintEntry entry, Color[] palette,
                                      BlueprintStatus status, int height) {
@@ -575,6 +795,21 @@ public class BlueprintGalleryTab extends JPanel {
             {
                 setPreferredSize(new Dimension(CARD_W, height));
                 setOpaque(false);
+                setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+                addMouseListener(new MouseAdapter() {
+                    @Override public void mouseClicked(MouseEvent e) {
+                        if (entry.registryWorkflow != null && entry.registryWorkflow.isVideoPreview()) {
+                            // Double click = open the video player; single click = show details.
+                            if (e.getClickCount() == 2) {
+                                playVideoPreview(entry);
+                            } else if (e.getClickCount() == 1) {
+                                showDetails(entry, status);
+                            }
+                        } else if (e.getClickCount() == 1) {
+                            showDetails(entry, status);
+                        }
+                    }
+                });
             }
 
             @Override
@@ -585,22 +820,39 @@ public class BlueprintGalleryTab extends JPanel {
                 g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
 
                 int w = getWidth(), h = getHeight();
-                // Clip to rounded top of card
+                if (w <= 0 || h <= 0) {
+                    g2.dispose();
+                    return;
+                }
                 RoundRectangle2D clip = new RoundRectangle2D.Float(0, 0, w, h + ARC, ARC, ARC);
                 g2.setClip(clip);
 
                 Image img = previewCache.get(entry.filePath);
                 if (img != null) {
-                    // Paint the loaded image scaled to fit/fill
-                    int imgW = img.getWidth(null);
-                    int imgH = img.getHeight(null);
-                    if (imgW > 0 && imgH > 0) {
-                        double scale = Math.max((double) w / imgW, (double) h / imgH);
-                        int newW = (int) (imgW * scale);
-                        int newH = (int) (imgH * scale);
-                        int x = (w - newW) / 2;
-                        int y = (h - newH) / 2;
-                        g2.drawImage(img, x, y, newW, newH, null);
+                    String scaledKey = entry.filePath + "_" + w + "_" + h;
+                    Image scaledImg = scaledPreviewCache.get(scaledKey);
+                    if (scaledImg == null) {
+                        int imgW = img.getWidth(null);
+                        int imgH = img.getHeight(null);
+                        if (imgW > 0 && imgH > 0) {
+                            double scale = Math.max((double) w / imgW, (double) h / imgH);
+                            int newW = (int) (imgW * scale);
+                            int newH = (int) (imgH * scale);
+                            BufferedImage bufferedScaled = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+                            Graphics2D bg2 = bufferedScaled.createGraphics();
+                            bg2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+                            bg2.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+                            bg2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                            int x = (w - newW) / 2;
+                            int y = (h - newH) / 2;
+                            bg2.drawImage(img, x, y, newW, newH, null);
+                            bg2.dispose();
+                            scaledImg = bufferedScaled;
+                            scaledPreviewCache.put(scaledKey, scaledImg);
+                        }
+                    }
+                    if (scaledImg != null) {
+                        g2.drawImage(scaledImg, 0, 0, null);
                     } else {
                         paintBokehFallback(g2, w, h, palette, entry);
                     }
@@ -609,7 +861,7 @@ public class BlueprintGalleryTab extends JPanel {
                     paintBokehFallback(g2, w, h, palette, entry);
                 }
 
-                // Status badge – top right corner
+                // Status badge
                 String badgeText;
                 Color badgeColor;
                 if (status.missingCount == 0 && !entry.requiredModels.isEmpty()) {
@@ -636,18 +888,38 @@ public class BlueprintGalleryTab extends JPanel {
                     g2.drawString(badgeText, bx + 5, by + bh - 4);
                 }
 
+                // Video preview badge: a circular play icon bottom-left.
+                if (entry.registryWorkflow != null && entry.registryWorkflow.isVideoPreview()) {
+                    int pad = 6;
+                    int size = 24;
+                    int cx = pad + size / 2;
+                    int cy = h - pad - size / 2;
+                    g2.setColor(new Color(0, 0, 0, 110));
+                    g2.fillOval(cx - size / 2, cy - size / 2, size, size);
+                    // Small play triangle inside the circle.
+                    int tx = cx - 4;
+                    int ty = cy - 5;
+                    int tw = 8;
+                    int th = 10;
+                    Polygon tri = new Polygon(new int[]{tx, tx, tx + tw}, new int[]{ty, ty + th, ty + th / 2}, 3);
+                    g2.setColor(Color.WHITE);
+                    g2.fill(tri);
+                    // VIDEO label.
+                    g2.setFont(new Font("SansSerif", Font.BOLD, 8));
+                    g2.setColor(new Color(0, 0, 0, 150));
+                    g2.drawString("VIDEO", pad + 30, h - pad - 4);
+                }
+
                 g2.dispose();
             }
         };
     }
 
     private void paintBokehFallback(Graphics2D g2, int w, int h, Color[] palette, BlueprintEntry entry) {
-        // Gradient background
         GradientPaint bg = new GradientPaint(0, 0, palette[0], w, h, palette[1]);
         g2.setPaint(bg);
         g2.fillRect(0, 0, w, h);
 
-        // Bokeh circles
         long seed = entry.name.hashCode() & 0xFFFFFFFFL;
         Random rng = new Random(seed);
         for (int i = 0; i < 6; i++) {
@@ -660,13 +932,11 @@ public class BlueprintGalleryTab extends JPanel {
             g2.fillOval(cx - r, cy - r, r * 2, r * 2);
         }
 
-        // Subtle grid
         g2.setColor(new Color(255, 255, 255, 10));
         g2.setStroke(new BasicStroke(0.5f));
         for (int x = 0; x < w; x += 20) g2.drawLine(x, 0, x, h);
         for (int y = 0; y < h; y += 20) g2.drawLine(0, y, w, y);
 
-        // Category icon text in center
         String icon = categoryIcon(entry.category);
         Font iconFont = new Font("SansSerif", Font.BOLD, 26);
         g2.setFont(iconFont);
@@ -681,12 +951,17 @@ public class BlueprintGalleryTab extends JPanel {
     }
 
     private void triggerImageLoad(BlueprintEntry entry, JPanel panelToRepaint) {
+        if (failedPaths.contains(entry.filePath)) {
+            return;
+        }
         if (loadingPaths.add(entry.filePath)) {
-            CompletableFuture.supplyAsync(() -> loadPreviewImage(entry))
+            CompletableFuture.supplyAsync(() -> loadPreviewImage(entry), imageLoadExecutor)
                 .thenAccept(img -> {
                     if (img != null) {
                         previewCache.put(entry.filePath, img);
                         SwingUtilities.invokeLater(() -> panelToRepaint.repaint());
+                    } else {
+                        failedPaths.add(entry.filePath);
                     }
                     loadingPaths.remove(entry.filePath);
                 });
@@ -699,187 +974,43 @@ public class BlueprintGalleryTab extends JPanel {
             if (pathOrUrl.startsWith("http://") || pathOrUrl.startsWith("https://")) {
                 Image img = readImageNoJavaFX(pathOrUrl);
                 if (img != null) return img;
-            } else {
-                File f = new File(pathOrUrl);
-                if (f.exists()) {
-                    Image img = readImageNoJavaFX(f.toURI().toString());
-                    if (img != null) return img;
+
+                // Fallback 1: If it's not webp, try webp version
+                if (!pathOrUrl.endsWith(".webp")) {
+                    int lastDot = pathOrUrl.lastIndexOf('.');
+                    if (lastDot > 0) {
+                        String webpUrl = pathOrUrl.substring(0, lastDot) + ".webp";
+                        img = readImageNoJavaFX(webpUrl);
+                        if (img != null) return img;
+                    }
                 }
-            }
-        }
 
-        String baseName = entry.filename;
-        if (baseName.toLowerCase().endsWith(".json")) {
-            baseName = baseName.substring(0, baseName.length() - 5);
-        }
+                // Fallback 2: If it had "-1", try loading without it
+                if (pathOrUrl.contains("-1.")) {
+                    String fallbackUrl = pathOrUrl.replace("-1.", ".");
+                    img = readImageNoJavaFX(fallbackUrl);
+                    if (img != null) return img;
 
-        // 1. Try local files in same directory first
-        if (entry.filePath != null && !entry.filePath.startsWith("remote:")) {
-            try {
-                Path jsonPath = Paths.get(entry.filePath);
-                Path parentDir = jsonPath.getParent();
-                if (parentDir != null && Files.isDirectory(parentDir)) {
-                    String[] extensions = {"webp", "png", "jpg", "jpeg", "gif", "mp4", "webm", "mov"};
-                    for (String ext : extensions) {
-                        // name-1.ext
-                        Path imgPath = parentDir.resolve(baseName + "-1." + ext);
-                        if (Files.exists(imgPath)) {
-                            Image img = readImageNoJavaFX(imgPath.toUri().toString());
-                            if (img != null) return img;
-                        }
-                        // name.ext
-                        imgPath = parentDir.resolve(baseName + "." + ext);
-                        if (Files.exists(imgPath)) {
-                            Image img = readImageNoJavaFX(imgPath.toUri().toString());
+                    if (!fallbackUrl.endsWith(".webp")) {
+                        int lastDot = fallbackUrl.lastIndexOf('.');
+                        if (lastDot > 0) {
+                            String webpFallbackUrl = fallbackUrl.substring(0, lastDot) + ".webp";
+                            img = readImageNoJavaFX(webpFallbackUrl);
                             if (img != null) return img;
                         }
                     }
                 }
-            } catch (Exception e) {
-                System.err.println("[BlueprintGallery] Error reading local image for " + baseName + ": " + e.getMessage());
             }
         }
-
-        // 2. Try fetching from ComfyUI server templates endpoint
-        if (lifecycleService != null && !lifecycleService.isRunning()) {
-            return null;
-        }
-        String comfyUrl = configService.getComfyUIUrl();
-        if (comfyUrl != null && !comfyUrl.isEmpty()) {
-            try {
-                // First check if we have the mediaSubtype in our fetched index
-                String mediaSubtype = entry.mediaSubtype;
-                if (mediaSubtype != null && !mediaSubtype.isEmpty()) {
-                    String imgUrl = comfyUrl + "/templates/" + java.net.URLEncoder.encode(baseName + "-1." + mediaSubtype, "UTF-8").replace("+", "%20");
-                    Image img = readImageNoJavaFX(imgUrl);
-                    if (img != null) return img;
-                    
-                    String imgUrlDirect = comfyUrl + "/templates/" + java.net.URLEncoder.encode(baseName + "." + mediaSubtype, "UTF-8").replace("+", "%20");
-                    img = readImageNoJavaFX(imgUrlDirect);
-                    if (img != null) return img;
-                }
-                
-                // Fallback: search for common extensions if not in index map
-                String[] extensions = {"webp", "png", "jpg", "jpeg", "gif", "mp4", "webm", "mov"};
-                for (String ext : extensions) {
-                    String imgUrl = comfyUrl + "/templates/" + java.net.URLEncoder.encode(baseName + "-1." + ext, "UTF-8").replace("+", "%20");
-                    Image img = readImageNoJavaFX(imgUrl);
-                    if (img != null) return img;
-                    
-                    String imgUrlDirect = comfyUrl + "/templates/" + java.net.URLEncoder.encode(baseName + "." + ext, "UTF-8").replace("+", "%20");
-                    img = readImageNoJavaFX(imgUrlDirect);
-                    if (img != null) return img;
-                }
-            } catch (Exception e) {
-                // Best effort
-            }
-        }
-
         return null;
     }
 
     private Image readImageNoJavaFX(String urlStr) {
-        File file = null;
-        File tempFile = null;
-        if (urlStr.startsWith("file:")) {
+        int maxRetries = 3;
+        int delayMs = 500;
+
+        for (int attempt = 1; attempt <= maxRetries; attempt++) {
             try {
-                file = new File(URI.create(urlStr));
-            } catch (Exception ignored) {}
-        }
-
-        if (file == null) {
-            byte[] bytes = fetchBytes(urlStr);
-            if (bytes == null || bytes.length == 0) {
-                return null;
-            }
-            // Try standard ImageIO first from memory
-            try {
-                BufferedImage img = ImageIO.read(new ByteArrayInputStream(bytes));
-                if (img != null) {
-                    return img;
-                }
-            } catch (Exception ignored) {}
-
-            try {
-                tempFile = File.createTempFile("preview_", ".tmp");
-                tempFile.deleteOnExit();
-                Files.write(tempFile.toPath(), bytes);
-                file = tempFile;
-            } catch (Exception e) {
-                System.err.println("[BlueprintGallery] Failed to write temp file: " + e.getMessage());
-                return null;
-            }
-        }
-
-        if (file != null && file.exists()) {
-            // Try standard ImageIO first from file
-            try {
-                BufferedImage img = ImageIO.read(file);
-                if (img != null) {
-                    return img;
-                }
-            } catch (Exception ignored) {}
-
-            // Ensure OpenCV/Video4j is initialized
-            try {
-                nu.pattern.OpenCV.loadLocally();
-            } catch (Throwable ignored) {}
-            try {
-                Video4j.init();
-            } catch (Throwable ignored) {}
-
-            String pathStr = file.getAbsolutePath();
-            String lowerPath = pathStr.toLowerCase(Locale.ROOT);
-            
-            // If it's a video file, try Video4j/OpenCV video frame extraction
-            if (lowerPath.endsWith(".mp4") || lowerPath.endsWith(".webm") || lowerPath.endsWith(".mov")) {
-                try (VideoFile video = Videos.open(pathStr)) {
-                    java.util.List<VideoFrame> frames = video.streamFrames()
-                            .limit(1)
-                            .collect(java.util.stream.Collectors.toList());
-                    if (!frames.isEmpty()) {
-                        Mat mat = frames.get(0).mat();
-                        if (mat != null && !mat.empty()) {
-                            MatOfByte buffer = new MatOfByte();
-                            Imgcodecs.imencode(".png", mat, buffer);
-                            return ImageIO.read(new ByteArrayInputStream(buffer.toArray()));
-                        }
-                    }
-                } catch (Throwable t) {
-                    System.err.println("[BlueprintGallery] Video4j failed to read video: " + t.getMessage());
-                }
-            }
-
-            // Try OpenCV Imgcodecs for image reading (like WebP)
-            try {
-                Mat mat = Imgcodecs.imread(pathStr);
-                if (mat != null && !mat.empty()) {
-                    MatOfByte buffer = new MatOfByte();
-                    Imgcodecs.imencode(".png", mat, buffer);
-                    return ImageIO.read(new ByteArrayInputStream(buffer.toArray()));
-                }
-            } catch (Throwable t) {
-                System.err.println("[BlueprintGallery] OpenCV failed to read image: " + t.getMessage());
-            } finally {
-                if (tempFile != null && tempFile.exists()) {
-                    tempFile.delete();
-                }
-            }
-        }
-
-        return null;
-    }
-
-    private byte[] fetchBytes(String urlStr) {
-        if (urlStr.startsWith("http://") || urlStr.startsWith("https://")) {
-            if (System.currentTimeMillis() - lastServerConnectionFailureTime < SERVER_FAILURE_COOLDOWN_MS) {
-                return null;
-            }
-        }
-        try {
-            if (urlStr.startsWith("file:")) {
-                return Files.readAllBytes(Paths.get(URI.create(urlStr)));
-            } else {
                 HttpClient client = HttpClient.newBuilder()
                         .connectTimeout(Duration.ofMillis(2000))
                         .build();
@@ -887,35 +1018,90 @@ public class BlueprintGalleryTab extends JPanel {
                         .uri(URI.create(urlStr))
                         .timeout(Duration.ofMillis(5000))
                         .GET().build();
-                HttpResponse<byte[]> response = client.send(request, HttpResponse.BodyHandlers.ofByteArray());
+                java.net.http.HttpResponse<byte[]> response = client.send(request, java.net.http.HttpResponse.BodyHandlers.ofByteArray());
+                
                 if (response.statusCode() == 200) {
-                    return response.body();
+                    byte[] bytes = response.body();
+                    try {
+                        BufferedImage img = ImageIO.read(new ByteArrayInputStream(bytes));
+                        if (img != null) return img;
+                    } catch (Exception ignored) {}
+
+                    // Fallback via Temp File (for OpenCV reading/WebP)
+                    String ext = ".tmp";
+                    if (urlStr.toLowerCase().endsWith(".mp4")) ext = ".mp4";
+                    else if (urlStr.toLowerCase().endsWith(".webm")) ext = ".webm";
+                    else if (urlStr.toLowerCase().endsWith(".gif")) ext = ".gif";
+                    
+                    // Generate a filename without numbers to prevent OpenCV's CV_IMAGES backend from treating it as an image sequence
+                    String nonce = UUID.randomUUID().toString().replaceAll("[0-9-]", "x");
+                    File tempFile = new File(System.getProperty("java.io.tmpdir"), "blueprint_preview_" + nonce + ext);
+                    tempFile.deleteOnExit();
+                    Files.write(tempFile.toPath(), bytes);
+                    
+                    try {
+                        de.tki.comfymodels.util.OpenCvLoader.load();
+                    } catch (Throwable ignored) {}
+
+                    try {
+                        Mat mat = Imgcodecs.imread(tempFile.getAbsolutePath());
+                        if (mat != null && !mat.empty()) {
+                            MatOfByte buffer = new MatOfByte();
+                            Imgcodecs.imencode(".png", mat, buffer);
+                            return ImageIO.read(new ByteArrayInputStream(buffer.toArray()));
+                        } else {
+                            try {
+                                org.opencv.videoio.VideoCapture cap = new org.opencv.videoio.VideoCapture(tempFile.getAbsolutePath(), org.opencv.videoio.Videoio.CAP_FFMPEG);
+                                if (!cap.isOpened()) {
+                                    // Fallback to default if FFMPEG is missing
+                                    cap = new org.opencv.videoio.VideoCapture(tempFile.getAbsolutePath());
+                                }
+                                if (cap.isOpened()) {
+                                    Mat frame = new Mat();
+                                    if (cap.read(frame) && !frame.empty()) {
+                                        MatOfByte buffer = new MatOfByte();
+                                        Imgcodecs.imencode(".png", frame, buffer);
+                                        cap.release();
+                                        return ImageIO.read(new ByteArrayInputStream(buffer.toArray()));
+                                    }
+                                    cap.release();
+                                }
+                            } catch (Exception ignored) {}
+                        }
+                    } finally {
+                        tempFile.delete();
+                    }
                 } else if (response.statusCode() == 404) {
-                    return null;
+                    // HTTP 404 means the file does not exist, fail immediately without retry
+                    break;
                 } else {
-                    return null;
+                    System.err.println("⚠️ [BlueprintGallery] HTTP " + response.statusCode() + " for: " + urlStr + " (Attempt " + attempt + ")");
                 }
+            } catch (java.net.ConnectException | java.net.http.HttpTimeoutException e) {
+                System.err.println("⚠️ [BlueprintGallery] Connection error for: " + urlStr + " (Attempt " + attempt + "): " + e.getMessage());
+            } catch (Exception e) {
+                System.err.println("⚠️ [BlueprintGallery] Error loading image: " + urlStr + " (Attempt " + attempt + "): " + e.getMessage());
             }
-        } catch (Exception e) {
-            if (urlStr.startsWith("http://") || urlStr.startsWith("https://")) {
-                lastServerConnectionFailureTime = System.currentTimeMillis();
-                System.err.println("[BlueprintGallery] Failed to fetch bytes from " + urlStr + " (" + e.getClass().getSimpleName() + "): " + e.getMessage());
-            } else {
-                System.err.println("[BlueprintGallery] Failed to fetch bytes from " + urlStr + " (" + e.getClass().getSimpleName() + "): " + e.getMessage());
+
+            if (attempt < maxRetries) {
+                try {
+                    Thread.sleep(delayMs * attempt); // Exponential backoff: 500ms, 1000ms
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
             }
         }
         return null;
     }
 
-
-
-    // ── Detail dialog ─────────────────────────────────────────────────────────
+    // ── DETAIL DIALOG ─────────────────────────────────────────────────────────
 
     private void showDetails(BlueprintEntry entry, BlueprintStatus status) {
         Window owner = SwingUtilities.getWindowAncestor(this);
         JDialog dlg = new JDialog(owner instanceof Frame ? (Frame) owner : null,
                 "Blueprint: " + entry.name, true);
-        dlg.setSize(520, 480);
+        dlg.setSize(540, 580);
         dlg.setLocationRelativeTo(this);
 
         Color bg = configService.isDarkMode() ? new Color(20, 22, 30) : new Color(245, 247, 250);
@@ -924,13 +1110,33 @@ public class BlueprintGalleryTab extends JPanel {
         root.setBackground(bg);
         root.setBorder(new EmptyBorder(22, 26, 18, 26));
 
-        // Title
         JLabel title = new JLabel(entry.name);
         title.setFont(new Font("SansSerif", Font.BOLD, 17));
         title.setForeground(textPrimary);
-        root.add(title, BorderLayout.NORTH);
 
-        // Body
+        // If this is a video preview, wrap the title in a header panel that also
+        // hosts a Play Preview button. For image previews the title is alone.
+        boolean isVideoPreview = entry.registryWorkflow != null && entry.registryWorkflow.isVideoPreview();
+        if (isVideoPreview) {
+            JPanel header = new JPanel(new BorderLayout(8, 0));
+            header.setOpaque(false);
+            header.add(title, BorderLayout.WEST);
+            JButton btnPlayPreview = new JButton("▶  Play Preview");
+            btnPlayPreview.setFont(new Font("SansSerif", Font.BOLD, 11));
+            btnPlayPreview.setBackground(new Color(0, 150, 136));
+            btnPlayPreview.setForeground(Color.WHITE);
+            btnPlayPreview.setFocusPainted(false);
+            btnPlayPreview.putClientProperty("Button.arc", 999);
+            btnPlayPreview.addActionListener(evt -> playVideoPreview(entry));
+            JPanel headerRight = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
+            headerRight.setOpaque(false);
+            headerRight.add(btnPlayPreview);
+            header.add(headerRight, BorderLayout.EAST);
+            root.add(header, BorderLayout.NORTH);
+        } else {
+            root.add(title, BorderLayout.NORTH);
+        }
+
         JPanel body = new JPanel();
         body.setLayout(new BoxLayout(body, BoxLayout.Y_AXIS));
         body.setBackground(bg);
@@ -956,7 +1162,7 @@ public class BlueprintGalleryTab extends JPanel {
                 imgPanel.setBorder(new EmptyBorder(0, 0, 14, 0));
                 imgPanel.add(imgLabel);
                 body.add(imgPanel);
-                dlg.setSize(520, 640);
+                dlg.setSize(540, 720);
             }
         }
 
@@ -975,25 +1181,69 @@ public class BlueprintGalleryTab extends JPanel {
         addRow(body, "Available locally", String.valueOf(status.presentCount));
         addRow(body, "Missing", String.valueOf(status.missingCount));
 
-        if (!status.missingNames.isEmpty()) {
+        if (!entry.requiredModels.isEmpty()) {
             body.add(Box.createVerticalStrut(10));
-            JLabel hdr = new JLabel("Missing model files:");
+            JLabel hdr = new JLabel("Required Models Status:");
             hdr.setFont(new Font("SansSerif", Font.BOLD, 11));
-            hdr.setForeground(RED_MISSING);
+            hdr.setForeground(textPrimary);
             body.add(hdr);
-            body.add(Box.createVerticalStrut(4));
-            for (String mn : status.missingNames) {
-                JLabel ml = new JLabel("  • " + mn);
-                ml.setFont(new Font("SansSerif", Font.PLAIN, 11));
-                ml.setForeground(AMBER_PARTIAL);
-                body.add(ml);
+            body.add(Box.createVerticalStrut(6));
+
+            String[] columns = {"Model Name", "Type", "Size", "Status"};
+            javax.swing.table.DefaultTableModel modelTblModel = new javax.swing.table.DefaultTableModel(columns, 0) {
+                @Override public boolean isCellEditable(int r, int c) { return false; }
+            };
+
+            for (ModelInfo info : entry.requiredModels) {
+                String name = info.getName();
+                String type = info.getType() != null ? info.getType() : "checkpoints";
+                String size = info.getSize() != null ? info.getSize() : "Unknown";
+                String statusStr = getModelStatus(info);
+                modelTblModel.addRow(new Object[]{name, type, size, statusStr});
             }
-        } else if (!entry.requiredModels.isEmpty()) {
-            body.add(Box.createVerticalStrut(10));
-            JLabel ok = new JLabel("✅  All required models are present.");
-            ok.setFont(new Font("SansSerif", Font.BOLD, 11));
-            ok.setForeground(GREEN_READY);
-            body.add(ok);
+
+            JTable table = new JTable(modelTblModel);
+            table.setFont(new Font("SansSerif", Font.PLAIN, 11));
+            table.setRowHeight(24);
+            table.setShowGrid(false);
+            table.setIntercellSpacing(new Dimension(0, 0));
+            table.setBackground(bg);
+            table.setForeground(textPrimary);
+            table.getTableHeader().setBackground(bg);
+            table.getTableHeader().setForeground(textSecondary);
+            table.getTableHeader().setFont(new Font("SansSerif", Font.BOLD, 11));
+
+            table.setDefaultRenderer(Object.class, new javax.swing.table.DefaultTableCellRenderer() {
+                @Override
+                public java.awt.Component getTableCellRendererComponent(JTable t, Object val, boolean isSel, boolean hasFoc, int row, int col) {
+                    java.awt.Component c = super.getTableCellRendererComponent(t, val, isSel, hasFoc, row, col);
+                    c.setBackground(row % 2 == 0 ? bg : new Color(Math.max(0, bg.getRed() - 5), Math.max(0, bg.getGreen() - 5), Math.max(0, bg.getBlue() - 5)));
+                    c.setForeground(textPrimary);
+                    
+                    if (col == 3 && val != null) {
+                        String st = val.toString();
+                        if ("✅ Already exists".equals(st)) {
+                            c.setForeground(new Color(0, 180, 160));
+                        } else if ("📦 Archived".equals(st)) {
+                            c.setForeground(new Color(224, 169, 109));
+                        } else if ("🔄 Size Mismatch".equals(st)) {
+                            c.setForeground(new Color(226, 88, 88));
+                        } else if ("Idle".equals(st)) {
+                            c.setForeground(textSecondary);
+                        } else {
+                            c.setForeground(new Color(0, 150, 186));
+                        }
+                    }
+                    setBorder(BorderFactory.createEmptyBorder(0, 5, 0, 5));
+                    return c;
+                }
+            });
+
+            JScrollPane tblScroll = new JScrollPane(table);
+            tblScroll.setPreferredSize(new Dimension(460, 160));
+            tblScroll.getViewport().setBackground(bg);
+            tblScroll.setBorder(BorderFactory.createLineBorder(cardBorder, 1, true));
+            body.add(tblScroll);
         }
 
         JScrollPane scroll = new JScrollPane(body,
@@ -1008,32 +1258,180 @@ public class BlueprintGalleryTab extends JPanel {
         btnClose.addActionListener(e -> dlg.dispose());
         JPanel bottom = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
         bottom.setBackground(bg);
-        if (status.missingCount > 0) {
-            JButton btnDl = new JButton("⬇ Download missing models");
-            btnDl.setFont(new Font("SansSerif", Font.BOLD, 11));
-            btnDl.putClientProperty("Button.arc", 999);
-            btnDl.setBackground(new Color(30, 40, 55));
-            btnDl.setForeground(AMBER_PARTIAL);
-            btnDl.addActionListener(e -> {
-                dlg.dispose();
-                Window ownerWin = SwingUtilities.getWindowAncestor(this);
-                if (ownerWin instanceof Main mainApp) {
-                    List<ModelInfo> missingModels = new ArrayList<>();
-                    for (ModelInfo req : entry.requiredModels) {
-                        if (req.getName() != null && status.missingNames.contains(req.getName())) {
-                            missingModels.add(req);
-                        }
+
+        // Download Workflow Button
+        JButton btnDlWorkflow = new JButton("⬇ Download Workflow");
+        btnDlWorkflow.setFont(new Font("SansSerif", Font.BOLD, 11));
+        btnDlWorkflow.putClientProperty("Button.arc", 999);
+        btnDlWorkflow.setBackground(new Color(0, 150, 136));
+        btnDlWorkflow.setForeground(Color.WHITE);
+        btnDlWorkflow.addActionListener(e -> {
+            btnDlWorkflow.setEnabled(false);
+            btnDlWorkflow.setText("Downloading...");
+            workflowDownloader.downloadWorkflowAsync(entry.registryWorkflow)
+                .thenAccept(file -> SwingUtilities.invokeLater(() -> {
+                    btnDlWorkflow.setText("✔ Downloaded");
+                    dlg.dispose(); // Close detail dialog
+                    
+                    Window ownerWin = SwingUtilities.getWindowAncestor(this);
+                    if (ownerWin instanceof Main mainApp) {
+                        mainApp.importWorkflow(file);
                     }
-                    mainApp.focusDownloadTabAndSelectModels(missingModels);
-                }
-            });
-            bottom.add(btnDl);
+                }))
+                .exceptionally(ex -> {
+                    SwingUtilities.invokeLater(() -> {
+                        btnDlWorkflow.setEnabled(true);
+                        btnDlWorkflow.setText("⬇ Download Workflow");
+                        JOptionPane.showMessageDialog(dlg, 
+                            "Failed to download workflow: " + ex.getCause().getMessage(), 
+                            "Download Error", JOptionPane.ERROR_MESSAGE);
+                    });
+                    return null;
+                });
+        });
+        // Send to ComfyUI Button
+        JButton btnSendToComfy = new JButton("🚀 Send to ComfyUI");
+        btnSendToComfy.setFont(new Font("SansSerif", Font.BOLD, 11));
+        btnSendToComfy.putClientProperty("Button.arc", 999);
+        btnSendToComfy.setBackground(new Color(33, 150, 243));
+        btnSendToComfy.setForeground(Color.WHITE);
+        if (status.missingCount > 0) {
+            btnSendToComfy.setEnabled(false);
+            btnSendToComfy.setToolTipText("Please download all missing models before sending to ComfyUI.");
         }
+        btnSendToComfy.addActionListener(evt -> {
+            btnSendToComfy.setEnabled(false);
+            btnSendToComfy.setText("Downloading...");
+            workflowDownloader.downloadWorkflowAsync(entry.registryWorkflow)
+                .thenAccept(file -> {
+                    SwingUtilities.invokeLater(() -> btnSendToComfy.setText("Sending..."));
+                    try {
+                        String fileContent = Files.readString(file.toPath(), java.nio.charset.StandardCharsets.UTF_8).trim();
+                        JSONObject json = new JSONObject(fileContent);
+                        
+                        String comfyUrl = configService.getComfyUIUrl();
+                        java.net.http.HttpClient client = java.net.http.HttpClient.newBuilder()
+                                .connectTimeout(java.time.Duration.ofSeconds(5))
+                                .build();
+                                
+                        java.net.http.HttpRequest request;
+                        boolean isUIFormat = json.has("nodes") || (json.has("workflow") && new JSONObject(json.get("workflow").toString()).has("nodes"));
+                        
+                        if (isUIFormat) {
+                            // UI format: Send to Bridge so it loads visually on the ComfyUI canvas!
+                            JSONObject payload = new JSONObject().put("workflow", json);
+                            request = java.net.http.HttpRequest.newBuilder()
+                                    .uri(java.net.URI.create(comfyUrl + "/cmfc/load-workflow"))
+                                    .header("Content-Type", "application/json")
+                                    .POST(java.net.http.HttpRequest.BodyPublishers.ofString(payload.toString()))
+                                    .build();
+                        } else {
+                            // API format: Queue directly
+                            JSONObject promptObj = json.has("prompt") ? json.getJSONObject("prompt") : json;
+                            JSONObject payload = new JSONObject().put("prompt", promptObj);
+                            request = java.net.http.HttpRequest.newBuilder()
+                                    .uri(java.net.URI.create(comfyUrl + "/prompt"))
+                                    .header("Content-Type", "application/json")
+                                    .POST(java.net.http.HttpRequest.BodyPublishers.ofString(payload.toString()))
+                                    .build();
+                        }
+                        
+                        java.net.http.HttpResponse<String> response = client.send(request, java.net.http.HttpResponse.BodyHandlers.ofString());
+                        
+                        SwingUtilities.invokeLater(() -> {
+                            btnSendToComfy.setEnabled(true);
+                            btnSendToComfy.setText("🚀 Send to ComfyUI");
+                            if (response.statusCode() == 200) {
+                                if (isUIFormat) {
+                                    JOptionPane.showMessageDialog(dlg,
+                                        "Workflow successfully sent and loaded into your ComfyUI browser tab!",
+                                        "Success", JOptionPane.INFORMATION_MESSAGE);
+                                } else {
+                                    JOptionPane.showMessageDialog(dlg,
+                                        "Workflow successfully sent to ComfyUI and queued!",
+                                        "Success", JOptionPane.INFORMATION_MESSAGE);
+                                }
+                                dlg.dispose();
+                            } else {
+                                if (isUIFormat && response.statusCode() == 404) {
+                                    JOptionPane.showMessageDialog(dlg,
+                                        "ComfyUI Bridge is not installed or outdated.\n" +
+                                        "Please install/update the ComfyUI Bridge in Settings -> Install ComfyUI Bridge.",
+                                        "Bridge Not Found", JOptionPane.WARNING_MESSAGE);
+                                } else {
+                                    JOptionPane.showMessageDialog(dlg,
+                                        "Failed to send to ComfyUI.\nStatus: " + response.statusCode() + "\nResponse: " + response.body(),
+                                        "Error", JOptionPane.ERROR_MESSAGE);
+                                }
+                            }
+                        });
+                    } catch (Exception ex) {
+                        String msg = ex.getMessage();
+                        if (ex instanceof java.net.ConnectException || (ex.getCause() != null && ex.getCause() instanceof java.net.ConnectException)) {
+                            msg = "Could not connect to ComfyUI. Please make sure the ComfyUI server is running and reachable at: " + configService.getComfyUIUrl();
+                        }
+                        final String finalMsg = msg;
+                        SwingUtilities.invokeLater(() -> {
+                            btnSendToComfy.setEnabled(true);
+                            btnSendToComfy.setText("🚀 Send to ComfyUI");
+                            JOptionPane.showMessageDialog(dlg,
+                                finalMsg,
+                                "Connection Error", JOptionPane.ERROR_MESSAGE);
+                        });
+                    }
+                })
+                .exceptionally(ex -> {
+                    SwingUtilities.invokeLater(() -> {
+                        btnSendToComfy.setEnabled(true);
+                        btnSendToComfy.setText("🚀 Send to ComfyUI");
+                        JOptionPane.showMessageDialog(dlg,
+                            "Failed to download workflow: " + ex.getCause().getMessage(),
+                            "Download Error", JOptionPane.ERROR_MESSAGE);
+                    });
+                    return null;
+                });
+        });
+
+        bottom.add(btnDlWorkflow);
+        bottom.add(btnSendToComfy);
         bottom.add(btnClose);
         root.add(bottom, BorderLayout.SOUTH);
 
         dlg.setContentPane(root);
         dlg.setVisible(true);
+    }
+
+    /**
+     * Downloads the entry preview (if remote) into a temp file and opens
+     * a self-contained video player dialog. For image previews this method
+     * just opens the URL in the OS default viewer.
+     */
+    private void playVideoPreview(BlueprintEntry entry) {
+        String url = entry.previewPath;
+        if (url == null || url.isEmpty()) return;
+        // Download to a temp file so the player can stream from a local path.
+        try {
+            String ext = ".mp4";
+            String lower = url.toLowerCase();
+            if (lower.endsWith(".webm")) ext = ".webm";
+            else if (lower.endsWith(".mov")) ext = ".mov";
+            String nonce = java.util.UUID.randomUUID().toString().replaceAll("[0-9-]", "x");
+            File tmp = new File(System.getProperty("java.io.tmpdir"),
+                "blueprint_video_" + nonce + ext);
+            tmp.deleteOnExit();
+            try (java.io.InputStream is = new java.net.URL(url).openStream()) {
+                java.nio.file.Files.copy(is, tmp.toPath(),
+                        java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            }
+            // Launch a media player dialog.
+            Window owner = SwingUtilities.getWindowAncestor(this);
+            new VideoPreviewDialog(owner instanceof Frame ? (Frame) owner : null,
+                    entry.name, tmp, configService.isDarkMode()).setVisible(true);
+        } catch (Exception ex) {
+            JOptionPane.showMessageDialog(this,
+                    "Could not open video preview: " + ex.getMessage(),
+                    "Video Preview Error", JOptionPane.ERROR_MESSAGE);
+        }
     }
 
     private void addRow(JPanel parent, String label, String value) {
@@ -1056,16 +1454,248 @@ public class BlueprintGalleryTab extends JPanel {
         parent.add(Box.createVerticalStrut(3));
     }
 
-    // ════════════════════════════════════════════════════════════════════════
-    //  HELPERS
-    // ════════════════════════════════════════════════════════════════════════
+    // ── HELPERS ──────────────────────────────────────────────────────────────
 
-    private BlueprintStatus computeStatus(BlueprintEntry entry) {
+    private boolean isHighLevelModelPresentDeep(String reqName, Set<String> localBaseNames) {
+        if (reqName == null || reqName.isBlank()) return true;
+        String clean = reqName.toLowerCase(Locale.ROOT).trim();
+        
+        // Closed source / API-based models don't require local files
+        if (clean.contains("api") || clean.contains("seedance") || clean.contains("elevenlabs") ||
+            clean.contains("openai") || clean.contains("dall-e") || clean.contains("gpt-image") ||
+            clean.contains("luma") || clean.contains("kling") || clean.contains("runway") ||
+            clean.contains("vidu") || clean.contains("minimax") || clean.contains("happyhorse") ||
+            clean.contains("dream") || clean.contains("sonilo") || clean.contains("sustain") ||
+            clean.contains("midjourney") || clean.contains("google") || clean.contains("gemini") ||
+            clean.contains("anthropic") || clean.contains("claude") || clean.contains("openrouter")) {
+            return true;
+        }
+
+        // Fuzzy matching logic for open-source model families:
+        if (clean.contains("flux")) {
+            for (String local : localBaseNames) {
+                if (local.contains("flux")) return true;
+            }
+            return false;
+        }
+        if (clean.contains("sdxl")) {
+            for (String local : localBaseNames) {
+                if (local.contains("sdxl")) return true;
+            }
+            return false;
+        }
+        if (clean.contains("sd3") || clean.contains("stable diffusion 3")) {
+            for (String local : localBaseNames) {
+                if (local.contains("sd3") || local.contains("sd_3")) return true;
+            }
+            return false;
+        }
+        if (clean.contains("sd1.5") || clean.contains("sd 1.5") || clean.contains("sd15")) {
+            for (String local : localBaseNames) {
+                if (local.contains("sd15") || local.contains("sd1.5") || local.contains("v1-5")) return true;
+            }
+            return false;
+        }
+        if (clean.contains("wan")) {
+            for (String local : localBaseNames) {
+                if (local.contains("wan")) return true;
+            }
+            return false;
+        }
+        if (clean.contains("hunyuan")) {
+            for (String local : localBaseNames) {
+                if (local.contains("hunyuan")) return true;
+            }
+            return false;
+        }
+        if (clean.contains("qwen")) {
+            for (String local : localBaseNames) {
+                if (local.contains("qwen")) return true;
+            }
+            return false;
+        }
+        if (clean.contains("ltx")) {
+            for (String local : localBaseNames) {
+                if (local.contains("ltx")) return true;
+            }
+            return false;
+        }
+        if (clean.equals("vae") || clean.equals("ae") || clean.contains("autoencoder")) {
+            for (String local : localBaseNames) {
+                if (local.contains("vae") || local.contains("ae") || local.contains("autoencoder")) return true;
+            }
+            return false;
+        }
+        if (clean.contains("lora")) {
+            for (String local : localBaseNames) {
+                if (local.contains("lora")) return true;
+            }
+            return false;
+        }
+        if (clean.contains("clip") || clean.contains("t5") || clean.contains("encoder") || clean.contains("text_encoder")) {
+            for (String local : localBaseNames) {
+                if (local.contains("clip") || local.contains("t5") || local.contains("encoder") || local.contains("text_encoder")) return true;
+            }
+            return false;
+        }
+        if (clean.contains("unet") || clean.contains("diffusion")) {
+            for (String local : localBaseNames) {
+                if (local.contains("unet") || local.contains("diffusion")) return true;
+            }
+            return false;
+        }
+
+        // General fallback
+        String[] parts = clean.split("[\\s\\-\\.\\_\\/]+");
+        if (parts.length > 0) {
+            String bestPart = "";
+            for (String part : parts) {
+                if (part.length() > bestPart.length() && !part.equals("model") && !part.equals("text") && !part.equals("image") && !part.equals("edit") && !part.equals("generation")) {
+                    bestPart = part;
+                }
+            }
+            if (bestPart.length() >= 3) {
+                for (String local : localBaseNames) {
+                    if (local.contains(bestPart)) return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private static List<String> getAlternativeFolders(String folder) {
+        List<String> list = new ArrayList<>();
+        if (folder == null) return list;
+        list.add(folder);
+        
+        String lower = folder.toLowerCase(Locale.ROOT);
+        if (lower.equals("text_encoders") || lower.equals("clip")) {
+            if (!lower.equals("text_encoders")) list.add("text_encoders");
+            if (!lower.equals("clip")) list.add("clip");
+        } else if (lower.equals("diffusion_models") || lower.equals("unet")) {
+            if (!lower.equals("diffusion_models")) list.add("diffusion_models");
+            if (!lower.equals("unet")) list.add("unet");
+        } else if (lower.equals("loras") || lower.equals("lora")) {
+            if (!lower.equals("loras")) list.add("loras");
+            if (!lower.equals("lora")) list.add("lora");
+        }
+        return list;
+    }
+
+    private String getModelStatus(ModelInfo info) {
+        if (info == null || info.getName() == null || info.getName().isBlank()) return "Idle";
+        
+        // If it is a high level model name (no extension), fuzzy match it using localModelValidator cache
+        if (!isSupportedModelFile(info.getName())) {
+            Set<String> localBaseNames = localModelValidator.getLocalModelBaseNames();
+            boolean present = isHighLevelModelPresentDeep(info.getName(), localBaseNames);
+            return present ? "✅ Already exists" : "Idle";
+        }
+
+        String base = configService.getModelsPath();
+        String archive = configService.getArchivePath();
+        if (base == null || base.isEmpty()) return "Idle";
+
+        String type = info.getType() != null ? info.getType() : "checkpoints";
+        String folder = info.getSave_path() != null ? info.getSave_path() : type;
+        String normalizedFolder = archiveService.normalizeFolder(folder);
+
+        // 1. Primary path check (Standard Models Path)
+        java.nio.file.Path local = "root".equals(normalizedFolder) ? java.nio.file.Paths.get(base, info.getName()) : java.nio.file.Paths.get(base, normalizedFolder, info.getName());
+        boolean exists = java.nio.file.Files.exists(local) && java.nio.file.Files.isRegularFile(local);
+
+        // 2. Primary archive check (Standard Archive Path)
+        boolean inArchive = false;
+        java.nio.file.Path archivedPath = null;
+        if (archive != null && !archive.trim().isEmpty()) {
+            archivedPath = "root".equals(normalizedFolder) ? java.nio.file.Paths.get(archive, info.getName()) : java.nio.file.Paths.get(archive, normalizedFolder, info.getName());
+            inArchive = java.nio.file.Files.exists(archivedPath) && java.nio.file.Files.isRegularFile(archivedPath);
+        }
+        
+        boolean sizeMismatch = false;
+
+        // 3. Robust existence and archive cross-check (Safety Guard)
+        if (archive != null && !archive.isEmpty()) {
+            try {
+                java.nio.file.Path absArchive = java.nio.file.Paths.get(archive).toAbsolutePath().normalize();
+                
+                // If 'local' is actually inside the archive, it's NOT a local active model
+                if (exists && local.toAbsolutePath().normalize().startsWith(absArchive)) {
+                    exists = false;
+                    inArchive = true;
+                }
+                
+                // If we found it in the primary archive location, verify size if known
+                if (inArchive && info.getByteSize() > 0) {
+                    if (java.nio.file.Files.size(archivedPath) != info.getByteSize()) {
+                        inArchive = false; // Size mismatch doesn't count
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
+
+        // 4. Fallback: Recursive search in ARCHIVE if not found at primary archive location
+        if (!inArchive && archive != null && !archive.isEmpty()) {
+            java.util.Optional<java.nio.file.Path> foundInArchive = localModelScanner.findModelWithPrefSize(java.nio.file.Paths.get(archive), info.getName(), info.getByteSize());
+            if (foundInArchive.isPresent()) {
+                archivedPath = foundInArchive.get();
+                inArchive = true;
+            }
+        }
+
+        // 5. Fallback: Recursive search in LOCAL MODELS if not found OR size mismatch at primary location
+        if ((!exists || sizeMismatch) && base != null && !base.isEmpty()) {
+            java.util.Optional<java.nio.file.Path> foundLocally = localModelScanner.findModelWithPrefSizeAndType(java.nio.file.Paths.get(base), info.getName(), info.getByteSize(), type);
+            if (foundLocally.isPresent()) {
+                java.nio.file.Path potentialLocal = foundLocally.get();
+                try {
+                    long potSize = java.nio.file.Files.size(potentialLocal);
+                    if (info.getByteSize() <= 0 || potSize == info.getByteSize()) {
+                        local = potentialLocal;
+                        exists = true;
+                        sizeMismatch = false;
+                        
+                        java.nio.file.Path root = java.nio.file.Paths.get(base).toAbsolutePath().normalize();
+                        java.nio.file.Path absPotential = potentialLocal.toAbsolutePath().normalize();
+                        
+                        if (absPotential.startsWith(root)) {
+                            java.nio.file.Path rel = root.relativize(absPotential);
+                            normalizedFolder = (rel.getParent() != null) ? rel.getParent().toString().replace("\\", "/") : "root";
+                        } else {
+                            normalizedFolder = "extra/" + potentialLocal.getParent().getFileName();
+                        }
+                        info.setSave_path(normalizedFolder);
+                    }
+                } catch (Exception ignored) {}
+            }
+        }
+
+        // 6. Final Status Determination
+        if (exists) {
+            return "✅ Already exists";
+        } else if (inArchive) {
+            return "📦 Archived";
+        } else if (sizeMismatch) {
+            return "🔄 Size Mismatch";
+        } else if (info.getUrl() == null || info.getUrl().equals("MISSING")) {
+            return "Idle";
+        } else {
+            return "✅ Known Good";
+        }
+    }
+
+    private boolean isModelPresentDeep(ModelInfo req) {
+        String status = getModelStatus(req);
+        return status.equals("✅ Already exists") || status.equals("📦 Archived");
+    }
+
+    private BlueprintStatus computeStatusInternal(BlueprintEntry entry) {
         int present = 0, missing = 0;
         List<String> missingNames = new ArrayList<>();
+
         for (ModelInfo req : entry.requiredModels) {
             if (req.getName() == null || req.getName().isBlank()) continue;
-            if (localModelBaseNames.contains(baseName(req.getName()))) {
+            if (isModelPresentDeep(req)) {
                 present++;
             } else {
                 missing++;
@@ -1075,7 +1705,13 @@ public class BlueprintGalleryTab extends JPanel {
         return new BlueprintStatus(present, missing, missingNames);
     }
 
-    /** Returns a palette {dark, mid, accent} based on the blueprint category. */
+    private BlueprintStatus computeStatus(BlueprintEntry entry) {
+        if (entry.status == null) {
+            entry.status = computeStatusInternal(entry);
+        }
+        return entry.status;
+    }
+
     private Color[] resolvePalette(BlueprintEntry entry) {
         String combined = (entry.category + " " + entry.name).toLowerCase(Locale.ROOT);
         for (String[] row : CAT_PALETTES) {
@@ -1090,7 +1726,6 @@ public class BlueprintGalleryTab extends JPanel {
         return Color.decode(h);
     }
 
-    /** Maps a category string to a representative emoji icon. */
     private static String categoryIcon(String category) {
         String c = category.toLowerCase(Locale.ROOT);
         if (c.contains("text to image"))     return "🖼";
@@ -1119,13 +1754,6 @@ public class BlueprintGalleryTab extends JPanel {
         return "⚙";
     }
 
-    private static boolean isSupportedModel(String name) {
-        String lo = name.toLowerCase(Locale.ROOT);
-        return lo.endsWith(".safetensors") || lo.endsWith(".sft") || lo.endsWith(".ckpt")
-                || lo.endsWith(".bin") || lo.endsWith(".pt") || lo.endsWith(".pth")
-                || lo.endsWith(".onnx");
-    }
-
     private static String baseName(String nameOrPath) {
         if (nameOrPath == null) return "";
         String s = nameOrPath.replace('\\', '/');
@@ -1137,10 +1765,56 @@ public class BlueprintGalleryTab extends JPanel {
     }
 
     private static String escapeHtml(String s) {
+        if (s == null) return "";
         return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
     }
 
-    /** Public hook called by Main when theme changes. */
+    private static String inferTypeFromFilename(String filename) {
+        if (filename == null) return "checkpoints";
+        String lower = filename.toLowerCase(Locale.ROOT);
+        if (lower.contains("vae") || lower.contains("ae.safetensors") || lower.startsWith("ae")) return "vae";
+        if (lower.contains("clip") || lower.contains("t5") || lower.contains("qwen") || lower.contains("encoder") || lower.contains("gemma") || lower.contains("llama") || lower.contains("text_encoder") || lower.contains("textencoder")) return "text_encoders";
+        if (lower.contains("unet") || lower.contains("diffusion") || lower.contains("turbo") || lower.contains("transformer") || lower.contains("dit")) return "diffusion_models";
+        if (lower.contains("lora")) return "loras";
+        if (lower.contains("controlnet") || lower.contains("control")) return "controlnet";
+        return "checkpoints";
+    }
+
+    private static boolean isSupportedModelFile(String filename) {
+        if (filename == null) return false;
+        String lower = filename.toLowerCase(Locale.ROOT);
+        return lower.endsWith(".safetensors") || lower.endsWith(".sft") || lower.endsWith(".ckpt") ||
+               lower.endsWith(".pt") || lower.endsWith(".pth") || lower.endsWith(".bin") || lower.endsWith(".onnx");
+    }
+
+    private static boolean hasActualModelFiles(List<ModelInfo> models) {
+        if (models == null || models.isEmpty()) return false;
+        for (ModelInfo m : models) {
+            if (isSupportedModelFile(m.getName())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<ModelInfo> extractModelInfos(Object obj, ObjectMapper mapper) {
+        List<ModelInfo> result = new ArrayList<>();
+        if (obj instanceof List) {
+            for (Object item : (List<?>) obj) {
+                if (item instanceof ModelInfo) {
+                    result.add((ModelInfo) item);
+                } else if (item instanceof Map) {
+                    try {
+                        ModelInfo info = mapper.convertValue(item, ModelInfo.class);
+                        result.add(info);
+                    } catch (Exception ignored) {}
+                }
+            }
+        }
+        return result;
+    }
+
     public void updateTheme(boolean darkMode) {
         if (darkMode) {
             bgPage          = new Color(15, 16, 21);
@@ -1160,6 +1834,12 @@ public class BlueprintGalleryTab extends JPanel {
             textDim         = new Color(140, 145, 160);
         }
         
+        setBackground(bgPage);
+        if (scroll != null) {
+            scroll.setBackground(bgPage);
+            scroll.getViewport().setBackground(bgPage);
+        }
+
         if (lblTitle != null) {
             lblTitle.setForeground(textPrimary);
         }
@@ -1169,60 +1849,153 @@ public class BlueprintGalleryTab extends JPanel {
         if (lblStatus != null) {
             lblStatus.setForeground(textSecondary);
         }
+        if (chkReadyOnly != null) {
+            chkReadyOnly.setForeground(textSecondary);
+            if (darkMode) {
+                chkReadyOnly.putClientProperty("FlatLaf.style", 
+                    "iconSize: 20,20; " +
+                    "icon.borderColor: #FFFFFF; " +
+                    "icon.selectedBorderColor: #FFFFFF; " +
+                    "icon.checkmarkColor: #121318; " +
+                    "icon.focusWidth: 3; " +
+                    "icon.selectedBackground: #FFFFFF"
+                );
+            } else {
+                chkReadyOnly.putClientProperty("FlatLaf.style", 
+                    "iconSize: 20,20; " +
+                    "icon.borderColor: #121318; " +
+                    "icon.selectedBorderColor: #009688; " +
+                    "icon.checkmarkColor: #FFFFFF; " +
+                    "icon.focusWidth: 3; " +
+                    "icon.selectedBackground: #009688"
+                );
+            }
+            chkReadyOnly.revalidate();
+            chkReadyOnly.repaint();
+        }
+        if (chkHideCloud != null) {
+            chkHideCloud.setForeground(textSecondary);
+            if (darkMode) {
+                chkHideCloud.putClientProperty("FlatLaf.style", 
+                    "iconSize: 20,20; " +
+                    "icon.borderColor: #FFFFFF; " +
+                    "icon.selectedBorderColor: #FFFFFF; " +
+                    "icon.checkmarkColor: #121318; " +
+                    "icon.focusWidth: 3; " +
+                    "icon.selectedBackground: #FFFFFF"
+                );
+            } else {
+                chkHideCloud.putClientProperty("FlatLaf.style", 
+                    "iconSize: 20,20; " +
+                    "icon.borderColor: #121318; " +
+                    "icon.selectedBorderColor: #009688; " +
+                    "icon.checkmarkColor: #FFFFFF; " +
+                    "icon.focusWidth: 3; " +
+                    "icon.selectedBackground: #009688"
+                );
+            }
+            chkHideCloud.revalidate();
+            chkHideCloud.repaint();
+        }
         
         applyFilter();
         repaint();
     }
 
-    // ════════════════════════════════════════════════════════════════════════
-    //  DATA CLASSES
-    // ════════════════════════════════════════════════════════════════════════
+    // ── DATA CLASSES ──────────────────────────────────────────────────────────
 
-    private static class BlueprintEntry {
-        final String name;
-        final String filename;
-        final String filePath;
-        final String category;
-        final String description;
-        final List<ModelInfo> requiredModels;
-        String mediaType = "";
-        String mediaSubtype = "";
-        String previewPath = "";
-
-        BlueprintEntry(String name, String filename, String filePath,
-                       String category, String description, List<ModelInfo> requiredModels) {
-            this.name           = name;
-            this.filename       = filename;
-            this.filePath       = filePath;
-            this.category       = category;
-            this.description    = description;
-            this.requiredModels = requiredModels;
+    public java.util.List<BlueprintEntry> getAvailableBlueprints() {
+        java.util.List<BlueprintEntry> list = new java.util.ArrayList<>();
+        for (BlueprintEntry e : allEntries) {
+            BlueprintStatus s = e.status;
+            if (s != null && s.missingCount == 0) {
+                list.add(e);
+            }
         }
+        return list;
+    }
 
-        BlueprintEntry(String name, String filename, String filePath,
-                       String category, String description, List<ModelInfo> requiredModels,
-                       String mediaType, String mediaSubtype, String previewPath) {
-            this.name           = name;
-            this.filename       = filename;
-            this.filePath       = filePath;
-            this.category       = category;
-            this.description    = description;
-            this.requiredModels = requiredModels;
-            this.mediaType      = mediaType;
-            this.mediaSubtype   = mediaSubtype;
-            this.previewPath    = previewPath;
+    public static class BlueprintEntry {
+        public final String name;
+        public final String filename;
+        public final String filePath;
+        public final String category;
+        public final String description;
+        public final List<ModelInfo> requiredModels;
+        public final ComfyRegistryWorkflow registryWorkflow;
+        public String previewPath = "";
+        public BlueprintStatus status = null;
+
+        public BlueprintEntry(ComfyRegistryWorkflow workflow) {
+            this.registryWorkflow = workflow;
+            this.name = workflow.getTitle();
+            this.filename = workflow.getTitle() + ".json";
+            this.filePath = workflow.getJsonDownloadUrl();
+            this.category = workflow.getCategory() != null ? workflow.getCategory() : "General";
+            this.description = workflow.getDescription() != null ? workflow.getDescription() : "";
+            this.previewPath = workflow.getThumbnailUrl() != null ? workflow.getThumbnailUrl() : "";
+            
+            this.requiredModels = new ArrayList<>();
+            if (workflow.getRequiredModelInfos() != null && !workflow.getRequiredModelInfos().isEmpty()) {
+                this.requiredModels.addAll(workflow.getRequiredModelInfos());
+            } else if (workflow.getRequiredModels() != null) {
+                for (String mName : workflow.getRequiredModels()) {
+                    if (isSupportedModelFile(mName)) {
+                        ModelInfo info = new ModelInfo();
+                        info.setName(mName);
+                        info.setType(inferTypeFromFilename(mName));
+                        this.requiredModels.add(info);
+                    }
+                }
+            }
+        }
+        
+        @Override
+        public String toString() {
+            return this.name;
         }
     }
 
-    private static class BlueprintStatus {
-        final int presentCount;
-        final int missingCount;
-        final List<String> missingNames;
+    public static class BlueprintStatus {
+        public final int presentCount;
+        public final int missingCount;
+        public final List<String> missingNames;
 
-        BlueprintStatus(int presentCount, int missingCount, List<String> missingNames) {
+        public BlueprintStatus(int presentCount, int missingCount, List<String> missingNames) {
             this.presentCount = presentCount;
             this.missingCount = missingCount;
             this.missingNames = missingNames;
+        }
+    }
+
+    private static class ScrollablePanel extends JPanel implements Scrollable {
+        public ScrollablePanel(LayoutManager layout) {
+            super(layout);
+        }
+
+        @Override
+        public Dimension getPreferredScrollableViewportSize() {
+            return getPreferredSize();
+        }
+
+        @Override
+        public int getScrollableUnitIncrement(Rectangle visibleRect, int orientation, int direction) {
+            return 20;
+        }
+
+        @Override
+        public int getScrollableBlockIncrement(Rectangle visibleRect, int orientation, int direction) {
+            return 60;
+        }
+
+        @Override
+        public boolean getScrollableTracksViewportWidth() {
+            return true;
+        }
+
+        @Override
+        public boolean getScrollableTracksViewportHeight() {
+            return false;
         }
     }
 }

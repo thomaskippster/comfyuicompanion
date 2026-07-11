@@ -10,7 +10,13 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
+import java.net.InetAddress;
+import java.net.URI;
+import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import org.springframework.beans.factory.annotation.Autowired;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -27,6 +33,7 @@ import java.util.Optional;
 public class RestBridgeService {
 
     private HttpServer server;
+    private ExecutorService serverExecutor;
     private Consumer<String> workflowConsumer;
     private int port = 12345;
     private String expectedApiToken;
@@ -54,10 +61,15 @@ public class RestBridgeService {
         if (server != null) return;
         try {
             server = HttpServer.create(new InetSocketAddress("127.0.0.1", port), 0);
+            serverExecutor = Executors.newFixedThreadPool(4, r -> {
+                Thread t = new Thread(r, "RestBridge-Worker");
+                t.setDaemon(true);
+                return t;
+            });
+            server.setExecutor(serverExecutor);
             server.createContext("/import", new ImportHandler());
             server.createContext("/api/templates", new TemplatesHandler());
             server.createContext("/api/preview", new PreviewHandler());
-            server.setExecutor(null);
             server.start();
             System.out.println("REST Bridge started on port " + port);
         } catch (IOException e) {
@@ -70,6 +82,18 @@ public class RestBridgeService {
         if (server != null) {
             server.stop(0);
             server = null;
+        }
+        if (serverExecutor != null) {
+            serverExecutor.shutdown();
+            try {
+                if (!serverExecutor.awaitTermination(2, TimeUnit.SECONDS)) {
+                    serverExecutor.shutdownNow();
+                }
+            } catch (InterruptedException e) {
+                serverExecutor.shutdownNow();
+                Thread.currentThread().interrupt();
+            }
+            serverExecutor = null;
         }
     }
 
@@ -158,38 +182,42 @@ public class RestBridgeService {
         if (urlStr == null || urlStr.isEmpty()) {
             return false;
         }
+        URI uri;
         try {
-            java.net.URI uri = new java.net.URI(urlStr);
-            String scheme = uri.getScheme();
-            if (scheme == null || (!scheme.equalsIgnoreCase("http") && !scheme.equalsIgnoreCase("https"))) {
-                return false;
-            }
-            String host = uri.getHost();
-            if (host == null || host.isEmpty()) {
-                return false;
-            }
-            
-            // Loopback Host protection
-            if (host.equalsIgnoreCase("localhost") || 
-                host.equals("::1") || 
-                host.equals("0:0:0:0:0:0:0:1") || 
-                host.startsWith("127.")) {
-                return true;
-            }
-            
-            try {
-                java.net.InetAddress addr = java.net.InetAddress.getByName(host);
-                if (addr.isLoopbackAddress()) {
-                    return true;
-                }
-            } catch (Exception e) {
-                // Ignore resolution failure
-            }
-            
-            return false;
+            uri = new URI(urlStr);
         } catch (Exception e) {
             return false;
         }
+        String scheme = uri.getScheme();
+        if (scheme == null || (!scheme.equalsIgnoreCase("http") && !scheme.equalsIgnoreCase("https"))) {
+            return false;
+        }
+        String host = uri.getHost();
+        if (host == null || host.isEmpty()) {
+            return false;
+        }
+        // Only allow IP literals in the loopback range. We refuse DNS lookups
+        // entirely so a domain cannot be used for DNS-rebinding SSRF.
+        if (!isLoopbackLiteral(host)) {
+            return false;
+        }
+        // Confirm the literal really is loopback (defense against weird inputs
+        // that just happen to start with "127." but are not real IPv4 literals).
+        try {
+            return InetAddress.getByName(host).isLoopbackAddress();
+        } catch (UnknownHostException e) {
+            return false;
+        }
+    }
+
+    private boolean isLoopbackLiteral(String host) {
+        if (host == null) {
+            return false;
+        }
+        if (host.equals("::1") || host.equals("0:0:0:0:0:0:0:1")) {
+            return true;
+        }
+        return host.startsWith("127.");
     }
 
     private boolean handleCorsAndOptions(HttpExchange exchange) throws IOException {

@@ -6,6 +6,7 @@ import de.tki.comfymodels.domain.ModelInfo;
 import org.springframework.stereotype.Service;
 
 import java.net.URI;
+import java.time.Duration;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -17,6 +18,7 @@ import java.util.concurrent.CompletableFuture;
 public class HuggingFaceService {
     private final HttpClient httpClient = HttpClient.newBuilder()
             .followRedirects(HttpClient.Redirect.ALWAYS)
+            .connectTimeout(Duration.ofSeconds(10))
             .build();
     private final ObjectMapper mapper = new ObjectMapper();
 
@@ -28,7 +30,7 @@ public class HuggingFaceService {
                 .uri(URI.create(url))
                 .header("Accept", "application/json")
                 .GET()
-                .build();
+                .timeout(Duration.ofSeconds(30)).build();
 
         return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString())
                 .thenApply(response -> {

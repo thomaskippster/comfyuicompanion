@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 
 import java.io.*;
 import java.net.URI;
+import java.time.Duration;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -29,7 +30,7 @@ public class DefaultDownloadManager implements IDownloadManager {
             new LinkedBlockingQueue<>()
     );
     private final ExecutorService segmentExecutor = Executors.newCachedThreadPool();
-    private final HttpClient httpClient = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.ALWAYS).build();
+    private final HttpClient httpClient = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.ALWAYS).connectTimeout(Duration.ofSeconds(10)).build();
     private volatile boolean isPaused = false;
     private volatile boolean isStopped = false;
     private volatile boolean[] currentSelection;
@@ -284,7 +285,7 @@ public class DefaultDownloadManager implements IDownloadManager {
                 headBuilder.header("Authorization", "Bearer " + hfToken);
             }
 
-            HttpResponse<Void> headResponse = httpClient.send(headBuilder.build(), HttpResponse.BodyHandlers.discarding());
+            HttpResponse<Void> headResponse = httpClient.send(headBuilder.timeout(Duration.ofSeconds(30)).build(), HttpResponse.BodyHandlers.discarding());
             
             if (headResponse.statusCode() == 401 || headResponse.statusCode() == 403) {
                 safeUpdateStatus(index, "❌ Auth Required (Token?)", statusUpdater);
@@ -367,7 +368,7 @@ public class DefaultDownloadManager implements IDownloadManager {
 
         if (existingPartSize > 0) downloadBuilder.header("Range", "bytes=" + existingPartSize + "-");
 
-        HttpResponse<InputStream> response = httpClient.send(downloadBuilder.build(), HttpResponse.BodyHandlers.ofInputStream());
+        HttpResponse<InputStream> response = httpClient.send(downloadBuilder.timeout(Duration.ofSeconds(60)).build(), HttpResponse.BodyHandlers.ofInputStream());
         int statusCode = response.statusCode();
 
         if (statusCode == 416) { 
@@ -563,7 +564,7 @@ public class DefaultDownloadManager implements IDownloadManager {
                         reqBuilder.header("Authorization", "Bearer " + hfToken);
                     }
                     
-                    HttpResponse<InputStream> response = httpClient.send(reqBuilder.build(), HttpResponse.BodyHandlers.ofInputStream());
+                    HttpResponse<InputStream> response = httpClient.send(reqBuilder.timeout(Duration.ofSeconds(60)).build(), HttpResponse.BodyHandlers.ofInputStream());
                     int status = response.statusCode();
                     
                     if (status != 206 && (status != 200 || rangeStart != start)) {

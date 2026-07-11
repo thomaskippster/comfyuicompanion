@@ -1,11 +1,16 @@
 package de.tki.comfymodels.util;
 
 import java.io.IOException;
+import org.springframework.beans.factory.annotation.Autowired;
+import de.tki.comfymodels.service.impl.ProcessTracker;
 
 public class PlatformUtils {
 
     private static String OS_NAME = System.getProperty("os.name").toLowerCase();
 
+
+    @Autowired(required = false)
+    private static ProcessTracker processTracker;
     public static void setOsNameForTesting(String osName) {
         OS_NAME = osName.toLowerCase();
     }
@@ -30,7 +35,7 @@ public class PlatformUtils {
         }
 
         try {
-            new ProcessBuilder(command).start();
+            processTracker.start(new ProcessBuilder(command));
         } catch (IOException e) {
             System.err.println("Error executing shutdown command: " + e.getMessage());
         }

@@ -30,6 +30,6 @@ public class Gemma4Service {
 
         String userPrompt = "Video Idea: " + idea;
 
-        return localGemmaService.generateCompletion(systemPrompt, userPrompt, 0.5f, 512);
+        return localGemmaService.generateCompletion(systemPrompt, userPrompt, 0.5f, 2048);
     }
 }

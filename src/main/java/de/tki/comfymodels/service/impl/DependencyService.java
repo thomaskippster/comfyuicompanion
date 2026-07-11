@@ -10,12 +10,16 @@ import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
+import org.springframework.beans.factory.annotation.Autowired;
 
 @Service
 public class DependencyService {
 
     private final ConfigService configService;
 
+
+    @Autowired(required = false)
+    private ProcessTracker processTracker;
     public DependencyService(ConfigService configService) {
         this.configService = configService;
     }
@@ -25,7 +29,7 @@ public class DependencyService {
         if ("ffmpeg".equals(ffmpegPath)) {
             // Check if ffmpeg actually runs
             try {
-                Process p = new ProcessBuilder("ffmpeg", "-version").start();
+                Process p = processTracker.start(new ProcessBuilder("ffmpeg", "-version"));
                 p.waitFor();
                 return true;
             } catch (Exception e) {
@@ -52,7 +56,7 @@ public class DependencyService {
             onProgress.accept("Attempting installation via Conda...");
             ProcessBuilder pb = new ProcessBuilder("conda", "install", "-y", "-c", "conda-forge", "ffmpeg");
             pb.redirectErrorStream(true);
-            Process p = pb.start();
+            Process p = processTracker.start(pb);
             
             // Read output to avoid blocking
             try (InputStream is = p.getInputStream();

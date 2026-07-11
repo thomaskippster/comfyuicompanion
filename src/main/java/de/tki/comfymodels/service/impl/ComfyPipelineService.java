@@ -27,10 +27,24 @@ import java.util.concurrent.CompletableFuture;
 @Service
 public class ComfyPipelineService {
 
+    public static final class ComfyOutputRef {
+        public final String filename;
+        public final String subfolder;
+        public final String type;
+
+        public ComfyOutputRef(String filename, String subfolder, String type) {
+            this.filename = filename;
+            this.subfolder = subfolder != null ? subfolder : "";
+            this.type = type != null ? type : "output";
+        }
+    }
+
     private static final java.util.Set<String> ATTEMPTED_INSTALLS = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
     private final HttpClient httpClient;
     private final ConfigService configService;
+    @Autowired(required = false)
+    private ProcessTracker processTracker;
 
     @Autowired
     @org.springframework.context.annotation.Lazy
@@ -320,7 +334,7 @@ public class ComfyPipelineService {
                 }
             }
         } catch (Exception e) {
-            System.err.println("⚠️ [ComfyPipeline] Failed to fetch options for " + nodeClass + "/" + inputName + ": " + e.getMessage());
+            System.err.println("âš ï¸ [ComfyPipeline] Failed to fetch options for " + nodeClass + "/" + inputName + ": " + e.getMessage());
         }
         return optionsList;
     }
@@ -329,7 +343,7 @@ public class ComfyPipelineService {
         String resolved = defaultVal;
         if (modelArchitectureService != null) {
             de.tki.comfymodels.service.IModelArchitectureService.ModelDefaults defaults = modelArchitectureService.getDefaultsForModel(key);
-            if (defaults != null && defaults.vaeName != null) {
+            if (defaults != null && defaults.vaeName != null && key.startsWith("video_")) {
                 resolved = defaults.vaeName;
             }
         }
@@ -353,257 +367,92 @@ public class ComfyPipelineService {
         String clipName = resolveVideoModel("video_wan_clip", "umt5_xxl_fp8_e4m3fn_scaled.safetensors", availableClips);
         String vaeName = resolveVideoModel("video_wan_vae", "wan_2.1_vae.safetensors", availableVaes);
 
-        // Node 1: UNETLoader (High Noise)
-        JSONObject node1 = new JSONObject();
-        node1.put("class_type", "UNETLoader");
-        JSONObject inputs1 = new JSONObject();
-        inputs1.put("unet_name", highNoiseUnet);
-        inputs1.put("weight_dtype", "default");
-        node1.put("inputs", inputs1);
-        workflowJson.put("1", node1);
+        int width = 640;
+        int height = 640;
+        // Compute duration in seconds from the scene frame range.
+        // Convention: startFrame=0, endFrame=duration_seconds*24. A scene
+        // with no frames set falls back to a 5-second default.
+        float duration = 5.0f;
+        if (scene.getEndFrame() > scene.getStartFrame()) {
+            duration = Math.max(1.0f, (scene.getEndFrame() - scene.getStartFrame()) / 24.0f);
+        }
+        float fps = 16.0f;
+        int userSteps = scene.getSteps() > 0 ? scene.getSteps() : 20;
+        boolean enableLora = userSteps <= 4;
+        int stepsNoLora = enableLora ? 20 : userSteps;
+        int stepsLora = 4;
+        int splitStepNoLora = Math.max(1, stepsNoLora / 2);
+        int splitStepLora = Math.max(1, stepsLora / 2);
+        double userCfg = scene.getCfgScale() > 0 ? scene.getCfgScale() : 3.5;
+        if (userCfg > 3.0) userCfg = 3.0;
+        double cfgNoLora = userCfg;
+        double cfgLora = 1.0;
 
-        // Node 2: UNETLoader (Low Noise)
-        JSONObject node2 = new JSONObject();
-        node2.put("class_type", "UNETLoader");
-        JSONObject inputs2 = new JSONObject();
-        inputs2.put("unet_name", lowNoiseUnet);
-        inputs2.put("weight_dtype", "default");
-        node2.put("inputs", inputs2);
-        workflowJson.put("2", node2);
+        String negativePrompt = "色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走";
 
-        // Node 3: LoraLoader (High Noise LoRA)
-        JSONObject node3 = new JSONObject();
-        node3.put("class_type", "LoraLoader");
-        JSONObject inputs3 = new JSONObject();
-        inputs3.put("lora_name", highNoiseLora);
-        inputs3.put("strength_model", 1.0);
-        inputs3.put("strength_clip", 1.0);
-        inputs3.put("model", new JSONArray().put("1").put(0));
-        inputs3.put("clip", new JSONArray().put("5").put(0));
-        node3.put("inputs", inputs3);
-        workflowJson.put("3", node3);
+        workflowJson.put("129:90", makeNode("VAELoader", new JSONObject().put("vae_name", vaeName)));
+        workflowJson.put("129:84", makeNode("CLIPLoader", new JSONObject().put("clip_name", clipName).put("type", "wan").put("device", "default")));
+        workflowJson.put("129:95", makeNode("UNETLoader", new JSONObject().put("unet_name", highNoiseUnet).put("weight_dtype", "default")));
+        workflowJson.put("129:96", makeNode("UNETLoader", new JSONObject().put("unet_name", lowNoiseUnet).put("weight_dtype", "default")));
+        workflowJson.put("129:101", makeNode("LoraLoaderModelOnly", new JSONObject().put("lora_name", highNoiseLora).put("strength_model", 1.0).put("model", link("129:95", 0))));
+        workflowJson.put("129:102", makeNode("LoraLoaderModelOnly", new JSONObject().put("lora_name", lowNoiseLora).put("strength_model", 1.0).put("model", link("129:96", 0))));
+        workflowJson.put("129:131", makeNode("PrimitiveBoolean", new JSONObject().put("value", enableLora)));
+        workflowJson.put("129:116", makeNode("ComfySwitchNode", new JSONObject().put("switch", link("129:131", 0)).put("on_false", link("129:95", 0)).put("on_true", link("129:101", 0))));
+        workflowJson.put("129:117", makeNode("ComfySwitchNode", new JSONObject().put("switch", link("129:131", 0)).put("on_false", link("129:96", 0)).put("on_true", link("129:102", 0))));
+        workflowJson.put("129:104", makeNode("ModelSamplingSD3", new JSONObject().put("shift", 5.0).put("model", link("129:116", 0))));
+        workflowJson.put("129:103", makeNode("ModelSamplingSD3", new JSONObject().put("shift", 5.0).put("model", link("129:117", 0))));
+        workflowJson.put("129:89", makeNode("CLIPTextEncode", new JSONObject().put("text", negativePrompt).put("clip", link("129:84", 0))));
+        workflowJson.put("129:93", makeNode("CLIPTextEncode", new JSONObject().put("text", promptText).put("clip", link("129:84", 0))));
+        workflowJson.put("129:161", makeNode("PrimitiveFloat", new JSONObject().put("value", duration)));
+        workflowJson.put("129:162", makeNode("PrimitiveFloat", new JSONObject().put("value", fps)));
+        workflowJson.put("129:163", makeNode("ComfyMathExpression", new JSONObject().put("expression", "floor (a * b + 1)").put("values.a", link("129:161", 0)).put("values.b", link("129:162", 0))));
+        workflowJson.put("129:128", makeNode("PrimitiveInt", new JSONObject().put("value", stepsNoLora)));
+        workflowJson.put("129:118", makeNode("PrimitiveInt", new JSONObject().put("value", stepsLora)));
+        workflowJson.put("129:119", makeNode("ComfySwitchNode", new JSONObject().put("switch", link("129:131", 0)).put("on_false", link("129:128", 0)).put("on_true", link("129:118", 0))));
+        workflowJson.put("129:126", makeNode("PrimitiveFloat", new JSONObject().put("value", cfgNoLora)));
+        workflowJson.put("129:122", makeNode("PrimitiveFloat", new JSONObject().put("value", cfgLora)));
+        workflowJson.put("129:120", makeNode("ComfySwitchNode", new JSONObject().put("switch", link("129:131", 0)).put("on_false", link("129:126", 0)).put("on_true", link("129:122", 0))));
+        workflowJson.put("129:127", makeNode("PrimitiveInt", new JSONObject().put("value", splitStepNoLora)));
+        workflowJson.put("129:124", makeNode("PrimitiveInt", new JSONObject().put("value", splitStepLora)));
+        workflowJson.put("129:125", makeNode("ComfySwitchNode", new JSONObject().put("switch", link("129:131", 0)).put("on_false", link("129:127", 0)).put("on_true", link("129:124", 0))));
 
-        // Node 4: LoraLoader (Low Noise LoRA)
-        JSONObject node4 = new JSONObject();
-        node4.put("class_type", "LoraLoader");
-        JSONObject inputs4 = new JSONObject();
-        inputs4.put("lora_name", lowNoiseLora);
-        inputs4.put("strength_model", 1.0);
-        inputs4.put("strength_clip", 1.0);
-        inputs4.put("model", new JSONArray().put("2").put(0));
-        inputs4.put("clip", new JSONArray().put("5").put(0));
-        node4.put("inputs", inputs4);
-        workflowJson.put("4", node4);
-
-        // Node 5: CLIPLoader
-        JSONObject node5 = new JSONObject();
-        node5.put("class_type", "CLIPLoader");
-        JSONObject inputs5 = new JSONObject();
-        inputs5.put("clip_name", clipName);
-        inputs5.put("type", "wan");
-        node5.put("inputs", inputs5);
-        workflowJson.put("5", node5);
-
-        // Node 6: CLIPTextEncode (Positive)
-        JSONObject node6 = new JSONObject();
-        node6.put("class_type", "CLIPTextEncode");
-        JSONObject inputs6 = new JSONObject();
-        inputs6.put("text", promptText);
-        inputs6.put("clip", new JSONArray().put("3").put(1));
-        node6.put("inputs", inputs6);
-        workflowJson.put("6", node6);
-
-        // Node 7: CLIPTextEncode (Negative)
-        JSONObject node7 = new JSONObject();
-        node7.put("class_type", "CLIPTextEncode");
-        JSONObject inputs7 = new JSONObject();
-        inputs7.put("text", "bad hands, text, blurry, worst quality, low quality");
-        inputs7.put("clip", new JSONArray().put("3").put(1));
-        node7.put("inputs", inputs7);
-        workflowJson.put("7", node7);
-
-        // Node 8: VAELoader
-        JSONObject node8 = new JSONObject();
-        node8.put("class_type", "VAELoader");
-        JSONObject inputs8 = new JSONObject();
-        inputs8.put("vae_name", vaeName);
-        node8.put("inputs", inputs8);
-        workflowJson.put("8", node8);
-
-        List<String> availableCheckpoints = fetchObjectInfoOptions(serverUrl, "CheckpointLoaderSimple", "ckpt_name");
-        String sdCheckpoint = resolveVideoModel("sd_checkpoint", "DreamShaper_8_pruned.safetensors", availableCheckpoints);
-
-        // Node 9: LoadImage or SD1.5 Generator
+        String startImageNodeId;
         if (cleanSpeakerImage != null) {
-            JSONObject node9 = new JSONObject();
-            node9.put("class_type", "LoadImage");
-            JSONObject inputs9 = new JSONObject();
-            inputs9.put("image", cleanSpeakerImage);
-            node9.put("inputs", inputs9);
-            workflowJson.put("9", node9);
+            workflowJson.put("97", makeNode("LoadImage", new JSONObject().put("image", cleanSpeakerImage)));
+            startImageNodeId = "97";
         } else {
-            // No template image provided: Generate one via SD1.5 Checkpoint
-            // Node 20: CheckpointLoaderSimple
-            JSONObject node20 = new JSONObject();
-            node20.put("class_type", "CheckpointLoaderSimple");
-            JSONObject inputs20 = new JSONObject();
-            inputs20.put("ckpt_name", sdCheckpoint);
-            node20.put("inputs", inputs20);
-            workflowJson.put("20", node20);
-            
-            // Node 21: CLIPTextEncode (Positive for SD1.5)
-            JSONObject node21 = new JSONObject();
-            node21.put("class_type", "CLIPTextEncode");
-            JSONObject inputs21 = new JSONObject();
-            inputs21.put("text", promptText);
-            inputs21.put("clip", new JSONArray().put("20").put(1));
-            node21.put("inputs", inputs21);
-            workflowJson.put("21", node21);
-            
-            // Node 22: CLIPTextEncode (Negative for SD1.5)
-            JSONObject node22 = new JSONObject();
-            node22.put("class_type", "CLIPTextEncode");
-            JSONObject inputs22 = new JSONObject();
-            inputs22.put("text", "blurry, worst quality, low quality");
-            inputs22.put("clip", new JSONArray().put("20").put(1));
-            node22.put("inputs", inputs22);
-            workflowJson.put("22", node22);
-            
-            // Node 23: EmptyLatentImage
-            JSONObject node23 = new JSONObject();
-            node23.put("class_type", "EmptyLatentImage");
-            JSONObject inputs23 = new JSONObject();
-            inputs23.put("width", 512);
-            inputs23.put("height", 512);
-            inputs23.put("batch_size", 1);
-            node23.put("inputs", inputs23);
-            workflowJson.put("23", node23);
-            
-            // Node 24: KSampler (SD1.5)
-            JSONObject node24 = new JSONObject();
-            node24.put("class_type", "KSampler");
-            JSONObject inputs24 = new JSONObject();
-            inputs24.put("seed", seed);
-            inputs24.put("steps", 20);
-            inputs24.put("cfg", 7.5);
-            inputs24.put("sampler_name", "euler");
-            inputs24.put("scheduler", "normal");
-            inputs24.put("denoise", 1.0);
-            inputs24.put("model", new JSONArray().put("20").put(0));
-            inputs24.put("positive", new JSONArray().put("21").put(0));
-            inputs24.put("negative", new JSONArray().put("22").put(0));
-            inputs24.put("latent_image", new JSONArray().put("23").put(0));
-            node24.put("inputs", inputs24);
-            workflowJson.put("24", node24);
-            
-            // Node 25: VAEDecode (SD1.5)
-            JSONObject node25 = new JSONObject();
-            node25.put("class_type", "VAEDecode");
-            JSONObject inputs25 = new JSONObject();
-            inputs25.put("samples", new JSONArray().put("24").put(0));
-            inputs25.put("vae", new JSONArray().put("20").put(2));
-            node25.put("inputs", inputs25);
-            workflowJson.put("25", node25);
-            
-            // Node 26: ImageScale (Upscale 512x512 to 720x720 for Wan)
-            JSONObject node26 = new JSONObject();
-            node26.put("class_type", "ImageScale");
-            JSONObject inputs26 = new JSONObject();
-            inputs26.put("image", new JSONArray().put("25").put(0));
-            inputs26.put("width", 720);
-            inputs26.put("height", 720);
-            inputs26.put("upscale_method", "nearest-exact");
-            inputs26.put("crop", "disabled");
-            node26.put("inputs", inputs26);
-            workflowJson.put("26", node26);
+            // No speaker image configured: use EmptyImage so the workflow is self-contained
+            // and does not depend on a SD 1.5 checkpoint being installed (which previously
+            // crashed with "clip input is invalid: None" when the user only had video
+            // checkpoints like LTX-Video loaded). EmptyImage ships with stock ComfyUI.
+            workflowJson.put("20", makeNode("EmptyImage", new JSONObject()
+                    .put("width", width)
+                    .put("height", height)
+                    .put("batch_size", 1)
+                    .put("color", 0)));
+            startImageNodeId = "20";
         }
 
-        // Node 10: WanImageToVideo
-        JSONObject node10 = new JSONObject();
-        node10.put("class_type", "WanImageToVideo");
-        JSONObject inputs10 = new JSONObject();
-        inputs10.put("width", 720);
-        inputs10.put("height", 720);
-        inputs10.put("length", 81);
-        inputs10.put("batch_size", 1);
-        inputs10.put("vae", new JSONArray().put("8").put(0));
-        if (cleanSpeakerImage != null) {
-            inputs10.put("start_image", new JSONArray().put("9").put(0));
-        } else {
-            inputs10.put("start_image", new JSONArray().put("26").put(0));
-        }
-        inputs10.put("positive", new JSONArray().put("6").put(0));
-        inputs10.put("negative", new JSONArray().put("7").put(0));
-        node10.put("inputs", inputs10);
-        workflowJson.put("10", node10);
-
-        // Node 11: KSampler (High Noise)
-        JSONObject node11 = new JSONObject();
-        node11.put("class_type", "KSampler");
-        JSONObject inputs11 = new JSONObject();
-        inputs11.put("seed", seed);
-        inputs11.put("steps", scene.getSteps() > 0 ? scene.getSteps() : 4);
-        inputs11.put("cfg", scene.getCfgScale() > 0 ? (double) scene.getCfgScale() : 1.5);
-        inputs11.put("sampler_name", "uni_pc");
-        inputs11.put("scheduler", "normal");
-        inputs11.put("denoise", 1.0);
-        inputs11.put("model", new JSONArray().put("3").put(0));
-        inputs11.put("positive", new JSONArray().put("10").put(0));
-        inputs11.put("negative", new JSONArray().put("10").put(1));
-        inputs11.put("latent_image", new JSONArray().put("10").put(2));
-        node11.put("inputs", inputs11);
-        workflowJson.put("11", node11);
-
-        // Node 12: KSampler (Low Noise)
-        JSONObject node12 = new JSONObject();
-        node12.put("class_type", "KSampler");
-        JSONObject inputs12 = new JSONObject();
-        inputs12.put("seed", seed);
-        inputs12.put("steps", scene.getSteps() > 0 ? scene.getSteps() : 4);
-        inputs12.put("cfg", scene.getCfgScale() > 0 ? (double) scene.getCfgScale() : 1.5);
-        inputs12.put("sampler_name", "uni_pc");
-        inputs12.put("scheduler", "normal");
-        
-        // Map motionBucketId (1-255) to denoise (0.1 to 1.0)
-        double motionVal = Math.max(1, Math.min(255, scene.getMotionBucketId()));
-        double denoiseVal = 0.1 + (0.9 * (motionVal - 1.0) / 254.0);
-        inputs12.put("denoise", denoiseVal);
-        
-        inputs12.put("model", new JSONArray().put("4").put(0));
-        inputs12.put("positive", new JSONArray().put("10").put(0));
-        inputs12.put("negative", new JSONArray().put("10").put(1));
-        inputs12.put("latent_image", new JSONArray().put("11").put(0));
-        node12.put("inputs", inputs12);
-        workflowJson.put("12", node12);
-
-        // Node 13: VAEDecode
-        JSONObject node13 = new JSONObject();
-        node13.put("class_type", "VAEDecode");
-        JSONObject inputs13 = new JSONObject();
-        inputs13.put("samples", new JSONArray().put("12").put(0));
-        inputs13.put("vae", new JSONArray().put("8").put(0));
-        node13.put("inputs", inputs13);
-        workflowJson.put("13", node13);
-
-        // Node 14: VHS_VideoCombine
-        JSONObject node14 = new JSONObject();
-        node14.put("class_type", "VHS_VideoCombine");
-        JSONObject inputs14 = new JSONObject();
-        inputs14.put("frame_rate", 30);
-        inputs14.put("loop_count", 0);
-        inputs14.put("filename_prefix", filenamePrefix);
-        inputs14.put("format", "video/h264-mp4");
-        inputs14.put("pix_fmt", "yuv420p");
-        inputs14.put("crf", 19);
-        inputs14.put("save_output", true);
-        inputs14.put("pingpong", false);
-        inputs14.put("images", new JSONArray().put("13").put(0));
-        node14.put("inputs", inputs14);
-        workflowJson.put("14", node14);
+        workflowJson.put("129:98", makeNode("WanImageToVideo", new JSONObject().put("width", width).put("height", height).put("length", link("129:163", 1)).put("batch_size", 1).put("positive", link("129:93", 0)).put("negative", link("129:89", 0)).put("vae", link("129:90", 0)).put("start_image", link(startImageNodeId, 0))));
+        workflowJson.put("129:86", makeNode("KSamplerAdvanced", new JSONObject().put("add_noise", "enable").put("noise_seed", seed).put("steps", link("129:119", 0)).put("cfg", link("129:120", 0)).put("sampler_name", "euler").put("scheduler", "simple").put("start_at_step", 0).put("end_at_step", link("129:125", 0)).put("return_with_leftover_noise", "enable").put("model", link("129:104", 0)).put("positive", link("129:98", 0)).put("negative", link("129:98", 1)).put("latent_image", link("129:98", 2))));
+        workflowJson.put("129:85", makeNode("KSamplerAdvanced", new JSONObject().put("add_noise", "disable").put("noise_seed", 0).put("steps", link("129:119", 0)).put("cfg", link("129:120", 0)).put("sampler_name", "euler").put("scheduler", "simple").put("start_at_step", link("129:125", 0)).put("end_at_step", link("129:119", 0)).put("return_with_leftover_noise", "disable").put("model", link("129:103", 0)).put("positive", link("129:98", 0)).put("negative", link("129:98", 1)).put("latent_image", link("129:86", 0))));
+        workflowJson.put("129:87", makeNode("VAEDecode", new JSONObject().put("samples", link("129:85", 0)).put("vae", link("129:90", 0))));
+        workflowJson.put("129:94", makeNode("CreateVideo", new JSONObject().put("fps", link("129:162", 0)).put("images", link("129:87", 0))));
+        workflowJson.put("108", makeNode("SaveVideo", new JSONObject().put("filename_prefix", "video/" + filenamePrefix).put("format", "auto").put("codec", "auto").put("video", link("129:94", 0))));
 
         return workflowJson;
     }
 
+    private JSONObject makeNode(String classType, JSONObject inputs) {
+        JSONObject node = new JSONObject();
+        node.put("class_type", classType);
+        node.put("inputs", inputs);
+        return node;
+    }
+
+    private JSONArray link(String nodeId, int outputIndex) {
+        return new JSONArray().put(nodeId).put(outputIndex);
+    }
     private boolean isNodeClassAvailable(String serverUrl, String nodeClass) {
         try {
             HttpRequest request = HttpRequest.newBuilder()
@@ -616,19 +465,27 @@ public class ComfyPipelineService {
                 return info.has(nodeClass);
             }
         } catch (Exception e) {
-            System.err.println("⚠️ [ComfyPipeline] Failed to check node class availability: " + e.getMessage());
+            System.err.println("âš ï¸ [ComfyPipeline] Failed to check node class availability: " + e.getMessage());
         }
         return false;
     }
 
     public CompletableFuture<File> generateScene(Scene scene) {
+        return generateSceneInternal(scene, false);
+    }
+
+    public CompletableFuture<File> generateSceneStrict(Scene scene) {
+        return generateSceneInternal(scene, true);
+    }
+
+    private CompletableFuture<File> generateSceneInternal(Scene scene, boolean strictMode) {
         return CompletableFuture.supplyAsync(() -> {
             try {
                 validateFfmpeg();
 
                 // Auto-start ComfyUI if it's not healthy
                 if (lifecycleService != null && !lifecycleService.isHealthy()) {
-                    System.out.println("🔄 [ComfyPipeline] ComfyUI server is offline. Attempting auto-start...");
+                    System.out.println("ðŸ”„ [ComfyPipeline] ComfyUI server is offline. Attempting auto-start...");
                     lifecycleService.start();
                     
                     // Poll until healthy
@@ -649,7 +506,7 @@ public class ComfyPipelineService {
                     if (!started) {
                         throw new RuntimeException("Failed to auto-start ComfyUI. Server did not become healthy within " + maxWaitSeconds + " seconds.");
                     }
-                    System.out.println("✅ [ComfyPipeline] ComfyUI successfully started and healthy.");
+                    System.out.println("âœ… [ComfyPipeline] ComfyUI successfully started and healthy.");
                 }
 
                 String serverUrl = configService.getComfyUIUrl();
@@ -668,12 +525,12 @@ public class ComfyPipelineService {
                     boolean nodeAvailable = isNodeClassAvailable(serverUrl, "VHS_VideoCombine");
                     if (!nodeAvailable) {
                         if (ATTEMPTED_INSTALLS.contains("VHS_VideoCombine")) {
-                            System.out.println("⚠️ [ComfyPipeline] ComfyUI-Video-Helper-Suite installation/load was already attempted in this session. Skipping to avoid restart loop.");
+                            System.out.println("âš ï¸ [ComfyPipeline] ComfyUI-Video-Helper-Suite installation/load was already attempted in this session. Skipping to avoid restart loop.");
                         } else {
                             ATTEMPTED_INSTALLS.add("VHS_VideoCombine");
                             if (!folderExists) {
-                                System.out.println("⚠️ [ComfyPipeline] VHS_VideoCombine is missing and folder does not exist. Installing ComfyUI-Video-Helper-Suite...");
-                                System.out.println("🔄 [ComfyPipeline] Stopping ComfyUI server to install custom nodes...");
+                                System.out.println("âš ï¸ [ComfyPipeline] VHS_VideoCombine is missing and folder does not exist. Installing ComfyUI-Video-Helper-Suite...");
+                                System.out.println("ðŸ”„ [ComfyPipeline] Stopping ComfyUI server to install custom nodes...");
                                 lifecycleService.stop();
                                 
                                 String pythonPath = configService.getPythonPath();
@@ -683,10 +540,10 @@ public class ComfyPipelineService {
                                     bootstrapper.ensureVideoHelperSuiteInstalled(comfyDir, pythonExe, System.out::println);
                                 }
                                 
-                                System.out.println("🔄 [ComfyPipeline] Restarting ComfyUI server after installation...");
+                                System.out.println("ðŸ”„ [ComfyPipeline] Restarting ComfyUI server after installation...");
                                 lifecycleService.start();
                             } else {
-                                System.out.println("🔄 [ComfyPipeline] VHS_VideoCombine node is not active but folder exists. Restarting ComfyUI server to load it...");
+                                System.out.println("ðŸ”„ [ComfyPipeline] VHS_VideoCombine node is not active but folder exists. Restarting ComfyUI server to load it...");
                                 lifecycleService.restart();
                             }
                             
@@ -708,7 +565,7 @@ public class ComfyPipelineService {
                             if (!started) {
                                 throw new RuntimeException("Failed to restart ComfyUI. Server did not become healthy within " + maxWaitSeconds + " seconds.");
                             }
-                            System.out.println("✅ [ComfyPipeline] ComfyUI successfully restarted and healthy.");
+                            System.out.println("âœ… [ComfyPipeline] ComfyUI successfully restarted and healthy.");
                         }
                     }
                 }
@@ -723,33 +580,42 @@ public class ComfyPipelineService {
                 if (speakerPath != null && !speakerPath.trim().isEmpty()) {
                     File speakerFile = new File(speakerPath);
                     if (speakerFile.exists()) {
-                        System.out.println("📤 [ComfyPipeline] Uploading speaker image: " + speakerFile.getName());
+                        System.out.println("ðŸ“¤ [ComfyPipeline] Uploading speaker image: " + speakerFile.getName());
                         speakerImage = uploadFile(serverUrl, speakerFile);
                     }
                 }
 
                 JSONObject workflowJson;
-                if (speakerImage == null || speakerImage.trim().isEmpty()) {
+                boolean wanNodesAvailable = isNodeClassAvailable(serverUrl, "WanImageToVideo");
+                if (wanNodesAvailable) {
+                    workflowJson = generateWanWorkflowJson(serverUrl, scene, speakerImage, seed, filenamePrefix);
+                } else if (speakerImage != null && !speakerImage.trim().isEmpty()) {
+                    // Blueprint is image-to-video only; use it when a start image is provided and Wan nodes are missing
                     JSONObject blueprintJson = loadBlueprintWorkflow("Text to Video (Wan 2.2).json");
                     if (blueprintJson != null) {
-                        System.out.println("📄 [ComfyPipeline] Using Text to Video (Wan 2.2) blueprint workflow from blueprints folder.");
+                        System.out.println("ðŸ“„ [ComfyPipeline] Wan nodes unavailable; using Wan 2.2 blueprint workflow with start image.");
                         injectPrompt(blueprintJson, scene.getPrompt());
                         injectParamsIntoBlueprint(blueprintJson, seed, filenamePrefix, scene);
+                        injectSpeakerImage(blueprintJson, speakerImage);
                         workflowJson = blueprintJson;
                     } else {
-                        workflowJson = generateWanWorkflowJson(serverUrl, scene, speakerImage, seed, filenamePrefix);
+                        throw new IOException("WanImageToVideo node is not available in ComfyUI and no blueprint workflow was found.");
                     }
                 } else {
-                    workflowJson = generateWanWorkflowJson(serverUrl, scene, speakerImage, seed, filenamePrefix);
+                    throw new IOException("WanImageToVideo node is not available in ComfyUI. Install Wan 2.2 custom nodes/models or provide a Global Start Image.");
                 }
+
+                sanitizeWorkflow(workflowJson, serverUrl);
 
                 // 2. Send prompt to ComfyUI
                 String promptId = submitPrompt(serverUrl, workflowJson);
-                System.out.println("🚀 [ComfyPipeline] Submitted job. Prompt ID: " + promptId);
+                System.out.println("ðŸš€ [ComfyPipeline] Submitted job. Prompt ID: " + promptId);
 
                 // 3. Poll queue status via /history
-                String finishedFilename = pollHistoryForFilename(serverUrl, promptId);
-                System.out.println("✨ [ComfyPipeline] Job finished. Filename: " + finishedFilename);
+                ComfyOutputRef outputRef = pollHistoryForOutput(serverUrl, promptId);
+                String finishedFilename = outputRef != null ? outputRef.filename : null;
+                System.out.println("âœ¨ [ComfyPipeline] Job finished. Filename: " + finishedFilename
+                        + (outputRef != null && !outputRef.subfolder.isEmpty() ? " (subfolder: " + outputRef.subfolder + ")" : ""));
 
                 // 4. Find the video file in the ComfyUI output directory
                 String comfyOutputPath = configService.getResolvedOutputDir();
@@ -757,22 +623,7 @@ public class ComfyPipelineService {
                     comfyOutputPath = new File("output").getAbsolutePath();
                 }
 
-                File rawVideoFile = null;
-                if (finishedFilename != null && !finishedFilename.trim().isEmpty()) {
-                    rawVideoFile = new File(comfyOutputPath, finishedFilename);
-                }
-
-                if (rawVideoFile == null || !rawVideoFile.exists()) {
-                    // Fallback check for common patterns in output folder
-                    File candidate1 = new File(comfyOutputPath, "videoarchitect_" + scene.getSceneId() + ".mp4");
-                    File candidate2 = new File(comfyOutputPath, "videoarchitect_" + scene.getSceneId() + "_00001.mp4");
-                    File candidate3 = new File(comfyOutputPath, "videoarchitect_" + scene.getSceneId() + ".webm");
-                    File candidate4 = new File(comfyOutputPath, "videoarchitect_" + scene.getSceneId() + "_00001.webm");
-                    if (candidate1.exists()) rawVideoFile = candidate1;
-                    else if (candidate2.exists()) rawVideoFile = candidate2;
-                    else if (candidate3.exists()) rawVideoFile = candidate3;
-                    else if (candidate4.exists()) rawVideoFile = candidate4;
-                }
+                File rawVideoFile = resolveOutputFile(comfyOutputPath, outputRef, scene.getSceneId());
 
                 File finalVideoFile = new File(new File("").getAbsoluteFile(), "scene_" + scene.getSceneId() + "_final.mp4");
 
@@ -794,10 +645,10 @@ public class ComfyPipelineService {
                             finalVideoFile.getAbsolutePath()
                         );
 
-                        System.out.println("🎬 [ComfyPipeline] Running FFmpeg audio muxing command: " + String.join(" ", cmd));
+                        System.out.println("ðŸŽ¬ [ComfyPipeline] Running FFmpeg audio muxing command: " + String.join(" ", cmd));
                         ProcessBuilder pb = new ProcessBuilder(cmd);
                         pb.redirectOutput(ProcessBuilder.Redirect.DISCARD);
-                        Process process = pb.start();
+                        Process process = processTracker.start(pb);
 
                         // Read the error stream in a separate thread to prevent buffer deadlocks
                         Thread errorReaderThread = new Thread(() -> {
@@ -822,11 +673,11 @@ public class ComfyPipelineService {
 
                         // Cleanup the original toneless file
                         if (rawVideoFile.exists()) {
-                            System.out.println("🧹 [ComfyPipeline] Cleaning up raw video: " + rawVideoFile.getAbsolutePath());
+                            System.out.println("ðŸ§¹ [ComfyPipeline] Cleaning up raw video: " + rawVideoFile.getAbsolutePath());
                             rawVideoFile.delete();
                         }
                     } else {
-                        System.out.println("ℹ️ [ComfyPipeline] No audio file found or specified for scene. Copying raw video to final path: " + finalVideoFile.getAbsolutePath());
+                        System.out.println("â„¹ï¸ [ComfyPipeline] No audio file found or specified for scene. Copying raw video to final path: " + finalVideoFile.getAbsolutePath());
                         Files.copy(rawVideoFile.toPath(), finalVideoFile.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
                         if (rawVideoFile.exists()) {
                             rawVideoFile.delete();
@@ -838,13 +689,16 @@ public class ComfyPipelineService {
                 } else {
                     // Fallback/Mock scenario: download output if a filename was returned but not found locally (e.g. test environment)
                     if (finishedFilename != null && !finishedFilename.trim().isEmpty()) {
-                        File downloadedFile = downloadOutput(serverUrl, finishedFilename, scene.getSceneId());
+                        File downloadedFile = downloadOutput(serverUrl, outputRef, scene.getSceneId());
                         // Move or copy to finalVideoFile to keep name consistent
                         Files.copy(downloadedFile.toPath(), finalVideoFile.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
                         downloadedFile.delete();
                         scene.setVideoPath(finalVideoFile.getAbsolutePath());
                         return finalVideoFile;
                     } else {
+                        if (strictMode) {
+                            throw new Exception("Strict mode enabled: ComfyUI finished generation, but no output video file was returned or found locally.");
+                        }
                         // Generate simulated video as fallback
                         File fallbackVideo = generateSimulatedVideo(scene);
                         Files.copy(fallbackVideo.toPath(), finalVideoFile.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
@@ -855,7 +709,11 @@ public class ComfyPipelineService {
                 }
 
             } catch (Exception e) {
-                System.err.println("🔴 [ComfyPipeline] Failed generating scene via ComfyUI: " + e.getMessage() + ". Generating simulated fallback video.");
+                if (strictMode) {
+                    System.err.println("ðŸ”´ [ComfyPipeline] Failed generating scene via ComfyUI (Strict Mode): " + e.getMessage());
+                    throw new RuntimeException("Strict mode generation failed: " + e.getMessage(), e);
+                }
+                System.err.println("ðŸ”´ [ComfyPipeline] Failed generating scene via ComfyUI: " + e.getMessage() + ". Generating simulated fallback video.");
                 try {
                     File fallbackVideo = generateSimulatedVideo(scene);
                     File finalVideoFile = new File(new File("").getAbsoluteFile(), "scene_" + scene.getSceneId() + "_final.mp4");
@@ -870,8 +728,21 @@ public class ComfyPipelineService {
         });
     }
 
-
-
+    public CompletableFuture<File> generateMontageScene(Scene scene) {
+        return CompletableFuture.supplyAsync(() -> {
+            String originalSpeaker = configService.getSpeakerImagePath();
+            try {
+                String sourceClip = scene.getSourceClipPath();
+                if (sourceClip != null && !sourceClip.trim().isEmpty() && new File(sourceClip).exists()) {
+                    System.out.println("ðŸŽ¬ [ComfyPipeline] Montage mode: Using source clip as input: " + sourceClip);
+                    configService.setSpeakerImagePath(sourceClip);
+                }
+                return generateScene(scene).join();
+            } finally {
+                configService.setSpeakerImagePath(originalSpeaker);
+            }
+        });
+    }
 
 
     private void validateFfmpeg() throws java.io.FileNotFoundException {
@@ -883,7 +754,7 @@ public class ComfyPipelineService {
         
         if (isGlobal) {
             try {
-                Process p = new ProcessBuilder("ffmpeg", "-version").start();
+                Process p = processTracker.start(new ProcessBuilder("ffmpeg", "-version"));;
                 p.destroy();
                 available = true;
             } catch (Exception e) {
@@ -945,7 +816,7 @@ public class ComfyPipelineService {
             "drawtext=text='" + escapedPrompt + "':fontsize=20:fontcolor=0xCCCCCC:x=(w-tw)/2:y=h/2-th/2," +
             "drawtext=text='[ComfyUI Offline - Placeholder]':fontsize=16:fontcolor=0x888888:x=(w-tw)/2:y=3*h/4";
 
-        System.out.println("🎥 [ComfyPipeline] Generating placeholder video with scene info (Duration: " + duration + "s) to: " + targetFile);
+        System.out.println("ðŸŽ¥ [ComfyPipeline] Generating placeholder video with scene info (Duration: " + duration + "s) to: " + targetFile);
         List<String> cmd = new java.util.ArrayList<>();
         cmd.add(configService.getFfmpegPath());
         cmd.add("-y");
@@ -960,7 +831,7 @@ public class ComfyPipelineService {
 
         ProcessBuilder pb = new ProcessBuilder(cmd);
         pb.redirectErrorStream(true);
-        Process process = pb.start();
+        Process process = processTracker.start(pb);
         
         // Consume stream
         try (java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(process.getInputStream(), java.nio.charset.StandardCharsets.UTF_8))) {
@@ -969,11 +840,11 @@ public class ComfyPipelineService {
         
         int exitCode = process.waitFor();
         if (exitCode == 0 && Files.exists(targetFile) && Files.size(targetFile) > 1024) {
-            System.out.println("🎥 [ComfyPipeline] Generated placeholder video with scene overlay: " + targetFile);
+            System.out.println("ðŸŽ¥ [ComfyPipeline] Generated placeholder video with scene overlay: " + targetFile);
             return targetFile.toFile();
         } else {
             // Fallback to minimal color source without text if drawtext fails (e.g. missing fonts)
-            System.out.println("⚠️ [ComfyPipeline] Drawtext failed (exit code " + exitCode + "). Falling back to plain color source.");
+            System.out.println("âš ï¸ [ComfyPipeline] Drawtext failed (exit code " + exitCode + "). Falling back to plain color source.");
             ProcessBuilder pbFallback = new ProcessBuilder(
                 configService.getFfmpegPath(), "-y",
                 "-f", "lavfi",
@@ -983,7 +854,7 @@ public class ComfyPipelineService {
                 targetFile.toString()
             );
             pbFallback.redirectErrorStream(true);
-            Process fallbackProcess = pbFallback.start();
+            Process fallbackProcess = processTracker.start(pbFallback);
             try (java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(fallbackProcess.getInputStream(), java.nio.charset.StandardCharsets.UTF_8))) {
                 while (r.readLine() != null) {}
             }
@@ -1023,7 +894,7 @@ public class ComfyPipelineService {
                 mediaFile.getAbsolutePath()
             );
             pb.redirectErrorStream(true);
-            Process p = pb.start();
+            Process p = processTracker.start(pb);
             String line;
             try (java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(p.getInputStream()))) {
                 line = r.readLine();
@@ -1033,7 +904,7 @@ public class ComfyPipelineService {
                 return Double.parseDouble(line.trim());
             }
         } catch (Exception e) {
-            System.err.println("⚠️ [ComfyPipeline] Could not probe duration: " + e.getMessage());
+            System.err.println("âš ï¸ [ComfyPipeline] Could not probe duration: " + e.getMessage());
         }
         return 0.0;
     }
@@ -1281,7 +1152,7 @@ public class ComfyPipelineService {
                     return apiJson.toString();
                 }
             } catch (Exception e) {
-                System.err.println("⚠️ [ComfyPipeline] Failed to parse custom workflow.json: " + e);
+                System.err.println("âš ï¸ [ComfyPipeline] Failed to parse custom workflow.json: " + e);
             }
         }
         return DEFAULT_API_TEMPLATE;
@@ -1304,21 +1175,26 @@ public class ComfyPipelineService {
                 // Skip negative prompts
                 if (!text.toLowerCase().contains("blurry") && !text.toLowerCase().contains("bad hands")
                     && !text.toLowerCase().contains("worst quality") && !text.toLowerCase().contains("low quality")
-                    && !text.toLowerCase().contains("静止") && !text.toLowerCase().contains("最差质量")) {
+                    && !text.toLowerCase().contains("é™æ­¢") && !text.toLowerCase().contains("æœ€å·®è´¨é‡")) {
                     inputs.put("text", promptText);
                     injected = true;
-                    System.out.println("📥 [ComfyPipeline] Injected visual_prompt into CLIPTextEncode node ID: " + key);
+                    System.out.println("ðŸ“¥ [ComfyPipeline] Injected visual_prompt into CLIPTextEncode node ID: " + key);
                 }
-            } else if ("98ee9e5b-467b-40aa-a534-36033f27d0b4".equals(classType)) {
+            } else if ("98ee9e5b-467b-40aa-a534-36033f27d0b4".equals(classType)
+                    || "84e2cf3f-de93-40ef-ab22-b9375296917b".equals(classType)) {
                 // Subgraph node for video generation
-                inputs.put("value", promptText);
+                if (inputs.has("text")) {
+                    inputs.put("text", promptText);
+                } else {
+                    inputs.put("value", promptText);
+                }
                 injected = true;
-                System.out.println("📥 [ComfyPipeline] Injected visual_prompt into Video Gen Subgraph node ID: " + key);
+                System.out.println("ðŸ“¥ [ComfyPipeline] Injected visual_prompt into Video Gen Subgraph node ID: " + key);
             } else if ("PrimitiveStringMultiline".equals(classType)) {
                 // Primitive multiline string inputs (often used as prompt nodes)
                 inputs.put("value", promptText);
                 injected = true;
-                System.out.println("📥 [ComfyPipeline] Injected visual_prompt into PrimitiveStringMultiline node ID: " + key);
+                System.out.println("ðŸ“¥ [ComfyPipeline] Injected visual_prompt into PrimitiveStringMultiline node ID: " + key);
             }
         }
 
@@ -1344,9 +1220,9 @@ public class ComfyPipelineService {
                         if (!availableCkpts.isEmpty()) {
                             String replacement = availableCkpts.get(0);
                             inputs.put("ckpt_name", replacement);
-                            System.out.println("🔄 [ComfyPipeline] Replaced missing checkpoint '" + currentCkpt + "' with first available: '" + replacement + "' in node " + key);
+                            System.out.println("ðŸ”„ [ComfyPipeline] Replaced missing checkpoint '" + currentCkpt + "' with first available: '" + replacement + "' in node " + key);
                         } else {
-                            System.err.println("⚠️ [ComfyPipeline] Could not replace missing checkpoint because available checkpoint list is empty (ComfyUI may be offline).");
+                            System.err.println("âš ï¸ [ComfyPipeline] Could not replace missing checkpoint because available checkpoint list is empty (ComfyUI may be offline).");
                         }
                     }
                 }
@@ -1388,7 +1264,7 @@ public class ComfyPipelineService {
                 }
             }
         } catch (Exception e) {
-            System.err.println("⚠️ [ComfyPipeline] Failed to fetch checkpoints from ComfyUI: " + e);
+            System.err.println("âš ï¸ [ComfyPipeline] Failed to fetch checkpoints from ComfyUI: " + e);
         }
         return checkpoints;
     }
@@ -1413,8 +1289,13 @@ public class ComfyPipelineService {
     }
 
     public String pollHistoryForFilename(String serverUrl, String promptId) throws IOException, InterruptedException {
+        ComfyOutputRef ref = pollHistoryForOutput(serverUrl, promptId);
+        return ref != null ? ref.filename : "";
+    }
+
+    public ComfyOutputRef pollHistoryForOutput(String serverUrl, String promptId) throws IOException, InterruptedException {
         int timeoutCount = 0;
-        while (timeoutCount < 200) { // Timeout after 10 minutes (200 * 3s)
+        while (timeoutCount < 6000) { // Timeout after 5 hours (6000 * 3s)
             Thread.sleep(3000);
 
             HttpRequest request = HttpRequest.newBuilder()
@@ -1427,28 +1308,20 @@ public class ComfyPipelineService {
                 JSONObject history = new JSONObject(response.body());
                 if (history.has(promptId)) {
                     JSONObject job = history.getJSONObject(promptId);
+                    JSONObject status = job.optJSONObject("status");
+                    if (status != null && "error".equalsIgnoreCase(status.optString("status_str", ""))) {
+                        String errorDetail = extractHistoryError(status);
+                        throw new IOException("ComfyUI generation failed: " + errorDetail);
+                    }
+
                     JSONObject outputs = job.optJSONObject("outputs");
                     if (outputs != null) {
-                        for (String key : outputs.keySet()) {
-                            JSONObject outputNode = outputs.getJSONObject(key);
-                            for (String nodeKey : outputNode.keySet()) {
-                                Object value = outputNode.get(nodeKey);
-                                if (value instanceof JSONArray) {
-                                    JSONArray arr = (JSONArray) value;
-                                    for (int i = 0; i < arr.length(); i++) {
-                                        Object itemObj = arr.get(i);
-                                        if (itemObj instanceof JSONObject) {
-                                            JSONObject item = (JSONObject) itemObj;
-                                            if (item.has("filename")) {
-                                                return item.getString("filename");
-                                            }
-                                        }
-                                    }
-                                }
-                            }
+                        ComfyOutputRef ref = extractFirstOutput(outputs);
+                        if (ref != null) {
+                            return ref;
                         }
                     }
-                    return "";
+                    return null;
                 }
             }
             timeoutCount++;
@@ -1456,15 +1329,118 @@ public class ComfyPipelineService {
         throw new IOException("Polling timeout waiting for ComfyUI generation job to complete.");
     }
 
-    private File downloadOutput(String serverUrl, String filename, String sceneId) throws IOException, InterruptedException {
+    private ComfyOutputRef extractFirstOutput(JSONObject outputs) {
+        String[] outputKeys = {"videos", "gifs", "images"};
+        for (String nodeId : outputs.keySet()) {
+            JSONObject outputNode = outputs.getJSONObject(nodeId);
+            for (String mediaKey : outputKeys) {
+                if (!outputNode.has(mediaKey)) {
+                    continue;
+                }
+                JSONArray arr = outputNode.optJSONArray(mediaKey);
+                if (arr == null) {
+                    continue;
+                }
+                for (int i = 0; i < arr.length(); i++) {
+                    Object itemObj = arr.get(i);
+                    if (itemObj instanceof JSONObject item && item.has("filename")) {
+                        return new ComfyOutputRef(
+                                item.getString("filename"),
+                                item.optString("subfolder", ""),
+                                item.optString("type", "output")
+                        );
+                    }
+                }
+            }
+            // Fallback: scan any array-valued output bucket
+            for (String nodeKey : outputNode.keySet()) {
+                Object value = outputNode.get(nodeKey);
+                if (value instanceof JSONArray arr) {
+                    for (int i = 0; i < arr.length(); i++) {
+                        Object itemObj = arr.get(i);
+                        if (itemObj instanceof JSONObject item && item.has("filename")) {
+                            return new ComfyOutputRef(
+                                    item.getString("filename"),
+                                    item.optString("subfolder", ""),
+                                    item.optString("type", "output")
+                            );
+                        }
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    private String extractHistoryError(JSONObject status) {
+        JSONArray messages = status.optJSONArray("messages");
+        if (messages != null) {
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < messages.length(); i++) {
+                Object entry = messages.get(i);
+                if (entry instanceof JSONArray arr && arr.length() >= 2) {
+                    if (sb.length() > 0) {
+                        sb.append(" | ");
+                    }
+                    sb.append(arr.get(1));
+                }
+            }
+            if (sb.length() > 0) {
+                return sb.toString();
+            }
+        }
+        return status.optString("status_str", "Unknown ComfyUI error");
+    }
+
+    private File resolveOutputFile(String comfyOutputPath, ComfyOutputRef outputRef, String sceneId) {
+        if (outputRef != null && outputRef.filename != null && !outputRef.filename.trim().isEmpty()) {
+            File baseDir = outputRef.subfolder.isEmpty()
+                    ? new File(comfyOutputPath)
+                    : new File(comfyOutputPath, outputRef.subfolder);
+            File candidate = new File(baseDir, outputRef.filename);
+            if (candidate.exists()) {
+                return candidate;
+            }
+        }
+
+        File outputRoot = new File(comfyOutputPath);
+        String prefix = "videoarchitect_" + sceneId;
+        String[] suffixes = {".mp4", "_00001.mp4", ".webm", "_00001.webm"};
+        for (String suffix : suffixes) {
+            File direct = new File(outputRoot, prefix + suffix);
+            if (direct.exists()) {
+                return direct;
+            }
+            File nested = new File(new File(outputRoot, "video"), prefix + suffix);
+            if (nested.exists()) {
+                return nested;
+            }
+        }
+        return null;
+    }
+
+    private File downloadOutput(String serverUrl, ComfyOutputRef outputRef, String sceneId) throws IOException, InterruptedException {
+        if (outputRef == null || outputRef.filename == null || outputRef.filename.trim().isEmpty()) {
+            throw new IOException("No output filename available for download.");
+        }
+
         // Target project directory
         Path targetDir = Paths.get("").toAbsolutePath();
-        String localFilename = "scene_" + sceneId + "_" + filename;
+        String localFilename = "scene_" + sceneId + "_" + outputRef.filename;
         Path targetFile = targetDir.resolve(localFilename);
 
-        String downloadUrl = serverUrl + "/view?filename=" + filename + "&type=output";
+        StringBuilder downloadUrl = new StringBuilder(serverUrl)
+                .append("/view?filename=")
+                .append(java.net.URLEncoder.encode(outputRef.filename, StandardCharsets.UTF_8))
+                .append("&type=")
+                .append(java.net.URLEncoder.encode(outputRef.type, StandardCharsets.UTF_8));
+        if (!outputRef.subfolder.isEmpty()) {
+            downloadUrl.append("&subfolder=")
+                    .append(java.net.URLEncoder.encode(outputRef.subfolder, StandardCharsets.UTF_8));
+        }
+
         HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(downloadUrl))
+                .uri(URI.create(downloadUrl.toString()))
                 .GET()
                 .build();
 
@@ -1473,10 +1449,10 @@ public class ComfyPipelineService {
             try (InputStream is = response.body()) {
                 Files.copy(is, targetFile, StandardCopyOption.REPLACE_EXISTING);
             }
-            System.out.println("💾 [ComfyPipeline] Downloaded output to: " + targetFile);
+            System.out.println("ðŸ’¾ [ComfyPipeline] Downloaded output to: " + targetFile);
             return targetFile.toFile();
         } else {
-            throw new IOException("Failed to download output image. Status: " + response.statusCode());
+            throw new IOException("Failed to download output file. Status: " + response.statusCode());
         }
     }
 
@@ -1492,12 +1468,12 @@ public class ComfyPipelineService {
                 if (inputs != null) {
                     inputs.put("image", filename);
                     injected = true;
-                    System.out.println("📥 [ComfyPipeline] Injected speaker image '" + filename + "' into LoadImage node ID: " + key);
+                    System.out.println("ðŸ“¥ [ComfyPipeline] Injected speaker image '" + filename + "' into LoadImage node ID: " + key);
                 }
             }
         }
         if (!injected) {
-            System.out.println("ℹ️ [ComfyPipeline] No LoadImage node found in workflow to inject speaker image.");
+            System.out.println("â„¹ï¸ [ComfyPipeline] No LoadImage node found in workflow to inject speaker image.");
         }
     }
 
@@ -1513,12 +1489,12 @@ public class ComfyPipelineService {
                 if (inputs != null) {
                     inputs.put("audio", filename);
                     injected = true;
-                    System.out.println("📥 [ComfyPipeline] Injected narration audio '" + filename + "' into LoadAudio node ID: " + key);
+                    System.out.println("ðŸ“¥ [ComfyPipeline] Injected narration audio '" + filename + "' into LoadAudio node ID: " + key);
                 }
             }
         }
         if (!injected) {
-            System.out.println("ℹ️ [ComfyPipeline] No LoadAudio node found in workflow to inject narration audio.");
+            System.out.println("â„¹ï¸ [ComfyPipeline] No LoadAudio node found in workflow to inject narration audio.");
         }
     }
 
@@ -1550,48 +1526,58 @@ public class ComfyPipelineService {
     }
 
     private JSONObject loadBlueprintWorkflow(String filename) {
+        java.util.List<File> candidateDirs = new java.util.ArrayList<>();
         String comfyPath = configService.getComfyUIPath();
-        File blueprintsDir = null;
         if (comfyPath != null && !comfyPath.trim().isEmpty()) {
-            File directBlueprints = new File(comfyPath, "companion_blueprints");
-            if (directBlueprints.exists() && directBlueprints.isDirectory()) {
-                blueprintsDir = directBlueprints;
-            } else {
-                File resourcesBlueprints = new File(comfyPath, "resources/ComfyUI/companion_blueprints");
-                if (resourcesBlueprints.exists() && resourcesBlueprints.isDirectory()) {
-                    blueprintsDir = resourcesBlueprints;
-                }
-            }
+            candidateDirs.add(new File(comfyPath, "companion_blueprints"));
+            candidateDirs.add(new File(comfyPath, "resources/ComfyUI/companion_blueprints"));
         }
-        
-        if (blueprintsDir == null) {
-            blueprintsDir = new File(comfyPath != null ? comfyPath : "", "companion_blueprints");
-        }
+        candidateDirs.add(new File("companion_blueprints"));
+        candidateDirs.add(new File(System.getProperty("user.dir"), "companion_blueprints"));
 
-        File blueprintFile = new File(blueprintsDir, filename);
-        if (blueprintFile.exists() && blueprintFile.isFile()) {
-            try {
-                String content = Files.readString(blueprintFile.toPath(), StandardCharsets.UTF_8);
-                JSONObject json = new JSONObject(content);
-                if (json.has("prompt") || json.keySet().stream().anyMatch(key -> {
-                    JSONObject node = json.optJSONObject(key);
-                    return node != null && node.has("class_type");
-                })) {
-                    return json;
-                }
-                if (json.has("nodes")) {
-                    JSONObject flattened = flattenWorkflow(json);
-                    return convertUiToApi(flattened);
-                }
-            } catch (Exception e) {
-                System.err.println("⚠️ [ComfyPipeline] Failed to load blueprint " + filename + ": " + e.getMessage());
+        for (File blueprintsDir : candidateDirs) {
+            if (blueprintsDir == null || !blueprintsDir.exists() || !blueprintsDir.isDirectory()) {
+                continue;
             }
+            File blueprintFile = new File(blueprintsDir, filename);
+            JSONObject parsed = parseBlueprintFile(blueprintFile);
+            if (parsed != null) {
+                return parsed;
+            }
+        }
+        return null;
+    }
+
+    private JSONObject parseBlueprintFile(File blueprintFile) {
+        if (!blueprintFile.exists() || !blueprintFile.isFile()) {
+            return null;
+        }
+        try {
+            String content = Files.readString(blueprintFile.toPath(), StandardCharsets.UTF_8);
+            JSONObject json = new JSONObject(content);
+            if (json.has("prompt") || json.keySet().stream().anyMatch(key -> {
+                JSONObject node = json.optJSONObject(key);
+                return node != null && node.has("class_type");
+            })) {
+                return json;
+            }
+            if (json.has("nodes")) {
+                JSONObject flattened = flattenWorkflow(json);
+                return convertUiToApi(flattened);
+            }
+        } catch (Exception e) {
+            System.err.println("âš ï¸ [ComfyPipeline] Failed to load blueprint " + blueprintFile.getName() + ": " + e.getMessage());
         }
         return null;
     }
 
     private void injectParamsIntoBlueprint(JSONObject workflowJson, long seed, String filenamePrefix, Scene scene) {
         JSONObject promptObj = workflowJson.has("prompt") ? workflowJson.getJSONObject("prompt") : workflowJson;
+        double sceneDuration = (scene.getEndFrame() - scene.getStartFrame()) / 30.0;
+        if (sceneDuration <= 0) {
+            sceneDuration = 5.0;
+        }
+
         for (String key : promptObj.keySet()) {
             JSONObject node = promptObj.optJSONObject(key);
             if (node == null) continue;
@@ -1599,8 +1585,17 @@ public class ComfyPipelineService {
             String classType = node.optString("class_type", "");
             JSONObject inputs = node.optJSONObject("inputs");
             if (inputs == null) continue;
+
+            // Inject duration into Wan video subgraph wrappers
+            if ("84e2cf3f-de93-40ef-ab22-b9375296917b".equals(classType)
+                    || "98ee9e5b-467b-40aa-a534-36033f27d0b4".equals(classType)) {
+                if (inputs.has("value_1")) {
+                    inputs.put("value_1", sceneDuration);
+                    System.out.println("ðŸ“¥ [ComfyPipeline] Injected scene duration " + sceneDuration + "s into video subgraph node ID: " + key);
+                }
+            }
             
-            // Inject seed, steps, cfg into KSamplers
+            // Inject seed and Wan-safe sampler params into KSamplers
             if ("KSampler".equals(classType) || "KSamplerAdvanced".equals(classType)) {
                 if (inputs.has("seed")) {
                     inputs.put("seed", seed);
@@ -1608,11 +1603,19 @@ public class ComfyPipelineService {
                 if (inputs.has("noise_seed")) {
                     inputs.put("noise_seed", seed);
                 }
-                if (scene.getSteps() > 0 && inputs.has("steps")) {
-                    inputs.put("steps", scene.getSteps());
+                int wanSteps = scene.getSteps() > 0 ? scene.getSteps() : 4;
+                if (wanSteps > 8) {
+                    wanSteps = 4;
                 }
-                if (scene.getCfgScale() > 0 && inputs.has("cfg")) {
-                    inputs.put("cfg", (double) scene.getCfgScale());
+                if (inputs.has("steps")) {
+                    inputs.put("steps", wanSteps);
+                }
+                double wanCfg = scene.getCfgScale() > 0 ? scene.getCfgScale() : 2.0;
+                if (wanCfg > 4.0) {
+                    wanCfg = 3.0;
+                }
+                if (inputs.has("cfg")) {
+                    inputs.put("cfg", wanCfg);
                 }
             }
             
@@ -1623,15 +1626,8 @@ public class ComfyPipelineService {
                     inputs.put("save_output", true);
                 }
             }
-
-            // Inject duration into PrimitiveFloat node (original node ID 126 in the Text to Video Wan 2.2 template)
-            if ("PrimitiveFloat".equals(classType) && (key.endsWith("126") || "126".equals(key))) {
-                double duration = (scene.getEndFrame() - scene.getStartFrame()) / 30.0;
-                if (duration > 0) {
-                    inputs.put("value", duration);
-                    System.out.println("📥 [ComfyPipeline] Injected scene duration " + duration + "s into duration PrimitiveFloat node ID: " + key);
-                }
-            }
         }
     }
 }
+
+

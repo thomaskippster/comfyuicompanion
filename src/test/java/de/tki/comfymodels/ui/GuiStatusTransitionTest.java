@@ -89,6 +89,8 @@ public class GuiStatusTransitionTest {
 
             ReflectionTestUtils.setField(mainFrame, "hardwareMonitorService", hardwareMonitorService);
             ReflectionTestUtils.setField(mainFrame, "updaterService", updaterService);
+            ReflectionTestUtils.setField(mainFrame, "backgroundExecutor", new de.tki.comfymodels.util.BackgroundExecutor());
+            ReflectionTestUtils.setField(mainFrame, "processTracker", new de.tki.comfymodels.service.impl.ProcessTracker());
             
             ReflectionTestUtils.invokeMethod(mainFrame, "initUI");
         });

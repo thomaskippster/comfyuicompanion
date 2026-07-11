@@ -112,6 +112,8 @@ public class VideoArchitectFeaturesTest {
     public void testComfyPipelineServiceTemplateResolution() {
         ConfigService mockConfig = Mockito.mock(ConfigService.class);
         ComfyPipelineService service = new ComfyPipelineService(mockConfig);
+try { java.lang.reflect.Field f1 = service.getClass().getDeclaredField("processTracker"); f1.setAccessible(true); f1.set(service, new de.tki.comfymodels.service.impl.ProcessTracker()); } catch (Exception e) { throw new RuntimeException(e); }
+        
         assertNotNull(service);
     }
 
@@ -142,6 +144,8 @@ public class VideoArchitectFeaturesTest {
                 .thenReturn(mockResponse);
 
         ComfyPipelineService service = new ComfyPipelineService(mockConfig, mockClient);
+try { java.lang.reflect.Field f1 = service.getClass().getDeclaredField("processTracker"); f1.setAccessible(true); f1.set(service, new de.tki.comfymodels.service.impl.ProcessTracker()); } catch (Exception e) { throw new RuntimeException(e); }
+        
 
         // Call the package-private method
         String filename = service.pollHistoryForFilename("http://localhost:8188", "test-prompt-id");
@@ -175,6 +179,8 @@ public class VideoArchitectFeaturesTest {
                 .thenThrow(new IOException("Connection refused"));
 
         ComfyPipelineService service = new ComfyPipelineService(mockConfig, mockClient);
+try { java.lang.reflect.Field f1 = service.getClass().getDeclaredField("processTracker"); f1.setAccessible(true); f1.set(service, new de.tki.comfymodels.service.impl.ProcessTracker()); } catch (Exception e) { throw new RuntimeException(e); }
+        
 
         // JSON payload containing CheckpointLoaderSimple
         JSONObject workflowJson = new JSONObject("{\n" +
@@ -198,6 +204,8 @@ public class VideoArchitectFeaturesTest {
     @Test
     public void testInjectSpeakerAndAudioReflection() throws Exception {
         ComfyPipelineService service = new ComfyPipelineService(Mockito.mock(ConfigService.class));
+try { java.lang.reflect.Field f1 = service.getClass().getDeclaredField("processTracker"); f1.setAccessible(true); f1.set(service, new de.tki.comfymodels.service.impl.ProcessTracker()); } catch (Exception e) { throw new RuntimeException(e); }
+        
         
         JSONObject workflowJson = new JSONObject("{\n" +
                 "  \"1\": {\n" +
@@ -347,6 +355,8 @@ public class VideoArchitectFeaturesTest {
                });
 
         ComfyPipelineService comfyPipelineService = new ComfyPipelineService(mockConfig, mockClient);
+try { java.lang.reflect.Field f1 = comfyPipelineService.getClass().getDeclaredField("processTracker"); f1.setAccessible(true); f1.set(comfyPipelineService, new de.tki.comfymodels.service.impl.ProcessTracker()); } catch (Exception e) { throw new RuntimeException(e); }
+        
         
         for (Scene sc : scenes) {
             File videoFile = comfyPipelineService.generateScene(sc).join();
@@ -359,6 +369,8 @@ public class VideoArchitectFeaturesTest {
         // 4. Run video stitching via Video4jEditorService
         // (It will also generate silent WAV audio files for us since sc.getAudioPath() is empty, testing our generateDummyWav)
         Video4jEditorService video4jEditorService = new Video4jEditorService(mockConfig);
+try { java.lang.reflect.Field f1 = video4jEditorService.getClass().getDeclaredField("processTracker"); f1.setAccessible(true); f1.set(video4jEditorService, new de.tki.comfymodels.service.impl.ProcessTracker()); } catch (Exception e) { throw new RuntimeException(e); }
+        
         video4jEditorService.init(); // loads OpenCV if available
         
         File masterExport = video4jEditorService.executeMasterRender(scenes);
@@ -434,6 +446,8 @@ public class VideoArchitectFeaturesTest {
         Mockito.when(mockLifecycle.isHealthy()).thenReturn(false, true);
 
         ComfyPipelineService service = new ComfyPipelineService(mockConfig, mockClient);
+try { java.lang.reflect.Field f1 = service.getClass().getDeclaredField("processTracker"); f1.setAccessible(true); f1.set(service, new de.tki.comfymodels.service.impl.ProcessTracker()); } catch (Exception e) { throw new RuntimeException(e); }
+        
         
         java.lang.reflect.Field field = ComfyPipelineService.class.getDeclaredField("lifecycleService");
         field.setAccessible(true);

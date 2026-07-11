@@ -62,19 +62,19 @@
     "samplerName" : "euler",
     "architecture" : "ARCH_FLUX"
   },
-  "flux-2-klein-base-4b-fp8.safetensors" : {
-    "vaeName" : "flux2-vae.safetensors",
-    "clipType" : "flux",
-    "scheduler" : "normal",
-    "samplerName" : "euler",
-    "architecture" : "ARCH_FLUX"
-  },
   "ernie-image-turbo.safetensors" : {
     "vaeName" : "flux2-vae.safetensors",
     "clipType" : "stable_diffusion",
     "scheduler" : "simple",
     "samplerName" : "euler",
     "architecture" : "ARCH_SDXL"
+  },
+  "flux-2-klein-base-4b-fp8.safetensors" : {
+    "vaeName" : "flux2-vae.safetensors",
+    "clipType" : "flux",
+    "scheduler" : "normal",
+    "samplerName" : "euler",
+    "architecture" : "ARCH_FLUX"
   },
   "flux2_dev_fp8mixed.safetensors" : {
     "vaeName" : "FLUX1/ae.safetensors",

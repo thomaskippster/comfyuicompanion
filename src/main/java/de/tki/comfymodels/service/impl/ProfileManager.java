@@ -136,12 +136,6 @@ public class ProfileManager {
             false, "python", List.of("--directml"), new java.util.HashMap<>()
         ));
 
-        profiles.add(new LaunchProfile(
-            "wsl_mode",
-            "WSL / Linux Subsystem Mode",
-            "Tunnels the startup command through the Windows Subsystem for Linux (WSL) for maximum Linux compatibility.",
-            true, "python3", List.of(), new java.util.HashMap<>()
-        ));
 
         profiles.add(new LaunchProfile(
             "safe_mode",

@@ -9,10 +9,17 @@ public class Scene {
     private String videoPath;
     private String narrationText;
 
-    // AI Optimization Parameters
-    private int cfgScale = 8;
-    private int steps = 20;
+    // AI Optimization Parameters (Wan 2.2 defaults)
+    private double cfgScale = 1.0;
+    private int steps = 30;
     private int motionBucketId = 127;
+
+    // Montage Parameters
+    private String sourceClipPath;
+    private String transitionType = "crossfade";
+    private double transitionDuration = 1.0;
+    private boolean enhanceWithLtx = false;
+    private double ltxStrength = 0.85;
 
     public Scene() {}
 
@@ -81,11 +88,11 @@ public class Scene {
         this.narrationText = narrationText;
     }
 
-    public int getCfgScale() {
+    public double getCfgScale() {
         return cfgScale;
     }
 
-    public void setCfgScale(int cfgScale) {
+    public void setCfgScale(double cfgScale) {
         this.cfgScale = cfgScale;
     }
 
@@ -105,9 +112,53 @@ public class Scene {
         this.motionBucketId = motionBucketId;
     }
 
+    public String getSourceClipPath() {
+        return sourceClipPath;
+    }
+
+    public void setSourceClipPath(String sourceClipPath) {
+        this.sourceClipPath = sourceClipPath;
+    }
+
+    public String getTransitionType() {
+        return transitionType;
+    }
+
+    public void setTransitionType(String transitionType) {
+        this.transitionType = transitionType;
+    }
+
+    public double getTransitionDuration() {
+        return transitionDuration;
+    }
+
+    public void setTransitionDuration(double transitionDuration) {
+        this.transitionDuration = transitionDuration;
+    }
+
+    public boolean isEnhanceWithLtx() {
+        return enhanceWithLtx;
+    }
+
+    public void setEnhanceWithLtx(boolean enhanceWithLtx) {
+        this.enhanceWithLtx = enhanceWithLtx;
+    }
+
+    public double getLtxStrength() {
+        return ltxStrength;
+    }
+
+    public void setLtxStrength(double ltxStrength) {
+        this.ltxStrength = ltxStrength;
+    }
+
     @Override
     public String toString() {
-        return "Scene " + sceneId + " [" + startFrame + "-" + endFrame + "]: " + prompt + " (CFG: " + cfgScale + ", Steps: " + steps + ", MotionBucket: " + motionBucketId + ")";
+        String base = "Scene " + sceneId + " [" + startFrame + "-" + endFrame + "]: " + prompt + " (CFG: " + cfgScale + ", Steps: " + steps + ", MotionBucket: " + motionBucketId + ")";
+        if (sourceClipPath != null) {
+            base += " [SourceClip: " + sourceClipPath + "]";
+        }
+        return base;
     }
 }
 

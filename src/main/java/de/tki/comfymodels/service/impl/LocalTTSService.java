@@ -18,6 +18,7 @@ import org.json.JSONObject;
 import org.json.JSONArray;
 
 import de.tki.comfymodels.service.IComfyLifecycleService;
+import de.tki.comfymodels.service.impl.HardwareMonitorService;
 
 @Service
 public class LocalTTSService {
@@ -32,24 +33,44 @@ public class LocalTTSService {
     @Autowired(required = false)
     private IComfyLifecycleService lifecycleService;
 
-    @Autowired
+    @Autowired(required = false)
+    private ProcessTracker processTracker;
+    @Autowired(required = false)
+    private HardwareMonitorService hardwareMonitorService;
+
+    /** Setter for tests that need to inject a mock HardwareMonitorService. */
+    public void setHardwareMonitorService(HardwareMonitorService svc) { this.hardwareMonitorService = svc; }
     public LocalTTSService(ConfigService configService) {
         this.configService = configService;
     }
 
+
+    /**
+     * If the user has {@code qwen_tts_model_auto} enabled, query the detected
+     * VRAM, ask the {@link QwenTtsModelRecommender} for the best model, and
+     * persist it as the active {@code qwen_tts_model_repo}. Idempotent: once
+     * a model has been auto-applied in this JVM lifetime, the recommendation
+     * is not re-applied (so the user can still tweak the setting manually).
+     */
+    void applyAutoSelectedModelIfEnabled() {
+        if (!configService.isQwenTtsModelAuto()) return;
+        if (hardwareMonitorService == null) return;
+        try {
+            long vram = hardwareMonitorService.getVramBytes();
+            QwenTtsModelRecommender.ModelSpec spec = QwenTtsModelRecommender.recommend(vram);
+            String current = configService.getQwenTtsModelRepo();
+            if (current != null && current.equals(spec.hfRepo)) {
+                return; // already on the recommended model
+            }
+            System.out.println("[LocalTTSService] Auto-selecting Qwen-TTS model for " + QwenTtsModelRecommender.formatVram(vram) + " VRAM: " + spec);
+            configService.setQwenTtsModelRepo(spec.hfRepo);
+        } catch (Exception ex) {
+            System.err.println("[LocalTTSService] Auto-select failed: " + ex.getMessage());
+        }
+    }
     public void generateSpeech(String text, String outputPath) throws Exception {
         if (text == null || text.trim().isEmpty()) {
             throw new IllegalArgumentException("Text cannot be empty for TTS generation");
-        }
-
-        String provider = configService.getTtsProvider();
-        if ("ComfyUI KokoroTTS".equals(provider) || "ComfyUI ElevenLabs".equals(provider)) {
-            System.out.println("ℹ️ [LocalTTSService] Attempting to generate TTS via " + provider + "...");
-            boolean success = generateSpeechViaComfyUI(provider, text, outputPath);
-            if (success) {
-                return;
-            }
-            System.out.println("⚠️ [LocalTTSService] ComfyUI TTS generation failed. Falling back to Standalone Local Piper...");
         }
 
         File outFile = new File(outputPath);
@@ -58,115 +79,23 @@ public class LocalTTSService {
             parentDir.mkdirs();
         }
 
-        String piperPath = configService.getPiperPath();
-        String modelPath = configService.getPiperModelPath();
-
-        // Try downloading/setting up if missing
-        if (!new File(piperPath).exists() && !new File(System.getProperty("user.dir"), piperPath).exists()) {
-            downloadPiperAndModelIfMissing(piperPath, modelPath);
-        } else if (!new File(modelPath).exists() && !new File(System.getProperty("user.dir"), modelPath).exists()) {
-            downloadPiperAndModelIfMissing(piperPath, modelPath);
+        // All TTS now goes through ComfyUI (Qwen-TTS by default).
+        // The custom node and the Qwen model are auto-installed/downloaded
+        // on first use by generateSpeechViaComfyUI().
+        String provider = configService.getTtsProvider();
+        if (provider == null || provider.isEmpty()) {
+            provider = "ComfyUI Qwen-TTS";
         }
-
-        // Validate paths
-        File piperBin = new File(piperPath);
-        if (!piperBin.exists()) {
-            File fallbackBin = new File(System.getProperty("user.dir"), piperPath);
-            if (fallbackBin.exists()) {
-                piperPath = fallbackBin.getAbsolutePath();
-            } else {
-                throw new java.io.IOException("Piper TTS binary not found at: " + piperBin.getAbsolutePath() + 
-                    ". Please configure the correct path in settings.");
-            }
+        if (!provider.startsWith("ComfyUI ")) {
+            // Allow users who still have a stale Piper entry in their settings
+            // to fall back to ComfyUI without re-saving the config.
+            System.out.println("[LocalTTSService] Provider '" + provider + "' is no longer supported. Switching to ComfyUI Qwen-TTS.");
+            provider = "ComfyUI Qwen-TTS";
         }
-
-        File modelFile = new File(modelPath);
-        if (!modelFile.exists()) {
-            File fallbackModel = new File(System.getProperty("user.dir"), modelPath);
-            if (fallbackModel.exists()) {
-                modelPath = fallbackModel.getAbsolutePath();
-            } else {
-                throw new java.io.IOException("Piper ONNX model not found at: " + modelFile.getAbsolutePath() + 
-                    ". Please download the model.");
-            }
-        }
-
-        ProcessBuilder pb = new ProcessBuilder(
-            piperPath,
-            "--model", modelPath,
-            "--output_file", outFile.getAbsolutePath()
-        );
-
-        Process process = pb.start();
-
-        // Write text directly to stdin of the started process
-        try (OutputStreamWriter writer = new OutputStreamWriter(process.getOutputStream(), StandardCharsets.UTF_8)) {
-            writer.write(text);
-            writer.write("\n");
-            writer.flush();
-        }
-
-        int exitCode = process.waitFor();
-        if (exitCode != 0) {
-            StringBuilder errorLog = new StringBuilder();
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getErrorStream(), StandardCharsets.UTF_8))) {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    errorLog.append(line).append("\n");
-                }
-            }
-            String errorMsg = "Piper TTS exited with code " + exitCode + ". Error: " + errorLog.toString().trim();
-            System.err.println("❌ " + errorMsg);
-            throw new java.io.IOException(errorMsg);
-        }
-
-        System.out.println("🎵 [LocalTTSService] Generated audio: " + outFile.getAbsolutePath());
-    }
-
-    private void downloadPiperAndModelIfMissing(String piperPath, String modelPath) {
-        try {
-            File piperBin = new File(piperPath);
-            File toolsDir = piperBin.getParentFile();
-            if (toolsDir == null) {
-                toolsDir = new File(System.getProperty("user.dir"), "tools/tts");
-            }
-            if (!toolsDir.exists()) {
-                toolsDir.mkdirs();
-            }
-
-            // 1. Download Piper Binary if missing
-            if (!piperBin.exists() && !new File(System.getProperty("user.dir"), piperPath).exists()) {
-                System.out.println("📥 [LocalTTSService] Piper binary not found. Attempting to download...");
-                String osName = System.getProperty("os.name").toLowerCase();
-                if (osName.contains("win")) {
-                    String zipUrl = "https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_windows_amd64.zip";
-                    downloadAndUnzip(zipUrl, toolsDir);
-                } else {
-                    System.out.println("⚠️ [LocalTTSService] Automated download only supported on Windows. Please install Piper manually on Linux/Mac.");
-                }
-            }
-
-            // 2. Download Model if missing
-            File modelFile = new File(modelPath);
-            File modelFileFallback = new File(System.getProperty("user.dir"), modelPath);
-            if (!modelFile.exists() && !modelFileFallback.exists()) {
-                System.out.println("📥 [LocalTTSService] Piper model not found. Downloading en_US-lessac-medium.onnx...");
-                File targetModelFile = modelFile.isAbsolute() ? modelFile : new File(System.getProperty("user.dir"), modelPath);
-                File parentDir = targetModelFile.getParentFile();
-                if (parentDir != null && !parentDir.exists()) {
-                    parentDir.mkdirs();
-                }
-                
-                downloadFile("https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/lessac/medium/en_US-lessac-medium.onnx", targetModelFile);
-                
-                File targetModelJsonFile = new File(targetModelFile.getAbsolutePath() + ".json");
-                if (!targetModelJsonFile.exists()) {
-                    System.out.println("📥 [LocalTTSService] Downloading en_US-lessac-medium.onnx.json...");
-                    downloadFile("https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/lessac/medium/en_US-lessac-medium.onnx.json", targetModelJsonFile);
-                }
-            }
-        } catch (Exception e) {
-            System.err.println("⚠️ [LocalTTSService] Failed to download Piper/model automatically: " + e.getMessage());
+        System.out.println("[LocalTTSService] Generating TTS via " + provider + "...");
+        boolean success = generateSpeechViaComfyUI(provider, text, outputPath);
+        if (!success) {
+            throw new java.io.IOException("ComfyUI TTS generation failed for provider: " + provider);
         }
     }
 
@@ -187,44 +116,6 @@ public class LocalTTSService {
             throw new IOException("HTTP error code: " + status + " for URL: " + urlStr);
         }
         return conn.getInputStream();
-    }
-
-    private void downloadFile(String urlStr, File targetFile) throws IOException {
-        try (java.io.InputStream in = openUrlStreamWithUserAgent(urlStr)) {
-            java.nio.file.Files.copy(in, targetFile.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-        }
-    }
-
-    private void downloadAndUnzip(String urlStr, File destDir) throws IOException {
-        try (java.util.zip.ZipInputStream zis = new java.util.zip.ZipInputStream(openUrlStreamWithUserAgent(urlStr))) {
-            java.util.zip.ZipEntry entry;
-            while ((entry = zis.getNextEntry()) != null) {
-                String name = entry.getName();
-                if (name.startsWith("piper/")) {
-                    name = name.substring(6);
-                }
-                if (name.isEmpty()) {
-                    continue;
-                }
-                File file = new File(destDir, name);
-                if (entry.isDirectory()) {
-                    file.mkdirs();
-                } else {
-                    File parent = file.getParentFile();
-                    if (parent != null && !parent.exists()) {
-                        parent.mkdirs();
-                    }
-                    try (java.io.FileOutputStream fos = new java.io.FileOutputStream(file)) {
-                        byte[] buffer = new byte[4096];
-                        int len;
-                        while ((len = zis.read(buffer)) > 0) {
-                            fos.write(buffer, 0, len);
-                        }
-                    }
-                }
-                zis.closeEntry();
-            }
-        }
     }
 
     private boolean generateSpeechViaComfyUI(String provider, String text, String outputPath) {
@@ -323,6 +214,60 @@ public class LocalTTSService {
                 }
             }
 
+
+            if ("ComfyUI Qwen-TTS".equals(provider) && lifecycleService != null && lifecycleService.isHealthy() && bootstrapper != null) {
+                String comfyPathQ = configService.getComfyUIPath();
+                File qwenDir = null;
+                if (comfyPathQ != null && !comfyPathQ.trim().isEmpty()) {
+                    qwenDir = new File(new File(comfyPathQ, "custom_nodes"), "ComfyUI-Qwen-TTS");
+                }
+                boolean qwenFolderExists = qwenDir != null && qwenDir.exists() && qwenDir.isDirectory();
+
+                boolean qwenNodeAvailable = false;
+                try {
+                    HttpRequest qCheck = HttpRequest.newBuilder()
+                            .uri(URI.create(comfyUrl + "/object_info"))
+                            .GET().build();
+                    HttpResponse<String> qResp = client.send(qCheck, HttpResponse.BodyHandlers.ofString());
+                    if (qResp.statusCode() == 200) {
+                        JSONObject info2 = new JSONObject(qResp.body());
+                        qwenNodeAvailable = info2.has("QwenTTS") || info2.has("Qwen2TTS")
+                                || info2.has("Qwen Audio TTS") || info2.has("QwenTTSNode");
+                    }
+                } catch (Exception ignored) {}
+
+                if (!qwenNodeAvailable) {
+                    if (ATTEMPTED_INSTALLS.contains("ComfyUI-Qwen-TTS")) {
+                        System.out.println("[LocalTTSService] ComfyUI-Qwen-TTS installation/load was already attempted in this session. Skipping to avoid restart loop.");
+                    } else {
+                        ATTEMPTED_INSTALLS.add("ComfyUI-Qwen-TTS");
+                        if (!qwenFolderExists) {
+                            System.out.println("[LocalTTSService] Qwen-TTS is missing and folder does not exist. Installing ComfyUI-Qwen-TTS...");
+                            System.out.println("[LocalTTSService] Stopping ComfyUI server to install custom node...");
+                            lifecycleService.stop();
+                            String pythonPathQ = configService.getPythonPath();
+                            if (comfyPathQ != null && !comfyPathQ.trim().isEmpty()) {
+                                java.nio.file.Path comfyDirQ = java.nio.file.Paths.get(comfyPathQ);
+                                java.nio.file.Path pythonExeQ = (pythonPathQ != null && !pythonPathQ.trim().isEmpty()) ? java.nio.file.Paths.get(pythonPathQ) : null;
+                                bootstrapper.ensureQwenTtsInstalled(comfyDirQ, pythonExeQ, System.out::println);
+                            }
+                            System.out.println("[LocalTTSService] Restarting ComfyUI server after Qwen-TTS installation...");
+                            lifecycleService.start();
+                        } else {
+                            System.out.println("[LocalTTSService] Qwen-TTS folder exists but node not active. Restarting ComfyUI to load it...");
+                            lifecycleService.restart();
+                        }
+                        int maxWait = 90; boolean startedQ = false;
+                        for (int i = 0; i < maxWait; i++) {
+                            if (lifecycleService.isHealthy()) { startedQ = true; break; }
+                            Thread.sleep(1000);
+                        }
+                        if (!startedQ) throw new RuntimeException("Failed to restart ComfyUI after Qwen-TTS installation.");
+                        System.out.println("[LocalTTSService] ComfyUI successfully restarted with Qwen-TTS.");
+                    }
+                }
+            }
+
             HttpRequest infoRequest = HttpRequest.newBuilder()
                     .uri(URI.create(comfyUrl + "/object_info"))
                     .GET()
@@ -401,10 +346,73 @@ public class LocalTTSService {
                 saveInputs.put("audio", new JSONArray().put("1").put(0));
                 saveNode.put("inputs", saveInputs);
                 promptObj.put("2", saveNode);
+            } else if ("ComfyUI Qwen-TTS".equals(provider)) {
+                if (info.has("QwenTTS")) { nodeClass = "QwenTTS"; }
+                else if (info.has("Qwen2TTS")) { nodeClass = "Qwen2TTS"; }
+                else if (info.has("Qwen Audio TTS")) { nodeClass = "Qwen Audio TTS"; }
+                else if (info.has("QwenTTSNode")) { nodeClass = "QwenTTSNode"; }
+
+                if (nodeClass.isEmpty()) {
+                    System.out.println("[LocalTTSService] No Qwen-TTS custom node class found in ComfyUI.");
+                    return false;
+                }
+
+                String qwenRepo = configService.getQwenTtsModelRepo();
+                String qwenPath = configService.getQwenTtsModelPath();
+                String qwenVoice = configService.getQwenTtsVoice();
+
+                boolean hasLoader = info.has("QwenModelLoader") || info.has("LoadQwenModel") || info.has("QwenTTSModelLoader");
+                if (hasLoader) {
+                    String loaderClass = info.has("QwenModelLoader") ? "QwenModelLoader"
+                            : info.has("LoadQwenModel") ? "LoadQwenModel" : "QwenTTSModelLoader";
+                    JSONObject loader = new JSONObject();
+                    loader.put("class_type", loaderClass);
+                    JSONObject loaderInputs = new JSONObject();
+                    loaderInputs.put("model_path", qwenPath);
+                    loaderInputs.put("repo_id", qwenRepo);
+                    loader.put("inputs", loaderInputs);
+                    promptObj.put("1", loader);
+
+                    JSONObject qwen = new JSONObject();
+                    qwen.put("class_type", nodeClass);
+                    JSONObject qwenInputs = new JSONObject();
+                    qwenInputs.put("text", text);
+                    qwenInputs.put("voice", qwenVoice);
+                    qwenInputs.put("speed", 1.0);
+                    qwenInputs.put("model", new JSONArray().put("1").put(0));
+                    qwen.put("inputs", qwenInputs);
+                    promptObj.put("2", qwen);
+
+                    JSONObject save = new JSONObject();
+                    save.put("class_type", "SaveAudio");
+                    JSONObject saveInputs2 = new JSONObject();
+                    saveInputs2.put("filename_prefix", "tts_scene");
+                    saveInputs2.put("audio", new JSONArray().put("2").put(0));
+                    save.put("inputs", saveInputs2);
+                    promptObj.put("3", save);
+                } else {
+                    JSONObject qwen = new JSONObject();
+                    qwen.put("class_type", nodeClass);
+                    JSONObject qwenInputs = new JSONObject();
+                    qwenInputs.put("text", text);
+                    qwenInputs.put("voice", qwenVoice);
+                    qwenInputs.put("speed", 1.0);
+                    qwenInputs.put("model_path", qwenPath);
+                    qwenInputs.put("repo_id", qwenRepo);
+                    qwen.put("inputs", qwenInputs);
+                    promptObj.put("1", qwen);
+
+                    JSONObject save = new JSONObject();
+                    save.put("class_type", "SaveAudio");
+                    JSONObject saveInputs2 = new JSONObject();
+                    saveInputs2.put("filename_prefix", "tts_scene");
+                    saveInputs2.put("audio", new JSONArray().put("1").put(0));
+                    save.put("inputs", saveInputs2);
+                    promptObj.put("2", save);
+                }
             } else {
                 return false;
             }
-
             System.out.println("🚀 [LocalTTSService] Submitting TTS workflow to ComfyUI...");
             HttpRequest promptRequest = HttpRequest.newBuilder()
                     .uri(URI.create(comfyUrl + "/prompt"))
@@ -503,3 +511,4 @@ public class LocalTTSService {
         }
     }
 }
+

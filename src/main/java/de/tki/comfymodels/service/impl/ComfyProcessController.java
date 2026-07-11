@@ -16,6 +16,7 @@ import java.util.function.Consumer;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.springframework.beans.factory.annotation.Autowired;
 
 @Service
 public class ComfyProcessController {
@@ -32,6 +33,9 @@ public class ComfyProcessController {
     private final AtomicReference<String> detectedUrl = new AtomicReference<>();
     private final Pattern urlPattern = Pattern.compile("(https?://[\\d\\.]+(?::\\d+)?)");
 
+
+    @Autowired(required = false)
+    private ProcessTracker processTracker;
     public String getDetectedUrl() {
         return detectedUrl.get();
     }
@@ -228,7 +232,7 @@ public class ComfyProcessController {
                 String cmdStr = String.join(" ", command);
                 logConsumer.accept("🚀 Launching: " + cmdStr);
                 
-                Process p = pb.start();
+                Process p = processTracker.start(pb);
                 this.currentProcess = p; // Assign to volatile field
 
                 // Enhanced log consumer to capture URL

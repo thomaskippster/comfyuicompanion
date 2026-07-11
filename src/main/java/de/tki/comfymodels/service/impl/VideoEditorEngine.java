@@ -11,12 +11,16 @@ import org.springframework.stereotype.Service;
 
 import jakarta.annotation.PostConstruct;
 import java.io.File;
+import org.springframework.beans.factory.annotation.Autowired;
 
 @Service
 public class VideoEditorEngine {
 
     private final ConfigService configService;
 
+
+    @Autowired(required = false)
+    private ProcessTracker processTracker;
     public VideoEditorEngine(ConfigService configService) {
         this.configService = configService;
     }
@@ -40,54 +44,7 @@ public class VideoEditorEngine {
 
     @PostConstruct
     public void init() {
-        int javaVersion = getJavaMajorVersion();
-        boolean loaded = false;
-
-        if (javaVersion < 12) {
-            try {
-                nu.pattern.OpenCV.loadShared();
-                System.out.println("✅ [VideoEditorEngine] OpenCV loaded successfully via loadShared()");
-                loaded = true;
-            } catch (Throwable ignored) {}
-        }
-
-        if (!loaded) {
-            try {
-                nu.pattern.OpenCV.loadLocally();
-                System.out.println("✅ [VideoEditorEngine] OpenCV loaded successfully via loadLocally()");
-            } catch (Throwable t) {
-                System.err.println("❌ [VideoEditorEngine] loadLocally() failed: " + t.getMessage());
-            }
-        }
-
-        try {
-            // Initialize Video4j native bindings
-            Video4j.init();
-        } catch (Throwable t) {
-            // Suppress log message if it is the expected UnsatisfiedLinkError on non-Linux systems
-            String msg = t.getMessage();
-            if (msg == null || (!msg.contains("/usr/lib/jni/") && !msg.contains("libopencv_java"))) {
-                System.err.println("⚠️ [VideoEditorEngine] Video4j.init() threw unexpected: " + msg);
-            }
-        }
-    }
-
-    private int getJavaMajorVersion() {
-        String version = System.getProperty("java.version");
-        if (version == null) return 8;
-        try {
-            if (version.startsWith("1.")) {
-                return Integer.parseInt(version.split("\\.")[1]);
-            } else {
-                String major = version.split("\\.")[0];
-                if (major.contains("-")) {
-                    major = major.substring(0, major.indexOf("-"));
-                }
-                return Integer.parseInt(major);
-            }
-        } catch (Exception e) {
-            return 8;
-        }
+        de.tki.comfymodels.util.OpenCvLoader.load();
     }
 
     public File processScene(String inputPath, int startFrame, int endFrame) throws Exception {
@@ -140,7 +97,7 @@ public class VideoEditorEngine {
             "-c:v", "copy", "-c:a", "aac", "-shortest", outputPath
         );
         pb.redirectErrorStream(true);
-        Process process = pb.start();
+        Process process = processTracker.start(pb);
         int exitCode = process.waitFor();
         if (exitCode != 0) {
             throw new RuntimeException("FFmpeg A/V merge failed with exit code: " + exitCode);

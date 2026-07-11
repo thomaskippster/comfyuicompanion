@@ -1,5 +1,8 @@
 package de.tki.comfymodels.service.impl;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import org.springframework.stereotype.Service;
 import java.io.File;
 import java.io.FileOutputStream;
@@ -14,6 +17,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 
 @Service
 public class DependencyService {
+    private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(DependencyService.class);
 
     private final ConfigService configService;
 
@@ -63,7 +67,7 @@ public class DependencyService {
                  java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.InputStreamReader(is))) {
                 String line;
                 while ((line = reader.readLine()) != null) {
-                    System.out.println("[Conda Install] " + line);
+                    logger.info("[Conda Install] " + line);
                 }
             }
             int exitCode = p.waitFor();
@@ -72,7 +76,7 @@ public class DependencyService {
                 return;
             }
         } catch (Exception e) {
-            System.out.println("Conda install failed or not available, falling back to direct download: " + e.getMessage());
+            logger.info("Conda install failed or not available, falling back to direct download: " + e.getMessage());
         }
 
         // Direct Download Fallback

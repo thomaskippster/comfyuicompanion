@@ -1,5 +1,8 @@
 package de.tki.comfymodels.service.impl;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import de.tki.comfymodels.domain.ModelInfo;
@@ -17,6 +20,7 @@ import java.util.concurrent.CompletableFuture;
 
 @Service
 public class CivitaiService {
+    private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(CivitaiService.class);
     @Autowired
     private ConfigService configService;
 
@@ -46,7 +50,7 @@ public class CivitaiService {
                     try {
                         return mapper.readTree(response.body());
                     } catch (Exception e) {
-                        System.err.println("Error parsing Civitai response: " + e.getMessage());
+                        logger.error("Error parsing Civitai response: " + e.getMessage());
                         return null;
                     }
                 });
@@ -79,7 +83,7 @@ public class CivitaiService {
                             }
                         }
                     } catch (Exception e) {
-                        System.err.println("Error parsing Civitai response: " + e.getMessage());
+                        logger.error("Error parsing Civitai response: " + e.getMessage());
                     }
                     return results;
                 });
@@ -179,7 +183,7 @@ public class CivitaiService {
                 infoData.put("trainedWords", triggers);
                 
                 java.nio.file.Files.writeString(infoFile, mapper.writerWithDefaultPrettyPrinter().writeValueAsString(infoData), java.nio.charset.StandardCharsets.UTF_8);
-                System.out.println("💾 Saved Civitai metadata: " + infoFile);
+                logger.info("💾 Saved Civitai metadata: " + infoFile);
                 
                 JsonNode images = root.get("images");
                 if (images != null && images.isArray() && images.size() > 0) {
@@ -190,13 +194,13 @@ public class CivitaiService {
                         HttpResponse<byte[]> imgRes = httpClient.send(imgReq, HttpResponse.BodyHandlers.ofByteArray());
                         if (imgRes.statusCode() == 200) {
                             java.nio.file.Files.write(previewFile, imgRes.body());
-                            System.out.println("🖼️ Saved Civitai preview: " + previewFile);
+                            logger.info("🖼️ Saved Civitai preview: " + previewFile);
                         }
                     }
                 }
             }
         } catch (Exception e) {
-            System.err.println("Failed to download Civitai metadata or preview: " + e.getMessage());
+            logger.error("Failed to download Civitai metadata or preview: " + e.getMessage());
         }
     }
 
@@ -271,7 +275,7 @@ public class CivitaiService {
                 }
             }
         } catch (Exception e) {
-            System.err.println("Error checking update for model " + modelFile.getName() + ": " + e.getMessage());
+            logger.error("Error checking update for model " + modelFile.getName() + ": " + e.getMessage());
         }
         return null;
     }

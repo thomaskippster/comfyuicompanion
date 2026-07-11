@@ -1,5 +1,8 @@
 package de.tki.comfymodels.service.impl;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import de.tki.comfymodels.domain.ModelInfo;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -22,6 +25,7 @@ import java.util.stream.Stream;
  */
 @Service
 public class LocalModelScanner {
+    private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(LocalModelScanner.class);
 
     private final ConfigService configService;
     private final PathResolver pathResolver;
@@ -77,7 +81,7 @@ public class LocalModelScanner {
                 }
             }
         } catch (IOException e) {
-            System.err.println("Error scanning directory " + absRoot + ": " + e.getMessage());
+            logger.error("Error scanning directory " + absRoot + ": " + e.getMessage());
         }
     }
 

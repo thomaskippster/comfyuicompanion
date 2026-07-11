@@ -1,5 +1,8 @@
 package de.tki.comfymodels.service.impl;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import de.tki.comfymodels.domain.ComfyTemplate;
 import de.tki.comfymodels.domain.ModelArchitecture;
 import de.tki.comfymodels.service.IComfyTemplateService;
@@ -21,6 +24,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 public class ComfyTemplateService implements IComfyTemplateService {
+    private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(ComfyTemplateService.class);
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -46,7 +50,7 @@ public class ComfyTemplateService implements IComfyTemplateService {
         if (!templatesDir.exists()) {
             boolean created = templatesDir.mkdirs();
             if (created) {
-                System.out.println("📂 [TemplateService] Created templates directory at: " + templatesDir.getAbsolutePath());
+                logger.info("📂 [TemplateService] Created templates directory at: " + templatesDir.getAbsolutePath());
             }
         }
 
@@ -65,7 +69,7 @@ public class ComfyTemplateService implements IComfyTemplateService {
                 String currentFluxContent = Files.readString(fluxFile.toPath(), StandardCharsets.UTF_8);
                 if (currentFluxContent.contains("CheckpointLoaderSimple")) {
                     needsFluxUpgrade = true;
-                    System.out.println("🔄 [TemplateService] Old Flux template detected. Forcing upgrade...");
+                    logger.info("🔄 [TemplateService] Old Flux template detected. Forcing upgrade...");
                 }
             } catch (IOException ignored) {}
         }
@@ -78,7 +82,7 @@ public class ComfyTemplateService implements IComfyTemplateService {
                 String currentLuminaContent = Files.readString(luminaFile.toPath(), StandardCharsets.UTF_8);
                 if (!currentLuminaContent.contains("CFGNorm")) {
                     needsLuminaWrite = true;
-                    System.out.println("🔄 [TemplateService] Old Lumina2 template without CFGNorm detected. Forcing upgrade...");
+                    logger.info("🔄 [TemplateService] Old Lumina2 template without CFGNorm detected. Forcing upgrade...");
                 }
             } catch (IOException ignored) {}
         }
@@ -97,7 +101,7 @@ public class ComfyTemplateService implements IComfyTemplateService {
             File templateFile = new File(templatesDir, dfn);
             if (!templateFile.exists()) {
                 writeJsonFile(templateFile, getDefaultTemplateForName(dfn));
-                System.out.println("📂 [TemplateService] Created missing architecture template: " + dfn);
+                logger.info("📂 [TemplateService] Created missing architecture template: " + dfn);
             }
         }
 
@@ -117,9 +121,9 @@ public class ComfyTemplateService implements IComfyTemplateService {
                     String name = formatTemplateName(filename);
                     ComfyTemplate template = new ComfyTemplate(name, filename, content, file.getAbsolutePath());
                     templateCache.put(filename.toLowerCase(), template);
-                    System.out.println("📄 [TemplateService] Loaded template: " + name + " (" + filename + ")");
+                    logger.info("📄 [TemplateService] Loaded template: " + name + " (" + filename + ")");
                 } catch (IOException e) {
-                    System.err.println("❌ [TemplateService] Error reading template file " + file.getName() + ": " + e.getMessage());
+                    logger.error("❌ [TemplateService] Error reading template file " + file.getName() + ": " + e.getMessage());
                 }
             }
         }
@@ -328,7 +332,7 @@ public class ComfyTemplateService implements IComfyTemplateService {
 
             return rootObj.toString(2);
         } catch (Exception e) {
-            System.err.println("❌ [TemplateService] Error modifying payload: " + e.getMessage());
+            logger.error("❌ [TemplateService] Error modifying payload: " + e.getMessage());
             return templateJson;
         }
     }
@@ -346,7 +350,7 @@ public class ComfyTemplateService implements IComfyTemplateService {
         try {
             Files.writeString(file.toPath(), content, StandardCharsets.UTF_8);
         } catch (IOException e) {
-            System.err.println("❌ [TemplateService] Error writing default mapping file: " + e.getMessage());
+            logger.error("❌ [TemplateService] Error writing default mapping file: " + e.getMessage());
         }
     }
 
@@ -362,7 +366,7 @@ public class ComfyTemplateService implements IComfyTemplateService {
                 }
             }
         } catch (Exception e) {
-            System.err.println("❌ [TemplateService] Error loading mapping file: " + e.getMessage());
+            logger.error("❌ [TemplateService] Error loading mapping file: " + e.getMessage());
         }
     }
 
@@ -392,7 +396,7 @@ public class ComfyTemplateService implements IComfyTemplateService {
     }
 
     private void writeDefaultTemplates(File targetDir) {
-        System.out.println("💾 [TemplateService] Populating default templates in: " + targetDir.getAbsolutePath());
+        logger.info("💾 [TemplateService] Populating default templates in: " + targetDir.getAbsolutePath());
         writeJsonFile(new File(targetDir, "sd15_base_api.json"), getSd15DefaultTemplate());
         writeJsonFile(new File(targetDir, "sdxl_base_api.json"), getSdxlDefaultTemplate());
         writeJsonFile(new File(targetDir, "flux_base_api.json"), getFluxDefaultTemplate());
@@ -411,7 +415,7 @@ public class ComfyTemplateService implements IComfyTemplateService {
         try {
             Files.writeString(file.toPath(), content, StandardCharsets.UTF_8);
         } catch (IOException e) {
-            System.err.println("❌ [TemplateService] Error writing default template file " + file.getName() + ": " + e.getMessage());
+            logger.error("❌ [TemplateService] Error writing default template file " + file.getName() + ": " + e.getMessage());
         }
     }
 
@@ -1349,7 +1353,7 @@ public class ComfyTemplateService implements IComfyTemplateService {
         try {
             return objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(root);
         } catch (Exception e) {
-            System.err.println("❌ [TemplateService] Failed to serialize payload: " + e.getMessage());
+            logger.error("❌ [TemplateService] Failed to serialize payload: " + e.getMessage());
             return root.toString();
         }
     }

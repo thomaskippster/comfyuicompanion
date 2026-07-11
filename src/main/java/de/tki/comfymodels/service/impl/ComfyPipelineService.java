@@ -1,5 +1,8 @@
 package de.tki.comfymodels.service.impl;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import de.tki.comfymodels.domain.Scene;
 import de.tki.comfymodels.service.IComfyLifecycleService;
 import org.json.JSONArray;
@@ -26,6 +29,7 @@ import java.util.concurrent.CompletableFuture;
 
 @Service
 public class ComfyPipelineService {
+    private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(ComfyPipelineService.class);
 
     public static final class ComfyOutputRef {
         public final String filename;
@@ -334,7 +338,7 @@ public class ComfyPipelineService {
                 }
             }
         } catch (Exception e) {
-            System.err.println("âš ï¸ [ComfyPipeline] Failed to fetch options for " + nodeClass + "/" + inputName + ": " + e.getMessage());
+            logger.error("âš ï¸ [ComfyPipeline] Failed to fetch options for " + nodeClass + "/" + inputName + ": " + e.getMessage());
         }
         return optionsList;
     }
@@ -465,7 +469,7 @@ public class ComfyPipelineService {
                 return info.has(nodeClass);
             }
         } catch (Exception e) {
-            System.err.println("âš ï¸ [ComfyPipeline] Failed to check node class availability: " + e.getMessage());
+            logger.error("âš ï¸ [ComfyPipeline] Failed to check node class availability: " + e.getMessage());
         }
         return false;
     }
@@ -485,7 +489,7 @@ public class ComfyPipelineService {
 
                 // Auto-start ComfyUI if it's not healthy
                 if (lifecycleService != null && !lifecycleService.isHealthy()) {
-                    System.out.println("ðŸ”„ [ComfyPipeline] ComfyUI server is offline. Attempting auto-start...");
+                    logger.info("ðŸ”„ [ComfyPipeline] ComfyUI server is offline. Attempting auto-start...");
                     lifecycleService.start();
                     
                     // Poll until healthy
@@ -506,7 +510,7 @@ public class ComfyPipelineService {
                     if (!started) {
                         throw new RuntimeException("Failed to auto-start ComfyUI. Server did not become healthy within " + maxWaitSeconds + " seconds.");
                     }
-                    System.out.println("âœ… [ComfyPipeline] ComfyUI successfully started and healthy.");
+                    logger.info("âœ… [ComfyPipeline] ComfyUI successfully started and healthy.");
                 }
 
                 String serverUrl = configService.getComfyUIUrl();
@@ -525,12 +529,12 @@ public class ComfyPipelineService {
                     boolean nodeAvailable = isNodeClassAvailable(serverUrl, "VHS_VideoCombine");
                     if (!nodeAvailable) {
                         if (ATTEMPTED_INSTALLS.contains("VHS_VideoCombine")) {
-                            System.out.println("âš ï¸ [ComfyPipeline] ComfyUI-Video-Helper-Suite installation/load was already attempted in this session. Skipping to avoid restart loop.");
+                            logger.info("âš ï¸ [ComfyPipeline] ComfyUI-Video-Helper-Suite installation/load was already attempted in this session. Skipping to avoid restart loop.");
                         } else {
                             ATTEMPTED_INSTALLS.add("VHS_VideoCombine");
                             if (!folderExists) {
-                                System.out.println("âš ï¸ [ComfyPipeline] VHS_VideoCombine is missing and folder does not exist. Installing ComfyUI-Video-Helper-Suite...");
-                                System.out.println("ðŸ”„ [ComfyPipeline] Stopping ComfyUI server to install custom nodes...");
+                                logger.info("âš ï¸ [ComfyPipeline] VHS_VideoCombine is missing and folder does not exist. Installing ComfyUI-Video-Helper-Suite...");
+                                logger.info("ðŸ”„ [ComfyPipeline] Stopping ComfyUI server to install custom nodes...");
                                 lifecycleService.stop();
                                 
                                 String pythonPath = configService.getPythonPath();
@@ -540,10 +544,10 @@ public class ComfyPipelineService {
                                     bootstrapper.ensureVideoHelperSuiteInstalled(comfyDir, pythonExe, System.out::println);
                                 }
                                 
-                                System.out.println("ðŸ”„ [ComfyPipeline] Restarting ComfyUI server after installation...");
+                                logger.info("ðŸ”„ [ComfyPipeline] Restarting ComfyUI server after installation...");
                                 lifecycleService.start();
                             } else {
-                                System.out.println("ðŸ”„ [ComfyPipeline] VHS_VideoCombine node is not active but folder exists. Restarting ComfyUI server to load it...");
+                                logger.info("ðŸ”„ [ComfyPipeline] VHS_VideoCombine node is not active but folder exists. Restarting ComfyUI server to load it...");
                                 lifecycleService.restart();
                             }
                             
@@ -565,7 +569,7 @@ public class ComfyPipelineService {
                             if (!started) {
                                 throw new RuntimeException("Failed to restart ComfyUI. Server did not become healthy within " + maxWaitSeconds + " seconds.");
                             }
-                            System.out.println("âœ… [ComfyPipeline] ComfyUI successfully restarted and healthy.");
+                            logger.info("âœ… [ComfyPipeline] ComfyUI successfully restarted and healthy.");
                         }
                     }
                 }
@@ -580,7 +584,7 @@ public class ComfyPipelineService {
                 if (speakerPath != null && !speakerPath.trim().isEmpty()) {
                     File speakerFile = new File(speakerPath);
                     if (speakerFile.exists()) {
-                        System.out.println("ðŸ“¤ [ComfyPipeline] Uploading speaker image: " + speakerFile.getName());
+                        logger.info("ðŸ“¤ [ComfyPipeline] Uploading speaker image: " + speakerFile.getName());
                         speakerImage = uploadFile(serverUrl, speakerFile);
                     }
                 }
@@ -593,7 +597,7 @@ public class ComfyPipelineService {
                     // Blueprint is image-to-video only; use it when a start image is provided and Wan nodes are missing
                     JSONObject blueprintJson = loadBlueprintWorkflow("Text to Video (Wan 2.2).json");
                     if (blueprintJson != null) {
-                        System.out.println("ðŸ“„ [ComfyPipeline] Wan nodes unavailable; using Wan 2.2 blueprint workflow with start image.");
+                        logger.info("ðŸ“„ [ComfyPipeline] Wan nodes unavailable; using Wan 2.2 blueprint workflow with start image.");
                         injectPrompt(blueprintJson, scene.getPrompt());
                         injectParamsIntoBlueprint(blueprintJson, seed, filenamePrefix, scene);
                         injectSpeakerImage(blueprintJson, speakerImage);
@@ -609,13 +613,14 @@ public class ComfyPipelineService {
 
                 // 2. Send prompt to ComfyUI
                 String promptId = submitPrompt(serverUrl, workflowJson);
-                System.out.println("ðŸš€ [ComfyPipeline] Submitted job. Prompt ID: " + promptId);
+                logger.info("ðŸš€ [ComfyPipeline] Submitted job. Prompt ID: " + promptId);
 
                 // 3. Poll queue status via /history
                 ComfyOutputRef outputRef = pollHistoryForOutput(serverUrl, promptId);
                 String finishedFilename = outputRef != null ? outputRef.filename : null;
-                System.out.println("âœ¨ [ComfyPipeline] Job finished. Filename: " + finishedFilename
-                        + (outputRef != null && !outputRef.subfolder.isEmpty() ? " (subfolder: " + outputRef.subfolder + ")" : ""));
+                logger.info("✨ [ComfyPipeline] Job finished. Filename: {}" + 
+                        (outputRef != null && !outputRef.subfolder.isEmpty() ? " (subfolder: " + outputRef.subfolder + ")" : ""),
+                        finishedFilename);
 
                 // 4. Find the video file in the ComfyUI output directory
                 String comfyOutputPath = configService.getResolvedOutputDir();
@@ -645,7 +650,7 @@ public class ComfyPipelineService {
                             finalVideoFile.getAbsolutePath()
                         );
 
-                        System.out.println("ðŸŽ¬ [ComfyPipeline] Running FFmpeg audio muxing command: " + String.join(" ", cmd));
+                        logger.info("ðŸŽ¬ [ComfyPipeline] Running FFmpeg audio muxing command: " + String.join(" ", cmd));
                         ProcessBuilder pb = new ProcessBuilder(cmd);
                         pb.redirectOutput(ProcessBuilder.Redirect.DISCARD);
                         Process process = processTracker.start(pb);
@@ -656,10 +661,10 @@ public class ComfyPipelineService {
                                     new java.io.InputStreamReader(process.getErrorStream(), StandardCharsets.UTF_8))) {
                                 String line;
                                 while ((line = reader.readLine()) != null) {
-                                    System.out.println("[FFmpeg-Mux] " + line);
+                                    logger.info("[FFmpeg-Mux] " + line);
                                 }
                             } catch (IOException e) {
-                                System.err.println("Error reading FFmpeg error stream: " + e.getMessage());
+                                logger.error("Error reading FFmpeg error stream: " + e.getMessage());
                             }
                         });
                         errorReaderThread.start();
@@ -673,11 +678,11 @@ public class ComfyPipelineService {
 
                         // Cleanup the original toneless file
                         if (rawVideoFile.exists()) {
-                            System.out.println("ðŸ§¹ [ComfyPipeline] Cleaning up raw video: " + rawVideoFile.getAbsolutePath());
+                            logger.info("ðŸ§¹ [ComfyPipeline] Cleaning up raw video: " + rawVideoFile.getAbsolutePath());
                             rawVideoFile.delete();
                         }
                     } else {
-                        System.out.println("â„¹ï¸ [ComfyPipeline] No audio file found or specified for scene. Copying raw video to final path: " + finalVideoFile.getAbsolutePath());
+                        logger.info("â„¹ï¸ [ComfyPipeline] No audio file found or specified for scene. Copying raw video to final path: " + finalVideoFile.getAbsolutePath());
                         Files.copy(rawVideoFile.toPath(), finalVideoFile.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
                         if (rawVideoFile.exists()) {
                             rawVideoFile.delete();
@@ -710,10 +715,10 @@ public class ComfyPipelineService {
 
             } catch (Exception e) {
                 if (strictMode) {
-                    System.err.println("ðŸ”´ [ComfyPipeline] Failed generating scene via ComfyUI (Strict Mode): " + e.getMessage());
+                    logger.error("ðŸ”´ [ComfyPipeline] Failed generating scene via ComfyUI (Strict Mode): " + e.getMessage());
                     throw new RuntimeException("Strict mode generation failed: " + e.getMessage(), e);
                 }
-                System.err.println("ðŸ”´ [ComfyPipeline] Failed generating scene via ComfyUI: " + e.getMessage() + ". Generating simulated fallback video.");
+                logger.error("ðŸ”´ [ComfyPipeline] Failed generating scene via ComfyUI: " + e.getMessage() + ". Generating simulated fallback video.");
                 try {
                     File fallbackVideo = generateSimulatedVideo(scene);
                     File finalVideoFile = new File(new File("").getAbsoluteFile(), "scene_" + scene.getSceneId() + "_final.mp4");
@@ -734,7 +739,7 @@ public class ComfyPipelineService {
             try {
                 String sourceClip = scene.getSourceClipPath();
                 if (sourceClip != null && !sourceClip.trim().isEmpty() && new File(sourceClip).exists()) {
-                    System.out.println("ðŸŽ¬ [ComfyPipeline] Montage mode: Using source clip as input: " + sourceClip);
+                    logger.info("ðŸŽ¬ [ComfyPipeline] Montage mode: Using source clip as input: " + sourceClip);
                     configService.setSpeakerImagePath(sourceClip);
                 }
                 return generateScene(scene).join();
@@ -754,7 +759,8 @@ public class ComfyPipelineService {
         
         if (isGlobal) {
             try {
-                Process p = processTracker.start(new ProcessBuilder("ffmpeg", "-version"));;
+                Process p = processTracker.start(new ProcessBuilder("ffmpeg", "-version"));
+;
                 p.destroy();
                 available = true;
             } catch (Exception e) {
@@ -816,7 +822,7 @@ public class ComfyPipelineService {
             "drawtext=text='" + escapedPrompt + "':fontsize=20:fontcolor=0xCCCCCC:x=(w-tw)/2:y=h/2-th/2," +
             "drawtext=text='[ComfyUI Offline - Placeholder]':fontsize=16:fontcolor=0x888888:x=(w-tw)/2:y=3*h/4";
 
-        System.out.println("ðŸŽ¥ [ComfyPipeline] Generating placeholder video with scene info (Duration: " + duration + "s) to: " + targetFile);
+        logger.info("ðŸŽ¥ [ComfyPipeline] Generating placeholder video with scene info (Duration: " + duration + "s) to: " + targetFile);
         List<String> cmd = new java.util.ArrayList<>();
         cmd.add(configService.getFfmpegPath());
         cmd.add("-y");
@@ -840,11 +846,11 @@ public class ComfyPipelineService {
         
         int exitCode = process.waitFor();
         if (exitCode == 0 && Files.exists(targetFile) && Files.size(targetFile) > 1024) {
-            System.out.println("ðŸŽ¥ [ComfyPipeline] Generated placeholder video with scene overlay: " + targetFile);
+            logger.info("ðŸŽ¥ [ComfyPipeline] Generated placeholder video with scene overlay: " + targetFile);
             return targetFile.toFile();
         } else {
             // Fallback to minimal color source without text if drawtext fails (e.g. missing fonts)
-            System.out.println("âš ï¸ [ComfyPipeline] Drawtext failed (exit code " + exitCode + "). Falling back to plain color source.");
+            logger.info("âš ï¸ [ComfyPipeline] Drawtext failed (exit code " + exitCode + "). Falling back to plain color source.");
             ProcessBuilder pbFallback = new ProcessBuilder(
                 configService.getFfmpegPath(), "-y",
                 "-f", "lavfi",
@@ -904,7 +910,7 @@ public class ComfyPipelineService {
                 return Double.parseDouble(line.trim());
             }
         } catch (Exception e) {
-            System.err.println("âš ï¸ [ComfyPipeline] Could not probe duration: " + e.getMessage());
+            logger.error("âš ï¸ [ComfyPipeline] Could not probe duration: " + e.getMessage());
         }
         return 0.0;
     }
@@ -1152,7 +1158,7 @@ public class ComfyPipelineService {
                     return apiJson.toString();
                 }
             } catch (Exception e) {
-                System.err.println("âš ï¸ [ComfyPipeline] Failed to parse custom workflow.json: " + e);
+                logger.error("âš ï¸ [ComfyPipeline] Failed to parse custom workflow.json: " + e);
             }
         }
         return DEFAULT_API_TEMPLATE;
@@ -1178,7 +1184,7 @@ public class ComfyPipelineService {
                     && !text.toLowerCase().contains("é™æ­¢") && !text.toLowerCase().contains("æœ€å·®è´¨é‡")) {
                     inputs.put("text", promptText);
                     injected = true;
-                    System.out.println("ðŸ“¥ [ComfyPipeline] Injected visual_prompt into CLIPTextEncode node ID: " + key);
+                    logger.info("ðŸ“¥ [ComfyPipeline] Injected visual_prompt into CLIPTextEncode node ID: " + key);
                 }
             } else if ("98ee9e5b-467b-40aa-a534-36033f27d0b4".equals(classType)
                     || "84e2cf3f-de93-40ef-ab22-b9375296917b".equals(classType)) {
@@ -1189,12 +1195,12 @@ public class ComfyPipelineService {
                     inputs.put("value", promptText);
                 }
                 injected = true;
-                System.out.println("ðŸ“¥ [ComfyPipeline] Injected visual_prompt into Video Gen Subgraph node ID: " + key);
+                logger.info("ðŸ“¥ [ComfyPipeline] Injected visual_prompt into Video Gen Subgraph node ID: " + key);
             } else if ("PrimitiveStringMultiline".equals(classType)) {
                 // Primitive multiline string inputs (often used as prompt nodes)
                 inputs.put("value", promptText);
                 injected = true;
-                System.out.println("ðŸ“¥ [ComfyPipeline] Injected visual_prompt into PrimitiveStringMultiline node ID: " + key);
+                logger.info("ðŸ“¥ [ComfyPipeline] Injected visual_prompt into PrimitiveStringMultiline node ID: " + key);
             }
         }
 
@@ -1220,9 +1226,9 @@ public class ComfyPipelineService {
                         if (!availableCkpts.isEmpty()) {
                             String replacement = availableCkpts.get(0);
                             inputs.put("ckpt_name", replacement);
-                            System.out.println("ðŸ”„ [ComfyPipeline] Replaced missing checkpoint '" + currentCkpt + "' with first available: '" + replacement + "' in node " + key);
+                            logger.info("ðŸ”„ [ComfyPipeline] Replaced missing checkpoint '" + currentCkpt + "' with first available: '" + replacement + "' in node " + key);
                         } else {
-                            System.err.println("âš ï¸ [ComfyPipeline] Could not replace missing checkpoint because available checkpoint list is empty (ComfyUI may be offline).");
+                            logger.error("âš ï¸ [ComfyPipeline] Could not replace missing checkpoint because available checkpoint list is empty (ComfyUI may be offline).");
                         }
                     }
                 }
@@ -1264,7 +1270,7 @@ public class ComfyPipelineService {
                 }
             }
         } catch (Exception e) {
-            System.err.println("âš ï¸ [ComfyPipeline] Failed to fetch checkpoints from ComfyUI: " + e);
+            logger.error("âš ï¸ [ComfyPipeline] Failed to fetch checkpoints from ComfyUI: " + e);
         }
         return checkpoints;
     }
@@ -1449,7 +1455,7 @@ public class ComfyPipelineService {
             try (InputStream is = response.body()) {
                 Files.copy(is, targetFile, StandardCopyOption.REPLACE_EXISTING);
             }
-            System.out.println("ðŸ’¾ [ComfyPipeline] Downloaded output to: " + targetFile);
+            logger.info("ðŸ’¾ [ComfyPipeline] Downloaded output to: " + targetFile);
             return targetFile.toFile();
         } else {
             throw new IOException("Failed to download output file. Status: " + response.statusCode());
@@ -1468,12 +1474,12 @@ public class ComfyPipelineService {
                 if (inputs != null) {
                     inputs.put("image", filename);
                     injected = true;
-                    System.out.println("ðŸ“¥ [ComfyPipeline] Injected speaker image '" + filename + "' into LoadImage node ID: " + key);
+                    logger.info("ðŸ“¥ [ComfyPipeline] Injected speaker image '" + filename + "' into LoadImage node ID: " + key);
                 }
             }
         }
         if (!injected) {
-            System.out.println("â„¹ï¸ [ComfyPipeline] No LoadImage node found in workflow to inject speaker image.");
+            logger.info("â„¹ï¸ [ComfyPipeline] No LoadImage node found in workflow to inject speaker image.");
         }
     }
 
@@ -1489,12 +1495,12 @@ public class ComfyPipelineService {
                 if (inputs != null) {
                     inputs.put("audio", filename);
                     injected = true;
-                    System.out.println("ðŸ“¥ [ComfyPipeline] Injected narration audio '" + filename + "' into LoadAudio node ID: " + key);
+                    logger.info("ðŸ“¥ [ComfyPipeline] Injected narration audio '" + filename + "' into LoadAudio node ID: " + key);
                 }
             }
         }
         if (!injected) {
-            System.out.println("â„¹ï¸ [ComfyPipeline] No LoadAudio node found in workflow to inject narration audio.");
+            logger.info("â„¹ï¸ [ComfyPipeline] No LoadAudio node found in workflow to inject narration audio.");
         }
     }
 
@@ -1566,7 +1572,7 @@ public class ComfyPipelineService {
                 return convertUiToApi(flattened);
             }
         } catch (Exception e) {
-            System.err.println("âš ï¸ [ComfyPipeline] Failed to load blueprint " + blueprintFile.getName() + ": " + e.getMessage());
+            logger.error("âš ï¸ [ComfyPipeline] Failed to load blueprint " + blueprintFile.getName() + ": " + e.getMessage());
         }
         return null;
     }
@@ -1591,7 +1597,7 @@ public class ComfyPipelineService {
                     || "98ee9e5b-467b-40aa-a534-36033f27d0b4".equals(classType)) {
                 if (inputs.has("value_1")) {
                     inputs.put("value_1", sceneDuration);
-                    System.out.println("ðŸ“¥ [ComfyPipeline] Injected scene duration " + sceneDuration + "s into video subgraph node ID: " + key);
+                    logger.info("ðŸ“¥ [ComfyPipeline] Injected scene duration " + sceneDuration + "s into video subgraph node ID: " + key);
                 }
             }
             

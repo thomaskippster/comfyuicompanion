@@ -1,5 +1,8 @@
 package de.tki.comfymodels.service.impl;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import org.json.JSONObject;
 import org.springframework.stereotype.Service;
 import java.io.File;
@@ -17,6 +20,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 
 @Service
 public class VersionService {
+    private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(VersionService.class);
     private static final String COMFY_VERSION_URL = "https://api.github.com/repos/comfyanonymous/ComfyUI/releases/latest";
     private static final String PYTHON_RELEASES_URL = "https://www.python.org/api/v2/downloads/python-3.12.json";
     
@@ -46,11 +50,11 @@ public class VersionService {
                     return json.optString("tag_name", "Unknown");
                 } else {
                     String error = "Error (Code: " + response.statusCode() + ")";
-                    System.err.println("GitHub API request failed with status: " + response.statusCode() + ". Body: " + response.body());
+                    logger.error("GitHub API request failed with status: " + response.statusCode() + ". Body: " + response.body());
                     return error;
                 }
             } catch (Exception e) {
-                System.err.println("Failed to fetch remote ComfyUI version: " + e.getMessage());
+                logger.error("Failed to fetch remote ComfyUI version: " + e.getMessage());
                 return "Offline";
             }
         });

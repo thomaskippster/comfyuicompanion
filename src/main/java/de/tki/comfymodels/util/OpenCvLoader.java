@@ -1,8 +1,12 @@
 package de.tki.comfymodels.util;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import io.metaloom.video4j.Video4j;
 
 public class OpenCvLoader {
+    private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(OpenCvLoader.class);
 
     private static boolean initialized = false;
     private static boolean success = false;
@@ -25,7 +29,7 @@ public class OpenCvLoader {
         if (javaVersion < 12) {
             try {
                 nu.pattern.OpenCV.loadShared();
-                System.out.println("✅ [OpenCvLoader] OpenCV loaded successfully via loadShared()");
+                logger.info("✅ [OpenCvLoader] OpenCV loaded successfully via loadShared()");
                 success = true;
             } catch (Throwable ignored) {}
         }
@@ -33,20 +37,20 @@ public class OpenCvLoader {
         if (!success) {
             try {
                 nu.pattern.OpenCV.loadLocally();
-                System.out.println("✅ [OpenCvLoader] OpenCV loaded successfully via loadLocally()");
+                logger.info("✅ [OpenCvLoader] OpenCV loaded successfully via loadLocally()");
                 success = true;
             } catch (Throwable t) {
-                System.err.println("❌ [OpenCvLoader] loadLocally() failed: " + t.getMessage());
+                logger.error("❌ [OpenCvLoader] loadLocally() failed: " + t.getMessage());
             }
         }
 
         if (!success) {
             try {
                 Video4j.init();
-                System.out.println("✅ [OpenCvLoader] OpenCV initialized successfully via Video4j.init()");
+                logger.info("✅ [OpenCvLoader] OpenCV initialized successfully via Video4j.init()");
                 success = true;
             } catch (Throwable t) {
-                System.err.println("❌ [OpenCvLoader] Video4j.init() failed: " + t.getMessage());
+                logger.error("❌ [OpenCvLoader] Video4j.init() failed: " + t.getMessage());
             }
         }
 

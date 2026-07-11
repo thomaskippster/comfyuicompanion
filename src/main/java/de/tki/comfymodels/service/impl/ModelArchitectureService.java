@@ -1,5 +1,8 @@
 package de.tki.comfymodels.service.impl;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import de.tki.comfymodels.domain.ModelArchitecture;
 import de.tki.comfymodels.service.IModelArchitectureService;
 import org.json.JSONArray;
@@ -26,6 +29,7 @@ import java.util.Collections;
 
 @Service
 public class ModelArchitectureService implements IModelArchitectureService {
+    private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(ModelArchitectureService.class);
 
     private final ConfigService configService;
     private final List<MappingRule> rules = new java.util.concurrent.CopyOnWriteArrayList<>();
@@ -122,14 +126,14 @@ public class ModelArchitectureService implements IModelArchitectureService {
                         ModelArchitecture arch = ModelArchitecture.valueOf(archStr);
                         loadedRules.add(new MappingRule(patternStr, arch));
                     } catch (IllegalArgumentException e) {
-                        System.err.println("⚠️ [ArchitectureService] Unknown architecture in mapping rule: " + archStr);
+                        logger.error("⚠️ [ArchitectureService] Unknown architecture in mapping rule: " + archStr);
                     }
                 }
             }
             rules.clear();
             rules.addAll(loadedRules);
         } catch (Exception e) {
-            System.err.println("❌ [ArchitectureService] Failed to load architecture mapping: " + e.getMessage());
+            logger.error("❌ [ArchitectureService] Failed to load architecture mapping: " + e.getMessage());
             loadFallbackRules();
         }
     }
@@ -155,7 +159,7 @@ public class ModelArchitectureService implements IModelArchitectureService {
             try {
                 detected = classifier.classifyModel(filename);
             } catch (Exception e) {
-                System.err.println("⚠️ [ModelArchitectureService] Gemma classification failed: " + e.getMessage());
+                logger.error("⚠️ [ModelArchitectureService] Gemma classification failed: " + e.getMessage());
             }
         }
 
@@ -247,9 +251,9 @@ public class ModelArchitectureService implements IModelArchitectureService {
                 "}";
         try {
             Files.writeString(file.toPath(), content, StandardCharsets.UTF_8);
-            System.out.println("💾 [ArchitectureService] Wrote default model architecture mapping config to: " + file.getAbsolutePath());
+            logger.info("💾 [ArchitectureService] Wrote default model architecture mapping config to: " + file.getAbsolutePath());
         } catch (IOException e) {
-            System.err.println("❌ [ArchitectureService] Failed to write default mapping config: " + e.getMessage());
+            logger.error("❌ [ArchitectureService] Failed to write default mapping config: " + e.getMessage());
         }
     }
 
@@ -273,9 +277,9 @@ public class ModelArchitectureService implements IModelArchitectureService {
             if (!newBlueprints.exists()) {
                 boolean renamed = oldBlueprints.renameTo(newBlueprints);
                 if (renamed) {
-                    System.out.println("🔄 [ArchitectureService] Migrated blueprints folder to companion_blueprints: " + oldBlueprints.getAbsolutePath());
+                    logger.info("🔄 [ArchitectureService] Migrated blueprints folder to companion_blueprints: " + oldBlueprints.getAbsolutePath());
                 } else {
-                    System.err.println("⚠️ [ArchitectureService] Failed to rename blueprints folder to companion_blueprints: " + oldBlueprints.getAbsolutePath());
+                    logger.error("⚠️ [ArchitectureService] Failed to rename blueprints folder to companion_blueprints: " + oldBlueprints.getAbsolutePath());
                 }
             } else {
                 File[] oldFiles = oldBlueprints.listFiles();
@@ -321,13 +325,13 @@ public class ModelArchitectureService implements IModelArchitectureService {
             }
 
             if (!blueprintsDir.exists() || !blueprintsDir.isDirectory()) {
-                System.err.println("⚠️ [ArchitectureService] Blueprints directory not found: " + blueprintsDir.getAbsolutePath());
+                logger.error("⚠️ [ArchitectureService] Blueprints directory not found: " + blueprintsDir.getAbsolutePath());
                 loadResolvedDefaultsFromFile();
                 notifyListeners(100, "Done (No blueprints directory)", true);
                 return;
             }
 
-            System.out.println("🔍 [ArchitectureService] Starting ComfyUI blueprints evaluation...");
+            logger.info("🔍 [ArchitectureService] Starting ComfyUI blueprints evaluation...");
             File[] files = blueprintsDir.listFiles((dir, name) -> name.toLowerCase().endsWith(".json"));
             if (files == null || files.length == 0) {
                 loadResolvedDefaultsFromFile();
@@ -354,7 +358,7 @@ public class ModelArchitectureService implements IModelArchitectureService {
                         parseSubtypesFromIndex(indexRoot, mediaSubtypes);
                     }
                 } catch (Exception e) {
-                    System.err.println("⚠️ [ArchitectureService] Failed to fetch server templates index for previews: " + e.getMessage());
+                    logger.error("⚠️ [ArchitectureService] Failed to fetch server templates index for previews: " + e.getMessage());
                 }
             }
 
@@ -444,7 +448,7 @@ public class ModelArchitectureService implements IModelArchitectureService {
                                          java.io.OutputStream out = new java.io.FileOutputStream(targetPreviewFile)) {
                                         in.transferTo(out);
                                     }
-                                    System.out.println("📥 [ArchitectureService] Downloaded and saved preview for " + baseName + " to " + targetPreviewFile.getName());
+                                    logger.info("📥 [ArchitectureService] Downloaded and saved preview for " + baseName + " to " + targetPreviewFile.getName());
                                     previewPath = targetPreviewFile.getAbsolutePath();
                                     mediaSubtype = ext;
                                     if (ext.equals("mp4") || ext.equals("webm") || ext.equals("mov")) {
@@ -494,7 +498,7 @@ public class ModelArchitectureService implements IModelArchitectureService {
                     extractDefaultsFromWorkflow(Files.readString(file.toPath()), file.getName(), mapper);
 
                 } catch (Exception e) {
-                    System.err.println("⚠️ [ArchitectureService] Failed to parse blueprint " + file.getName() + ": " + e.getMessage());
+                    logger.error("⚠️ [ArchitectureService] Failed to parse blueprint " + file.getName() + ": " + e.getMessage());
                 }
             }
 
@@ -510,9 +514,9 @@ public class ModelArchitectureService implements IModelArchitectureService {
                 mapper.writerWithDefaultPrettyPrinter().writeValue(scanResultsFile, scanList);
                 blueprintScanResults.clear();
                 blueprintScanResults.addAll(scanList);
-                System.out.println("💾 [ArchitectureService] Wrote blueprint scan results to cache: " + scanResultsFile.getAbsolutePath());
+                logger.info("💾 [ArchitectureService] Wrote blueprint scan results to cache: " + scanResultsFile.getAbsolutePath());
             } catch (Exception e) {
-                System.err.println("❌ [ArchitectureService] Failed to write blueprint scan results: " + e.getMessage());
+                logger.error("❌ [ArchitectureService] Failed to write blueprint scan results: " + e.getMessage());
             }
 
             notifyListeners(100, "Completed", true);
@@ -664,8 +668,8 @@ public class ModelArchitectureService implements IModelArchitectureService {
                     resolvedDefaultsMap.put("video_wan_vae", new ModelDefaults(vae, null, null, null, "ARCH_WAN"));
                 }
                 
-                System.out.println("📹 [ArchitectureService] Extracted Wan video defaults: " +
-                        "HighUnet=" + highUnet + ", LowUnet=" + lowUnet + ", HighLora=" + highLora + ", LowLora=" + lowLora + ", Clip=" + clip + ", Vae=" + vae);
+                logger.info("📹 [ArchitectureService] Extracted Wan video defaults: HighUnet={}, LowUnet={}, HighLora={}, LowLora={}, Clip={}, Vae={}", 
+                        highUnet, lowUnet, highLora, lowLora, clip, vae);
             }
         }
     }
@@ -708,9 +712,9 @@ public class ModelArchitectureService implements IModelArchitectureService {
             }
             ObjectMapper mapper = new ObjectMapper();
             mapper.writerWithDefaultPrettyPrinter().writeValue(targetFile, resolvedDefaultsMap);
-            System.out.println("💾 [ArchitectureService] Wrote blueprint resolved model defaults to: " + targetFile.getAbsolutePath());
+            logger.info("💾 [ArchitectureService] Wrote blueprint resolved model defaults to: " + targetFile.getAbsolutePath());
         } catch (Exception e) {
-            System.err.println("❌ [ArchitectureService] Failed to write model resolved defaults: " + e.getMessage());
+            logger.error("❌ [ArchitectureService] Failed to write model resolved defaults: " + e.getMessage());
         }
     }
 
@@ -736,9 +740,9 @@ public class ModelArchitectureService implements IModelArchitectureService {
                 );
                 resolvedDefaultsMap.put(key, defaults);
             }
-            System.out.println("📂 [ArchitectureService] Loaded " + resolvedDefaultsMap.size() + " resolved model defaults.");
+            logger.info("📂 [ArchitectureService] Loaded " + resolvedDefaultsMap.size() + " resolved model defaults.");
         } catch (Exception e) {
-            System.err.println("❌ [ArchitectureService] Failed to load model resolved defaults: " + e.getMessage());
+            logger.error("❌ [ArchitectureService] Failed to load model resolved defaults: " + e.getMessage());
         }
     }
 
@@ -829,9 +833,9 @@ public class ModelArchitectureService implements IModelArchitectureService {
             }
             ObjectMapper mapper = new ObjectMapper();
             mapper.writerWithDefaultPrettyPrinter().writeValue(targetFile, architectureCache);
-            System.out.println("💾 [ModelArchitectureService] Wrote architecture cache to: " + targetFile.getAbsolutePath());
+            logger.info("💾 [ModelArchitectureService] Wrote architecture cache to: " + targetFile.getAbsolutePath());
         } catch (Exception e) {
-            System.err.println("❌ [ModelArchitectureService] Failed to write architecture cache: " + e.getMessage());
+            logger.error("❌ [ModelArchitectureService] Failed to write architecture cache: " + e.getMessage());
         }
     }
 
@@ -852,12 +856,12 @@ public class ModelArchitectureService implements IModelArchitectureService {
                     ModelArchitecture arch = ModelArchitecture.valueOf(val);
                     architectureCache.put(key, arch);
                 } catch (IllegalArgumentException e) {
-                    System.err.println("⚠️ [ModelArchitectureService] Unknown architecture in cache file: " + val);
+                    logger.error("⚠️ [ModelArchitectureService] Unknown architecture in cache file: " + val);
                 }
             }
-            System.out.println("📂 [ModelArchitectureService] Loaded " + architectureCache.size() + " cached model architectures.");
+            logger.info("📂 [ModelArchitectureService] Loaded " + architectureCache.size() + " cached model architectures.");
         } catch (Exception e) {
-            System.err.println("❌ [ModelArchitectureService] Failed to load architecture cache: " + e.getMessage());
+            logger.error("❌ [ModelArchitectureService] Failed to load architecture cache: " + e.getMessage());
         }
     }
 
@@ -913,9 +917,9 @@ public class ModelArchitectureService implements IModelArchitectureService {
             }
             blueprintScanResults.clear();
             blueprintScanResults.addAll(list);
-            System.out.println("📂 [ModelArchitectureService] Loaded " + blueprintScanResults.size() + " scanned blueprint results from cache.");
+            logger.info("📂 [ModelArchitectureService] Loaded " + blueprintScanResults.size() + " scanned blueprint results from cache.");
         } catch (Exception e) {
-            System.err.println("❌ [ModelArchitectureService] Failed to load scanned blueprint results: " + e.getMessage());
+            logger.error("❌ [ModelArchitectureService] Failed to load scanned blueprint results: " + e.getMessage());
         }
     }
 
@@ -1050,12 +1054,12 @@ public class ModelArchitectureService implements IModelArchitectureService {
                             extractDefaultsFromWorkflow(rawJson, jsonFilename, mapper);
                         }
                     } catch (Exception ex) {
-                        System.err.println("⚠️ [ModelArchitectureService] Failed to fetch server workflow for " + t.name + ": " + ex.getMessage());
+                        logger.error("⚠️ [ModelArchitectureService] Failed to fetch server workflow for " + t.name + ": " + ex.getMessage());
                     }
                 }
             }
         } catch (Exception e) {
-            System.err.println("⚠️ [ModelArchitectureService] Failed server blueprint discovery: " + e.getMessage());
+            logger.error("⚠️ [ModelArchitectureService] Failed server blueprint discovery: " + e.getMessage());
         }
     }
 
@@ -1092,7 +1096,7 @@ public class ModelArchitectureService implements IModelArchitectureService {
                 resolvedDefaultsMap.put(cleanModelName, defaults);
             }
         } catch (Exception e) {
-            System.err.println("⚠️ [ModelArchitectureService] Failed to extract defaults from workflow " + filename + ": " + e.getMessage());
+            logger.error("⚠️ [ModelArchitectureService] Failed to extract defaults from workflow " + filename + ": " + e.getMessage());
         }
     }
 }

@@ -3,6 +3,7 @@ package de.tki.comfymodels.service;
 import de.tki.comfymodels.Main;
 import de.tki.comfymodels.domain.ModelInfo;
 import de.tki.comfymodels.service.impl.*;
+import de.tki.comfymodels.util.BackgroundExecutor;
 import org.json.JSONObject;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -75,6 +76,8 @@ public class ModelStatusLogicIntegrationTest {
         setField(main, "localScanner", localScanner);
         setField(main, "pathResolver", pathResolver);
         setField(main, "archiveService", archiveService);
+        setField(main, "backgroundExecutor", new BackgroundExecutor());
+        setField(main, "processTracker", new ProcessTracker());
 
         // Initialize enough UI for analyzeJsonContent to work
         setField(main, "tableModel", new DefaultTableModel(new String[]{"S", "T", "N", "Sz", "Src", "P", "U", "Status"}, 0));

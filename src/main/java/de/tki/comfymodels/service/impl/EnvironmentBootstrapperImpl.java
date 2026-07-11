@@ -9,6 +9,7 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.net.URI;
+import java.time.Duration;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -16,12 +17,14 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
+import org.springframework.beans.factory.annotation.Autowired;
 
 @Service
 public class EnvironmentBootstrapperImpl {
     private static final String COMFY_REPO_URL = "https://github.com/comfyanonymous/ComfyUI.git";
     private final HttpClient httpClient = HttpClient.newBuilder()
             .followRedirects(HttpClient.Redirect.ALWAYS)
+            .connectTimeout(Duration.ofSeconds(10))
             .build();
 
     /**
@@ -30,6 +33,9 @@ public class EnvironmentBootstrapperImpl {
      * wird stattdessen ein 'git pull' ausgeführt.
      * Wenn das Verzeichnis existiert aber kein Git-Repo ist, wird es zuerst gelöscht.
      */
+
+     @Autowired(required = false)
+     private ProcessTracker processTracker;
     public CompletableFuture<Void> cloneComfyUI(Path targetDir, Consumer<String> progressCallback) {
         return CompletableFuture.runAsync(() -> {
             try {
@@ -103,7 +109,7 @@ public class EnvironmentBootstrapperImpl {
                 Files.createDirectories(targetDir);
                 progressCallback.accept("📥 Downloading portable Python...");
                 
-                HttpRequest request = HttpRequest.newBuilder().uri(URI.create(pythonUrl)).GET().build();
+                HttpRequest request = HttpRequest.newBuilder().uri(URI.create(pythonUrl)).GET().timeout(Duration.ofSeconds(30)).build();
                 httpClient.send(request, HttpResponse.BodyHandlers.ofFile(zipFile));
                 
                 progressCallback.accept("📦 Extracting Python environment...");
@@ -141,14 +147,14 @@ public class EnvironmentBootstrapperImpl {
                 progressCallback.accept("📥 Downloading get-pip.py...");
                 HttpRequest request = HttpRequest.newBuilder()
                         .uri(URI.create("https://bootstrap.pypa.io/get-pip.py"))
-                        .GET().build();
+                        .GET().timeout(Duration.ofSeconds(30)).build();
                 httpClient.send(request, HttpResponse.BodyHandlers.ofFile(getPipScript));
 
                 // 3. get-pip.py ausführen
                 progressCallback.accept("⚙️ Installing pip (this may take a moment)...");
                 ProcessBuilder pb = new ProcessBuilder(pythonExe.toString(), getPipScript.toString());
                 pb.directory(pythonExe.getParent().toFile());
-                Process p = pb.start();
+                Process p = processTracker.start(pb);
                 p.waitFor();
                 
                 Files.deleteIfExists(getPipScript);
@@ -328,13 +334,7 @@ public class EnvironmentBootstrapperImpl {
     }
 
     private boolean isWslAvailable() {
-        try {
-            Process p = new ProcessBuilder("wsl", "echo", "1").start();
-            boolean finished = p.waitFor(5, java.util.concurrent.TimeUnit.SECONDS);
-            return finished && p.exitValue() == 0;
-        } catch (Exception e) {
-            return false;
-        }
+        return false; // Disabled by user request: Do not use WSL.
     }
 
     private int runWslPipCommand(Path workingDir, Consumer<String> progressCallback, String... args) {
@@ -354,7 +354,7 @@ public class EnvironmentBootstrapperImpl {
             }
             pb.redirectErrorStream(true);
             
-            Process p = pb.start();
+            Process p = processTracker.start(pb);
             try (java.io.BufferedReader reader = new java.io.BufferedReader(
                     new java.io.InputStreamReader(p.getInputStream(), java.nio.charset.StandardCharsets.UTF_8))) {
                 String line;
@@ -385,7 +385,7 @@ public class EnvironmentBootstrapperImpl {
             }
             pb.redirectErrorStream(true);
             
-            Process p = pb.start();
+            Process p = processTracker.start(pb);
             try (java.io.BufferedReader reader = new java.io.BufferedReader(
                     new java.io.InputStreamReader(p.getInputStream(), java.nio.charset.StandardCharsets.UTF_8))) {
                 String line;
@@ -421,7 +421,7 @@ public class EnvironmentBootstrapperImpl {
         progressCallback.accept("Executing system git clone for " + repoUrl + "...");
         ProcessBuilder pb = new ProcessBuilder("git", "clone", "-b", branch, repoUrl, targetDir.toAbsolutePath().toString());
         pb.redirectErrorStream(true);
-        Process p = pb.start();
+        Process p = processTracker.start(pb);
         try (java.io.BufferedReader reader = new java.io.BufferedReader(
                 new java.io.InputStreamReader(p.getInputStream(), java.nio.charset.StandardCharsets.UTF_8))) {
             String line;
@@ -440,7 +440,7 @@ public class EnvironmentBootstrapperImpl {
         ProcessBuilder pb = new ProcessBuilder("git", "pull");
         pb.directory(targetDir.toFile());
         pb.redirectErrorStream(true);
-        Process p = pb.start();
+        Process p = processTracker.start(pb);
         try (java.io.BufferedReader reader = new java.io.BufferedReader(
                 new java.io.InputStreamReader(p.getInputStream(), java.nio.charset.StandardCharsets.UTF_8))) {
             String line;
@@ -657,6 +657,110 @@ public class EnvironmentBootstrapperImpl {
         }
     }
 
+    /**
+     * Ensure the ComfyUI-Qwen-TTS custom node is installed and its Python
+     * dependencies are satisfied. Mirrors {@link #ensureKokoroTtsInstalled}:
+     * if the folder exists and is a git repo, we try to pull; otherwise we
+     * delete the folder and re-clone. The Qwen-TTS custom node is the
+     * primary high-quality TTS backend for the application.
+     */
+    public void ensureQwenTtsInstalled(Path comfyDir, Path pythonExe, Consumer<String> progressCallback) {
+        Path qwenTtsDir = comfyDir.resolve("custom_nodes").resolve("ComfyUI-Qwen-TTS");
+        if (Files.exists(qwenTtsDir)) {
+            Path gitDir = qwenTtsDir.resolve(".git");
+            if (Files.exists(gitDir) && Files.isDirectory(gitDir)) {
+                boolean success = false;
+                try {
+                    runSystemGitPull(qwenTtsDir, progressCallback);
+                    success = true;
+                    progressCallback.accept("✅ ComfyUI-Qwen-TTS successfully updated via system git.");
+                } catch (Exception e) {
+                    progressCallback.accept("⚠️ System git pull failed: " + e.getMessage() + ". Trying JGit...");
+                    try (Git git = Git.open(qwenTtsDir.toFile())) {
+                        git.pull()
+                           .setProgressMonitor(new TextProgressMonitor(new PrintWriter(System.out) {
+                               @Override
+                               public void println(String x) { progressCallback.accept(x); }
+                           }))
+                           .call();
+                        success = true;
+                        progressCallback.accept("✅ ComfyUI-Qwen-TTS successfully updated via JGit.");
+                    } catch (Exception ex) {
+                        progressCallback.accept("⚠️ JGit pull failed: " + ex.getMessage() + ". Re-installing...");
+                    }
+                }
+                if (!success) {
+                    try {
+                        deleteDirectoryRecursively(qwenTtsDir);
+                        cloneQwenTts(qwenTtsDir, pythonExe, progressCallback);
+                    } catch (Exception ex) {
+                        progressCallback.accept("❌ Failed to re-clone ComfyUI-Qwen-TTS: " + ex.getMessage());
+                    }
+                }
+            } else {
+                progressCallback.accept("⚠️ ComfyUI-Qwen-TTS folder exists but is not a Git repo. Re-installing...");
+                try {
+                    deleteDirectoryRecursively(qwenTtsDir);
+                    cloneQwenTts(qwenTtsDir, pythonExe, progressCallback);
+                } catch (Exception ex) {
+                    progressCallback.accept("❌ Failed to re-clone ComfyUI-Qwen-TTS: " + ex.getMessage());
+                }
+            }
+        } else {
+            try {
+                cloneQwenTts(qwenTtsDir, pythonExe, progressCallback);
+            } catch (Exception ex) {
+                progressCallback.accept("❌ Failed to clone ComfyUI-Qwen-TTS: " + ex.getMessage());
+            }
+        }
+    }
+
+    private void cloneQwenTts(Path qwenTtsDir, Path pythonExe, Consumer<String> progressCallback) throws Exception {
+        String repoUrl = "https://github.com/1038lab/ComfyUI-Qwen-TTS.git";
+        progressCallback.accept("Starting Clone of ComfyUI-Qwen-TTS...");
+        boolean success = false;
+        try {
+            runSystemGitClone(repoUrl, qwenTtsDir, "main", progressCallback);
+            success = true;
+            progressCallback.accept("✅ ComfyUI-Qwen-TTS successfully cloned via system git.");
+        } catch (Exception e) {
+            progressCallback.accept("⚠️ System git clone failed or git is not in PATH: " + e.getMessage() + ". Falling back to JGit...");
+            try (Git git = Git.cloneRepository()
+                    .setURI(repoUrl)
+                    .setDirectory(qwenTtsDir.toFile())
+                    .setBranch("main")
+                    .setProgressMonitor(new TextProgressMonitor(new PrintWriter(System.out) {
+                        @Override
+                        public void println(String x) { progressCallback.accept(x); }
+                    }))
+                    .call()) {
+                success = true;
+                progressCallback.accept("✅ ComfyUI-Qwen-TTS successfully cloned via JGit.");
+            }
+        }
+
+        if (!success) {
+            throw new IOException("Failed to clone ComfyUI-Qwen-TTS using both system Git and JGit.");
+        }
+
+        Path reqFile = qwenTtsDir.resolve("requirements.txt");
+        if (Files.exists(reqFile) && pythonExe != null) {
+            progressCallback.accept("🚀 Installing custom_nodes/ComfyUI-Qwen-TTS dependencies...");
+            int exitCode = runPipCommand(pythonExe, reqFile.getParent(), progressCallback, "install", "-r", "requirements.txt", "--no-warn-script-location");
+            if (exitCode == 0) {
+                progressCallback.accept("✅ custom_nodes/ComfyUI-Qwen-TTS dependencies successfully installed.");
+            } else {
+                progressCallback.accept("⚠️ pip finished with code " + exitCode + " on requirements.txt.");
+            }
+        }
+
+        if (isWslAvailable()) {
+            progressCallback.accept("🚀 Installing custom_nodes/ComfyUI-Qwen-TTS dependencies in WSL...");
+            if (Files.exists(reqFile)) {
+                runWslPipCommand(qwenTtsDir, progressCallback, "install", "-r", "requirements.txt", "--break-system-packages");
+            }
+        }
+    }
     public void fixWslDependencies(Path comfyDir, Consumer<String> progressCallback) {
         if (!isWslAvailable()) {
             progressCallback.accept("❌ WSL is not available or not enabled on this system.\n");
@@ -736,7 +840,7 @@ public class EnvironmentBootstrapperImpl {
             ProcessBuilder pb = new ProcessBuilder(command);
             pb.redirectErrorStream(true);
             
-            Process p = pb.start();
+            Process p = processTracker.start(pb);
             try (java.io.BufferedReader reader = new java.io.BufferedReader(
                     new java.io.InputStreamReader(p.getInputStream(), java.nio.charset.StandardCharsets.UTF_8))) {
                 String line;

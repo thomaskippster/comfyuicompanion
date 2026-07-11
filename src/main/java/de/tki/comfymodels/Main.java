@@ -49,6 +49,7 @@ import java.util.concurrent.CompletableFuture;
 
 @Component
 public class Main extends JFrame {
+    private static volatile org.springframework.context.ConfigurableApplicationContext appContext;
     private final IModelAnalyzer analyzer;
     private final IDownloadManager downloadManager;
     private final IWorkflowService workflowService;
@@ -114,6 +115,12 @@ public class Main extends JFrame {
     @Autowired
     private de.tki.comfymodels.service.impl.DependencyService dependencyService;
 
+    @Autowired
+    private de.tki.comfymodels.util.BackgroundExecutor backgroundExecutor;
+
+    @Autowired
+    private de.tki.comfymodels.service.impl.ProcessTracker processTracker;
+
     private JProgressBar progressCpu;
     private JProgressBar progressRam;
     private JProgressBar progressGpu;
@@ -146,13 +153,25 @@ public class Main extends JFrame {
     private JTabbedPane mainTabs;
     private de.tki.comfymodels.ui.WorkflowGraphPanel workflowGraphPanel;
 
+    private JCheckBox promptLabCheck;
+    private JCheckBox videoArchitectCheck;
+    private JCheckBox blueprintGalleryCheck;
 
-    private final java.util.Set<String> comfyCheckpoints = new java.util.concurrent.ConcurrentHashMap<String, Boolean>().keySet(Boolean.TRUE);
-    private final java.util.Set<String> comfyUnetModels = new java.util.concurrent.ConcurrentHashMap<String, Boolean>().keySet(Boolean.TRUE);
-    private final java.util.Set<String> comfyClips = new java.util.concurrent.ConcurrentHashMap<String, Boolean>().keySet(Boolean.TRUE);
-    private final java.util.Set<String> comfyVaes = new java.util.concurrent.ConcurrentHashMap<String, Boolean>().keySet(Boolean.TRUE);
-    private final java.util.Set<String> comfyClipTypes = new java.util.concurrent.ConcurrentHashMap<String, Boolean>().keySet(Boolean.TRUE);
-    private final java.util.Set<String> comfyUnetWeightDtypes = new java.util.concurrent.ConcurrentHashMap<String, Boolean>().keySet(Boolean.TRUE);
+    private JPanel dashboardPanel;
+    private JPanel downloadManagerPanel;
+    private JPanel promptLabPanel;
+    private de.tki.comfymodels.ui.OutputGalleryPanel galleryPanel;
+    private JPanel videoArchitectWrapper;
+    private JPanel blueprintGalleryWrapper;
+    private JPanel settingsPanel;
+
+
+    private final java.util.Set<String> comfyCheckpoints = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    private final java.util.Set<String> comfyUnetModels = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    private final java.util.Set<String> comfyClips = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    private final java.util.Set<String> comfyVaes = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    private final java.util.Set<String> comfyClipTypes = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    private final java.util.Set<String> comfyUnetWeightDtypes = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
     // Prompt Lab Fields
     private static class DropdownItem {
@@ -221,14 +240,6 @@ public class Main extends JFrame {
         this.lifecycleService = lifecycleService;
         this.lifecycleService.setOnBrowserLaunched(() -> {
             SwingUtilities.invokeLater(() -> {
-                if (mainTabs != null) {
-                    for (int i = 0; i < mainTabs.getTabCount(); i++) {
-                        if (mainTabs.getTitleAt(i).contains("Blueprint Gallery")) {
-                            mainTabs.setSelectedIndex(i);
-                            break;
-                        }
-                    }
-                }
                 refreshPromptLabModels();
                 if (blueprintGalleryTab != null) {
                     blueprintGalleryTab.refreshAllData();
@@ -277,14 +288,45 @@ public class Main extends JFrame {
         }
         restBridge.startServer();
 
-        // Ensure server stops on exit
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            processController.stop();
-            downloadManager.stop();
-            if (hardwareMonitorService != null) {
-                hardwareMonitorService.stop();
+        // Ensure server stops on exit. Daemon thread so the JVM does not block on it.
+        Thread shutdownHook = new Thread(() -> {
+            try {
+                if (processController != null) {
+                    processController.stop();
+                }
+                if (downloadManager != null) {
+                    downloadManager.stop();
+                }
+                if (hardwareMonitorService != null) {
+                    hardwareMonitorService.stop();
+                }
+                // Kill every tracked child process BEFORE we close the Spring context,
+                // so the ProcessTracker bean is still alive to do the work.
+                if (processTracker != null) {
+                    processTracker.destroyAll();
+                }
+                // WSL --shutdown can hang on some hosts; run it asynchronously on a
+                // daemon thread so the rest of cleanup is not blocked.
+                Thread wslShutdown = new Thread(() -> {
+                    try {
+                        Runtime.getRuntime().exec(new String[]{"wsl", "--shutdown"});
+                    } catch (Exception e) {
+                        System.err.println("Failed to execute wsl --shutdown: " + e.getMessage());
+                    }
+                }, "wsl-shutdown");
+                wslShutdown.setDaemon(true);
+                wslShutdown.start();
+                // Close the Spring context last: this triggers @PreDestroy on every
+                // bean (BackgroundExecutor, RestBridgeService, LocalGemmaService, ModelHashRegistry, ...).
+                if (appContext != null) {
+                    appContext.close();
+                }
+            } catch (Throwable t) {
+                System.err.println("Shutdown hook error: " + t);
             }
-        }));
+        }, "comfy-shutdown-hook");
+        shutdownHook.setDaemon(true);
+        Runtime.getRuntime().addShutdownHook(shutdownHook);
 
         if (!promptForPassword()) {
             System.exit(0);
@@ -322,6 +364,9 @@ public class Main extends JFrame {
                 });
                 
                 setVisible(true);
+                if (blueprintGalleryTab != null) {
+                    blueprintGalleryTab.refreshAllData();
+                }
             } catch (Exception e) {
                 e.printStackTrace();
                 JOptionPane.showMessageDialog(null, "Critical UI Error: " + e.getMessage());
@@ -337,6 +382,7 @@ public class Main extends JFrame {
             UIManager.put("TextComponent.arc", 12);
             UIManager.put("ProgressBar.arc", 999);
             UIManager.put("TitlePane.unifiedBackground", true);
+            UIManager.put("CheckBox.iconSize", 20);
 
             // Clean, highly readable typography (serifenlose Schriftart)
             Font defaultFont = new Font("Segoe UI", Font.PLAIN, 13);
@@ -836,11 +882,11 @@ public class Main extends JFrame {
         restartBtn.setPreferredSize(new Dimension(110, 40));
         restartBtn.addActionListener(e -> {
             configService.autoDiscoverPaths();
-            new Thread(() -> {
+            backgroundExecutor.execute(() -> {
                 lifecycleService.stop();
                 try { Thread.sleep(2000); } catch (InterruptedException ignored) {}
                 startComfyAndReload();
-            }).start();
+            });
         });
 
         JButton openBrowserBtn = new JButton("🌐 Open Interface");
@@ -901,6 +947,47 @@ public class Main extends JFrame {
         if (darkCheck != null) darkCheck.setSelected(configService.isDarkMode());
         if (fastHashCheck != null) fastHashCheck.setSelected(configService.isFastHashEnabled());
         if (hideComfyuiCheck != null) hideComfyuiCheck.setSelected(configService.isHideComfyUI());
+        if (promptLabCheck != null) promptLabCheck.setSelected(configService.isPromptLabEnabled());
+        if (videoArchitectCheck != null) videoArchitectCheck.setSelected(configService.isVideoArchitectEnabled());
+        if (blueprintGalleryCheck != null) blueprintGalleryCheck.setSelected(configService.isBlueprintGalleryEnabled());
+    }
+
+    public void updateTabVisibility() {
+        if (mainTabs == null) return;
+        java.awt.Component selectedComp = mainTabs.getSelectedComponent();
+        mainTabs.removeAll();
+        
+        if (dashboardPanel != null) {
+            mainTabs.addTab("🏠 Dashboard", dashboardPanel);
+        }
+        if (downloadManagerPanel != null) {
+            mainTabs.addTab("📥 Download Manager", downloadManagerPanel);
+        }
+        // Gallery comes after Download Manager and before Blueprint Gallery
+        if (galleryPanel != null) {
+            mainTabs.addTab("🖼️ Gallery", galleryPanel);
+        }
+        if (configService.isBlueprintGalleryEnabled() && blueprintGalleryWrapper != null) {
+            mainTabs.addTab("📂 Blueprint Gallery", blueprintGalleryWrapper);
+        }
+        if (configService.isPromptLabEnabled() && promptLabPanel != null) {
+            mainTabs.addTab("🔬 Prompt Lab", promptLabPanel);
+        }
+        if (configService.isVideoArchitectEnabled() && videoArchitectWrapper != null) {
+            mainTabs.addTab("🎬 Video Architect", videoArchitectWrapper);
+        }
+        if (settingsPanel != null) {
+            mainTabs.addTab("⚙️ Settings", settingsPanel);
+        }
+        
+        if (selectedComp != null) {
+            int index = mainTabs.indexOfComponent(selectedComp);
+            if (index != -1) {
+                mainTabs.setSelectedIndex(index);
+            } else {
+                mainTabs.setSelectedIndex(0);
+            }
+        }
     }
 
     private boolean isGeminiKeyConfigured() {
@@ -913,7 +1000,7 @@ public class Main extends JFrame {
     }
 
     private void updateAiModelDisplay() {
-        new Thread(() -> {
+        backgroundExecutor.execute(() -> {
             String model = geminiService.discoverBestModel();
             final String finalModel = model;
             final boolean hasGemini = isGeminiKeyConfigured();
@@ -940,7 +1027,7 @@ public class Main extends JFrame {
                     }
                 }
             });
-        }).start();
+        });
     }
 
     private void initUI() {
@@ -1132,154 +1219,43 @@ public class Main extends JFrame {
         mainTabs.putClientProperty("JTabbedPane.tabSeparatorsFullHeight", true);
 
         // TAB 1: DASHBOARD
-        mainTabs.addTab("🏠 Dashboard", createDashboardPanel(mainTabs));
+        this.dashboardPanel = createDashboardPanel(mainTabs);
 
         // TAB 2: DOWNLOAD MANAGER
-        mainTabs.addTab("📥 Download Manager", createManagerPanel(mainTabs));
+        this.downloadManagerPanel = createManagerPanel(mainTabs);
 
         // TAB 3: PROMPT LAB
-        mainTabs.addTab("🔬 Prompt Lab", createPromptLabPanel());
+        this.promptLabPanel = createPromptLabPanel();
 
         // TAB 4: GALLERY
-        mainTabs.addTab("🖼️ Gallery", new de.tki.comfymodels.ui.OutputGalleryPanel(configService));
+        this.galleryPanel = new de.tki.comfymodels.ui.OutputGalleryPanel(configService);
 
         // TAB 5: VIDEO ARCHITECT
-        JPanel videoArchitectWrapper = new JPanel(new BorderLayout());
-        videoArchitectWrapper.setName("videoArchitectWrapper");
-        videoArchitectWrapper.setOpaque(false);
+        this.videoArchitectWrapper = new JPanel(new BorderLayout());
+        this.videoArchitectWrapper.setName("videoArchitectWrapper");
+        this.videoArchitectWrapper.setOpaque(false);
         if (videoArchitectTab != null) {
-            videoArchitectWrapper.add(videoArchitectTab, BorderLayout.CENTER);
+            this.videoArchitectWrapper.add(videoArchitectTab, BorderLayout.CENTER);
         } else {
-            videoArchitectWrapper.add(new JPanel(), BorderLayout.CENTER);
+            this.videoArchitectWrapper.add(new JPanel(), BorderLayout.CENTER);
         }
 
-        // Swing Optimization Panel for AssertJ UI Tests and AI Optimization Loops
-        JPanel swingOptPanel = new JPanel(new GridBagLayout());
-        swingOptPanel.setName("swingOptPanel");
-        swingOptPanel.setBorder(BorderFactory.createTitledBorder(
-                BorderFactory.createLineBorder(new Color(60, 60, 60), 1, true),
-                "AI Video Optimization Parameters",
-                javax.swing.border.TitledBorder.LEFT,
-                javax.swing.border.TitledBorder.TOP,
-                new Font("SansSerif", Font.BOLD, 11),
-                new Color(0, 180, 160) // Teal accent
-        ));
-        swingOptPanel.setBackground(new Color(25, 25, 27)); // Sleek dark gray
-        swingOptPanel.setOpaque(true);
-
-        GridBagConstraints gbc = new GridBagConstraints();
-        gbc.insets = new Insets(6, 10, 6, 10);
-        gbc.fill = GridBagConstraints.HORIZONTAL;
-
-        // Row 0: Prompt Text Area (single line text component for testing)
-        gbc.gridx = 0; gbc.gridy = 0; gbc.weightx = 0.0;
-        JLabel lblPromptOpt = new JLabel("Prompt:");
-        lblPromptOpt.setForeground(Color.LIGHT_GRAY);
-        lblPromptOpt.setFont(new Font("SansSerif", Font.PLAIN, 11));
-        swingOptPanel.add(lblPromptOpt, gbc);
-
-        gbc.gridx = 1; gbc.gridy = 0; gbc.weightx = 1.0;
-        JTextField promptTextArea = new JTextField("A fluid cyberpunk city panning shot");
-        promptTextArea.setName("promptTextArea");
-        promptTextArea.setBackground(new Color(40, 40, 42));
-        promptTextArea.setForeground(Color.WHITE);
-        promptTextArea.setCaretColor(Color.WHITE);
-        promptTextArea.setBorder(BorderFactory.createLineBorder(new Color(70, 70, 72)));
-        swingOptPanel.add(promptTextArea, gbc);
-
-        // Row 1: CFG Scale
-        gbc.gridx = 0; gbc.gridy = 1; gbc.weightx = 0.0;
-        JLabel lblCfgOpt = new JLabel("CFG Scale:");
-        lblCfgOpt.setForeground(Color.LIGHT_GRAY);
-        lblCfgOpt.setFont(new Font("SansSerif", Font.PLAIN, 11));
-        swingOptPanel.add(lblCfgOpt, gbc);
-
-        gbc.gridx = 1; gbc.gridy = 1; gbc.weightx = 1.0;
-        JSlider cfgSlider = new JSlider(1, 20, 8);
-        cfgSlider.setName("cfgSlider");
-        cfgSlider.setOpaque(false);
-        cfgSlider.setForeground(new Color(0, 180, 160));
-        swingOptPanel.add(cfgSlider, gbc);
-
-        // Row 2: Steps
-        gbc.gridx = 0; gbc.gridy = 2; gbc.weightx = 0.0;
-        JLabel lblStepsOpt = new JLabel("Steps:");
-        lblStepsOpt.setForeground(Color.LIGHT_GRAY);
-        lblStepsOpt.setFont(new Font("SansSerif", Font.PLAIN, 11));
-        swingOptPanel.add(lblStepsOpt, gbc);
-
-        gbc.gridx = 1; gbc.gridy = 2; gbc.weightx = 1.0;
-        JSlider stepsSlider = new JSlider(10, 50, 20);
-        stepsSlider.setName("stepsSlider");
-        stepsSlider.setOpaque(false);
-        stepsSlider.setForeground(new Color(0, 180, 160));
-        swingOptPanel.add(stepsSlider, gbc);
-
-        // Row 3: Motion Bucket ID
-        gbc.gridx = 0; gbc.gridy = 3; gbc.weightx = 0.0;
-        JLabel lblMotionOpt = new JLabel("Motion Bucket:");
-        lblMotionOpt.setForeground(Color.LIGHT_GRAY);
-        lblMotionOpt.setFont(new Font("SansSerif", Font.PLAIN, 11));
-        swingOptPanel.add(lblMotionOpt, gbc);
-
-        gbc.gridx = 1; gbc.gridy = 3; gbc.weightx = 1.0;
-        JTextField motionBucketField = new JTextField("127");
-        motionBucketField.setName("motionBucketField");
-        motionBucketField.setBackground(new Color(40, 40, 42));
-        motionBucketField.setForeground(Color.WHITE);
-        motionBucketField.setCaretColor(Color.WHITE);
-        motionBucketField.setBorder(BorderFactory.createLineBorder(new Color(70, 70, 72)));
-        swingOptPanel.add(motionBucketField, gbc);
-
-        // Row 4: Action Buttons and Status
-        JPanel actionRow = new JPanel(new BorderLayout(15, 0));
-        actionRow.setOpaque(false);
-
-        JButton generateVideoBtn = new JButton("Generate Video");
-        generateVideoBtn.setName("generateVideoBtn");
-        generateVideoBtn.setBackground(new Color(0, 150, 136));
-        generateVideoBtn.setForeground(Color.WHITE);
-        generateVideoBtn.setFocusPainted(false);
-        actionRow.add(generateVideoBtn, BorderLayout.WEST);
-
-        JLabel statusLabelOpt = new JLabel("Ready");
-        statusLabelOpt.setName("statusLabel");
-        statusLabelOpt.setForeground(new Color(0, 210, 190));
-        statusLabelOpt.setFont(new Font("SansSerif", Font.BOLD, 12));
-        actionRow.add(statusLabelOpt, BorderLayout.CENTER);
-
-        gbc.gridx = 0; gbc.gridy = 4; gbc.gridwidth = 2; gbc.weightx = 1.0;
-        swingOptPanel.add(actionRow, gbc);
-
-        // Action Listener to trigger the actual video generation
-        generateVideoBtn.addActionListener(e -> {
-            String pStr = promptTextArea.getText();
-            int cfgVal = cfgSlider.getValue();
-            int stepsVal = stepsSlider.getValue();
-            int motionVal = 127;
-            try {
-                motionVal = Integer.parseInt(motionBucketField.getText().trim());
-            } catch (NumberFormatException nfe) {}
-            
-            videoArchitectTab.startGenerationWithParams(pStr, cfgVal, stepsVal, motionVal, statusLabelOpt);
-        });
-
-        videoArchitectWrapper.add(swingOptPanel, BorderLayout.SOUTH);
-        mainTabs.addTab("🎬 Video Architect", videoArchitectWrapper);
 
         // TAB 6: MODEL MANAGER (Blueprint Gallery)
-        JPanel blueprintGalleryWrapper = new JPanel(new BorderLayout());
-        blueprintGalleryWrapper.setName("blueprintGalleryWrapper");
-        blueprintGalleryWrapper.setOpaque(false);
+        this.blueprintGalleryWrapper = new JPanel(new BorderLayout());
+        this.blueprintGalleryWrapper.setName("blueprintGalleryWrapper");
+        this.blueprintGalleryWrapper.setOpaque(false);
         if (blueprintGalleryTab != null) {
-            blueprintGalleryWrapper.add(blueprintGalleryTab, BorderLayout.CENTER);
+            this.blueprintGalleryWrapper.add(blueprintGalleryTab, BorderLayout.CENTER);
         } else {
-            blueprintGalleryWrapper.add(new JPanel(), BorderLayout.CENTER);
+            this.blueprintGalleryWrapper.add(new JPanel(), BorderLayout.CENTER);
         }
-        mainTabs.addTab("📂 Blueprint Gallery", blueprintGalleryWrapper);
 
         // TAB 7: SETTINGS
-        mainTabs.addTab("⚙️ Settings", createSettingsPanel());
+        this.settingsPanel = createSettingsPanel();
+
+        // Update active visible tabs based on persistent config flags
+        updateTabVisibility();
 
         rootPanel.add(headerPanel, BorderLayout.NORTH);
         rootPanel.add(mainTabs, BorderLayout.CENTER);
@@ -1798,8 +1774,11 @@ public class Main extends JFrame {
         return panel;
     }
 
-    private void applyModelPreset(String modelName) {
-        if (modelName == null || modelName.isEmpty()) return;
+    private void applyModelPreset(String modelNameRaw) {
+        if (modelNameRaw == null || modelNameRaw.isEmpty()) return;
+        
+        String modelName = getActualModelForPromptLab(modelNameRaw);
+        if (modelName == null) return;
         
         if (comfyTemplateService != null) {
             de.tki.comfymodels.domain.ComfyTemplate template = comfyTemplateService.determineTemplateForModel(modelName);
@@ -2096,9 +2075,11 @@ public class Main extends JFrame {
         return expected;
     }
 
-    private void adaptWorkflowJsonForModel(JSONObject promptObj, String selectedModel) {
-        if (promptObj == null || selectedModel == null) return;
+    private void adaptWorkflowJsonForModel(JSONObject promptObj, String selectedModelRaw) {
+        if (promptObj == null || selectedModelRaw == null) return;
         
+        String selectedModel = getActualModelForPromptLab(selectedModelRaw);
+
         // Generic fallback for z_image_turbo_bf16.safetensors to avoid Bad Requests
         if (selectedModel.toLowerCase().contains("z_image_turbo")) {
             String fallback = null;
@@ -2399,12 +2380,38 @@ public class Main extends JFrame {
         }
     }
 
+    private String getActualModelForPromptLab(String comboSelection) {
+        if (comboSelection == null) return null;
+        if (blueprintGalleryTab != null) {
+            for (de.tki.comfymodels.ui.BlueprintGalleryTab.BlueprintEntry e : blueprintGalleryTab.getAvailableBlueprints()) {
+                if (e.name.equals(comboSelection)) {
+                    if (!e.requiredModels.isEmpty()) {
+                        return e.requiredModels.get(0).getName();
+                    }
+                }
+            }
+        }
+        return comboSelection;
+    }
+
+    private String getBlueprintNameForModel(String modelName) {
+        if (modelName == null) return null;
+        if (blueprintGalleryTab != null) {
+            for (de.tki.comfymodels.ui.BlueprintGalleryTab.BlueprintEntry e : blueprintGalleryTab.getAvailableBlueprints()) {
+                if (!e.requiredModels.isEmpty() && e.requiredModels.get(0).getName().equals(modelName)) {
+                    return e.name;
+                }
+            }
+        }
+        return modelName;
+    }
+
     private void updatePromptLabJson() {
         if (promptSubjectField == null || promptEnvCombo == null || promptAssembleArea == null || promptJsonArea == null) {
             return;
         }
         
-        String selectedModel = (promptModelCombo != null) ? (String) promptModelCombo.getSelectedItem() : null;
+        String selectedModel = getActualModelForPromptLab((promptModelCombo != null) ? (String) promptModelCombo.getSelectedItem() : null);
         Integer width = (promptWidthSpinner != null) ? (Integer) promptWidthSpinner.getValue() : null;
         Integer height = (promptHeightSpinner != null) ? (Integer) promptHeightSpinner.getValue() : null;
         Integer steps = (promptStepsSpinner != null) ? (Integer) promptStepsSpinner.getValue() : null;
@@ -2661,7 +2668,7 @@ public class Main extends JFrame {
 
     private void refreshPromptLabModels() {
         String comfyUrl = configService.getComfyUIUrl();
-        new Thread(() -> {
+        backgroundExecutor.execute(() -> {
             java.util.Set<String> apiModels = new java.util.TreeSet<>();
             
             // Query ComfyUI API status & available checkpoints/unets
@@ -2715,13 +2722,17 @@ public class Main extends JFrame {
                 if (promptModelCombo != null) {
                     String selected = (String) promptModelCombo.getSelectedItem();
                     promptModelCombo.removeAllItems();
-                    for (String modelName : list) {
+                    
+                    java.util.List<String> itemsToAdd = new java.util.ArrayList<>(list);
+                    
+                    for (String modelName : itemsToAdd) {
                         promptModelCombo.addItem(modelName);
                     }
+                    
                     String matched = null;
                     if (selected != null) {
-                        for (String m : list) {
-                            if (modelsMatch(selected, m)) {
+                        for (String m : itemsToAdd) {
+                            if (modelsMatch(selected, m) || selected.equals(m)) {
                                 matched = m;
                                 break;
                             }
@@ -2729,16 +2740,16 @@ public class Main extends JFrame {
                     }
                     if (matched != null) {
                         promptModelCombo.setSelectedItem(matched);
-                    } else if (!list.isEmpty()) {
+                    } else if (!itemsToAdd.isEmpty()) {
                         promptModelCombo.setSelectedIndex(0);
                     }
                     if (promptModelCombo.getSelectedItem() != null) {
                         applyModelPreset((String) promptModelCombo.getSelectedItem());
                     }
-                    promptLabConsole.append("🔄 Prompt Lab: Available ComfyUI models loaded (" + list.size() + " models fetched).\n");
+                    promptLabConsole.append("🔄 Prompt Lab: Available ComfyUI models loaded (" + itemsToAdd.size() + " models fetched).\n");
                 }
             });
-        }).start();
+        });
     }
 
     private void scanModelsRecursively(java.io.File dir, String prefix, java.util.List<String> list) {
@@ -2777,7 +2788,7 @@ public class Main extends JFrame {
 
     private void sendPromptToComfyUI() {
         String comfyUrl = configService.getComfyUIUrl();
-        String selectedModelVal = (promptModelCombo != null) ? (String) promptModelCombo.getSelectedItem() : null;
+        String selectedModelVal = getActualModelForPromptLab((promptModelCombo != null) ? (String) promptModelCombo.getSelectedItem() : null);
         int widthVal = (promptWidthSpinner != null) ? (int) promptWidthSpinner.getValue() : 512;
         int heightVal = (promptHeightSpinner != null) ? (int) promptHeightSpinner.getValue() : 512;
         int stepsVal = (promptStepsSpinner != null) ? (int) promptStepsSpinner.getValue() : 20;
@@ -2786,7 +2797,7 @@ public class Main extends JFrame {
         btnSendToComfy.setEnabled(false);
         promptLabConsole.append("Checking connection to ComfyUI and loading models...\n");
         
-        new Thread(() -> {
+        backgroundExecutor.execute(() -> {
             try {
                 java.net.http.HttpClient client = java.net.http.HttpClient.newBuilder()
                         .connectTimeout(java.time.Duration.ofSeconds(4))
@@ -2915,14 +2926,14 @@ public class Main extends JFrame {
                         selectedModel = unetModels.get(0);
                         final String fallback = selectedModel;
                         SwingUtilities.invokeLater(() -> {
-                            promptModelCombo.setSelectedItem(fallback);
+                            promptModelCombo.setSelectedItem(getBlueprintNameForModel(fallback));
                             promptLabConsole.append("⚠️ Selected diffusion model not loaded. Falling back to: " + fallback + "\n");
                         });
                     } else if (!checkpoints.isEmpty()) {
                         selectedModel = checkpoints.get(0);
                         final String fallback = selectedModel;
                         SwingUtilities.invokeLater(() -> {
-                            promptModelCombo.setSelectedItem(fallback);
+                            promptModelCombo.setSelectedItem(getBlueprintNameForModel(fallback));
                             promptLabConsole.append("⚠️ Selected model not loaded. Falling back to checkpoint: " + fallback + "\n");
                         });
                     }
@@ -3094,7 +3105,7 @@ public class Main extends JFrame {
                         "Connection Error", JOptionPane.ERROR_MESSAGE);
                 });
             }
-        }).start();
+        });
     }
 
     private void optimizePromptWithAI() {
@@ -3104,7 +3115,7 @@ public class Main extends JFrame {
         if (!hasGemini && !hasGemma) {
             int choice = JOptionPane.showConfirmDialog(this,
                 "Neither a Gemini API Key is configured nor the local Gemma model is downloaded.\n" +
-                "Would you like to download the Gemma-2-2B GGUF model (approx. 1.6 GB) now to run optimizations locally?",
+                "Would you like to download the Gemma-3-4B GGUF model (approx. 3 GB) now to run optimizations locally?",
                 "Download Local Gemma Model?", JOptionPane.YES_NO_OPTION, JOptionPane.QUESTION_MESSAGE);
             if (choice == JOptionPane.YES_OPTION) {
                 downloadLocalGemmaModel();
@@ -3120,7 +3131,7 @@ public class Main extends JFrame {
             return;
         }
         
-        String selectedModel = (promptModelCombo != null) ? (String) promptModelCombo.getSelectedItem() : null;
+        String selectedModel = getActualModelForPromptLab((promptModelCombo != null) ? (String) promptModelCombo.getSelectedItem() : null);
         
         btnOptimizePrompt.setEnabled(false);
         String originalText = btnOptimizePrompt.getText();
@@ -3132,7 +3143,7 @@ public class Main extends JFrame {
             promptLabConsole.append("Optimizing prompt with local Gemma...\n");
         }
         
-        new Thread(() -> {
+        backgroundExecutor.execute(() -> {
             String optimized = null;
             StringBuilder errorLogs = new StringBuilder();
             try {
@@ -3155,53 +3166,117 @@ public class Main extends JFrame {
                 btnOptimizePrompt.setEnabled(true);
                 btnOptimizePrompt.setText(originalText);
                 if (finalOptimized != null && !finalOptimized.isEmpty()) {
-                    promptAssembleArea.setText(finalOptimized);
+                    String cleanOptimized = finalOptimized.trim();
+                    if (cleanOptimized.startsWith("```")) {
+                        cleanOptimized = cleanOptimized.replaceAll("^```(json)?", "").replaceAll("```$", "").trim();
+                    }
                     
-                    // Manually inject optimized prompt into JSON prompt area
+                    boolean parsedAsJson = false;
                     try {
-                        String currentJsonStr = promptJsonArea.getText();
-                        JSONObject mainObj = new JSONObject(currentJsonStr);
-                        if (mainObj.has("prompt")) {
-                            JSONObject promptObj = mainObj.getJSONObject("prompt");
-                            String positiveNodeId = null;
-                            for (String key : promptObj.keySet()) {
-                                JSONObject nodeObj = promptObj.getJSONObject(key);
-                                if (nodeObj.has("class_type") && "CLIPTextEncode".equals(nodeObj.getString("class_type"))) {
-                                    if (nodeObj.has("inputs")) {
-                                        JSONObject inputs = nodeObj.getJSONObject("inputs");
-                                        if (inputs.has("text")) {
-                                            String textVal = inputs.getString("text").toLowerCase();
-                                            if (textVal.contains("bad") || textVal.contains("blurry") || textVal.contains("low quality") || textVal.contains("worst")) {
-                                                continue;
+                        org.json.JSONObject aiResult = new org.json.JSONObject(cleanOptimized);
+                        String positive = aiResult.optString("positive_prompt", "").trim();
+                        String negative = aiResult.optString("negative_prompt", "").trim();
+                        double cfgVal = aiResult.optDouble("cfg", -1.0);
+                        int stepsVal = aiResult.optInt("steps", -1);
+                        
+                        if (!positive.isEmpty()) {
+                            // Update Steps & CFG spinners if parsed successfully
+                            if (stepsVal > 0 && promptStepsSpinner != null) {
+                                promptStepsSpinner.setValue(stepsVal);
+                            }
+                            if (cfgVal > 0 && promptCfgSpinner != null) {
+                                promptCfgSpinner.setValue(cfgVal);
+                            }
+                            
+                            // Update Subject Field (triggers updatePromptLabJson via document listener)
+                            if (promptSubjectField != null) {
+                                promptSubjectField.setText(positive);
+                            } else {
+                                promptAssembleArea.setText(positive);
+                            }
+                            
+                            // Inject negative prompt into JSON if present
+                            if (!negative.isEmpty() && promptJsonArea != null) {
+                                try {
+                                    String currentJsonStr = promptJsonArea.getText();
+                                    org.json.JSONObject mainObj = new org.json.JSONObject(currentJsonStr);
+                                    if (mainObj.has("prompt")) {
+                                        org.json.JSONObject promptObj = mainObj.getJSONObject("prompt");
+                                        for (String key : promptObj.keySet()) {
+                                            org.json.JSONObject nodeObj = promptObj.getJSONObject(key);
+                                            if (nodeObj.has("class_type") && "CLIPTextEncode".equals(nodeObj.getString("class_type"))) {
+                                                org.json.JSONObject inputs = nodeObj.optJSONObject("inputs");
+                                                if (inputs != null && inputs.has("text")) {
+                                                    String textVal = inputs.getString("text").toLowerCase();
+                                                    if (textVal.contains("bad") || textVal.contains("blurry") || textVal.contains("low quality") || textVal.contains("worst")) {
+                                                        inputs.put("text", negative);
+                                                        break;
+                                                    }
+                                                }
                                             }
+                                        }
+                                        promptJsonArea.setText(mainObj.toString(2));
+                                    }
+                                } catch (Exception ex) {
+                                    // ignore JSON injection error
+                                }
+                            }
+                            parsedAsJson = true;
+                            promptLabConsole.append("Generated parameters from AI: Steps=" + stepsVal + ", CFG=" + cfgVal + "\n");
+                        }
+                    } catch (Exception jsonEx) {
+                        // Not a valid JSON or parsing failed, fall back to plain text optimization
+                    }
+                    
+                    if (!parsedAsJson) {
+                        promptAssembleArea.setText(cleanOptimized);
+                        
+                        // Manually inject optimized prompt into JSON prompt area (original behavior)
+                        try {
+                            String currentJsonStr = promptJsonArea.getText();
+                            org.json.JSONObject mainObj = new org.json.JSONObject(currentJsonStr);
+                            if (mainObj.has("prompt")) {
+                                org.json.JSONObject promptObj = mainObj.getJSONObject("prompt");
+                                String positiveNodeId = null;
+                                for (String key : promptObj.keySet()) {
+                                    org.json.JSONObject nodeObj = promptObj.getJSONObject(key);
+                                    if (nodeObj.has("class_type") && "CLIPTextEncode".equals(nodeObj.getString("class_type"))) {
+                                        if (nodeObj.has("inputs")) {
+                                            org.json.JSONObject inputs = nodeObj.getJSONObject("inputs");
+                                            if (inputs.has("text")) {
+                                                String textVal = inputs.getString("text").toLowerCase();
+                                                if (textVal.contains("bad") || textVal.contains("blurry") || textVal.contains("low quality") || textVal.contains("worst")) {
+                                                    continue;
+                                                }
+                                                positiveNodeId = key;
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+                                
+                                if (positiveNodeId == null) {
+                                    for (String key : promptObj.keySet()) {
+                                        org.json.JSONObject nodeObj = promptObj.getJSONObject(key);
+                                        if (nodeObj.has("class_type") && "CLIPTextEncode".equals(nodeObj.getString("class_type"))) {
                                             positiveNodeId = key;
                                             break;
                                         }
                                     }
                                 }
-                            }
-                            
-                            if (positiveNodeId == null) {
-                                for (String key : promptObj.keySet()) {
-                                    JSONObject nodeObj = promptObj.getJSONObject(key);
-                                    if (nodeObj.has("class_type") && "CLIPTextEncode".equals(nodeObj.getString("class_type"))) {
-                                        positiveNodeId = key;
-                                        break;
+                                
+                                if (positiveNodeId != null) {
+                                    org.json.JSONObject nodeObj = promptObj.getJSONObject(positiveNodeId);
+                                    if (nodeObj.has("inputs")) {
+                                        org.json.JSONObject inputs = nodeObj.getJSONObject("inputs");
+                                        inputs.put("text", cleanOptimized);
                                     }
                                 }
+                                promptJsonArea.setText(mainObj.toString(2));
                             }
-                            
-                            if (positiveNodeId != null) {
-                                JSONObject nodeObj = promptObj.getJSONObject(positiveNodeId);
-                                if (nodeObj.has("inputs")) {
-                                    JSONObject inputs = nodeObj.getJSONObject("inputs");
-                                    inputs.put("text", finalOptimized);
-                                }
-                            }
-                            promptJsonArea.setText(mainObj.toString(2));
+                        } catch (Exception ex) {
+                            // ignore json error
                         }
-                    } catch (Exception ex) {
-                        // ignore json error
                     }
                     
                     if (hasGemini) {
@@ -3219,13 +3294,13 @@ public class Main extends JFrame {
                         "Error", JOptionPane.ERROR_MESSAGE);
                 }
             });
-        }).start();
+        });
     }
 
     private void downloadLocalGemmaModel() {
         btnOptimizePrompt.setEnabled(false);
         btnOptimizePrompt.setText("⏳ Downloading...");
-        promptLabConsole.append("Starting download of Gemma-2-2B GGUF model (1.6 GB) from Hugging Face...\n");
+        promptLabConsole.append("Starting download of Gemma-3-4B GGUF model (3 GB) from Hugging Face...\n");
         
         localAIService.getLocalGemmaService().downloadModel(
             (percent, status) -> SwingUtilities.invokeLater(() -> {
@@ -3255,7 +3330,7 @@ public class Main extends JFrame {
         if (localAIService == null || !localAIService.isLocalGemmaDownloaded()) {
             int choice = JOptionPane.showConfirmDialog(this,
                 "The local Gemma model is not downloaded.\n" +
-                "Would you like to download the Gemma-2-2B GGUF model (approx. 1.6 GB) now to get suggestions directly in Java?",
+                "Would you like to download the Gemma-3-4B GGUF model (approx. 3 GB) now to get suggestions directly in Java?",
                 "Download Local Gemma Model?", JOptionPane.YES_NO_OPTION, JOptionPane.QUESTION_MESSAGE);
             if (choice == JOptionPane.YES_OPTION) {
                 downloadLocalGemmaModel();
@@ -3275,7 +3350,7 @@ public class Main extends JFrame {
         btnSuggestSubject.setText("✨ Suggesting...");
         promptLabConsole.append("Generating subject completion suggestions using local Gemma...\n");
 
-        new Thread(() -> {
+        backgroundExecutor.execute(() -> {
             java.util.List<String> suggestions = null;
             StringBuilder errorLogs = new StringBuilder();
             try {
@@ -3324,7 +3399,7 @@ public class Main extends JFrame {
                         "Suggestions Failed", JOptionPane.WARNING_MESSAGE);
                 }
             });
-        }).start();
+        });
     }
 
     private void startPollingPromptStatus(String promptId) {
@@ -3344,7 +3419,7 @@ public class Main extends JFrame {
             }
         });
 
-        new Thread(() -> {
+        backgroundExecutor.execute(() -> {
             boolean done = false;
             int pollAttempts = 0;
             java.net.http.HttpClient client = java.net.http.HttpClient.newBuilder()
@@ -3457,14 +3532,14 @@ public class Main extends JFrame {
                     promptLabConsole.append("❌ Generation timed out or failed to load image.\n\n");
                 });
             }
-        }).start();
+        });
     }
 
     private void loadAndDisplayImage(String filename, String subfolder, String type) {
         String comfyUrl = configService.getComfyUIUrl();
         String imageUrl = comfyUrl + "/view?filename=" + filename + "&subfolder=" + subfolder + "&type=" + type;
         
-        new Thread(() -> {
+        backgroundExecutor.execute(() -> {
             try {
                 java.net.URL url = new java.net.URL(imageUrl);
                 Image img = ImageIO.read(url);
@@ -3479,7 +3554,7 @@ public class Main extends JFrame {
                     if (promptImagePreviewLabel != null) promptImagePreviewLabel.setText("Failed to load generated image.");
                 });
             }
-        }).start();
+        });
     }
 
     private void scaleAndSetImage(Image img) {
@@ -3893,13 +3968,13 @@ public class Main extends JFrame {
             if (selected == null) { JOptionPane.showMessageDialog(this, "Please select a profile first."); return; }
             restartBtn.setEnabled(false);
             consoleOutput.append("\n🔄 Restarting ComfyUI...\n");
-            new Thread(() -> {
+            backgroundExecutor.execute(() -> {
                 processController.stop();
                 try { Thread.sleep(1500); } catch (InterruptedException ignored) {}
                 SwingUtilities.invokeLater(() -> {
                     startComfyUI(selected, false, true);
                 });
-            }).start();
+            });
         });
 
         bootstrapBtn.addActionListener(e -> {
@@ -4060,7 +4135,7 @@ public class Main extends JFrame {
     }
 
     private void startComfyAndReload() {
-        new Thread(() -> {
+        backgroundExecutor.execute(() -> {
             lifecycleService.start();
             // Wait for health
             for (int i = 0; i < 30; i++) {
@@ -4069,7 +4144,7 @@ public class Main extends JFrame {
                 }
                 try { Thread.sleep(1000); } catch (InterruptedException ignored) {}
             }
-        }).start();
+        });
     }
 
     private void showSettingsMenu(JButton parent) {
@@ -4241,11 +4316,11 @@ public class Main extends JFrame {
             
             boolean pathsChanged = !newModelsPath.equalsIgnoreCase(oldModelsPath) || !newComfyUIPath.equalsIgnoreCase(oldComfyUIPath);
             if (pathsChanged && lifecycleService != null && lifecycleService.isHealthy()) {
-                new Thread(() -> {
+                backgroundExecutor.execute(() -> {
                     System.out.println("🔄 [Lifecycle] Custom paths updated. Restarting ComfyUI server to apply changes...");
                     lifecycleService.stop();
                     lifecycleService.start();
-                }, "ComfyRestartThread").start();
+                });
             }
         });
         buttons.add(cancel);
@@ -4351,7 +4426,7 @@ public class Main extends JFrame {
         
         dialog.add(content);
         
-        new Thread(() -> {
+        backgroundExecutor.execute(() -> {
             try {
                 dependencyService.installFfmpeg(msg -> {
                     SwingUtilities.invokeLater(() -> {
@@ -4370,7 +4445,7 @@ public class Main extends JFrame {
                     JOptionPane.showMessageDialog(dialog, "Failed to install dependencies: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
                 });
             }
-        }).start();
+        });
         
         dialog.setVisible(true);
     }
@@ -4412,11 +4487,45 @@ public class Main extends JFrame {
         panel.add(new JLabel("TTS Provider:"), gbc);
         gbc.gridy++;
         gbc.insets = new Insets(5, 0, 15, 0);
-        JComboBox<String> ttsProviderCombo = new JComboBox<>(new String[]{"Local Piper", "ComfyUI KokoroTTS", "ComfyUI ElevenLabs"});
+        JComboBox<String> ttsProviderCombo = new JComboBox<>(new String[]{"ComfyUI Qwen-TTS", "ComfyUI KokoroTTS", "ComfyUI ElevenLabs"});
         ttsProviderCombo.setSelectedItem(configService.getTtsProvider());
         panel.add(ttsProviderCombo, gbc);
 
         gbc.gridy++;
+        gbc.insets = new Insets(0, 0, 0, 0);
+        panel.add(new JLabel("Qwen-TTS Voice (if using ComfyUI Qwen-TTS):"), gbc);
+        gbc.gridy++;
+        gbc.insets = new Insets(5, 0, 10, 0);
+        String[] qwenVoices = new String[]{"Chelsie", "Ethan", "Serena", "Aiden", "Vivian"};
+        JComboBox<String> qwenVoiceCombo = new JComboBox<>(qwenVoices);
+        qwenVoiceCombo.setEditable(true);
+        qwenVoiceCombo.setSelectedItem(configService.getQwenTtsVoice());
+        panel.add(qwenVoiceCombo, gbc);
+
+        gbc.gridy++;
+        gbc.insets = new Insets(0, 0, 0, 0);
+        panel.add(new JLabel("Qwen-TTS Model Repo (Hugging Face id):"), gbc);
+        gbc.gridy++;
+        gbc.insets = new Insets(5, 0, 15, 0);
+        JTextField qwenModelRepoField = new JTextField(configService.getQwenTtsModelRepo());
+        panel.add(qwenModelRepoField, gbc);
+
+        gbc.gridy++;
+        gbc.insets = new Insets(0, 0, 0, 0);
+        JCheckBox qwenAutoSelectCheck = new JCheckBox("Auto-select best Qwen-TTS model for my hardware", configService.isQwenTtsModelAuto());
+        panel.add(qwenAutoSelectCheck, gbc);
+
+        gbc.gridy++;
+        gbc.insets = new Insets(5, 0, 15, 0);
+        JPanel qwenAutoRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+        qwenAutoRow.setOpaque(false);
+        JButton detectButton = new JButton("Detect VRAM & recommend model");
+        JLabel qwenAutoStatus = new JLabel(" ");
+        qwenAutoStatus.setFont(qwenAutoStatus.getFont().deriveFont(Font.PLAIN, 11f));
+        qwenAutoRow.add(detectButton);
+        qwenAutoRow.add(Box.createHorizontalStrut(10));
+        qwenAutoRow.add(qwenAutoStatus);
+        panel.add(qwenAutoRow, gbc);        gbc.gridy++;
         gbc.insets = new Insets(0, 0, 0, 0);
         panel.add(new JLabel("Piper TTS Binary Path (if using Local Piper):"), gbc);
         gbc.gridy++;
@@ -4454,9 +4563,12 @@ public class Main extends JFrame {
             elevenLabsApiKeyField.setEnabled(isEleven);
             elevenLabsVoiceField.setEnabled(isEleven);
             
-            boolean isPiper = "Local Piper".equals(ttsProviderCombo.getSelectedItem());
+            boolean isPiper = false; // Piper support removed; fields stay disabled
             piperPathField.setEnabled(isPiper);
             piperModelField.setEnabled(isPiper);
+            boolean isQwen = "ComfyUI Qwen-TTS".equals(ttsProviderCombo.getSelectedItem());
+            qwenVoiceCombo.setEnabled(isQwen);
+                        qwenModelRepoField.setEnabled(isQwen);
         };
         ttsProviderCombo.addActionListener(e -> updateTtsVisibility.run());
         updateTtsVisibility.run();
@@ -4479,6 +4591,10 @@ public class Main extends JFrame {
             configService.setTtsProvider((String) ttsProviderCombo.getSelectedItem());
             configService.setPiperPath(piperPathField.getText().trim());
             configService.setPiperModelPath(piperModelField.getText().trim());
+            configService.setQwenTtsVoice((String) qwenVoiceCombo.getSelectedItem());
+            configService.setQwenTtsModelRepo(qwenModelRepoField.getText().trim());
+            configService.setQwenTtsModelAuto(qwenAutoSelectCheck.isSelected());
+            configService.setQwenTtsModelAuto(qwenAutoSelectCheck.isSelected());
             configService.setElevenLabsApiKey(new String(elevenLabsApiKeyField.getPassword()).trim());
             configService.setElevenLabsVoiceId(elevenLabsVoiceField.getText().trim());
             statusLabel.setText("Settings updated.");
@@ -4509,7 +4625,7 @@ public class Main extends JFrame {
         updateDownloadButtonsState();
 
         // Process archive restores FIRST as they are part of the visual queue
-        new Thread(() -> {
+        backgroundExecutor.execute(() -> {
             for (int i = 0; i < rowCount; i++) {
                 if (selected[i]) {
                     String currentStatus = (String) tableModel.getValueAt(i, 7);
@@ -4572,7 +4688,7 @@ public class Main extends JFrame {
                     })
                 );
             });
-        }).start();
+        });
     }
 
     private void showInstallationDialog() {
@@ -4807,6 +4923,16 @@ public class Main extends JFrame {
         } catch (IOException ex) { JOptionPane.showMessageDialog(this, "Error: " + ex.getMessage()); }
     }
 
+    public void importWorkflow(File file) {
+        loadFile(file);
+        if (mainTabs != null && downloadManagerPanel != null) {
+            int index = mainTabs.indexOfComponent(downloadManagerPanel);
+            if (index != -1) {
+                mainTabs.setSelectedIndex(index);
+            }
+        }
+    }
+
     private void analyzeJsonContent() {
         String text = jsonInputArea.getText();
         if (text == null || text.isEmpty()) return;
@@ -4922,7 +5048,7 @@ public class Main extends JFrame {
 
     private void fetchMissingRemoteSizes() {
         if (modelsToDownload == null) return;
-        new Thread(() -> {
+        backgroundExecutor.execute(() -> {
             for (int i = 0; i < modelsToDownload.size(); i++) {
                 final int idx = i;
                 ModelInfo info = modelsToDownload.get(idx);
@@ -5010,7 +5136,7 @@ public class Main extends JFrame {
                     }
                 }
             }
-        }).start();
+        });
     }
 
     private void searchMissingOnline() {
@@ -5093,7 +5219,7 @@ public class Main extends JFrame {
 
         String taskName = checkDuplicates ? "Verifying models & checking for duplicates" : "Verifying models (Fast Check)";
         statusLabel.setText(taskName + "... please wait.");
-        new Thread(() -> {
+        backgroundExecutor.execute(() -> {
             try {
                 List<IModelValidator.ValidationResult> errors = new ArrayList<>();
                 Map<String, List<Path>> hashToPaths = new HashMap<>();
@@ -5106,7 +5232,7 @@ public class Main extends JFrame {
                         })
                         .filter(p -> {
                             String n = p.getFileName().toString().toLowerCase();
-                            return n.endsWith(".safetensors") || n.endsWith(".sft") || n.endsWith(".ckpt") || n.endsWith(".pth") || n.endsWith(".pt") || n.endsWith(".bin");
+                            return n.endsWith(".safetensors") || n.endsWith(".sft") || n.endsWith(".ckpt") || n.endsWith(".pth") || n.endsWith(".pt") || n.endsWith(".bin") || n.endsWith(".onnx");
                         })
                         .collect(Collectors.toList());
 
@@ -5182,7 +5308,7 @@ public class Main extends JFrame {
             } catch (IOException e) {
                 SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(this, "Error during verification: " + e.getMessage()));
             }
-        }).start();
+        });
     }
 
     private void showDuplicatesDialog(Map<String, List<Path>> duplicates) {
@@ -5778,6 +5904,30 @@ public class Main extends JFrame {
         hideComfyuiCheck.setSelected(configService.isHideComfyUI());
         hideComfyuiCheck.addActionListener(e -> configService.setHideComfyUI(hideComfyuiCheck.isSelected()));
 
+        promptLabCheck = new JCheckBox("Enable Prompt Lab (Experimental)");
+        promptLabCheck.setFont(checkFont);
+        promptLabCheck.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        promptLabCheck.addActionListener(e -> {
+            configService.setPromptLabEnabled(promptLabCheck.isSelected());
+            updateTabVisibility();
+        });
+
+        videoArchitectCheck = new JCheckBox("Enable Video Architect (Experimental)");
+        videoArchitectCheck.setFont(checkFont);
+        videoArchitectCheck.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        videoArchitectCheck.addActionListener(e -> {
+            configService.setVideoArchitectEnabled(videoArchitectCheck.isSelected());
+            updateTabVisibility();
+        });
+
+        blueprintGalleryCheck = new JCheckBox("Enable Blueprint Gallery (Experimental)");
+        blueprintGalleryCheck.setFont(checkFont);
+        blueprintGalleryCheck.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        blueprintGalleryCheck.addActionListener(e -> {
+            configService.setBlueprintGalleryEnabled(blueprintGalleryCheck.isSelected());
+            updateTabVisibility();
+        });
+
         checksPanel.add(backgroundCheck);
         checksPanel.add(Box.createVerticalStrut(8));
         checksPanel.add(shutdownCheck);
@@ -5789,6 +5939,12 @@ public class Main extends JFrame {
         checksPanel.add(fastHashCheck);
         checksPanel.add(Box.createVerticalStrut(8));
         checksPanel.add(hideComfyuiCheck);
+        checksPanel.add(Box.createVerticalStrut(8));
+        checksPanel.add(promptLabCheck);
+        checksPanel.add(Box.createVerticalStrut(8));
+        checksPanel.add(videoArchitectCheck);
+        checksPanel.add(Box.createVerticalStrut(8));
+        checksPanel.add(blueprintGalleryCheck);
 
         left.add(pathsHeader);
         left.add(Box.createVerticalStrut(20));
@@ -5961,14 +6117,14 @@ public class Main extends JFrame {
             consoleOutput.setText("");
         }
         
-        new Thread(() -> {
+        backgroundExecutor.execute(() -> {
             updaterService.repairEnvironment(log -> SwingUtilities.invokeLater(() -> {
                 if (consoleOutput != null) {
                     consoleOutput.append(log);
                     consoleOutput.setCaretPosition(consoleOutput.getDocument().getLength());
                 }
             }));
-        }).start();
+        });
     }
 
     private void triggerWslDependencyFix() {
@@ -5987,18 +6143,18 @@ public class Main extends JFrame {
         String comfyPathStr = configService.getComfyUIPath();
         java.nio.file.Path comfyDir = (comfyPathStr != null && !comfyPathStr.isEmpty()) ? java.nio.file.Paths.get(comfyPathStr) : null;
         
-        new Thread(() -> {
+        backgroundExecutor.execute(() -> {
             bootstrapper.fixWslDependencies(comfyDir, log -> SwingUtilities.invokeLater(() -> {
                 if (consoleOutput != null) {
                     consoleOutput.append(log.endsWith("\n") ? log : log + "\n");
                     consoleOutput.setCaretPosition(consoleOutput.getDocument().getLength());
                 }
             }));
-        }).start();
+        });
     }
 
     private void performFullServiceRestart() {
-        new Thread(() -> {
+        backgroundExecutor.execute(() -> {
             SwingUtilities.invokeLater(() -> {
                 statusLabel.setText("🚀 Requesting restart via Dashboard...");
             });
@@ -6042,7 +6198,7 @@ public class Main extends JFrame {
                     statusLabel.setText("⚠️ No launch profile available to start ComfyUI.");
                 }
             });
-        }).start();
+        });
     }
 
     private void triggerPostOperationActions() {
@@ -6243,7 +6399,7 @@ public class Main extends JFrame {
         }
         final long finalTotalBytes = totalBytes > 0 ? totalBytes : 1; 
 
-        new Thread(() -> {
+        backgroundExecutor.execute(() -> {
             int successCount = 0;
             List<Object[]> rowsToMove = new ArrayList<>();
             List<Integer> processedRowIndices = new ArrayList<>();
@@ -6282,7 +6438,7 @@ public class Main extends JFrame {
                 JOptionPane.showMessageDialog(this, finalSuccess + " models successfully " + title.toLowerCase() + "ed.", 
                     "Operation Complete", JOptionPane.INFORMATION_MESSAGE);
             });
-        }).start();
+        });
 
         progressDialog.setVisible(true);
     }
@@ -6731,23 +6887,13 @@ public class Main extends JFrame {
                 if (idx == -1) idx = log.indexOf("https://");
                 if (idx != -1) {
                     String url = log.substring(idx).trim();
-                    new Thread(() -> {
+                    backgroundExecutor.execute(() -> {
                         try {
                             if (Desktop.isDesktopSupported() && openBrowser) {
                                 Desktop.getDesktop().browse(new java.net.URI(url));
                             }
                         } catch (Exception e) {
                             System.err.println("Failed to open browser automatically: " + e.getMessage());
-                        }
-                    }).start();
-                    SwingUtilities.invokeLater(() -> {
-                        if (mainTabs != null) {
-                            for (int i = 0; i < mainTabs.getTabCount(); i++) {
-                                if (mainTabs.getTitleAt(i).contains("Blueprint Gallery")) {
-                                    mainTabs.setSelectedIndex(i);
-                                    break;
-                                }
-                            }
                         }
                     });
                 }
@@ -6997,7 +7143,7 @@ public class Main extends JFrame {
             
             String imgUrl = selectedVersion.imageUrl;
             if (imgUrl != null && !imgUrl.isEmpty()) {
-                new Thread(() -> {
+                backgroundExecutor.execute(() -> {
                     try {
                         java.net.URL url = new java.net.URL(imgUrl);
                         BufferedImage img = javax.imageio.ImageIO.read(url);
@@ -7032,7 +7178,7 @@ public class Main extends JFrame {
                             }
                         });
                     }
-                }).start();
+                });
             } else {
                 previewLabel.setText("No Preview Image Available");
             }
@@ -7078,8 +7224,8 @@ public class Main extends JFrame {
 
     public static void main(String[] args) {
         FlatLaf.setUseNativeWindowDecorations(true);
-        AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext(AppConfig.class);   
-        context.getBean(Main.class).launch(args);
+        appContext = new AnnotationConfigApplicationContext(AppConfig.class);
+        appContext.getBean(Main.class).launch(args);
     }
 
     @Configuration @ComponentScan("de.tki.comfymodels") public static class AppConfig {}

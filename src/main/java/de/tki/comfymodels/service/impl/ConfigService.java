@@ -648,6 +648,24 @@ public class ConfigService {
         savePersistentSettings();
     }
 
+    public synchronized boolean isPromptLabEnabled() { return persistentSettings.optBoolean("enable_prompt_lab", false); }
+    public synchronized void setPromptLabEnabled(boolean enabled) {
+        persistentSettings.put("enable_prompt_lab", enabled);
+        savePersistentSettings();
+    }
+
+    public synchronized boolean isVideoArchitectEnabled() { return persistentSettings.optBoolean("enable_video_architect", false); }
+    public synchronized void setVideoArchitectEnabled(boolean enabled) {
+        persistentSettings.put("enable_video_architect", enabled);
+        savePersistentSettings();
+    }
+
+    public synchronized boolean isBlueprintGalleryEnabled() { return persistentSettings.optBoolean("enable_blueprint_gallery", false); }
+    public synchronized void setBlueprintGalleryEnabled(boolean enabled) {
+        persistentSettings.put("enable_blueprint_gallery", enabled);
+        savePersistentSettings();
+    }
+
     public synchronized void savePromptLabSession(JSONObject data) {
         persistentSettings.put("prompt_lab_session", data);
         savePersistentSettings();
@@ -802,8 +820,40 @@ public class ConfigService {
     }
     public synchronized void setPiperModelPath(String path) { settings.put("piper_model_path", path); save(); }
 
-    public synchronized String getTtsProvider() { return settings.optString("tts_provider", "ComfyUI KokoroTTS"); }
+    public synchronized String getTtsProvider() { return settings.optString("tts_provider", "ComfyUI Qwen-TTS"); }
     public synchronized void setTtsProvider(String provider) { settings.put("tts_provider", provider); save(); }
+
+    /** Hugging Face repo id for the Qwen-TTS model (default: Qwen2-Audio-7B-Instruct). */
+    public synchronized String getQwenTtsModelRepo() {
+        return settings.optString("qwen_tts_model_repo", "Qwen/Qwen2-Audio-7B-Instruct");
+    }
+    public synchronized void setQwenTtsModelRepo(String repo) { settings.put("qwen_tts_model_repo", repo); save(); }
+
+    /** Absolute path where the Qwen-TTS model snapshot is stored on disk. */
+    public synchronized String getQwenTtsModelPath() {
+        return settings.optString("qwen_tts_model_path",
+            System.getProperty("user.home") + "/.cache/huggingface/hub");
+    }
+    public synchronized void setQwenTtsModelPath(String path) { settings.put("qwen_tts_model_path", path); save(); }
+
+    /**
+     * When true (default), the application auto-picks the best Qwen-TTS model
+     * for the detected VRAM on startup and overrides {@code qwen_tts_model_repo}.
+     * Set to false to pin a specific model.
+     */
+    public synchronized boolean isQwenTtsModelAuto() {
+        return settings.optBoolean("qwen_tts_model_auto", true);
+    }
+    public synchronized void setQwenTtsModelAuto(boolean auto) {
+        settings.put("qwen_tts_model_auto", auto);
+        save();
+    }
+
+    /** Voice preset name passed to the Qwen-TTS custom node (e.g. "Chelsie", "Ethan", "Serena"). */
+    public synchronized String getQwenTtsVoice() {
+        return settings.optString("qwen_tts_voice", "Chelsie");
+    }
+    public synchronized void setQwenTtsVoice(String voice) { settings.put("qwen_tts_voice", voice); save(); }
 
     public synchronized String getElevenLabsApiKey() { return settings.optString("elevenlabs_api_key", ""); }
     public synchronized void setElevenLabsApiKey(String apiKey) { settings.put("elevenlabs_api_key", apiKey); save(); }

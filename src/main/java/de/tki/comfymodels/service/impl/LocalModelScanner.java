@@ -158,7 +158,7 @@ public class LocalModelScanner {
     private boolean isSupportedModelFile(Path path) {
         String name = path.getFileName().toString().toLowerCase();
         return name.endsWith(".safetensors") || name.endsWith(".sft") || name.endsWith(".ckpt") || 
-               name.endsWith(".pth") || name.endsWith(".pt") || name.endsWith(".bin");
+               name.endsWith(".pth") || name.endsWith(".pt") || name.endsWith(".bin") || name.endsWith(".onnx");
     }
 
     private boolean isIgnored(Path path, Path rootPath) {

@@ -42,6 +42,9 @@ public class ModelArchitectureService implements IModelArchitectureService {
     @Autowired(required = false)
     private ComfyModelAnalyzer modelAnalyzer;
 
+    @Autowired(required = false)
+    private ModelListService modelListService;
+
     private final List<Map<String, Object>> blueprintScanResults = new java.util.concurrent.CopyOnWriteArrayList<>();
 
     private ComfyModelAnalyzer getModelAnalyzer() {
@@ -146,8 +149,9 @@ public class ModelArchitectureService implements IModelArchitectureService {
 
         ModelArchitecture detected = ModelArchitecture.ARCH_UNKNOWN;
 
-        // 1. Try Gemma detection
-        if (isAnalyzing && classifier != null) {
+        // 1. Try Gemma detection (only if NOT in the model list)
+        boolean isModelInProvidedList = modelListService != null && modelListService.findByFilename(filename).isPresent();
+        if (!isModelInProvidedList && isAnalyzing && classifier != null) {
             try {
                 detected = classifier.classifyModel(filename);
             } catch (Exception e) {

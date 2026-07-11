@@ -8,6 +8,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.net.URI;
+import java.time.Duration;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -40,6 +41,7 @@ public class ModelSearchService implements IModelSearchService {
 
     private final HttpClient httpClient = HttpClient.newBuilder()
             .followRedirects(HttpClient.Redirect.ALWAYS)
+            .connectTimeout(Duration.ofSeconds(10))
             .build();
 
     private final ExecutorService searchExecutor = Executors.newFixedThreadPool(4);
@@ -264,7 +266,7 @@ public class ModelSearchService implements IModelSearchService {
                     // Fallback for direct resolve URLs
                     apiUrl = getHfApiBaseUrl() + "/models/" + url.split("huggingface.co/")[1].replace("/resolve/main/", "/file/");
                 }
-                HttpRequest.Builder apiBuilder = HttpRequest.newBuilder().uri(URI.create(apiUrl)).GET().header("User-Agent", "Mozilla/5.0");
+                HttpRequest.Builder apiBuilder = HttpRequest.newBuilder().uri(URI.create(apiUrl)).GET().header("User-Agent", "Mozilla/5.0").timeout(Duration.ofSeconds(15));
                 String token = configService.getHfToken();
                 if (!token.isEmpty()) apiBuilder.header("Authorization", "Bearer " + token);
 
@@ -301,7 +303,7 @@ public class ModelSearchService implements IModelSearchService {
                                                        BiConsumer<Integer, ModelInfo> onModelFound) {
         try {
             String treeUrl = getHfApiBaseUrl() + "/models/" + repoId + "/tree/main?recursive=true";
-            HttpRequest.Builder builder = HttpRequest.newBuilder().uri(URI.create(treeUrl)).GET();
+            HttpRequest.Builder builder = HttpRequest.newBuilder().uri(URI.create(treeUrl)).GET().timeout(Duration.ofSeconds(15));
             String token = configService.getHfToken();
             if (!token.isEmpty()) builder.header("Authorization", "Bearer " + token);
 
@@ -331,7 +333,7 @@ public class ModelSearchService implements IModelSearchService {
                                          BiConsumer<Integer, ModelInfo> onModelFound) {
         try {
             String searchUrl = getHfApiBaseUrl() + "/models?search=" + URLEncoder.encode(query, StandardCharsets.UTF_8) + "&sort=downloads&direction=-1&limit=100";
-            HttpResponse<String> response = httpClient.send(HttpRequest.newBuilder().uri(URI.create(searchUrl)).build(), HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response = httpClient.send(HttpRequest.newBuilder().uri(URI.create(searchUrl)).timeout(Duration.ofSeconds(15)).build(), HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() == 200) {
                 JSONArray models = new JSONArray(response.body());
                 for (int i = 0; i < models.length(); i++) {
@@ -402,7 +404,8 @@ public class ModelSearchService implements IModelSearchService {
     private HttpRequest.Builder createCivitaiRequestBuilder(String url) {
         HttpRequest.Builder builder = HttpRequest.newBuilder()
             .uri(URI.create(url))
-            .header("User-Agent", "Mozilla/5.0");
+            .header("User-Agent", "Mozilla/5.0")
+            .timeout(Duration.ofSeconds(30));
         String apiKey = configService != null ? configService.getCivitaiApiKey() : null;
         if (apiKey != null && !apiKey.trim().isEmpty()) {
             builder.header("Authorization", "Bearer " + apiKey.trim());

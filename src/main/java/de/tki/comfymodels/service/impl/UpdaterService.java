@@ -33,6 +33,9 @@ public class UpdaterService {
     @Autowired
     private ConfigService configService;
 
+
+    @Autowired(required = false)
+    private ProcessTracker processTracker;
     public List<RepoStatus> scanRepositories() {
         List<RepoStatus> list = new java.util.concurrent.CopyOnWriteArrayList<>();
         String comfyPathStr = configService.getComfyUIPath();
@@ -207,7 +210,7 @@ public class UpdaterService {
                     ProcessBuilder pb = new ProcessBuilder(pythonPath, "-m", "pip", "install", "-r", "requirements.txt");
                     pb.directory(repo.path);
                     pb.redirectErrorStream(true);
-                    Process p = pb.start();
+                    Process p = processTracker.start(pb);
                     try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()))) {
                         String line;
                         while ((line = reader.readLine()) != null) {
@@ -308,7 +311,7 @@ public class UpdaterService {
             ProcessBuilder pb = new ProcessBuilder(pythonPath, "-m", "pip", "install", "--upgrade", "-r", targetFile.getName());
             pb.directory(requirementsFile.getParentFile());
             pb.redirectErrorStream(true);
-            Process p = pb.start();
+            Process p = processTracker.start(pb);
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream(), java.nio.charset.StandardCharsets.UTF_8))) {
                 String line;
                 while ((line = reader.readLine()) != null) {

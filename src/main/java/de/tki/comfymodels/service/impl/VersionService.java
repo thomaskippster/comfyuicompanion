@@ -13,6 +13,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Duration;
+import org.springframework.beans.factory.annotation.Autowired;
 
 @Service
 public class VersionService {
@@ -24,6 +25,9 @@ public class VersionService {
             .followRedirects(HttpClient.Redirect.ALWAYS)
             .build();
 
+
+            @Autowired(required = false)
+            private ProcessTracker processTracker;
     public java.util.concurrent.CompletableFuture<String> getRemoteComfyVersionAsync() {
         return java.util.concurrent.CompletableFuture.supplyAsync(() -> {
             try {
@@ -66,7 +70,7 @@ public class VersionService {
             if (Files.exists(gitDir)) {
                 ProcessBuilder pb = new ProcessBuilder("git", "-C", comfyPath, "describe", "--tags", "--always");
                 pb.redirectErrorStream(true);
-                Process p = pb.start();
+                Process p = processTracker.start(pb);
                 try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()))) {
                     String line = reader.readLine();
                     if (p.waitFor() == 0 && line != null) return line;
@@ -85,7 +89,7 @@ public class VersionService {
             
             ProcessBuilder pb = new ProcessBuilder(pythonPath, "--version");
             pb.redirectErrorStream(true);
-            Process p = pb.start();
+            Process p = processTracker.start(pb);
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()))) {
                 String line = reader.readLine();
                 if (line != null) return line.replace("Python ", "").trim();

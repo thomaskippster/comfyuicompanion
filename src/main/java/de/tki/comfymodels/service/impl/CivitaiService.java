@@ -7,6 +7,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.beans.factory.annotation.Autowired;
 
 import java.net.URI;
+import java.time.Duration;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -21,6 +22,7 @@ public class CivitaiService {
 
     private final HttpClient httpClient = HttpClient.newBuilder()
             .followRedirects(HttpClient.Redirect.ALWAYS)
+            .connectTimeout(Duration.ofSeconds(10))
             .build();
     private final ObjectMapper mapper = new ObjectMapper();
 
@@ -30,7 +32,7 @@ public class CivitaiService {
         HttpRequest.Builder builder = HttpRequest.newBuilder()
                 .uri(URI.create(url))
                 .header("Accept", "application/json")
-                .GET();
+                .GET().timeout(Duration.ofSeconds(30));
                 
         String apiKey = configService != null ? configService.getCivitaiApiKey() : null;
         if (apiKey != null && !apiKey.trim().isEmpty()) {
@@ -56,7 +58,7 @@ public class CivitaiService {
         HttpRequest.Builder builder = HttpRequest.newBuilder()
                 .uri(URI.create(url))
                 .header("Accept", "application/json")
-                .GET();
+                .GET().timeout(Duration.ofSeconds(30));
                 
         String apiKey = configService != null ? configService.getCivitaiApiKey() : null;
         if (apiKey != null && !apiKey.trim().isEmpty()) {
@@ -145,7 +147,7 @@ public class CivitaiService {
             HttpRequest.Builder builder = HttpRequest.newBuilder()
                     .uri(URI.create(metadataUrl))
                     .header("Accept", "application/json")
-                    .GET();
+                    .GET().timeout(Duration.ofSeconds(30));
             String apiKey = configService != null ? configService.getCivitaiApiKey() : null;
             if (apiKey != null && !apiKey.trim().isEmpty()) {
                 builder.header("Authorization", "Bearer " + apiKey.trim());
@@ -184,7 +186,7 @@ public class CivitaiService {
                     String imgUrl = images.get(0).path("url").asText(null);
                     if (imgUrl != null) {
                         java.nio.file.Path previewFile = targetFile.getParent().resolve(prefix + ".preview.png");
-                        HttpRequest imgReq = HttpRequest.newBuilder().uri(URI.create(imgUrl)).GET().build();
+                        HttpRequest imgReq = HttpRequest.newBuilder().uri(URI.create(imgUrl)).GET().timeout(Duration.ofSeconds(30)).build();
                         HttpResponse<byte[]> imgRes = httpClient.send(imgReq, HttpResponse.BodyHandlers.ofByteArray());
                         if (imgRes.statusCode() == 200) {
                             java.nio.file.Files.write(previewFile, imgRes.body());
@@ -217,7 +219,7 @@ public class CivitaiService {
             HttpRequest.Builder builder = HttpRequest.newBuilder()
                     .uri(URI.create(hashUrl))
                     .header("Accept", "application/json")
-                    .GET();
+                    .GET().timeout(Duration.ofSeconds(30));
             String apiKey = configService != null ? configService.getCivitaiApiKey() : null;
             if (apiKey != null && !apiKey.trim().isEmpty()) {
                 builder.header("Authorization", "Bearer " + apiKey.trim());
@@ -239,7 +241,7 @@ public class CivitaiService {
             HttpRequest.Builder builder2 = HttpRequest.newBuilder()
                     .uri(URI.create(modelUrl))
                     .header("Accept", "application/json")
-                    .GET();
+                    .GET().timeout(Duration.ofSeconds(30));
             if (apiKey != null && !apiKey.trim().isEmpty()) {
                 builder2.header("Authorization", "Bearer " + apiKey.trim());
             }

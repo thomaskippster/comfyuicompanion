@@ -218,15 +218,23 @@ public class GeminiAIService {
                 break;
         }
 
-        String systemInstruction = "You are an expert prompt engineer for text-to-image models. "
-                + "Your task is to optimize a simple prompt into a highly effective English image generation prompt tailored for the specific model architecture.\n\n"
-                + "GUIDELINE FOR TARGET MODEL:\n" + promptGuide + "\n\n"
+        String systemInstruction = "You are an expert prompt engineer and configuration advisor for ComfyUI text-to-image models. "
+                + "Your task is to translate the user's raw input prompt into an optimized JSON payload containing the optimized positive prompt, negative prompt, steps, and CFG scale tailored for the specific model architecture.\n\n"
+                + "GUIDELINE FOR TARGET MODEL ARCHITECTURE (" + arch + "):\n" + promptGuide + "\n\n"
                 + "Instructions:\n"
-                + "1. Optimize the original prompt following the guideline above.\n"
-                + "2. Translate any non-English concepts to English.\n"
-                + "3. Respond ONLY with the optimized prompt text. Do not use explanations, annotations, markdown code blocks, or quotes.";
+                + "1. Translate non-English concepts to English and optimize the positive prompt according to the guideline.\n"
+                + "2. Recommend an appropriate negative prompt (empty for models like Flux if they don't use negative prompts, or containing common negative keywords like 'blurry, low quality' for SDXL/SD1.5).\n"
+                + "3. Recommend dynamic steps (e.g. 4 for Flux Schnell, 20-30 for Flux Dev / SDXL, 20 for SD 1.5) and CFG scale (1.0 for Flux, 3.0-4.5 for Lumina2, 4.0-8.0 for SDXL/SD 1.5) based on the target architecture and prompt mood.\n"
+                + "4. Respond ONLY with a valid JSON object. Do NOT use markdown code blocks (no ```json). Do NOT write any introduction, notes, or explanation.\n\n"
+                + "JSON Structure:\n"
+                + "{\n"
+                + "  \"positive_prompt\": \"string\",\n"
+                + "  \"negative_prompt\": \"string\",\n"
+                + "  \"cfg\": float,\n"
+                + "  \"steps\": integer\n"
+                + "}";
 
-        return localGemmaService.generateCompletion(systemInstruction, "Original prompt: " + rawPrompt + "\n\nOptimized prompt:", 0.7f, 256);
+        return localGemmaService.generateCompletion(systemInstruction, "Original prompt: " + rawPrompt + "\n\nJSON:", 0.7f, 384);
     }
 
     public List<String> getGemmaCompletions(String subjectText) throws IOException {
@@ -311,13 +319,21 @@ public class GeminiAIService {
                 break;
         }
 
-        String systemInstruction = "You are an expert prompt engineer for text-to-image models. "
-                + "Your task is to optimize a simple prompt into a highly effective English image generation prompt tailored for the specific model architecture.\n\n"
-                + "GUIDELINE FOR TARGET MODEL:\n" + promptGuide + "\n\n"
+        String systemInstruction = "You are an expert prompt engineer and configuration advisor for ComfyUI text-to-image models. "
+                + "Your task is to translate the user's raw input prompt into an optimized JSON payload containing the optimized positive prompt, negative prompt, steps, and CFG scale tailored for the specific model architecture.\n\n"
+                + "GUIDELINE FOR TARGET MODEL ARCHITECTURE (" + arch + "):\n" + promptGuide + "\n\n"
                 + "Instructions:\n"
-                + "1. Optimize the original prompt following the guideline above.\n"
-                + "2. Translate any non-English concepts to English.\n"
-                + "3. Respond ONLY with the optimized prompt text. Do not use explanations, annotations, markdown code blocks, or quotes.";
+                + "1. Translate non-English concepts to English and optimize the positive prompt according to the guideline.\n"
+                + "2. Recommend an appropriate negative prompt (empty for models like Flux if they don't use negative prompts, or containing common negative keywords like 'blurry, low quality' for SDXL/SD1.5).\n"
+                + "3. Recommend dynamic steps (e.g. 4 for Flux Schnell, 20-30 for Flux Dev / SDXL, 20 for SD 1.5) and CFG scale (1.0 for Flux, 3.0-4.5 for Lumina2, 4.0-8.0 for SDXL/SD 1.5) based on the target architecture and prompt mood.\n"
+                + "4. Respond ONLY with a valid JSON object matching the requested schema.\n\n"
+                + "JSON Structure:\n"
+                + "{\n"
+                + "  \"positive_prompt\": \"string\",\n"
+                + "  \"negative_prompt\": \"string\",\n"
+                + "  \"cfg\": float,\n"
+                + "  \"steps\": integer\n"
+                + "}";
 
         try {
             JSONObject payload = new JSONObject();
@@ -329,6 +345,10 @@ public class GeminiAIService {
             JSONObject systemInstructionObj = new JSONObject();
             systemInstructionObj.put("parts", new JSONArray().put(new JSONObject().put("text", systemInstruction)));
             payload.put("systemInstruction", systemInstructionObj);
+
+            JSONObject generationConfig = new JSONObject();
+            generationConfig.put("responseMimeType", "application/json");
+            payload.put("generationConfig", generationConfig);
 
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(getApiBaseUrl() + "/v1beta/models/" + activeModel + ":generateContent"))

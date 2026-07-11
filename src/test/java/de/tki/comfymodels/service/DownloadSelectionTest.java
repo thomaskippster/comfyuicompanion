@@ -31,9 +31,9 @@ public class DownloadSelectionTest {
         ReflectionTestUtils.setField(downloadManager, "pathResolver", new PathResolver());
         
         List<ModelInfo> models = new ArrayList<>();
-        models.add(new ModelInfo("checkpoints", "model1.safetensors", "http://example.com/1"));
-        models.add(new ModelInfo("checkpoints", "model2.safetensors", "http://example.com/2"));
-        models.add(new ModelInfo("checkpoints", "model3.safetensors", "http://example.com/3"));
+        models.add(new ModelInfo("checkpoints", "model1.safetensors", "http://127.0.0.1:54321/1"));
+        models.add(new ModelInfo("checkpoints", "model2.safetensors", "http://127.0.0.1:54321/2"));
+        models.add(new ModelInfo("checkpoints", "model3.safetensors", "http://127.0.0.1:54321/3"));
 
         // Only first and third are selected
         boolean[] selected = {true, false, true};
@@ -69,7 +69,7 @@ public class DownloadSelectionTest {
         
         List<ModelInfo> models = new ArrayList<>();
         // Use a dummy model
-        models.add(new ModelInfo("checkpoints", "model1.safetensors", "http://invalid-url-for-test.com/file"));
+        models.add(new ModelInfo("checkpoints", "model1.safetensors", "http://127.0.0.1:54321/file"));
 
         boolean[] selected = {true};
         ConcurrentHashMap<Integer, String> statusMap = new ConcurrentHashMap<>();

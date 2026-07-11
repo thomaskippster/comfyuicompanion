@@ -1,5 +1,8 @@
 package de.tki.comfymodels.service.impl;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import de.tki.comfymodels.domain.LaunchProfile;
 import org.springframework.stereotype.Service;
 
@@ -20,6 +23,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 
 @Service
 public class ComfyProcessController {
+    private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(ComfyProcessController.class);
     @org.springframework.beans.factory.annotation.Autowired
     @org.springframework.context.annotation.Lazy
     private de.tki.comfymodels.service.IComfyLifecycleService lifecycleService;
@@ -295,7 +299,7 @@ public class ComfyProcessController {
             try {
                 lifecycleService.stop();
             } catch (Exception e) {
-                System.err.println("Failed to stop lifecycleService: " + e.getMessage());
+                logger.error("Failed to stop lifecycleService: " + e.getMessage());
             }
         } finally {
             stopping.set(false);

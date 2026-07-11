@@ -1,5 +1,8 @@
 package de.tki.comfymodels.util;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import jakarta.annotation.PreDestroy;
 import org.springframework.stereotype.Component;
 
@@ -32,6 +35,7 @@ import java.util.concurrent.atomic.AtomicLong;
  */
 @Component
 public class BackgroundExecutor {
+    private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(BackgroundExecutor.class);
 
     private final ThreadPoolExecutor pool;
     private final ScheduledExecutorService scheduler;
@@ -60,7 +64,7 @@ public class BackgroundExecutor {
             Thread t = new Thread(runnable, prefix + "-" + counter.incrementAndGet());
             t.setDaemon(true);
             t.setUncaughtExceptionHandler((thread, throwable) ->
-                    System.err.println("[BackgroundExecutor] Uncaught exception in " + thread.getName() + ": " + throwable));
+                    logger.error("[BackgroundExecutor] Uncaught exception in " + thread.getName() + ": " + throwable));
             return t;
         };
     }

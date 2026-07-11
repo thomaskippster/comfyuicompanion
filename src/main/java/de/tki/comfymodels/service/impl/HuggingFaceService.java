@@ -1,5 +1,8 @@
 package de.tki.comfymodels.service.impl;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import de.tki.comfymodels.domain.ModelInfo;
@@ -16,6 +19,7 @@ import java.util.concurrent.CompletableFuture;
 
 @Service
 public class HuggingFaceService {
+    private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(HuggingFaceService.class);
     private final HttpClient httpClient = HttpClient.newBuilder()
             .followRedirects(HttpClient.Redirect.ALWAYS)
             .connectTimeout(Duration.ofSeconds(10))
@@ -43,7 +47,7 @@ public class HuggingFaceService {
                             }
                         }
                     } catch (Exception e) {
-                        System.err.println("Error parsing HuggingFace response: " + e.getMessage());
+                        logger.error("Error parsing HuggingFace response: " + e.getMessage());
                     }
                     return results;
                 });

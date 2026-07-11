@@ -1,5 +1,8 @@
 package de.tki.comfymodels.service.impl;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import de.tki.comfymodels.domain.ModelInfo;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -20,6 +23,7 @@ import java.util.stream.Stream;
 
 @Service
 public class ArchiveService {
+    private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(ArchiveService.class);
 
     private final ConfigService configService;
     private final PathResolver pathResolver;
@@ -129,7 +133,7 @@ public class ArchiveService {
                     grouped.computeIfAbsent(folder, k -> new ArrayList<>()).add(info);
                 });
         } catch (IOException e) {
-            System.err.println("Error walking directory " + pathStr + ": " + e.getMessage());
+            logger.error("Error walking directory " + pathStr + ": " + e.getMessage());
         }
         
         return grouped;
@@ -250,7 +254,7 @@ public class ArchiveService {
                     if (found.isPresent()) {
                         archived = found.get();
                     } else {
-                        System.err.println("Restore failed: " + filename + " not found in archive");
+                        logger.error("Restore failed: " + filename + " not found in archive");
                         return false;
                     }
                 } catch (IOException e) {
@@ -266,18 +270,18 @@ public class ArchiveService {
                     try {
                         Files.deleteIfExists(target);
                         Files.createSymbolicLink(target, archived);
-                        System.out.println("🔗 Successfully created symbolic link for: " + filename);
+                        logger.info("🔗 Successfully created symbolic link for: " + filename);
                         if (progressUpdate != null) progressUpdate.accept(Files.size(target));
                         return true;
                     } catch (Exception se) {
-                        System.err.println("⚠️ Symbolic link failed (Missing permissions/Developer Mode?): " + se.getMessage() + ". Falling back to copying.");
+                        logger.error("⚠️ Symbolic link failed (Missing permissions/Developer Mode?): " + se.getMessage() + ". Falling back to copying.");
                     }
                 }
                 moveWithProgress(archived, target, progressUpdate);
                 return true;
             }
         } catch (IOException e) {
-            System.err.println("Error moving file from archive: " + e.getMessage());
+            logger.error("Error moving file from archive: " + e.getMessage());
             e.printStackTrace();
         }
         return false;

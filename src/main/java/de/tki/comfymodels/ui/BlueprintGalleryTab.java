@@ -1,5 +1,8 @@
 package de.tki.comfymodels.ui;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import de.tki.comfymodels.Main;
 import de.tki.comfymodels.domain.ModelInfo;
 import de.tki.comfymodels.domain.ComfyRegistryWorkflow;
@@ -58,6 +61,7 @@ import javax.imageio.ImageIO;
  */
 @Component
 public class BlueprintGalleryTab extends JPanel {
+    private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(BlueprintGalleryTab.class);
 
     // ── services ─────────────────────────────────────────────────────────────
     private final ConfigService configService;
@@ -467,7 +471,7 @@ public class BlueprintGalleryTab extends JPanel {
                     }
                 });
             } catch (Exception e) {
-                System.err.println("❌ [BlueprintGallery] Refresh failed: " + e.getMessage());
+                logger.error("❌ [BlueprintGallery] Refresh failed: " + e.getMessage());
                 SwingUtilities.invokeLater(() -> {
                     lblStatus.setText("❌ Failed to fetch registry data: " + e.getMessage());
                 });
@@ -486,7 +490,7 @@ public class BlueprintGalleryTab extends JPanel {
                     applyFilter();
                 });
             } catch (Exception e) {
-                System.err.println("❌ [BlueprintGallery] Status update failed: " + e.getMessage());
+                logger.error("❌ [BlueprintGallery] Status update failed: " + e.getMessage());
             }
         }, "BlueprintGalleryStatusUpdate").start();
     }
@@ -1075,12 +1079,12 @@ public class BlueprintGalleryTab extends JPanel {
                     // HTTP 404 means the file does not exist, fail immediately without retry
                     break;
                 } else {
-                    System.err.println("⚠️ [BlueprintGallery] HTTP " + response.statusCode() + " for: " + urlStr + " (Attempt " + attempt + ")");
+                    logger.error("⚠️ [BlueprintGallery] HTTP " + response.statusCode() + " for: " + urlStr + " (Attempt " + attempt + ")");
                 }
             } catch (java.net.ConnectException | java.net.http.HttpTimeoutException e) {
-                System.err.println("⚠️ [BlueprintGallery] Connection error for: " + urlStr + " (Attempt " + attempt + "): " + e.getMessage());
+                logger.error("⚠️ [BlueprintGallery] Connection error for: " + urlStr + " (Attempt " + attempt + "): " + e.getMessage());
             } catch (Exception e) {
-                System.err.println("⚠️ [BlueprintGallery] Error loading image: " + urlStr + " (Attempt " + attempt + "): " + e.getMessage());
+                logger.error("⚠️ [BlueprintGallery] Error loading image: " + urlStr + " (Attempt " + attempt + "): " + e.getMessage());
             }
 
             if (attempt < maxRetries) {

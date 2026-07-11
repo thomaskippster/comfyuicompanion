@@ -1,10 +1,14 @@
 package de.tki.comfymodels.util;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.IOException;
 import org.springframework.beans.factory.annotation.Autowired;
 import de.tki.comfymodels.service.impl.ProcessTracker;
 
 public class PlatformUtils {
+    private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(PlatformUtils.class);
 
     private static String OS_NAME = System.getProperty("os.name").toLowerCase();
 
@@ -30,14 +34,14 @@ public class PlatformUtils {
     public static void shutdownSystem() {
         String[] command = getShutdownCommand();
         if (command == null) {
-            System.err.println("Shutdown not supported on this OS: " + OS_NAME);
+            logger.error("Shutdown not supported on this OS: " + OS_NAME);
             return;
         }
 
         try {
             processTracker.start(new ProcessBuilder(command));
         } catch (IOException e) {
-            System.err.println("Error executing shutdown command: " + e.getMessage());
+            logger.error("Error executing shutdown command: " + e.getMessage());
         }
     }
 
@@ -62,7 +66,7 @@ public class PlatformUtils {
                 Runtime.getRuntime().exec("pkill -f " + name);
             }
         } catch (IOException e) {
-            System.err.println("Failed to kill process " + name + ": " + e.getMessage());
+            logger.error("Failed to kill process " + name + ": " + e.getMessage());
         }
     }
 

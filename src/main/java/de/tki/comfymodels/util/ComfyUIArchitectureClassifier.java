@@ -1,5 +1,8 @@
 package de.tki.comfymodels.util;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -18,6 +21,7 @@ import java.util.concurrent.TimeUnit;
  */
 @Component
 public class ComfyUIArchitectureClassifier {
+    private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(ComfyUIArchitectureClassifier.class);
 
     private final LocalGemmaService localGemmaService;
     private final ObjectMapper objectMapper;
@@ -110,7 +114,7 @@ public class ComfyUIArchitectureClassifier {
                 String responseText = localGemmaService.generateCompletion(systemPrompt, userPrompt, 0.1f, 128);
                 return parseInnerArchitectureResponse(responseText);
             } catch (Exception e) {
-                System.err.println("Local Gemma workflow classification failed: " + e.getMessage());
+                logger.error("Local Gemma workflow classification failed: " + e.getMessage());
                 return ModelArchitecture.ARCH_UNKNOWN;
             }
         });
@@ -124,7 +128,7 @@ public class ComfyUIArchitectureClassifier {
             return classifyWorkflowAsync(nodeTypes)
                     .get(15, TimeUnit.SECONDS);
         } catch (Exception e) {
-            System.err.println("Synchronous Gemma workflow classification timeout or error: " + e.getMessage());
+            logger.error("Synchronous Gemma workflow classification timeout or error: " + e.getMessage());
             return ModelArchitecture.ARCH_UNKNOWN;
         }
     }
@@ -153,7 +157,7 @@ public class ComfyUIArchitectureClassifier {
                 String responseText = localGemmaService.generateCompletion(systemPrompt, userPrompt, 0.1f, 128);
                 return parseInnerArchitectureResponse(responseText);
             } catch (Exception e) {
-                System.err.println("Local Gemma model classification failed: " + e.getMessage());
+                logger.error("Local Gemma model classification failed: " + e.getMessage());
                 return ModelArchitecture.ARCH_UNKNOWN;
             }
         });
@@ -167,7 +171,7 @@ public class ComfyUIArchitectureClassifier {
             return classifyModelAsync(modelFilename)
                     .get(15, TimeUnit.SECONDS);
         } catch (Exception e) {
-            System.err.println("Synchronous Gemma model classification timeout or error: " + e.getMessage());
+            logger.error("Synchronous Gemma model classification timeout or error: " + e.getMessage());
             return ModelArchitecture.ARCH_UNKNOWN;
         }
     }

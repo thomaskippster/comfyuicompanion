@@ -1,5 +1,8 @@
 package de.tki.comfymodels.service.impl;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
@@ -16,6 +19,7 @@ import java.util.Set;
 
 @Service
 public class ProfileManager {
+    private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(ProfileManager.class);
     private static final ObjectMapper MAPPER = new ObjectMapper()
             .enable(SerializationFeature.INDENT_OUTPUT);
     private Path profilesPath;
@@ -66,13 +70,13 @@ public class ProfileManager {
                 try {
                     saveProfiles(updated);
                 } catch (IOException e) {
-                    System.err.println("Error updating profiles: " + e.getMessage());
+                    logger.error("Error updating profiles: " + e.getMessage());
                 }
             }
             
             return updated;
         } catch (IOException e) {
-            System.err.println("Error loading profiles: " + e.getMessage());
+            logger.error("Error loading profiles: " + e.getMessage());
             return defaults;
         }
     }

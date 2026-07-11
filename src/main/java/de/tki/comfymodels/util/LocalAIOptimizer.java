@@ -1,9 +1,13 @@
 package de.tki.comfymodels.util;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import de.tki.comfymodels.service.impl.LocalGemmaService;
 
 public class LocalAIOptimizer {
+    private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(LocalAIOptimizer.class);
 
     private final LocalGemmaService localGemmaService;
     private final ObjectMapper objectMapper;
@@ -25,16 +29,16 @@ public class LocalAIOptimizer {
         String rawResponse = null;
         if (localGemmaService != null && localGemmaService.isModelDownloaded()) {
             try {
-                System.out.println("🤖 Asking Local Gemma for optimized video parameters...");
+                logger.info("🤖 Asking Local Gemma for optimized video parameters...");
                 rawResponse = localGemmaService.generateCompletion(systemPrompt, userPrompt, 0.4f, 256);
             } catch (Exception e) {
-                System.err.println("⚠️ Local Gemma generation failed, using structured fallback: " + e.getMessage());
+                logger.error("⚠️ Local Gemma generation failed, using structured fallback: " + e.getMessage());
             }
         }
 
         // Fallback scenario when model is not downloaded or failed
         if (rawResponse == null || rawResponse.trim().isEmpty()) {
-            System.out.println("🤖 [Gemma Optimizer Fallback] Generating parameter optimization fallback...");
+            logger.info("🤖 [Gemma Optimizer Fallback] Generating parameter optimization fallback...");
             
             // Adjust parameter values based on feedback clues to simulate a real optimization loop
             int cfg = 7;

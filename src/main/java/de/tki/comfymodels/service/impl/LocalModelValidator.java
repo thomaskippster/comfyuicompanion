@@ -1,5 +1,8 @@
 package de.tki.comfymodels.service.impl;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import de.tki.comfymodels.domain.ComfyRegistryWorkflow;
@@ -25,6 +28,7 @@ import java.util.stream.Stream;
 
 @Service
 public class LocalModelValidator implements ILocalModelValidator {
+    private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(LocalModelValidator.class);
 
     private final ConfigService configService;
     private final IComfyRegistryClient registryClient;
@@ -99,10 +103,10 @@ public class LocalModelValidator implements ILocalModelValidator {
                         }
                     });
                 }
-                System.out.println("ℹ️ [LocalModelValidator] Loaded " + registryModelsCache.size() + " cached registry models from disk.");
+                logger.info("ℹ️ [LocalModelValidator] Loaded " + registryModelsCache.size() + " cached registry models from disk.");
             }
         } catch (Exception e) {
-            System.err.println("⚠️ [LocalModelValidator] Failed to initialize cache: " + e.getMessage());
+            logger.error("⚠️ [LocalModelValidator] Failed to initialize cache: " + e.getMessage());
         }
     }
 
@@ -124,7 +128,7 @@ public class LocalModelValidator implements ILocalModelValidator {
             File cloudCacheFile = new File(cacheFile.getParentFile(), "cloud_only_cache.json");
             objectMapper.writeValue(cloudCacheFile, cloudOnlyCache);
         } catch (Exception e) {
-            System.err.println("⚠️ [LocalModelValidator] Failed to save cache: " + e.getMessage());
+            logger.error("⚠️ [LocalModelValidator] Failed to save cache: " + e.getMessage());
         }
     }
 
@@ -171,7 +175,7 @@ public class LocalModelValidator implements ILocalModelValidator {
                     }
                 }
             } catch (Exception e) {
-                System.err.println("⚠️ [LocalModelValidator] Error scanning archive: " + e.getMessage());
+                logger.error("⚠️ [LocalModelValidator] Error scanning archive: " + e.getMessage());
             }
         }
 
@@ -276,13 +280,13 @@ public class LocalModelValidator implements ILocalModelValidator {
                 boolean allPresent = checkModelsPresent(parsedModels);
                 workflow.setHasAllModelsLocal(allPresent);
             } catch (Exception e) {
-                System.err.println("❌ [LocalModelValidator] Error parsing downloaded workflow JSON: " + e.getMessage());
+                logger.error("❌ [LocalModelValidator] Error parsing downloaded workflow JSON: " + e.getMessage());
                 workflow.setHasAllModelsLocal(false);
             }
         })
         .exceptionally(ex -> {
             if (!(ex.getCause() instanceof InterruptedException)) {
-                System.err.println("❌ [LocalModelValidator] Failed to validate models from JSON download for: " + workflow.getTitle());
+                logger.error("❌ [LocalModelValidator] Failed to validate models from JSON download for: " + workflow.getTitle());
             }
             workflow.setHasAllModelsLocal(false);
             return null;

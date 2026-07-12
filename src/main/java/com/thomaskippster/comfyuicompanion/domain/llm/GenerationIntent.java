@@ -77,4 +77,15 @@ public class GenerationIntent {
     public void setSuggestedCheckpointKeyword(String suggestedCheckpointKeyword) {
         this.suggestedCheckpointKeyword = suggestedCheckpointKeyword;
     }
+
+    // True if high-resolution image is requested, triggering UltimateSDUpscale
+    private boolean requiresUpscaling;
+
+    public boolean isRequiresUpscaling() {
+        return requiresUpscaling;
+    }
+
+    public void setRequiresUpscaling(boolean requiresUpscaling) {
+        this.requiresUpscaling = requiresUpscaling;
+    }
 }

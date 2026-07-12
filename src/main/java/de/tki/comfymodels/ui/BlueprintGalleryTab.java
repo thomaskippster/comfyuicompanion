@@ -1020,22 +1020,32 @@ public class BlueprintGalleryTab extends JPanel {
                         .build();
                 HttpRequest request = HttpRequest.newBuilder()
                         .uri(URI.create(urlStr))
-                        .timeout(Duration.ofMillis(5000))
+                        .timeout(Duration.ofSeconds(15))
                         .GET().build();
                 java.net.http.HttpResponse<byte[]> response = client.send(request, java.net.http.HttpResponse.BodyHandlers.ofByteArray());
                 
                 if (response.statusCode() == 200) {
                     byte[] bytes = response.body();
-                    try {
-                        BufferedImage img = ImageIO.read(new ByteArrayInputStream(bytes));
-                        if (img != null) return img;
-                    } catch (Exception ignored) {}
+                    
+                    String cleanUrl = urlStr.toLowerCase();
+                    int qIdx = cleanUrl.indexOf('?');
+                    if (qIdx > 0) cleanUrl = cleanUrl.substring(0, qIdx);
+                    
+                    boolean isVideo = cleanUrl.endsWith(".mp4") || cleanUrl.endsWith(".webm") || cleanUrl.endsWith(".mov");
+                    
+                    if (!isVideo) {
+                        try {
+                            BufferedImage img = ImageIO.read(new ByteArrayInputStream(bytes));
+                            if (img != null) return img;
+                        } catch (Exception ignored) {}
+                    }
 
-                    // Fallback via Temp File (for OpenCV reading/WebP)
+                    // Fallback via Temp File (for OpenCV reading/WebP or Video frames)
                     String ext = ".tmp";
-                    if (urlStr.toLowerCase().endsWith(".mp4")) ext = ".mp4";
-                    else if (urlStr.toLowerCase().endsWith(".webm")) ext = ".webm";
-                    else if (urlStr.toLowerCase().endsWith(".gif")) ext = ".gif";
+                    if (cleanUrl.endsWith(".mp4")) ext = ".mp4";
+                    else if (cleanUrl.endsWith(".webm")) ext = ".webm";
+                    else if (cleanUrl.endsWith(".gif")) ext = ".gif";
+                    else if (cleanUrl.endsWith(".webp")) ext = ".webp";
                     
                     // Generate a filename without numbers to prevent OpenCV's CV_IMAGES backend from treating it as an image sequence
                     String nonce = UUID.randomUUID().toString().replaceAll("[0-9-]", "x");
@@ -1044,10 +1054,25 @@ public class BlueprintGalleryTab extends JPanel {
                     Files.write(tempFile.toPath(), bytes);
                     
                     try {
-                        de.tki.comfymodels.util.OpenCvLoader.load();
-                    } catch (Throwable ignored) {}
+                        if (isVideo) {
+                            try {
+                                Video4j.init();
+                                try (VideoFile vid = Videos.open(tempFile.getAbsolutePath())) {
+                                    vid.seekToFrame(0);
+                                    BufferedImage img = vid.frameToImage();
+                                    if (img != null) {
+                                        return img;
+                                    }
+                                }
+                            } catch (Exception ex) {
+                                logger.debug("Video4j fallback failed for " + urlStr, ex);
+                            }
+                        }
 
-                    try {
+                        try {
+                            de.tki.comfymodels.util.OpenCvLoader.load();
+                        } catch (Throwable ignored) {}
+
                         Mat mat = Imgcodecs.imread(tempFile.getAbsolutePath());
                         if (mat != null && !mat.empty()) {
                             MatOfByte buffer = new MatOfByte();

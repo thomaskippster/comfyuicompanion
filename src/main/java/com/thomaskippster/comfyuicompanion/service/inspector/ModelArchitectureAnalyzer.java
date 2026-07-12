@@ -80,7 +80,7 @@ public class ModelArchitectureAnalyzer {
 
         result.setArchitectureType(arch);
 
-        // 3. Extract Trigger Words (from standard LoRA metadata spec)
+        // 3. Extract Trigger Words and Style (from standard LoRA metadata spec and tag frequency)
         List<String> triggers = new ArrayList<>();
         if (meta != null) {
             String triggerPhrase = meta.get("modelspec.trigger_phrase");
@@ -89,10 +89,53 @@ public class ModelArchitectureAnalyzer {
             }
             
             String tags = meta.get("ss_tag_frequency");
-            // Advanced parsing of ss_tag_frequency would be here. It usually contains JSON strings.
-            // For now we add a simplistic fallback if tags exist.
-            if (tags != null && !tags.isEmpty() && triggers.isEmpty()) {
-                triggers.add("Parsed tags available");
+            if (tags != null && !tags.isEmpty()) {
+                try {
+                    com.fasterxml.jackson.databind.JsonNode tagsNode = objectMapper.readTree(tags);
+                    int animeScore = 0;
+                    int photoScore = 0;
+                    
+                    if (tagsNode.isObject()) {
+                        java.util.Iterator<Map.Entry<String, com.fasterxml.jackson.databind.JsonNode>> datasets = tagsNode.fields();
+                        while (datasets.hasNext()) {
+                            Map.Entry<String, com.fasterxml.jackson.databind.JsonNode> dataset = datasets.next();
+                            if (dataset.getValue().isObject()) {
+                                java.util.Iterator<Map.Entry<String, com.fasterxml.jackson.databind.JsonNode>> tagEntries = dataset.getValue().fields();
+                                while (tagEntries.hasNext()) {
+                                    Map.Entry<String, com.fasterxml.jackson.databind.JsonNode> tagEntry = tagEntries.next();
+                                    String tag = tagEntry.getKey().toLowerCase();
+                                    int freq = tagEntry.getValue().asInt(0);
+                                    
+                                    // Add very frequent tags as fallback triggers if none existed
+                                    if (triggers.isEmpty() && freq > 50) {
+                                        triggers.add(tag);
+                                    }
+                                    
+                                    // Heuristic Scoring
+                                    if (tag.contains("1girl") || tag.contains("masterpiece") || tag.contains("anime") || tag.contains("manga")) {
+                                        animeScore += freq;
+                                    } else if (tag.contains("realistic") || tag.contains("photography") || tag.contains("raw photo") || tag.contains("8k")) {
+                                        photoScore += freq;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                    if (animeScore > photoScore * 2 && animeScore > 10) {
+                        result.setStyle("Anime");
+                    } else if (photoScore > animeScore * 2 && photoScore > 10) {
+                        result.setStyle("Photorealistic");
+                    } else {
+                        result.setStyle("Generic/Mixed");
+                    }
+                    
+                } catch (Exception e) {
+                    // Ignore parse errors, just fallback
+                    if (triggers.isEmpty()) {
+                        triggers.add("Parsed tags available (unreadable)");
+                    }
+                }
             }
         }
         result.setTriggerWords(triggers);

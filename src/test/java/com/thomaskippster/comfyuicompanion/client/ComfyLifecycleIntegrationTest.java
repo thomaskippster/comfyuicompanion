@@ -13,6 +13,9 @@ import org.springframework.test.context.junit.jupiter.SpringExtension;
 import org.springframework.test.context.ContextConfiguration;
 import org.junit.jupiter.api.extension.ExtendWith;
 
+import org.junit.jupiter.api.Assumptions;
+import org.springframework.web.reactive.function.client.WebClientRequestException;
+
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -23,7 +26,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @ExtendWith(SpringExtension.class)
 @ContextConfiguration(classes = {ComfyHttpClient.class, ComfyWebSocketClient.class, com.thomaskippster.comfyuicompanion.websocket.ComfyWebSocketHandler.class, com.thomaskippster.comfyuicompanion.config.JacksonConfig.class})
-@Disabled("Requires a running ComfyUI instance on 127.0.0.1:8188 and proper bean config")
 public class ComfyLifecycleIntegrationTest {
 
     @Autowired
@@ -40,16 +42,34 @@ public class ComfyLifecycleIntegrationTest {
         workflowCompleted.set(true);
         completionLatch.countDown(); // Unblock the test thread
     }
+    
+    private boolean isServerRunning() {
+        try {
+            // Check if server is running by requesting system stats
+            httpClient.getSystemStats().block();
+            return true;
+        } catch (WebClientRequestException e) {
+            return false;
+        } catch (Exception e) {
+            return false;
+        }
+    }
 
     @Test
     public void testFullLifecycle() throws Exception {
-        // 1. Build a minimalistic Workflow
+        Assumptions.assumeTrue(isServerRunning(), "ComfyUI Server is not running. Skipping integration test.");
+
+        // 1. Build a working Workflow (LTXV / T5XXL) that we verified exists locally
         WorkflowBuilder builder = new WorkflowBuilder();
         String checkpointId = builder.addNode("CheckpointLoaderSimple")
-                .param("ckpt_name", "v1-5-pruned-emaonly.safetensors").getId();
+                .param("ckpt_name", "LTXV\\ltx-video-2b-v0.9.5.safetensors").getId();
+                
+        String clipId = builder.addNode("CLIPLoader")
+                .param("clip_name", "t5\\t5xxl_fp16.safetensors")
+                .param("type", "ltxv").getId();
         
         String positiveId = builder.addNode("CLIPTextEncode")
-                .param("text", "a beautiful landscape").link("clip", checkpointId, 1).getId();
+                .param("text", "a beautiful landscape").link("clip", clipId, 0).getId();
         
         String emptyLatentId = builder.addNode("EmptyLatentImage")
                 .param("width", 512).param("height", 512).param("batch_size", 1).getId();

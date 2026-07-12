@@ -145,8 +145,8 @@ public class AgenticWorkflowOrchestrator {
                     .param("max_size", 768)
                     .param("seed", System.currentTimeMillis() % 1000000)
                     .param("steps", steps).param("cfg", cfg) // Nutze die gleichen Turbo-Settings!
-                    .param("sampler_name", samplerName).param("scheduler", scheduler).param("denoise", 0.5)
-                    .link("image", vaeDecodeId, 0) // Baut auf dem VAE Output auf
+                    .param("sampler_name", samplerName).param("scheduler", scheduler).param("denoise", 0.35)
+                    .link("image", finalOutputLink, 0) // Baut auf dem bisherigen Output auf (VAE oder vorheriger Node)
                     .link("model", checkpointId, 0)
                     .link("clip", clipSourceId, clipSourceIndex)
                     .link("vae", checkpointId, 2)
@@ -154,8 +154,36 @@ public class AgenticWorkflowOrchestrator {
                     .link("negative", negativeId, 0)
                     .link("bbox_detector", bboxDetectorId, 0).getId();
             
-            // Verbiege den finalen Link, sodass SaveImage das FaceDetailer-Ergebnis abspeichert
+            // Verbiege den finalen Link, sodass der nächste Knoten das FaceDetailer-Ergebnis abspeichert
             finalOutputLink = faceDetailerId; 
+        }
+
+        // 4. Conditional Routing: Upscaling
+        if (intent.isRequiresUpscaling()) {
+            logger.info("Conditional Routing: Injecting UltimateSDUpscale for high-resolution output.");
+            
+            String upscaleModelId = builder.addNode("UpscaleModelLoader")
+                    .param("model_name", "4x-UltraSharp.pth").getId(); // Standard Upscaler Model (Beispiel)
+
+            String ultimateUpscaleId = builder.addNode("UltimateSDUpscale")
+                    .param("upscale_by", 2.0)
+                    .param("seed", System.currentTimeMillis() % 1000000)
+                    .param("steps", steps).param("cfg", cfg)
+                    .param("sampler_name", samplerName).param("scheduler", scheduler).param("denoise", 0.2)
+                    .param("mode_type", "Linear")
+                    .param("tile_width", 512).param("tile_height", 512)
+                    .param("mask_blur", 8).param("tile_padding", 32)
+                    .param("seam_fix_mode", "None").param("seam_fix_denoise", 1.0)
+                    .param("seam_fix_width", 64).param("seam_fix_mask_blur", 8)
+                    .param("seam_fix_padding", 16).param("force_uniform_tiles", true)
+                    .link("image", finalOutputLink, 0)
+                    .link("model", checkpointId, 0)
+                    .link("positive", positiveId, 0)
+                    .link("negative", negativeId, 0)
+                    .link("vae", checkpointId, 2)
+                    .link("upscale_model", upscaleModelId, 0).getId();
+            
+            finalOutputLink = ultimateUpscaleId;
         }
 
         builder.addNode("SaveImage")

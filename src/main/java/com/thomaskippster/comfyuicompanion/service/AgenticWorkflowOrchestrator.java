@@ -103,10 +103,25 @@ public class AgenticWorkflowOrchestrator {
         String emptyLatentId = builder.addNode("EmptyLatentImage")
                 .param("width", width).param("height", height).param("batch_size", 1).getId();
 
+        // --- 2.5 Heuristik: KSampler Parameter für Turbo / LCM Modelle ---
+        int steps = 20;
+        double cfg = 7.0;
+        String samplerName = "euler";
+        String scheduler = "normal";
+
+        String lowerModelName = finalModelName.toLowerCase();
+        if (lowerModelName.contains("turbo") || lowerModelName.contains("lcm") || lowerModelName.contains("lightning") || "z_image_turbo_bf16.safetensors".equals(lowerModelName)) {
+            logger.info("Turbo-Modell erkannt ({}). Reduziere Steps und CFG zur Vermeidung von Noise.", finalModelName);
+            steps = 4;
+            cfg = 1.5;
+            samplerName = "lcm"; // Oft am besten für turbo/lcm, oder euler_ancestral
+            scheduler = "sgm_uniform";
+        }
+
         String samplerId = builder.addNode("KSampler")
                 .param("seed", System.currentTimeMillis() % 1000000)
-                .param("steps", 20).param("cfg", 7.0)
-                .param("sampler_name", "euler").param("scheduler", "normal").param("denoise", 1.0)
+                .param("steps", steps).param("cfg", cfg)
+                .param("sampler_name", samplerName).param("scheduler", scheduler).param("denoise", 1.0)
                 .link("model", checkpointId, 0)
                 .link("positive", positiveId, 0)
                 .link("negative", negativeId, 0)
@@ -129,8 +144,8 @@ public class AgenticWorkflowOrchestrator {
                     .param("guide_size_for", true)
                     .param("max_size", 768)
                     .param("seed", System.currentTimeMillis() % 1000000)
-                    .param("steps", 20).param("cfg", 8.0)
-                    .param("sampler_name", "euler").param("scheduler", "normal").param("denoise", 0.5)
+                    .param("steps", steps).param("cfg", cfg) // Nutze die gleichen Turbo-Settings!
+                    .param("sampler_name", samplerName).param("scheduler", scheduler).param("denoise", 0.5)
                     .link("image", vaeDecodeId, 0) // Baut auf dem VAE Output auf
                     .link("model", checkpointId, 0)
                     .link("clip", clipSourceId, clipSourceIndex)

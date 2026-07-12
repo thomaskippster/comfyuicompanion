@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  comfyuicompanion:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: comfyui-companion-server
+    ports:
+      - "8080:8080"
+    environment:
+      # Hier referenzieren wir den internen Docker-Pfad für Modelle
+      - COMFYUI_MODELS_PATH=/models
+      # URL zur (ggf. hostbasierten) ComfyUI-Instanz. Auf Linux ist das meist host.docker.internal
+      - COMFYUI_API_URL=http://host.docker.internal:8188
+    volumes:
+      # Mappe den echten ComfyUI Modell-Ordner des Host-Systems auf das Container-Volume /models
+      - C:/AI/ComfyUI/resources/ComfyUI/models:/models
+      # Falls noch lokale Config-Files persistent bleiben sollen:
+      # - ./config:/app/config
+    restart: unless-stopped

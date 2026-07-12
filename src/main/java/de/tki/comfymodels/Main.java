@@ -3664,15 +3664,15 @@ public class Main extends JFrame {
     }
 
     private JPanel createDashboardPanel(JTabbedPane tabs) {
-        JPanel panel = new JPanel(new BorderLayout(20, 20));
-        panel.setOpaque(false);
+        de.tki.comfymodels.ui.GlassPanel panel = new de.tki.comfymodels.ui.GlassPanel();
+        panel.setLayout(new BorderLayout(20, 20));
         panel.setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
 
         // LEFT: Profile List (Card-like)
-        JPanel leftPanel = new JPanel(new BorderLayout(10, 10));
-        leftPanel.setOpaque(false);
+        de.tki.comfymodels.ui.GlassPanel leftPanel = new de.tki.comfymodels.ui.GlassPanel();
+        leftPanel.setLayout(new BorderLayout(10, 10));
         leftPanel.setPreferredSize(new Dimension(320, 0));
-        leftPanel.putClientProperty("FlatLaf.style", "arc: 16; background: $Card.background; border: 15,15,15,15,$Card.border,1,16");
+        // FlatLaf overrides the background, so we remove the FlatLaf style property to let the GlassPanel shine
         leftPanel.setBorder(BorderFactory.createEmptyBorder(15, 15, 15, 15));
 
         JLabel profilesHeader = new JLabel("Startprofile");
@@ -5881,6 +5881,13 @@ public class Main extends JFrame {
         darkCheck.addActionListener(e -> {
             boolean isDark = darkCheck.isSelected();
             configService.setDarkMode(isDark);
+            
+            // 1. ThemeManager benachrichtigen für unsere Custom GlassPanels
+            if (de.tki.comfymodels.ui.ThemeManager.isDarkMode() != isDark) {
+                de.tki.comfymodels.ui.ThemeManager.toggleTheme();
+            }
+
+            // 2. FlatLaf Snapshot-Animation für den Rest der Applikation
             FlatAnimatedLafChange.showSnapshot();
             setupTheme(isDark);
             revalidate();

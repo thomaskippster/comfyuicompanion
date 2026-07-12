@@ -121,7 +121,9 @@ public class ComfyRegistryClient implements IComfyRegistryClient {
                             wf.setCategory(categoryTitle);
 
                             // Construct raw Github URLs for JSON and previews
-                            wf.setJsonDownloadUrl("https://raw.githubusercontent.com/Comfy-Org/workflow_templates/main/templates/" + name + ".json");
+                            // Encode path segments correctly to avoid URI syntax exceptions
+                            String encodedName = encodeUrlPath(name);
+                            wf.setJsonDownloadUrl("https://raw.githubusercontent.com/Comfy-Org/workflow_templates/main/templates/" + encodedName + ".json");
                             
                             // The registry returns the actual preview as a relative path inside
                             // the "thumbnail" array (e.g. "output/foo.mp4", "thumbnail/foo.png").
@@ -134,8 +136,10 @@ public class ComfyRegistryClient implements IComfyRegistryClient {
                             if (thumbNode.isArray() && thumbNode.size() > 0 && thumbNode.get(0).isTextual()) {
                                 thumbRel = thumbNode.get(0).asText();
                             }
+                            String thumbnailExt = mediaSubtype.isEmpty() ? "webp" : mediaSubtype;
+                            wf.setThumbnailUrl(rawBase + encodedName + "-1." + thumbnailExt);
+
                             if (thumbRel != null && !thumbRel.isEmpty()) {
-                                wf.setThumbnailUrl(rawBase + thumbRel);
                                 String lower = thumbRel.toLowerCase();
                                 if (lower.endsWith(".mp4") || lower.endsWith(".webm") || lower.endsWith(".mov")) {
                                     wf.setMediaType("video");
@@ -143,9 +147,6 @@ public class ComfyRegistryClient implements IComfyRegistryClient {
                                     wf.setMediaType(mediaType);
                                 }
                             } else {
-                                // Fallback to the legacy "<name>-1.<subtype>" URL.
-                                String thumbnailExt = mediaSubtype.isEmpty() ? "webp" : mediaSubtype;
-                                wf.setThumbnailUrl(rawBase + name + "-1." + thumbnailExt);
                                 wf.setMediaType(mediaType);
                             }
                             wf.setMediaSubtype(mediaSubtype);
@@ -160,6 +161,19 @@ public class ComfyRegistryClient implements IComfyRegistryClient {
         } catch (Exception e) {
             logger.error("❌ [ComfyRegistryClient] Failed to parse workflow JSON: " + e.getMessage());
             throw new RuntimeException(e);
+        }
+    }
+
+    private String encodeUrlPath(String path) {
+        if (path == null) return null;
+        try {
+            String[] parts = path.split("/");
+            for (int i = 0; i < parts.length; i++) {
+                parts[i] = java.net.URLEncoder.encode(parts[i], java.nio.charset.StandardCharsets.UTF_8).replace("+", "%20");
+            }
+            return String.join("/", parts);
+        } catch (Exception e) {
+            return path.replace(" ", "%20");
         }
     }
 

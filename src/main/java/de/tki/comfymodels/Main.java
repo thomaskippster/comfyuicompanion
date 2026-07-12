@@ -399,63 +399,62 @@ public class Main extends JFrame {
             UIManager.put("defaultFont", defaultFont);
 
             if (darkMode) {
-                // Tron Legacy Base Dark Palette
-                Color nodeBg = new javax.swing.plaf.ColorUIResource(10, 10, 15); 
-                Color comfySurface = new javax.swing.plaf.ColorUIResource(5, 5, 8); 
-                Color comfyAccent = new javax.swing.plaf.ColorUIResource(0, 255, 255); // Neon Cyan Accent
-                Color comfyText = new javax.swing.plaf.ColorUIResource(200, 240, 255); 
-                Color comfyBorder = new javax.swing.plaf.ColorUIResource(0, 100, 120);
+                // Corporate Base Dark Palette
+                Color nodeBg = new javax.swing.plaf.ColorUIResource(18, 19, 22); 
+                Color comfySurface = new javax.swing.plaf.ColorUIResource(18, 19, 22); 
+                Color comfyAccent = new javax.swing.plaf.ColorUIResource(0, 120, 215); // Corporate Blue
+                Color comfyText = new javax.swing.plaf.ColorUIResource(Color.WHITE); 
+                Color comfyBorder = new javax.swing.plaf.ColorUIResource(new Color(255, 255, 255, 30));
 
                 UIManager.put("DefaultBackgroundColor", comfySurface);
                 UIManager.put("Panel.background", nodeBg);
-                UIManager.put("Table.background", comfySurface);
-                UIManager.put("TextArea.background", comfySurface);
-                UIManager.put("TextField.background", new javax.swing.plaf.ColorUIResource(15, 15, 20));
-                UIManager.put("PasswordField.background", new javax.swing.plaf.ColorUIResource(15, 15, 20));
+                UIManager.put("Table.background", new javax.swing.plaf.ColorUIResource(30, 34, 42));
+                UIManager.put("TextArea.background", new javax.swing.plaf.ColorUIResource(30, 34, 42));
+                UIManager.put("TextField.background", new javax.swing.plaf.ColorUIResource(30, 34, 42));
+                UIManager.put("PasswordField.background", new javax.swing.plaf.ColorUIResource(30, 34, 42));
                 
                 UIManager.put("Label.foreground", comfyText);
                 UIManager.put("Table.foreground", comfyText);
                 UIManager.put("TextArea.foreground", comfyText);
                 
-                UIManager.put("Table.selectionBackground", new javax.swing.plaf.ColorUIResource(new Color(0, 255, 255, 60))); 
+                UIManager.put("Table.selectionBackground", new javax.swing.plaf.ColorUIResource(new Color(0, 120, 215, 60))); 
                 UIManager.put("Table.selectionForeground", Color.WHITE);
                 UIManager.put("Component.focusedBorderColor", comfyAccent);
                 UIManager.put("Separator.foreground", comfyBorder);
                 
-                UIManager.put("Button.background", new javax.swing.plaf.ColorUIResource(15, 15, 20));
+                UIManager.put("Button.background", new javax.swing.plaf.ColorUIResource(30, 34, 42));
                 UIManager.put("Button.foreground", comfyText);
-                UIManager.put("Button.focusedBackground", new javax.swing.plaf.ColorUIResource(0, 200, 200)); 
-                UIManager.put("Button.hoverBackground", new javax.swing.plaf.ColorUIResource(0, 150, 150));
-                UIManager.put("Button.pressedBackground", new javax.swing.plaf.ColorUIResource(0, 100, 100));
+                UIManager.put("Button.focusedBackground", new javax.swing.plaf.ColorUIResource(0, 120, 215)); 
+                UIManager.put("Button.hoverBackground", new javax.swing.plaf.ColorUIResource(0, 140, 235));
+                UIManager.put("Button.pressedBackground", new javax.swing.plaf.ColorUIResource(0, 100, 190));
                 UIManager.put("Button.borderColor", comfyBorder);
                 
                 UIManager.put("ScrollBar.track", comfySurface);
-                UIManager.put("ScrollBar.thumb", new javax.swing.plaf.ColorUIResource(0, 100, 120));
+                UIManager.put("ScrollBar.thumb", new javax.swing.plaf.ColorUIResource(100, 100, 100));
                 
-                UIManager.put("TabbedPane.selectedBackground", new javax.swing.plaf.ColorUIResource(new Color(0, 255, 255, 40)));
+                UIManager.put("TabbedPane.selectedBackground", new javax.swing.plaf.ColorUIResource(new Color(0, 120, 215, 40)));
                 UIManager.put("TabbedPane.selectedForeground", Color.WHITE);
                 UIManager.put("TabbedPane.underlineColor", comfyAccent);
 
-                // ProgressBar custom styles - slim and styled with glowing cyan
+                // ProgressBar custom styles
                 UIManager.put("ProgressBar.foreground", comfyAccent);
-                UIManager.put("ProgressBar.background", new Color(10, 10, 15));
+                UIManager.put("ProgressBar.background", new Color(30, 34, 42));
                 UIManager.put("ProgressBar.arc", 999);
 
                 // Card panel & UI styling variables
-                UIManager.put("Card.background", new Color(15, 15, 20, 176)); 
-                UIManager.put("Card.border", new Color(0, 255, 255, 40)); 
-                UIManager.put("Card.placeholder", new Color(15, 15, 20, 144)); 
-                UIManager.put("Card.placeholderBorder", new Color(0, 255, 255, 30));
-                UIManager.put("Toolbar.customBg", new Color(15, 15, 20, 128));
-                UIManager.put("SlimStat.titleForeground", new Color(150, 200, 220));
-                UIManager.put("SlimStat.valueForeground", new Color(0, 255, 255));
-                UIManager.put("SlimStat.barForeground", new Color(0, 255, 255));
-                UIManager.put("SlimStat.barBackground", new Color(10, 10, 15));
-                UIManager.put("MainTabs.gradientStart", new Color(5, 5, 8));
-                UIManager.put("MainTabs.gradientEnd", new Color(10, 10, 15));
-                UIManager.put("MainTabs.glowStart", new Color(0, 255, 255, 20));
-                UIManager.put("PromptLab.presetForeground", new Color(0, 255, 255));
-                
+                UIManager.put("Card.background", new Color(30, 34, 42)); 
+                UIManager.put("Card.border", comfyBorder); 
+                UIManager.put("Card.placeholder", new Color(30, 34, 42, 144)); 
+                UIManager.put("Card.placeholderBorder", new Color(255, 255, 255, 18));
+                UIManager.put("Toolbar.customBg", new Color(30, 34, 42));
+                UIManager.put("SlimStat.titleForeground", new Color(180, 190, 205));
+                UIManager.put("SlimStat.valueForeground", comfyAccent);
+                UIManager.put("SlimStat.barForeground", comfyAccent);
+                UIManager.put("SlimStat.barBackground", new Color(18, 19, 22));
+                UIManager.put("MainTabs.gradientStart", new Color(18, 19, 22));
+                UIManager.put("MainTabs.gradientEnd", new Color(18, 19, 22));
+                UIManager.put("MainTabs.glowStart", new Color(0, 120, 215, 20));
+                UIManager.put("PromptLab.presetForeground", comfyAccent);
                 
                 UIManager.setLookAndFeel(new FlatDarkLaf());
             } else {
@@ -1357,15 +1356,14 @@ public class Main extends JFrame {
             "}";
 
     private JPanel createPromptLabPanel() {
-        de.tki.comfymodels.ui.GlassPanel panel = new de.tki.comfymodels.ui.GlassPanel();
+        JPanel panel = new JPanel();
+        panel.setOpaque(false);
         panel.setLayout(new BorderLayout(15, 15));
         panel.setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
 
         // LEFT: Prompt builder controls (Was?, Wo?, Wie?)
-        de.tki.comfymodels.ui.GlassPanel leftPanel = new de.tki.comfymodels.ui.GlassPanel();
+        de.tki.comfymodels.ui.CardPanel leftPanel = new de.tki.comfymodels.ui.CardPanel();
         leftPanel.setLayout(new BoxLayout(leftPanel, BoxLayout.Y_AXIS));
-        // FlatLaf background style removed for GlassPanel transparency
-        leftPanel.setBorder(BorderFactory.createEmptyBorder(15, 15, 15, 15));
 
         // Header Title
         JLabel titleLabel = new JLabel("🔬 Prompt Lab");
@@ -1392,8 +1390,8 @@ public class Main extends JFrame {
 
         btnSuggestSubject = new JButton("✨ Suggest");
         btnSuggestSubject.setFont(new Font("SansSerif", Font.BOLD, 12));
-        btnSuggestSubject.putClientProperty("Button.background", new Color(0, 255, 255)); // Tron Neon Cyan
-        btnSuggestSubject.putClientProperty("Button.foreground", Color.BLACK);
+        btnSuggestSubject.putClientProperty("Button.background", de.tki.comfymodels.ui.ThemeManager.getAccentColor()); 
+        btnSuggestSubject.putClientProperty("Button.foreground", Color.WHITE);
         if (localAIService == null || !localAIService.isLocalGemmaDownloaded()) {
             btnSuggestSubject.setToolTipText("Download local Gemma model to unlock suggestions.");
         } else {
@@ -1670,10 +1668,8 @@ public class Main extends JFrame {
 
 
         // RIGHT: ComfyUI integration / API payload view
-        JPanel rightPanel = new JPanel(new BorderLayout(10, 10));
-        rightPanel.setOpaque(false);
-        rightPanel.putClientProperty("FlatLaf.style", "arc: 16; background: $Card.background; border: 15,15,15,15,$Card.border,1,16");
-        rightPanel.setBorder(BorderFactory.createEmptyBorder(15, 15, 15, 15));
+        de.tki.comfymodels.ui.CardPanel rightPanel = new de.tki.comfymodels.ui.CardPanel();
+        rightPanel.setLayout(new BorderLayout(10, 10));
 
         // Top controls of right panel
         JPanel rightTopPanel = new JPanel(new BorderLayout());
@@ -5526,14 +5522,17 @@ public class Main extends JFrame {
     }
 
     private JPanel createManagerPanel(JTabbedPane tabs) {
-        de.tki.comfymodels.ui.GlassPanel managerPanel = new de.tki.comfymodels.ui.GlassPanel();
+        JPanel managerPanel = new JPanel();
+        managerPanel.setOpaque(false); // Relies on APP_BG_COLOR from root
         managerPanel.setLayout(new BorderLayout(10, 10));
         managerPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
 
-        JPanel toolbar = new JPanel(new FlowLayout(FlowLayout.LEFT, 12, 8));
+        de.tki.comfymodels.ui.CardPanel toolbarCard = new de.tki.comfymodels.ui.CardPanel();
+        toolbarCard.setLayout(new FlowLayout(FlowLayout.LEFT, 12, 0));
+        toolbarCard.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+
+        JPanel toolbar = new JPanel(new FlowLayout(FlowLayout.LEFT, 12, 0));
         toolbar.setOpaque(false);
-        toolbar.putClientProperty("FlatLaf.style", "background: $Toolbar.customBg");
-        toolbar.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, UIManager.getColor("Separator.foreground")));
 
         JButton verifyBtn = new JButton("🔍 Quick Check");
         verifyBtn.putClientProperty("JButton.buttonType", "roundRect");
@@ -5591,17 +5590,19 @@ public class Main extends JFrame {
         toolbar.add(diagnosticBtn);
 
         JSplitPane splitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
-        JPanel jsonPanel = new JPanel(new BorderLayout());
-        jsonPanel.putClientProperty("FlatLaf.style", "arc: 16; background: $Card.background; border: 15,15,15,15,$Card.border,1,16");
-        jsonPanel.setOpaque(false);
-        jsonPanel.setBorder(BorderFactory.createTitledBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5), "Workflow (Drag & Drop JSON/PNG)"));
+        de.tki.comfymodels.ui.CardPanel jsonPanel = new de.tki.comfymodels.ui.CardPanel();
+        jsonPanel.setLayout(new BorderLayout());
+        
+        JLabel jsonTitle = new JLabel("Workflow (Drag & Drop JSON/PNG)");
+        jsonTitle.setFont(new Font("SansSerif", Font.BOLD, 14));
+        jsonTitle.setForeground(de.tki.comfymodels.ui.ThemeManager.getTextColor());
+        jsonPanel.add(jsonTitle, BorderLayout.NORTH);
         
         jsonInputArea = new JTextArea();
         setupDragAndDrop(jsonInputArea);
         JScrollPane jsonScroll = new JScrollPane(jsonInputArea);
         jsonScroll.setOpaque(false);
         jsonScroll.getViewport().setOpaque(false);
-        jsonScroll.setBorder(BorderFactory.createEmptyBorder());
         
         JPanel jsonButtons = new JPanel(new FlowLayout(FlowLayout.RIGHT));
         jsonButtons.setOpaque(false);
@@ -5790,15 +5791,20 @@ public class Main extends JFrame {
         bottomPanel.add(progressPanel, BorderLayout.CENTER);
         bottomPanel.add(actionButtons, BorderLayout.EAST);
 
-        managerPanel.add(toolbar, BorderLayout.NORTH);
-        managerPanel.add(splitPane, BorderLayout.CENTER);
-        managerPanel.add(bottomPanel, BorderLayout.SOUTH);
+        de.tki.comfymodels.ui.CardPanel mainCard = new de.tki.comfymodels.ui.CardPanel();
+        mainCard.setLayout(new BorderLayout(10, 10));
+        mainCard.add(splitPane, BorderLayout.CENTER);
+        mainCard.add(bottomPanel, BorderLayout.SOUTH);
+
+        managerPanel.add(toolbarCard, BorderLayout.NORTH);
+        managerPanel.add(mainCard, BorderLayout.CENTER);
         
         return managerPanel;
     }
 
     private JPanel createSettingsPanel() {
-        de.tki.comfymodels.ui.GlassPanel panel = new de.tki.comfymodels.ui.GlassPanel();
+        JPanel panel = new JPanel();
+        panel.setOpaque(false); // Let APP_BG_COLOR show
         panel.setLayout(new BorderLayout(15, 15));
         panel.setBorder(BorderFactory.createEmptyBorder(25, 25, 25, 25));
 
@@ -5809,10 +5815,8 @@ public class Main extends JFrame {
         grid.setOpaque(false);
         
         // Left Column: General & Paths
-        de.tki.comfymodels.ui.GlassPanel left = new de.tki.comfymodels.ui.GlassPanel();
+        de.tki.comfymodels.ui.CardPanel left = new de.tki.comfymodels.ui.CardPanel();
         left.setLayout(new BoxLayout(left, BoxLayout.Y_AXIS));
-        // FlatLaf background style removed for GlassPanel transparency
-        left.setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
 
         JLabel pathsHeader = new JLabel("General & Paths");
         pathsHeader.putClientProperty("FlatLaf.styleClass", "h3");
@@ -5965,11 +5969,8 @@ public class Main extends JFrame {
         left.add(Box.createVerticalGlue());
 
         // Right Column: AI & Help
-        JPanel right = new JPanel();
-        right.setOpaque(false);
+        de.tki.comfymodels.ui.CardPanel right = new de.tki.comfymodels.ui.CardPanel();
         right.setLayout(new BoxLayout(right, BoxLayout.Y_AXIS));
-        right.putClientProperty("FlatLaf.style", "arc: 16; background: $Card.background; border: 20,20,20,20,$Card.border,1,16");
-        right.setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
 
         JLabel aiHeader = new JLabel("AI & Support");
         aiHeader.putClientProperty("FlatLaf.styleClass", "h3");

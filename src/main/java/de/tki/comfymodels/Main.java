@@ -1356,15 +1356,14 @@ public class Main extends JFrame {
             "}";
 
     private JPanel createPromptLabPanel() {
-        JPanel panel = new JPanel(new BorderLayout(15, 15));
-        panel.setOpaque(false);
+        de.tki.comfymodels.ui.GlassPanel panel = new de.tki.comfymodels.ui.GlassPanel();
+        panel.setLayout(new BorderLayout(15, 15));
         panel.setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
 
         // LEFT: Prompt builder controls (Was?, Wo?, Wie?)
-        JPanel leftPanel = new JPanel();
-        leftPanel.setOpaque(false);
+        de.tki.comfymodels.ui.GlassPanel leftPanel = new de.tki.comfymodels.ui.GlassPanel();
         leftPanel.setLayout(new BoxLayout(leftPanel, BoxLayout.Y_AXIS));
-        leftPanel.putClientProperty("FlatLaf.style", "arc: 16; background: $Card.background; border: 15,15,15,15,$Card.border,1,16");
+        // FlatLaf background style removed for GlassPanel transparency
         leftPanel.setBorder(BorderFactory.createEmptyBorder(15, 15, 15, 15));
 
         // Header Title
@@ -5526,8 +5525,8 @@ public class Main extends JFrame {
     }
 
     private JPanel createManagerPanel(JTabbedPane tabs) {
-        JPanel managerPanel = new JPanel(new BorderLayout(10, 10));
-        managerPanel.setOpaque(false);
+        de.tki.comfymodels.ui.GlassPanel managerPanel = new de.tki.comfymodels.ui.GlassPanel();
+        managerPanel.setLayout(new BorderLayout(10, 10));
         managerPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
 
         JPanel toolbar = new JPanel(new FlowLayout(FlowLayout.LEFT, 12, 8));
@@ -5798,8 +5797,8 @@ public class Main extends JFrame {
     }
 
     private JPanel createSettingsPanel() {
-        JPanel panel = new JPanel(new BorderLayout(15, 15));
-        panel.setOpaque(false);
+        de.tki.comfymodels.ui.GlassPanel panel = new de.tki.comfymodels.ui.GlassPanel();
+        panel.setLayout(new BorderLayout(15, 15));
         panel.setBorder(BorderFactory.createEmptyBorder(25, 25, 25, 25));
 
         Font btnFont = new Font("SansSerif", Font.BOLD, 14);
@@ -5809,10 +5808,9 @@ public class Main extends JFrame {
         grid.setOpaque(false);
         
         // Left Column: General & Paths
-        JPanel left = new JPanel();
-        left.setOpaque(false);
+        de.tki.comfymodels.ui.GlassPanel left = new de.tki.comfymodels.ui.GlassPanel();
         left.setLayout(new BoxLayout(left, BoxLayout.Y_AXIS));
-        left.putClientProperty("FlatLaf.style", "arc: 16; background: $Card.background; border: 20,20,20,20,$Card.border,1,16");
+        // FlatLaf background style removed for GlassPanel transparency
         left.setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
 
         JLabel pathsHeader = new JLabel("General & Paths");

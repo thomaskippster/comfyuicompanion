@@ -2084,34 +2084,7 @@ public class Main extends JFrame {
         
         String selectedModel = getActualModelForPromptLab(selectedModelRaw);
 
-        // Generic fallback for z_image_turbo_bf16.safetensors to avoid Bad Requests
-        if (selectedModel.toLowerCase().contains("z_image_turbo")) {
-            String fallback = null;
-            for (String u : comfyUnetModels) {
-                String ul = u.toLowerCase();
-                if (ul.contains("flux") || ul.contains("schnell") || ul.contains("dev")) {
-                    fallback = u;
-                    break;
-                }
-            }
-            if (fallback == null && !comfyUnetModels.isEmpty()) {
-                fallback = comfyUnetModels.iterator().next();
-            }
-            if (fallback == null) {
-                fallback = "flux1-schnell.safetensors";
-            }
-            
-            selectedModel = fallback;
-            final String finalFallback = fallback;
-            SwingUtilities.invokeLater(() -> {
-                if (promptModelCombo != null) {
-                    promptModelCombo.setSelectedItem(finalFallback);
-                }
-                if (promptLabConsole != null) {
-                    promptLabConsole.append("⚠️ Generic fallback triggered for z_image_turbo to avoid RuntimeError. Using: " + finalFallback + "\n");
-                }
-            });
-        }
+
         
         boolean isDiff = isDiffusionModel(selectedModel);
         
@@ -2678,10 +2651,11 @@ public class Main extends JFrame {
             // Query ComfyUI API status & available checkpoints/unets
             try {
                 java.net.http.HttpClient client = java.net.http.HttpClient.newBuilder()
-                        .connectTimeout(java.time.Duration.ofSeconds(3))
+                        .connectTimeout(java.time.Duration.ofSeconds(10))
                         .build();
                 java.net.http.HttpRequest request = java.net.http.HttpRequest.newBuilder()
                         .uri(java.net.URI.create(comfyUrl + "/object_info"))
+                        .timeout(java.time.Duration.ofSeconds(10))
                         .GET()
                         .build();
                 java.net.http.HttpResponse<String> response = client.send(request, java.net.http.HttpResponse.BodyHandlers.ofString());
@@ -2706,6 +2680,23 @@ public class Main extends JFrame {
                 }
             }
             if (list.isEmpty()) {
+                // Fallback 1: Scan actual ComfyUI models directory (fixes missing models if server isn't fully ready)
+                String comfyPath = configService.getComfyUIPath();
+                if (comfyPath != null && !comfyPath.isEmpty()) {
+                    java.io.File comfyModels = new java.io.File(comfyPath, "models");
+                    if (comfyModels.exists() && comfyModels.isDirectory()) {
+                        java.io.File checkpointsDir = new java.io.File(comfyModels, "checkpoints");
+                        if (checkpointsDir.exists() && checkpointsDir.isDirectory()) {
+                            scanModelsRecursively(checkpointsDir, "", list);
+                        }
+                        java.io.File unetDir = new java.io.File(comfyModels, "unet");
+                        if (unetDir.exists() && unetDir.isDirectory()) {
+                            scanModelsRecursively(unetDir, "", list);
+                        }
+                    }
+                }
+                
+                // Fallback 2: Scan extra models path
                 String modelsPath = configService.getModelsPath();
                 if (modelsPath != null && !modelsPath.isEmpty()) {
                     java.io.File checkpointsDir = new java.io.File(modelsPath, "checkpoints");

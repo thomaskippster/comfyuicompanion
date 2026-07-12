@@ -482,6 +482,16 @@ public class Video4jEditorService {
             if (exitCode != 0 || !exportFile.exists() || exportFile.length() < 1024) {
                 throw new IOException("FFmpeg concat exited with error code: " + exitCode);
             }
+
+            // 4b. If the user requested a non-default transition between scenes,
+            // build an xfade filter chain. Otherwise the simple concat above is final.
+            if (mergedSegments.size() > 1 && anySceneRequestsTransition(scenes)) {
+                try {
+                    runXfadeConcat(mergedSegments, scenes, ffmpegPath, exportFile);
+                } catch (Exception xfadeEx) {
+                    logger.error("[Video4jEditorService] xfade concat failed, keeping simple concat result: " + xfadeEx.getMessage());
+                }
+            }
         } catch (Exception e) {
             logger.error("âš ï¸ [Video4jEditorService] FFmpeg stitching failed: " + e.getMessage());
             throw new Exception("FFmpeg stitching process failed. " + e.getMessage() + 
@@ -495,16 +505,6 @@ public class Video4jEditorService {
             }
             if (concatList.exists()) {
                 concatList.delete();
-            }
-        }
-
-        // 4b. If the user requested a non-default transition between scenes,
-        // build an xfade filter chain. Otherwise the simple concat above is final.
-        if (mergedSegments.size() > 1 && anySceneRequestsTransition(scenes)) {
-            try {
-                runXfadeConcat(mergedSegments, scenes, ffmpegPath, exportFile);
-            } catch (Exception xfadeEx) {
-                logger.error("[Video4jEditorService] xfade concat failed, keeping simple concat result: " + xfadeEx.getMessage());
             }
         }
 
@@ -630,6 +630,7 @@ public class Video4jEditorService {
         // Reference: https://trac.ffmpeg.org/wiki/Xfade
         StringBuilder filter = new StringBuilder();
         java.util.List<String> args = new java.util.ArrayList<>();
+        args.add(ffmpegPath);
         for (int i = 0; i < segments.size(); i++) {
             args.add("-i"); args.add(segments.get(i).getAbsolutePath());
         }
@@ -641,7 +642,7 @@ public class Video4jEditorService {
             // Use scene[i-1] transition between segment i-1 and i.
             Scene s = scenes.get(i - 1);
             String transition = s.getTransitionType();
-            if (transition == null || transition.isEmpty() || "none".equalsIgnoreCase(transition)) {
+            if (transition == null || transition.isEmpty() || "none".equalsIgnoreCase(transition) || "crossfade".equalsIgnoreCase(transition)) {
                 transition = "fade";
             }
             double transDur = s.getTransitionDuration();

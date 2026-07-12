@@ -80,4 +80,14 @@ public class ComfyHttpClient {
                 .retrieve()
                 .bodyToMono(Void.class);
     }
+
+    /**
+     * Prüft den aktuellen Systemstatus von ComfyUI (z.B. VRAM Nutzung, Geräte).
+     */
+    public Mono<JsonNode> getSystemStats() {
+        return webClient.get()
+                .uri("/system_stats")
+                .retrieve()
+                .bodyToMono(JsonNode.class);
+    }
 }

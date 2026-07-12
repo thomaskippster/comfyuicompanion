@@ -30,4 +30,14 @@ public class ModelMetadata {
     public void setTriggerWords(List<String> triggerWords) {
         this.triggerWords = triggerWords;
     }
+
+    private String style; // z.B. Anime, Photorealistic
+
+    public String getStyle() {
+        return style;
+    }
+
+    public void setStyle(String style) {
+        this.style = style;
+    }
 }

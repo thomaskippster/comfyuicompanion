@@ -1,22 +1,22 @@
 .root {
     -fx-font-family: "Segoe UI", "Inter", "Roboto", sans-serif;
     -fx-font-size: 13px;
-    -fx-custom-bg-color: #121316;
-    -fx-custom-panel-bg: rgba(24, 26, 32, 0.85);
-    -fx-custom-text-color: #dce6f2;
-    -fx-custom-text-muted: #8a9ba8;
-    -fx-custom-border-color: rgba(255, 255, 255, 0.1);
-    -fx-custom-accent-color: #00f0ff;
-    -fx-custom-accent-hover: #33f3ff;
-    -fx-custom-accent-pressed: #00b0c0;
-    -fx-custom-input-bg: rgba(18, 19, 22, 0.8);
-    -fx-custom-card-bg: rgba(30, 34, 42, 0.7);
-    -fx-custom-card-border: rgba(255, 255, 255, 0.05);
-    -fx-custom-card-selected-bg: rgba(0, 240, 255, 0.15);
-    -fx-custom-card-selected-border: #00f0ff;
-    -fx-custom-scroll-track: rgba(18, 19, 22, 0.5);
-    -fx-custom-scroll-thumb: rgba(255, 255, 255, 0.15);
-    -fx-custom-scroll-thumb-hover: rgba(0, 240, 255, 0.4);
+    -fx-custom-bg-color: transparent;
+    -fx-custom-panel-bg: rgba(30, 30, 35, 0.9);
+    -fx-custom-text-color: #e6e6e6;
+    -fx-custom-text-muted: #a0a0a8;
+    -fx-custom-border-color: rgba(80, 80, 90, 0.59);
+    -fx-custom-accent-color: #40e0d0;
+    -fx-custom-accent-hover: #50f0e0;
+    -fx-custom-accent-pressed: #30c0b0;
+    -fx-custom-input-bg: rgba(20, 20, 25, 0.8);
+    -fx-custom-card-bg: rgba(40, 40, 45, 0.7);
+    -fx-custom-card-border: rgba(80, 80, 90, 0.3);
+    -fx-custom-card-selected-bg: rgba(64, 224, 208, 0.15);
+    -fx-custom-card-selected-border: #40e0d0;
+    -fx-custom-scroll-track: rgba(30, 30, 35, 0.5);
+    -fx-custom-scroll-thumb: rgba(230, 230, 230, 0.15);
+    -fx-custom-scroll-thumb-hover: rgba(64, 224, 208, 0.4);
     
     -fx-background-color: -fx-custom-bg-color;
 }

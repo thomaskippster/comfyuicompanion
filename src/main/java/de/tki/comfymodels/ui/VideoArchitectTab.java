@@ -67,6 +67,9 @@ public class VideoArchitectTab extends JFXPanel {
         this.gemma4Service = gemma4Service;
         this.lifecycleService = lifecycleService;
 
+        this.setOpaque(false);
+        this.setBackground(new java.awt.Color(0, 0, 0, 0));
+
         Platform.runLater(this::initFX);
     }
 
@@ -92,6 +95,7 @@ public class VideoArchitectTab extends JFXPanel {
             rootNode.setCenter(mainSplitPane);
 
             fxScene = new javafx.scene.Scene(rootNode);
+            fxScene.setFill(configService.isDarkMode() ? javafx.scene.paint.Color.rgb(18, 19, 22) : javafx.scene.paint.Color.rgb(240, 242, 245));
             setScene(fxScene);
         } catch (Exception e) {
             e.printStackTrace();
@@ -723,6 +727,9 @@ public class VideoArchitectTab extends JFXPanel {
                 if (!darkMode) {
                     rootNode.getStyleClass().add("light-theme");
                 }
+            }
+            if (fxScene != null) {
+                fxScene.setFill(darkMode ? javafx.scene.paint.Color.rgb(18, 19, 22) : javafx.scene.paint.Color.rgb(240, 242, 245));
             }
         });
     }

@@ -399,62 +399,63 @@ public class Main extends JFrame {
             UIManager.put("defaultFont", defaultFont);
 
             if (darkMode) {
-                // Frosted glass Base Dark Palette (Anthracite)
-                Color nodeBg = new javax.swing.plaf.ColorUIResource(24, 26, 32); 
-                Color comfySurface = new javax.swing.plaf.ColorUIResource(18, 19, 22); 
-                Color comfyAccent = new javax.swing.plaf.ColorUIResource(0, 240, 255); // Turquoise Accent
-                Color comfyText = new javax.swing.plaf.ColorUIResource(220, 230, 242); 
-                Color comfyBorder = new javax.swing.plaf.ColorUIResource(36, 39, 48);
+                // Tron Legacy Base Dark Palette
+                Color nodeBg = new javax.swing.plaf.ColorUIResource(10, 10, 15); 
+                Color comfySurface = new javax.swing.plaf.ColorUIResource(5, 5, 8); 
+                Color comfyAccent = new javax.swing.plaf.ColorUIResource(0, 255, 255); // Neon Cyan Accent
+                Color comfyText = new javax.swing.plaf.ColorUIResource(200, 240, 255); 
+                Color comfyBorder = new javax.swing.plaf.ColorUIResource(0, 100, 120);
 
                 UIManager.put("DefaultBackgroundColor", comfySurface);
                 UIManager.put("Panel.background", nodeBg);
                 UIManager.put("Table.background", comfySurface);
                 UIManager.put("TextArea.background", comfySurface);
-                UIManager.put("TextField.background", new javax.swing.plaf.ColorUIResource(32, 36, 44));
-                UIManager.put("PasswordField.background", new javax.swing.plaf.ColorUIResource(32, 36, 44));
+                UIManager.put("TextField.background", new javax.swing.plaf.ColorUIResource(15, 15, 20));
+                UIManager.put("PasswordField.background", new javax.swing.plaf.ColorUIResource(15, 15, 20));
                 
                 UIManager.put("Label.foreground", comfyText);
                 UIManager.put("Table.foreground", comfyText);
                 UIManager.put("TextArea.foreground", comfyText);
                 
-                UIManager.put("Table.selectionBackground", new javax.swing.plaf.ColorUIResource(new Color(0, 240, 255, 60))); 
+                UIManager.put("Table.selectionBackground", new javax.swing.plaf.ColorUIResource(new Color(0, 255, 255, 60))); 
                 UIManager.put("Table.selectionForeground", Color.WHITE);
                 UIManager.put("Component.focusedBorderColor", comfyAccent);
                 UIManager.put("Separator.foreground", comfyBorder);
                 
-                UIManager.put("Button.background", new javax.swing.plaf.ColorUIResource(32, 36, 44));
+                UIManager.put("Button.background", new javax.swing.plaf.ColorUIResource(15, 15, 20));
                 UIManager.put("Button.foreground", comfyText);
-                UIManager.put("Button.focusedBackground", new javax.swing.plaf.ColorUIResource(0, 180, 200)); 
-                UIManager.put("Button.hoverBackground", new javax.swing.plaf.ColorUIResource(0, 200, 220));
-                UIManager.put("Button.pressedBackground", new javax.swing.plaf.ColorUIResource(20, 21, 24));
+                UIManager.put("Button.focusedBackground", new javax.swing.plaf.ColorUIResource(0, 200, 200)); 
+                UIManager.put("Button.hoverBackground", new javax.swing.plaf.ColorUIResource(0, 150, 150));
+                UIManager.put("Button.pressedBackground", new javax.swing.plaf.ColorUIResource(0, 100, 100));
                 UIManager.put("Button.borderColor", comfyBorder);
                 
                 UIManager.put("ScrollBar.track", comfySurface);
-                UIManager.put("ScrollBar.thumb", new javax.swing.plaf.ColorUIResource(60, 64, 76));
+                UIManager.put("ScrollBar.thumb", new javax.swing.plaf.ColorUIResource(0, 100, 120));
                 
-                UIManager.put("TabbedPane.selectedBackground", new javax.swing.plaf.ColorUIResource(new Color(0, 240, 255, 40)));
+                UIManager.put("TabbedPane.selectedBackground", new javax.swing.plaf.ColorUIResource(new Color(0, 255, 255, 40)));
                 UIManager.put("TabbedPane.selectedForeground", Color.WHITE);
                 UIManager.put("TabbedPane.underlineColor", comfyAccent);
 
-                // ProgressBar custom styles - slim and styled with glowing turquoise
+                // ProgressBar custom styles - slim and styled with glowing cyan
                 UIManager.put("ProgressBar.foreground", comfyAccent);
-                UIManager.put("ProgressBar.background", new Color(30, 35, 45));
+                UIManager.put("ProgressBar.background", new Color(10, 10, 15));
                 UIManager.put("ProgressBar.arc", 999);
 
                 // Card panel & UI styling variables
-                UIManager.put("Card.background", new Color(30, 34, 42, 176)); 
-                UIManager.put("Card.border", new Color(255, 255, 255, 24)); 
-                UIManager.put("Card.placeholder", new Color(30, 34, 42, 144)); 
-                UIManager.put("Card.placeholderBorder", new Color(255, 255, 255, 18));
-                UIManager.put("Toolbar.customBg", new Color(30, 34, 42, 128));
-                UIManager.put("SlimStat.titleForeground", new Color(180, 190, 205));
-                UIManager.put("SlimStat.valueForeground", new Color(0, 240, 255));
-                UIManager.put("SlimStat.barForeground", new Color(0, 240, 255));
-                UIManager.put("SlimStat.barBackground", new Color(32, 37, 48));
-                UIManager.put("MainTabs.gradientStart", new Color(14, 15, 17));
-                UIManager.put("MainTabs.gradientEnd", new Color(24, 28, 38));
-                UIManager.put("MainTabs.glowStart", new Color(0, 240, 255, 12));
-                UIManager.put("PromptLab.presetForeground", new Color(100, 160, 240));
+                UIManager.put("Card.background", new Color(15, 15, 20, 176)); 
+                UIManager.put("Card.border", new Color(0, 255, 255, 40)); 
+                UIManager.put("Card.placeholder", new Color(15, 15, 20, 144)); 
+                UIManager.put("Card.placeholderBorder", new Color(0, 255, 255, 30));
+                UIManager.put("Toolbar.customBg", new Color(15, 15, 20, 128));
+                UIManager.put("SlimStat.titleForeground", new Color(150, 200, 220));
+                UIManager.put("SlimStat.valueForeground", new Color(0, 255, 255));
+                UIManager.put("SlimStat.barForeground", new Color(0, 255, 255));
+                UIManager.put("SlimStat.barBackground", new Color(10, 10, 15));
+                UIManager.put("MainTabs.gradientStart", new Color(5, 5, 8));
+                UIManager.put("MainTabs.gradientEnd", new Color(10, 10, 15));
+                UIManager.put("MainTabs.glowStart", new Color(0, 255, 255, 20));
+                UIManager.put("PromptLab.presetForeground", new Color(0, 255, 255));
+                
                 
                 UIManager.setLookAndFeel(new FlatDarkLaf());
             } else {
@@ -1391,8 +1392,8 @@ public class Main extends JFrame {
 
         btnSuggestSubject = new JButton("✨ Suggest");
         btnSuggestSubject.setFont(new Font("SansSerif", Font.BOLD, 12));
-        btnSuggestSubject.putClientProperty("Button.background", new Color(138, 43, 226)); // Purple accent for AI
-        btnSuggestSubject.putClientProperty("Button.foreground", Color.WHITE);
+        btnSuggestSubject.putClientProperty("Button.background", new Color(0, 255, 255)); // Tron Neon Cyan
+        btnSuggestSubject.putClientProperty("Button.foreground", Color.BLACK);
         if (localAIService == null || !localAIService.isLocalGemmaDownloaded()) {
             btnSuggestSubject.setToolTipText("Download local Gemma model to unlock suggestions.");
         } else {

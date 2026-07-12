@@ -10,11 +10,11 @@ public class ThemeManager {
     private static boolean isDarkMode = true;
     private static final List<Runnable> observers = new ArrayList<>();
 
-    // --- DARK MODE COLORS ---
-    public static final Color DARK_BG = new Color(30, 30, 35, 230);
-    public static final Color DARK_TEXT = new Color(230, 230, 230);
-    public static final Color DARK_BORDER = new Color(80, 80, 90, 150);
-    public static final Color DARK_ACCENT = new Color(64, 224, 208); // Türkis
+    // --- DARK MODE COLORS (Tron Legacy Style) ---
+    public static final Color DARK_BG = new Color(10, 10, 15, 230);
+    public static final Color DARK_TEXT = new Color(200, 240, 255);
+    public static final Color DARK_BORDER = new Color(0, 100, 120, 180);
+    public static final Color DARK_ACCENT = new Color(0, 255, 255); // Neon Cyan
     
     // --- LIGHT MODE COLORS ---
     public static final Color LIGHT_BG = new Color(245, 245, 250, 220);

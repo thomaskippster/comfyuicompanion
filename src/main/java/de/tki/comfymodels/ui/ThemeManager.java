@@ -10,17 +10,21 @@ public class ThemeManager {
     private static boolean isDarkMode = true;
     private static final List<Runnable> observers = new ArrayList<>();
 
-    // --- DARK MODE COLORS (Tron Legacy Style) ---
-    public static final Color DARK_BG = new Color(10, 10, 15, 230);
-    public static final Color DARK_TEXT = new Color(200, 240, 255);
-    public static final Color DARK_BORDER = new Color(0, 100, 120, 180);
-    public static final Color DARK_ACCENT = new Color(0, 255, 255); // Neon Cyan
+    // --- CORPORATE DARK MODE COLORS ---
+    public static final Color APP_BG_COLOR = new Color(18, 19, 22);
+    public static final Color CARD_BG_COLOR = new Color(30, 34, 42);
+    public static final Color TEXT_PRIMARY = Color.WHITE;
+    public static final Color TEXT_SECONDARY = new Color(180, 190, 205);
+    public static final Color BORDER_COLOR = new Color(255, 255, 255, 30);
+    public static final Color ACCENT_COLOR_PRIMARY = new Color(0, 120, 215); // Corporate Blue
     
     // --- LIGHT MODE COLORS ---
-    public static final Color LIGHT_BG = new Color(245, 245, 250, 220);
+    public static final Color LIGHT_BG = new Color(245, 245, 250);
+    public static final Color LIGHT_CARD_BG = new Color(255, 255, 255);
     public static final Color LIGHT_TEXT = new Color(40, 40, 45);
-    public static final Color LIGHT_BORDER = new Color(200, 200, 210, 150);
-    public static final Color LIGHT_ACCENT = new Color(0, 150, 136); // Dunkleres Türkis/Teal
+    public static final Color LIGHT_TEXT_SEC = new Color(100, 100, 105);
+    public static final Color LIGHT_BORDER = new Color(0, 0, 0, 30);
+    public static final Color LIGHT_ACCENT = new Color(0, 120, 215);
 
     public static boolean isDarkMode() {
         return isDarkMode;
@@ -31,20 +35,28 @@ public class ThemeManager {
         notifyObservers();
     }
 
-    public static Color getBackgroundColor() {
-        return isDarkMode ? DARK_BG : LIGHT_BG;
+    public static Color getAppBackgroundColor() {
+        return isDarkMode ? APP_BG_COLOR : LIGHT_BG;
+    }
+
+    public static Color getCardBackgroundColor() {
+        return isDarkMode ? CARD_BG_COLOR : LIGHT_CARD_BG;
     }
 
     public static Color getTextColor() {
-        return isDarkMode ? DARK_TEXT : LIGHT_TEXT;
+        return isDarkMode ? TEXT_PRIMARY : LIGHT_TEXT;
+    }
+
+    public static Color getTextSecondaryColor() {
+        return isDarkMode ? TEXT_SECONDARY : LIGHT_TEXT_SEC;
     }
 
     public static Color getBorderColor() {
-        return isDarkMode ? DARK_BORDER : LIGHT_BORDER;
+        return isDarkMode ? BORDER_COLOR : LIGHT_BORDER;
     }
 
     public static Color getAccentColor() {
-        return isDarkMode ? DARK_ACCENT : LIGHT_ACCENT;
+        return isDarkMode ? ACCENT_COLOR_PRIMARY : LIGHT_ACCENT;
     }
 
     public static void registerObserver(Runnable observer) {

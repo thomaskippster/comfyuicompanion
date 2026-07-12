@@ -99,9 +99,8 @@ public class OutputGalleryPanel extends JPanel {
         setLayout(new BorderLayout());
         setOpaque(false);
         
-        JPanel headerPanel = new JPanel(new BorderLayout());
-        headerPanel.setBorder(BorderFactory.createEmptyBorder(5, 10, 5, 10));
-        headerPanel.setOpaque(false);
+        de.tki.comfymodels.ui.CardPanel headerPanel = new de.tki.comfymodels.ui.CardPanel();
+        headerPanel.setLayout(new BorderLayout());
         
         pathLabel = new JLabel("Output Directory: ");
         headerPanel.add(pathLabel, BorderLayout.CENTER);
@@ -285,7 +284,7 @@ public class OutputGalleryPanel extends JPanel {
     }
 
     private JPanel createFileTile(Path file) {
-        JPanel tile = new JPanel(new BorderLayout()) {
+        de.tki.comfymodels.ui.CardPanel tile = new de.tki.comfymodels.ui.CardPanel() {
             @Override
             public void updateUI() {
                 super.updateUI();
@@ -296,13 +295,14 @@ public class OutputGalleryPanel extends JPanel {
             protected void paintComponent(Graphics g) {
                 super.paintComponent(g);
                 if (selectedFiles.contains(file)) {
-                    g.setColor(new Color(0, 204, 204, 30));
-                    g.fillRect(0, 0, getWidth(), getHeight());
+                    g.setColor(new Color(0, 120, 215, 30));
+                    g.fillRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 12, 12);
                 }
             }
         };
-        tile.putClientProperty("FlatLaf.style", "arc: 12; background: $Card.background");
-        tile.setOpaque(false);
+        tile.setLayout(new BorderLayout());
+        tile.setCornerRadius(12);
+        tile.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
         tile.setPreferredSize(new Dimension(130, 160));
         tile.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
         

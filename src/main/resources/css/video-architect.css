@@ -2,21 +2,21 @@
     -fx-font-family: "Segoe UI", "Inter", "Roboto", sans-serif;
     -fx-font-size: 13px;
     -fx-custom-bg-color: transparent;
-    -fx-custom-panel-bg: rgba(10, 10, 15, 0.9);
-    -fx-custom-text-color: #c8f0ff;
-    -fx-custom-text-muted: #6496a0;
-    -fx-custom-border-color: rgba(0, 100, 120, 0.7);
-    -fx-custom-accent-color: #00ffff;
-    -fx-custom-accent-hover: #66ffff;
-    -fx-custom-accent-pressed: #00cccc;
-    -fx-custom-input-bg: rgba(5, 5, 8, 0.8);
-    -fx-custom-card-bg: rgba(15, 15, 20, 0.7);
-    -fx-custom-card-border: rgba(0, 100, 120, 0.4);
-    -fx-custom-card-selected-bg: rgba(0, 255, 255, 0.15);
-    -fx-custom-card-selected-border: #00ffff;
-    -fx-custom-scroll-track: rgba(5, 5, 8, 0.5);
-    -fx-custom-scroll-thumb: rgba(0, 255, 255, 0.15);
-    -fx-custom-scroll-thumb-hover: rgba(0, 255, 255, 0.4);
+    -fx-custom-panel-bg: rgba(18, 19, 22, 0.9);
+    -fx-custom-text-color: #ffffff;
+    -fx-custom-text-muted: #b4becd;
+    -fx-custom-border-color: rgba(255, 255, 255, 0.12);
+    -fx-custom-accent-color: #0078d7;
+    -fx-custom-accent-hover: #008ceb;
+    -fx-custom-accent-pressed: #0064b4;
+    -fx-custom-input-bg: rgba(30, 34, 42, 0.8);
+    -fx-custom-card-bg: rgba(30, 34, 42, 0.7);
+    -fx-custom-card-border: rgba(255, 255, 255, 0.12);
+    -fx-custom-card-selected-bg: rgba(0, 120, 215, 0.15);
+    -fx-custom-card-selected-border: #0078d7;
+    -fx-custom-scroll-track: rgba(18, 19, 22, 0.5);
+    -fx-custom-scroll-thumb: rgba(100, 100, 100, 0.5);
+    -fx-custom-scroll-thumb-hover: rgba(100, 100, 100, 0.8);
     
     -fx-background-color: -fx-custom-bg-color;
 }
@@ -121,7 +121,7 @@
 
 .button.primary-button {
     -fx-background-color: -fx-custom-accent-color;
-    -fx-text-fill: #121316;
+    -fx-text-fill: #ffffff;
     -fx-border-color: transparent;
 }
 .button.primary-button:hover {
@@ -142,6 +142,14 @@
     -fx-background-color: -fx-custom-panel-bg;
     -fx-background-radius: 12px;
     -fx-border-color: -fx-custom-border-color;
+    -fx-border-radius: 12px;
+    -fx-padding: 16px;
+}
+
+.card-panel {
+    -fx-background-color: -fx-custom-card-bg;
+    -fx-background-radius: 12px;
+    -fx-border-color: -fx-custom-card-border;
     -fx-border-radius: 12px;
     -fx-padding: 16px;
 }

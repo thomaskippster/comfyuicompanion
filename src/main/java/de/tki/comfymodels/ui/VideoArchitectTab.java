@@ -151,6 +151,7 @@ public class VideoArchitectTab extends JFXPanel {
         autoPilotBtn.setOnAction(e -> handleAutoPilot());
 
         VBox writerBox = new VBox(10, writerTitle, masterScriptArea, deconstructBtn, autoPilotBtn);
+        writerBox.getStyleClass().add("card-panel");
 
         sidebar.getChildren().addAll(
             titleLabel, subtitleLabel, 
@@ -164,7 +165,7 @@ public class VideoArchitectTab extends JFXPanel {
 
     private VBox createRightArea() {
         VBox box = new VBox(15);
-        box.getStyleClass().add("glass-panel");
+        box.getStyleClass().add("card-panel");
         box.setPadding(new Insets(15));
         HBox.setHgrow(box, Priority.ALWAYS);
 

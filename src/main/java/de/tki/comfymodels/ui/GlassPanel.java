@@ -28,7 +28,7 @@ public class GlassPanel extends JPanel {
         g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 
         // 1. Hintergrund zeichnen (mit Alpha für Frosted Glass Effekt)
-        g2.setColor(ThemeManager.getBackgroundColor());
+        g2.setColor(ThemeManager.getCardBackgroundColor());
         g2.fillRoundRect(0, 0, getWidth() - 1, getHeight() - 1, cornerRadius, cornerRadius);
 
         // 2. Subtilen Rand zeichnen (Lichtkante)

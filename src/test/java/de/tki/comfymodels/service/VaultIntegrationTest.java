@@ -34,7 +34,7 @@ public class VaultIntegrationTest {
         configService.unlock(password);
         
         // 2. Set key and save
-        configService.setGeminiApiKey(testKey);
+        configService.setCivitaiApiKey(testKey);
         configService.save();
 
         // 3. Create NEW instance to simulate restart
@@ -49,7 +49,7 @@ public class VaultIntegrationTest {
         newConfigService.unlock(password);
         
         // 5. Verify key and dark mode
-        assertEquals(testKey, newConfigService.getGeminiApiKey(), "Key should be 4711 after loading");
+        assertEquals(testKey, newConfigService.getCivitaiApiKey(), "Key should be 4711 after loading");
         assertTrue(newConfigService.isDarkMode(), "Default should be true");
         
         newConfigService.setDarkMode(false);
@@ -94,7 +94,7 @@ public class VaultIntegrationTest {
         // 3. Unlock vault for the first time
         String password = "my_secure_password";
         configService.unlock(password);
-        configService.setGeminiApiKey("my-gemini-key");
+        configService.setCivitaiApiKey("my-civitai-key");
         
         // 4. Reset vault
         configService.resetVault();
@@ -111,7 +111,7 @@ public class VaultIntegrationTest {
 
         // 6. Verify vault is unlocked, fresh/empty (doesn't contain key), and dark_mode is still false!
         assertTrue(reconfigService.isUnlocked(), "Vault should be unlocked after re-unlock");
-        assertEquals("", reconfigService.getGeminiApiKey(), "API key should be empty since vault was reset");
+        assertEquals("", reconfigService.getCivitaiApiKey(), "API key should be empty since vault was reset");
         assertFalse(reconfigService.isDarkMode(), "Dark mode persistent setting should be preserved as false!");
         assertTrue(new File(tempDir.toFile(), "app_settings.json").exists(), "app_settings.json must exist and not be deleted!");
     }

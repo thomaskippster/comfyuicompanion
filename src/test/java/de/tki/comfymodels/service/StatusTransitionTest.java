@@ -97,13 +97,10 @@ public class StatusTransitionTest {
     public void testTransition_Idle_To_Searching_To_NotFound() throws InterruptedException {
         ModelSearchService searchService = new ModelSearchService();
         ConfigService cfg = new ConfigService(encryptionUtils, new PathResolver());
-        GeminiAIService gemini = new GeminiAIService();
         ModelListService list = new ModelListService();
         
         ReflectionTestUtils.setField(searchService, "configService", cfg);
-        ReflectionTestUtils.setField(searchService, "geminiService", gemini);
         ReflectionTestUtils.setField(searchService, "modelListService", list);
-        ReflectionTestUtils.setField(gemini, "configService", cfg);
         
         List<String> statuses = new CopyOnWriteArrayList<>();
         ModelInfo info = new ModelInfo("checkpoints", "non_existent_model_xyz.safetensors", "MISSING");

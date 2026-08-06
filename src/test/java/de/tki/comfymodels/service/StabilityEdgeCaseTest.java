@@ -196,15 +196,11 @@ public class StabilityEdgeCaseTest {
     @Test
     void testKiFallback() throws Exception {
         ComfyModelAnalyzer analyzer = new ComfyModelAnalyzer();
-        GeminiAIService stubGemini = new GeminiAIService() {
-            @Override public String analyzeModel(String name) { return null; }
-        };
         LocalAIService stubLocal = new LocalAIService() {
             @Override public Prediction predictProvider(String name) {
                 return new Prediction("LocalAuthor", 0.8);
             }
         };
-        ReflectionTestUtils.setField(analyzer, "geminiService", stubGemini);
         ReflectionTestUtils.setField(analyzer, "aiService", stubLocal);
 
         String json = "{\"nodes\": [{\"type\": \"CheckpointLoaderSimple\", \"widgets_values\": [\"test_model.safetensors\"]}]}";

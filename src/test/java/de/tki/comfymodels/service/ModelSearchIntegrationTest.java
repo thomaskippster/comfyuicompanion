@@ -4,7 +4,6 @@ import com.github.tomakehurst.wiremock.junit5.WireMockRuntimeInfo;
 import com.github.tomakehurst.wiremock.junit5.WireMockTest;
 import de.tki.comfymodels.domain.ModelInfo;
 import de.tki.comfymodels.service.impl.ConfigService;
-import de.tki.comfymodels.service.impl.GeminiAIService;
 import de.tki.comfymodels.service.impl.ModelSearchService;
 import de.tki.comfymodels.service.impl.ModelListService;
 import de.tki.comfymodels.service.impl.ModelHashRegistry;
@@ -27,7 +26,6 @@ import static org.junit.jupiter.api.Assertions.*;
 public class ModelSearchIntegrationTest {
 
     private ConfigService configService;
-    private GeminiAIService geminiService;
     private ModelListService modelListService;
     private ModelHashRegistry hashRegistry;
     private IModelValidator modelValidator;
@@ -40,10 +38,6 @@ public class ModelSearchIntegrationTest {
         public ConfigServiceStub() { super(null, null); }
         @Override public String getHfToken() { return ""; }
         @Override public String getModelsPath() { return "mock_path"; }
-    }
-
-    private static class GeminiAIServiceStub extends GeminiAIService {
-        @Override public String discoverBestRepo(String modelName, String fileName, String metadataContext) { return "UNKNOWN"; }
     }
 
     private static class ModelListServiceStub extends ModelListService {
@@ -64,7 +58,6 @@ public class ModelSearchIntegrationTest {
     void setUp(WireMockRuntimeInfo wmRuntimeInfo) {
         this.wmRuntimeInfo = wmRuntimeInfo;
         configService = new ConfigServiceStub();
-        geminiService = new GeminiAIServiceStub();
         modelListService = new ModelListServiceStub();
         hashRegistry = new ModelHashRegistryStub();
         modelValidator = new ModelValidatorStub();
@@ -85,7 +78,6 @@ public class ModelSearchIntegrationTest {
         };
 
         ReflectionTestUtils.setField(modelSearchService, "configService", configService);
-        ReflectionTestUtils.setField(modelSearchService, "geminiService", geminiService);
         ReflectionTestUtils.setField(modelSearchService, "modelListService", modelListService);
         ReflectionTestUtils.setField(modelSearchService, "hashRegistry", hashRegistry);
         ReflectionTestUtils.setField(modelSearchService, "modelValidator", modelValidator);

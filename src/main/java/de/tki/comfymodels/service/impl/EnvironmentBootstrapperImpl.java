@@ -92,7 +92,10 @@ public class EnvironmentBootstrapperImpl {
         Files.walk(path)
              .sorted(java.util.Comparator.reverseOrder())
              .forEach(p -> {
-                 try { Files.delete(p); } catch (java.io.IOException ignored) {}
+                 try { 
+                     p.toFile().setWritable(true);
+                     Files.delete(p); 
+                 } catch (java.io.IOException ignored) {}
              });
     }
 

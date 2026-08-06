@@ -1,4 +1,4 @@
-﻿// ComfyUI Companion - Bridge Extension
+// Companion for ComfyUI - Bridge Extension
 import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
 
@@ -87,6 +87,79 @@ const initializeExtension = async () => {
         }
     });
 
+    /**
+     * Triggered by /cmfc/convert-workflow (Python).
+     * Loads the GUI workflow, converts it to API format via ComfyUI's own
+     * app.graphToPrompt(), and POSTs the result to the Java callback endpoint.
+     * The previous canvas is restored afterwards so the user doesn't lose their work.
+     */
+    api.addEventListener("cmfc-convert-workflow", async (event) => {
+        const data = event.detail || {};
+        const callbackUrl = data.callbackUrl || "http://127.0.0.1:12345/api/workflow-ready";
+
+        if (!data.workflow) {
+            log("convert-workflow event arrived without a workflow payload.", "warn");
+            try {
+                await fetch(callbackUrl, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ error: "No workflow payload received" }),
+                });
+            } catch (_) {}
+            return;
+        }
+
+        log("Starting GUI→API conversion via app.graphToPrompt()");
+
+        // Save the current canvas so we can restore it after conversion
+        let previousGraph = null;
+        try {
+            previousGraph = app.graph ? app.graph.serialize() : null;
+        } catch (_) {}
+
+        try {
+            // Load the blueprint GUI JSON into the canvas
+            app.loadGraphData(data.workflow);
+
+            // Give the graph a tick to settle before converting
+            await new Promise(resolve => setTimeout(resolve, 80));
+
+            // Use ComfyUI's own conversion — the same path as Queue Prompt
+            const apiPrompt = await app.graphToPrompt();
+
+            // Restore the previous canvas
+            if (previousGraph) {
+                try { app.loadGraphData(previousGraph); } catch (_) {}
+            }
+
+            // POST the API JSON back to the Java companion
+            const response = await fetch(callbackUrl, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(apiPrompt),
+            });
+
+            if (!response.ok) {
+                log(`Callback to ${callbackUrl} failed: HTTP ${response.status}`, "warn");
+            } else {
+                log("Conversion complete — API prompt sent to companion.");
+            }
+        } catch (e) {
+            log(`Conversion failed: ${e.message}`, "error");
+            // Restore canvas even on error
+            if (previousGraph) {
+                try { app.loadGraphData(previousGraph); } catch (_) {}
+            }
+            try {
+                await fetch(callbackUrl, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ error: e.message || "Unknown conversion error" }),
+                });
+            } catch (_) {}
+        }
+    });
+
     api.addEventListener("reconnected", () => {
         log("WebSocket reconnected; reloading ComfyUI to refresh state.");
         window.location.reload();
@@ -97,7 +170,7 @@ const initializeExtension = async () => {
         const fab = document.createElement("div");
         fab.id = "tki-companion-fab";
         fab.innerHTML = "&#128640;";
-        fab.title = "Send workflow to ComfyUI Companion";
+        fab.title = "Send workflow to Companion for ComfyUI";
         fab.style = "position:fixed; bottom:30px; right:30px; z-index:10000; cursor:pointer; font-size:30px; background:#ffcc00; border-radius:50%; width:60px; height:60px; display:flex; align-items:center; justify-content:center; box-shadow:0 0 20px rgba(0,0,0,0.5); border: 2px solid white; transition: transform 0.2s;";
         fab.onmouseover = () => { fab.style.transform = "scale(1.1)"; };
         fab.onmouseout = () => { fab.style.transform = "scale(1.0)"; };

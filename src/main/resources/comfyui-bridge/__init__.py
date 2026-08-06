@@ -1,4 +1,4 @@
-﻿# ComfyUI Companion Bridge
+# Companion for ComfyUI Bridge
 import server
 import folder_paths
 import asyncio
@@ -68,6 +68,42 @@ if not _route_registered("POST", "/cmfc/load-workflow"):
         return web.json_response({"status": "ok"})
 else:
     print("[CMFC] Route /cmfc/load-workflow already registered, skipping.")
+
+
+if not _route_registered("POST", "/cmfc/convert-workflow"):
+    @server.PromptServer.instance.routes.post("/cmfc/convert-workflow")
+    async def convert_workflow(request):
+        """
+        Accepts a GUI-format workflow JSON from the Java companion app and relays
+        it to the browser via WebSocket.  The JS bridge will call app.graphToPrompt()
+        and POST the resulting API JSON back to http://127.0.0.1:12345/api/workflow-ready.
+        """
+        try:
+            data = await request.json()
+        except Exception:
+            return web.json_response(
+                {"status": "error", "message": "Invalid JSON body"},
+                status=400,
+            )
+
+        workflow = data.get("workflow")
+        callback_url = data.get("callbackUrl", "http://127.0.0.1:12345/api/workflow-ready")
+
+        if not workflow:
+            return web.json_response(
+                {"status": "error", "message": "No 'workflow' field in request"},
+                status=400,
+            )
+
+        print("[CMFC] Relaying GUI workflow to browser for app.graphToPrompt() conversion")
+        server.PromptServer.instance.send_sync("cmfc-convert-workflow", {
+            "workflow": workflow,
+            "callbackUrl": callback_url,
+        })
+
+        return web.json_response({"status": "ok", "message": "Conversion request sent to browser"})
+else:
+    print("[CMFC] Route /cmfc/convert-workflow already registered, skipping.")
 
 
 WEB_DIRECTORY = "web"

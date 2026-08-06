@@ -40,6 +40,8 @@ public class RestBridgeService {
     private HttpServer server;
     private ExecutorService serverExecutor;
     private Consumer<String> workflowConsumer;
+    /** One-shot consumer: receives the API JSON returned by app.graphToPrompt() and clears itself. */
+    private volatile Consumer<String> workflowReadyConsumer;
     private int port = 12345;
     private String expectedApiToken;
 
@@ -62,6 +64,11 @@ public class RestBridgeService {
         this.workflowConsumer = consumer;
     }
 
+    /** Registers a one-shot consumer for the next browser-converted workflow payload. */
+    public void setWorkflowReadyConsumer(Consumer<String> consumer) {
+        this.workflowReadyConsumer = consumer;
+    }
+
     public void startServer() {
         if (server != null) return;
         try {
@@ -75,6 +82,7 @@ public class RestBridgeService {
             server.createContext("/import", new ImportHandler());
             server.createContext("/api/templates", new TemplatesHandler());
             server.createContext("/api/preview", new PreviewHandler());
+            server.createContext("/api/workflow-ready", new WorkflowReadyHandler());
             server.start();
             logger.info("REST Bridge started on port " + port);
         } catch (IOException e) {
@@ -154,6 +162,44 @@ public class RestBridgeService {
                 }
             } catch (Exception e) {
                 sendJsonResponse(exchange, 500, "{\"status\": \"error\", \"message\": \"" + e.getMessage() + "\"}");
+            } finally {
+                exchange.close();
+            }
+        }
+    }
+
+    /**
+     * Receives the API-format JSON produced by the browser's {@code app.graphToPrompt()} call
+     * and dispatches it to the one-shot {@link #workflowReadyConsumer}.
+     */
+    private class WorkflowReadyHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            try {
+                exchange.getResponseHeaders().add("Access-Control-Allow-Origin", "*");
+                exchange.getResponseHeaders().add("Access-Control-Allow-Methods", "POST, OPTIONS");
+                exchange.getResponseHeaders().add("Access-Control-Allow-Headers", "Content-Type");
+                if ("OPTIONS".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    exchange.sendResponseHeaders(204, -1);
+                    return;
+                }
+                if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    exchange.sendResponseHeaders(405, -1);
+                    return;
+                }
+                try (InputStream is = exchange.getRequestBody()) {
+                    String body = new String(is.readAllBytes(), StandardCharsets.UTF_8);
+                    Consumer<String> consumer = workflowReadyConsumer;
+                    workflowReadyConsumer = null; // one-shot: clear immediately
+                    if (consumer != null) {
+                        consumer.accept(body);
+                        sendJsonResponse(exchange, 200, "{\"status\": \"accepted\"}");
+                    } else {
+                        sendJsonResponse(exchange, 409, "{\"status\": \"error\", \"message\": \"No pending conversion request\"}");
+                    }
+                }
+            } catch (Exception e) {
+                try { sendJsonResponse(exchange, 500, "{\"status\": \"error\"}"); } catch (Exception ignored) {}
             } finally {
                 exchange.close();
             }

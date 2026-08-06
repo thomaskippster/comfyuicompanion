@@ -5,12 +5,18 @@ import com.thomaskippster.comfyuicompanion.client.ComfyHttpClient;
 import com.thomaskippster.comfyuicompanion.domain.graph.ComfyWorkflow;
 import com.thomaskippster.comfyuicompanion.service.graph.WorkflowBuilder;
 import org.junit.jupiter.api.Test;
+
+import java.net.Socket;
 import java.util.UUID;
+
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 public class ComfyUIEndToEndTest {
 
     @Test
     public void testWorkflowAndReceiveImage() throws Exception {
+        assumeTrue(isComfyUiAvailable(), "ComfyUI is not available at 127.0.0.1:8188; skipping end-to-end test");
+
         // Build an LTXV / generic KSampler graph that we know works with the user's available models
         WorkflowBuilder builder = new WorkflowBuilder();
         
@@ -73,6 +79,14 @@ public class ComfyUIEndToEndTest {
                 System.out.println("Warte auf Abschluss...");
                 Thread.sleep(2000);
             }
+        }
+    }
+
+    private boolean isComfyUiAvailable() {
+        try (Socket socket = new Socket("127.0.0.1", 8188)) {
+            return true;
+        } catch (Exception e) {
+            return false;
         }
     }
 }

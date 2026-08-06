@@ -5,7 +5,7 @@
       "params": {
         "conda": "env",
         "message": "java --enable-native-access=ALL-UNNAMED -jar target/comfyuicompanion.jar",
-        "title": "Running ComfyUI Companion"
+        "title": "Running Companion for ComfyUI"
       }
     }
   ]

@@ -254,6 +254,41 @@ public class UpdaterService {
             return;
         }
 
+        // 0. Detect NVIDIA GPU & reinstall PyTorch with CUDA support if applicable
+        if (System.getProperty("os.name").toLowerCase().contains("win")) {
+            boolean hasNvidia = false;
+            double maxComputeCap = 0.0;
+            try {
+                Process p = Runtime.getRuntime().exec(new String[]{"nvidia-smi", "--query-gpu=compute_cap", "--format=csv,noheader"});
+                try (BufferedReader r = new BufferedReader(new InputStreamReader(p.getInputStream(), java.nio.charset.StandardCharsets.UTF_8))) {
+                    String line;
+                    while ((line = r.readLine()) != null) {
+                        if (!line.trim().isEmpty()) {
+                            hasNvidia = true;
+                            try {
+                                double cap = Double.parseDouble(line.trim());
+                                if (cap > maxComputeCap) maxComputeCap = cap;
+                            } catch (NumberFormatException ignored) {}
+                        }
+                    }
+                }
+                p.waitFor();
+            } catch (Exception ignored) {}
+
+            if (hasNvidia) {
+                String cudaVersion = (maxComputeCap >= 12.0) ? "cu128" : ((maxComputeCap >= 8.9) ? "cu124" : "cu121");
+                logCallback.accept("⚡ NVIDIA GPU detected (Compute Cap " + maxComputeCap + "). Repairing PyTorch CUDA installation (" + cudaVersion + ")...\n");
+                logCallback.accept("🗑️ Uninstalling old PyTorch packages (torch, torchvision, torchaudio)...\n");
+                runCommand(new String[]{pythonPath, "-m", "pip", "uninstall", "torch", "torchvision", "torchaudio", "-y"}, logCallback);
+
+                logCallback.accept("📥 Installing CUDA PyTorch packages from https://download.pytorch.org/whl/" + cudaVersion + "...\n");
+                runCommand(new String[]{pythonPath, "-m", "pip", "install", "torch", "torchvision", "torchaudio", "--index-url", "https://download.pytorch.org/whl/" + cudaVersion, "--no-warn-script-location"}, logCallback);
+                logCallback.accept("✅ PyTorch CUDA repair completed.\n\n");
+            } else {
+                logCallback.accept("ℹ️ No NVIDIA GPU detected or nvidia-smi not available.\n\n");
+            }
+        }
+
         // 1. Repair Core ComfyUI requirements
         File coreReqs = new File(comfyRoot, "requirements.txt");
         if (coreReqs.exists()) {
@@ -279,6 +314,23 @@ public class UpdaterService {
         }
 
         logCallback.accept("✅ Environment repair completed successfully!\n");
+    }
+
+    private void runCommand(String[] cmd, Consumer<String> logCallback) {
+        try {
+            ProcessBuilder pb = new ProcessBuilder(cmd);
+            pb.redirectErrorStream(true);
+            Process p = processTracker.start(pb);
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream(), java.nio.charset.StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    logCallback.accept("  [pip] " + line + "\n");
+                }
+            }
+            p.waitFor();
+        } catch (Exception e) {
+            logCallback.accept("  ❌ Command execution failed: " + e.getMessage() + "\n");
+        }
     }
 
     private void runPipInstall(String pythonPath, File requirementsFile, Consumer<String> logCallback) {

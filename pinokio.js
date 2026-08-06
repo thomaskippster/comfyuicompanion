@@ -1,5 +1,5 @@
 module.exports = {
-  title: "ComfyUI Companion",
+  title: "Companion for ComfyUI",
   description: "Identify and download missing models for ComfyUI workflows automatically.",
   icon: "assets/icon.png",
   menu: async (kernel) => {

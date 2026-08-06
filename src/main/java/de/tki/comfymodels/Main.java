@@ -1029,7 +1029,13 @@ public class Main extends JFrame {
         if (videoArchitectTab != null) {
             this.videoArchitectWrapper.add(videoArchitectTab, BorderLayout.CENTER);
         } else {
-            this.videoArchitectWrapper.add(new JPanel(), BorderLayout.CENTER);
+            JPanel fallback = new JPanel(new GridBagLayout());
+            fallback.setOpaque(false);
+            JLabel label = new JLabel("🎬 Video Architect is disabled or initializing...");
+            label.setFont(new Font("SansSerif", Font.BOLD, 14));
+            label.setForeground(configService.isDarkMode() ? Color.LIGHT_GRAY : Color.DARK_GRAY);
+            fallback.add(label);
+            this.videoArchitectWrapper.add(fallback, BorderLayout.CENTER);
         }
 
 

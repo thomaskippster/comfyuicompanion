@@ -70,6 +70,10 @@ public class VideoArchitectTab extends JFXPanel {
         this.setOpaque(false);
         this.setBackground(new java.awt.Color(0, 0, 0, 0));
 
+        try {
+            Platform.setImplicitExit(false);
+        } catch (Throwable ignored) {}
+
         Platform.runLater(this::initFX);
     }
 
@@ -79,12 +83,20 @@ public class VideoArchitectTab extends JFXPanel {
             rootNode.setPadding(new Insets(15));
             rootNode.getStyleClass().add("root");
 
-            // Apply style sheet
-            String cssPath = getClass().getResource("/css/video-architect.css").toExternalForm();
-            rootNode.getStylesheets().add(cssPath);
+            // Apply style sheet safely
+            try {
+                java.net.URL cssRes = getClass().getResource("/css/video-architect.css");
+                if (cssRes != null) {
+                    rootNode.getStylesheets().add(cssRes.toExternalForm());
+                } else {
+                    logger.warn("CSS resource /css/video-architect.css not found.");
+                }
+            } catch (Exception ex) {
+                logger.warn("Failed to load video-architect.css: {}", ex.getMessage());
+            }
 
             // Synchronize starting theme
-            if (!configService.isDarkMode()) {
+            if (configService != null && !configService.isDarkMode()) {
                 rootNode.getStyleClass().add("light-theme");
             }
 
@@ -95,10 +107,11 @@ public class VideoArchitectTab extends JFXPanel {
             rootNode.setCenter(mainSplitPane);
 
             fxScene = new javafx.scene.Scene(rootNode);
-            fxScene.setFill(configService.isDarkMode() ? javafx.scene.paint.Color.rgb(18, 19, 22) : javafx.scene.paint.Color.rgb(240, 242, 245));
+            boolean isDark = configService == null || configService.isDarkMode();
+            fxScene.setFill(isDark ? javafx.scene.paint.Color.rgb(18, 19, 22) : javafx.scene.paint.Color.rgb(240, 242, 245));
             setScene(fxScene);
-        } catch (Exception e) {
-            e.printStackTrace();
+        } catch (Throwable e) {
+            logger.error("Error initializing Video Architect JavaFX UI: {}", e.getMessage(), e);
         }
     }
 

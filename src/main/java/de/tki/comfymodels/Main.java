@@ -3642,29 +3642,17 @@ public class Main extends JFrame {
         });
 
         bootstrapBtn.addActionListener(e -> {
-            int confirm = JOptionPane.showConfirmDialog(this, "This will clone ComfyUI and download Python. Proceed?", "Bootstrap", JOptionPane.YES_NO_OPTION);
-            if (confirm == JOptionPane.YES_OPTION) {
-                bootstrapBtn.setEnabled(false); launchBtn.setEnabled(false);
-                consoleOutput.setText("⚙️ Starting Environment Bootstrap...\n");
-                Path appRoot = Paths.get(System.getProperty("user.home"), ".comfyui-companion");
-                Path comfyTarget = appRoot.resolve("ComfyUI");
-                bootstrapper.downloadAndExtractPortablePython(appRoot, log -> SwingUtilities.invokeLater(() -> consoleOutput.append(log + "\n")))
-                    .thenCompose(pythonPath -> {
-                        configService.setPythonPath(pythonPath.toString());
-                        return bootstrapper.installPip(pythonPath, log -> SwingUtilities.invokeLater(() -> consoleOutput.append(log + "\n")))
-                            .thenCompose(v -> bootstrapper.cloneComfyUI(comfyTarget, log -> SwingUtilities.invokeLater(() -> consoleOutput.append(log + "\n"))))
-                            .thenCompose(v -> bootstrapper.installRequirements(pythonPath, comfyTarget, log -> SwingUtilities.invokeLater(() -> consoleOutput.append(log + "\n"))));
-                    }).thenRun(() -> SwingUtilities.invokeLater(() -> {
-                        configService.setComfyUIPath(comfyTarget.toString()); configService.autoDiscoverPaths();
-                        syncBridgeFiles();
-                        consoleOutput.append("✅ Environment ready!\n");
-                        bootstrapBtn.setEnabled(true); launchBtn.setEnabled(true);
-                        refreshVersions(); JOptionPane.showMessageDialog(this, "Setup complete!");
-                    })).exceptionally(ex -> {
-                        SwingUtilities.invokeLater(() -> { consoleOutput.append("❌ Bootstrap failed: " + ex.getMessage() + "\n"); bootstrapBtn.setEnabled(true); });
-                        return null;
-                    });
-            }
+            de.tki.comfymodels.ui.EnvironmentInstallerDialog dialog = new de.tki.comfymodels.ui.EnvironmentInstallerDialog(
+                this, 
+                bootstrapper, 
+                configService, 
+                profileManager, 
+                () -> {
+                    syncBridgeFiles();
+                    refreshVersions();
+                }
+            );
+            dialog.setVisible(true);
         });
 
         launchBtn.addActionListener(e -> {

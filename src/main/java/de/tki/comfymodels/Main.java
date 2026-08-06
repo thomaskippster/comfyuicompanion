@@ -617,236 +617,29 @@ public class Main extends JFrame {
     }
 
     private boolean promptForPassword() {
-        // Read theme before applying
         setupTheme(configService.isDarkMode());
-
-        while (true) {
-            boolean vaultExists = configService.hasVault();
-            String title = vaultExists ? "Vault Unlock" : "Vault Setup";
-            String promptText = vaultExists ? "Enter Vault Password (to unlock API Keys):" : "Set Vault Password (to protect API Keys):";
-
-            de.tki.comfymodels.ui.StandardDialog dialog = new de.tki.comfymodels.ui.StandardDialog(this, title);
-            JPanel content = dialog.createContentPanel();
-            
-            GridBagConstraints gbc = new GridBagConstraints();
-            gbc.fill = GridBagConstraints.HORIZONTAL;
-            gbc.gridx = 0; gbc.gridy = 0; gbc.weightx = 1.0;
-            
-            content.add(new JLabel(promptText), gbc);
-            
-            JPasswordField pf = new JPasswordField();
-            gbc.gridy++;
-            gbc.insets = new Insets(10, 0, 10, 0);
-            content.add(pf, gbc);
-
-            final JTextField finalField1;
-            final JTextField finalField2;
-            final JTextField finalField3;
-            final JTextField finalField4;
-            final JCheckBox finalSymlinkCheck;
-
-            if (!vaultExists) {
-                finalField1 = new JTextField(configService.getExtraComfyUIPath());
-                finalField2 = new JTextField(configService.getArchivePath());
-                finalField3 = new JTextField(configService.getComfyUIPath());
-                finalField4 = new JTextField(configService.getPythonPath());
-                finalSymlinkCheck = new JCheckBox("Use Symbolic Links on Restore (Saves SSD space)", configService.isUseSymlinksOnRestore());
-
-                // Extra ComfyUI Path
-                gbc.gridy++;
-                gbc.insets = new Insets(10, 0, 5, 0);
-                content.add(new JLabel("Extra ComfyUI Path (contains models, input, output):"), gbc);
-                
-                gbc.gridy++;
-                gbc.insets = new Insets(0, 0, 5, 0);
-                JPanel row1 = new JPanel(new BorderLayout(5, 0));
-                JButton browse1 = new JButton("Browse...");
-                browse1.addActionListener(e -> {
-                    JFileChooser chooser = new JFileChooser();
-                    chooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
-                    if (chooser.showOpenDialog(dialog) == JFileChooser.APPROVE_OPTION) {
-                        finalField1.setText(chooser.getSelectedFile().getAbsolutePath());
-                    }
-                });
-                row1.add(finalField1, BorderLayout.CENTER);
-                row1.add(browse1, BorderLayout.EAST);
-                content.add(row1, gbc);
-
-                // Archive Path
-                gbc.gridy++;
-                gbc.insets = new Insets(10, 0, 5, 0);
-                content.add(new JLabel("Archive Path (Offload storage):"), gbc);
-
-                gbc.gridy++;
-                gbc.insets = new Insets(0, 0, 5, 0);
-                JPanel row2 = new JPanel(new BorderLayout(5, 0));
-                JButton browse2 = new JButton("Browse...");
-                browse2.addActionListener(e -> {
-                    JFileChooser chooser = new JFileChooser();
-                    chooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
-                    if (chooser.showOpenDialog(dialog) == JFileChooser.APPROVE_OPTION) {
-                        finalField2.setText(chooser.getSelectedFile().getAbsolutePath());
-                    }
-                });
-                row2.add(finalField2, BorderLayout.CENTER);
-                row2.add(browse2, BorderLayout.EAST);
-                content.add(row2, gbc);
-
-                // ComfyUI Main Directory
-                gbc.gridy++;
-                gbc.insets = new Insets(10, 0, 5, 0);
-                content.add(new JLabel("ComfyUI Main Directory (contains main.py):"), gbc);
-
-                gbc.gridy++;
-                gbc.insets = new Insets(0, 0, 5, 0);
-                JPanel row3 = new JPanel(new BorderLayout(5, 0));
-                JButton browse3 = new JButton("Browse...");
-                row3.add(finalField3, BorderLayout.CENTER);
-                row3.add(browse3, BorderLayout.EAST);
-                content.add(row3, gbc);
-
-                // Python Executable Path
-                gbc.gridy++;
-                gbc.insets = new Insets(10, 0, 5, 0);
-                content.add(new JLabel("Python Executable Path:"), gbc);
-
-                gbc.gridy++;
-                gbc.insets = new Insets(0, 0, 5, 0);
-                JPanel row4 = new JPanel(new BorderLayout(5, 0));
-                JButton browse4 = new JButton("Browse...");
-                row4.add(finalField4, BorderLayout.CENTER);
-                row4.add(browse4, BorderLayout.EAST);
-                content.add(row4, gbc);
-
-                browse3.addActionListener(e -> {
-                    JFileChooser chooser = new JFileChooser();
-                    chooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
-                    if (chooser.showOpenDialog(dialog) == JFileChooser.APPROVE_OPTION) {
-                        String path = chooser.getSelectedFile().getAbsolutePath();
-                        finalField3.setText(path);
-                        
-                        String discoveredPython = configService.discoverPython(path);
-                        if (discoveredPython != null && !discoveredPython.equals("python") && !discoveredPython.equals("python3")) {
-                            finalField4.setText(discoveredPython);
-                        }
-                    }
-                });
-
-                browse4.addActionListener(e -> {
-                    JFileChooser chooser = new JFileChooser();
-                    chooser.setFileSelectionMode(JFileChooser.FILES_ONLY);
-                    if (chooser.showOpenDialog(dialog) == JFileChooser.APPROVE_OPTION) {
-                        finalField4.setText(chooser.getSelectedFile().getAbsolutePath());
-                    }
-                });
-
-                // Symlink checkbox
-                gbc.gridy++;
-                gbc.insets = new Insets(10, 0, 5, 0);
-                content.add(finalSymlinkCheck, gbc);
-            } else {
-                finalField1 = null;
-                finalField2 = null;
-                finalField3 = null;
-                finalField4 = null;
-                finalSymlinkCheck = null;
+        String defaultPass = "companion_default_vault_key";
+        try {
+            configService.unlock(defaultPass);
+            if (configService.isVaultFresh()) {
+                String url = "https://raw.githubusercontent.com/Comfy-Org/ComfyUI-Manager/main/model-list.json";
+                modelListService.importFromUrl(url);
             }
-
-            JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
-            JButton btnAction = new JButton(vaultExists ? "Unlock" : "Set Password");
-            btnAction.putClientProperty("JButton.buttonType", "accent");
-            JButton btnCancel = new JButton("Cancel");
-            buttonPanel.add(btnAction);
-            buttonPanel.add(btnCancel);
-            
-            final String[] resultAction = {"CANCEL"};
-
-            if (vaultExists) {
-                JButton btnReset = new JButton("Reset Vault");
-                buttonPanel.add(btnReset);
-                btnReset.addActionListener(e -> {
-                    resultAction[0] = "RESET";
-                    dialog.dispose();
-                });
-            }
-            
-            // Action to perform on unlock/set
-            Runnable doAction = () -> {
-                resultAction[0] = "OK";
-                dialog.setVisible(false);
-            };
-            
-            btnAction.addActionListener(e -> doAction.run());
-            pf.addActionListener(e -> doAction.run()); // This handles 'Enter' key
-            btnCancel.addActionListener(e -> {
-                resultAction[0] = "CANCEL";
-                dialog.dispose();
-            });
-
-            dialog.add(content, BorderLayout.CENTER);
-            dialog.add(buttonPanel, BorderLayout.SOUTH);
-            
-            if (vaultExists) {
-                dialog.pack();
-            } else {
-                dialog.setSize(600, 600);
-            }
-            dialog.setLocationRelativeTo(null); 
-            
-            SwingUtilities.invokeLater(() -> pf.requestFocusInWindow());
-            dialog.setVisible(true);
-
-            if ("CANCEL".equals(resultAction[0])) {
-                return false;
-            }
-
-            if ("RESET".equals(resultAction[0])) {
-                handleVaultReset();
-                continue;
-            }
-
-            // If it is "OK"
-            String pass = new String(pf.getPassword());
-            dialog.dispose();
-
-            if (pass.trim().isEmpty()) {
-                JOptionPane.showMessageDialog(this, "Password cannot be empty.", "Validation", JOptionPane.WARNING_MESSAGE);
-                continue;
-            }
-
+            return true;
+        } catch (Exception e) {
+            logger.warn("Could not unlock vault with default password. Resetting vault to start clean...");
             try {
-                configService.unlock(pass);
-                if (!vaultExists) {
-                    configService.setModelsPath(finalField1.getText().trim());
-                    configService.setArchivePath(finalField2.getText().trim());
-                    configService.setComfyUIPath(finalField3.getText().trim());
-                    configService.setPythonPath(finalField4.getText().trim());
-                    configService.setUseSymlinksOnRestore(finalSymlinkCheck.isSelected());
-                }
-                configService.autoDiscoverPaths();
-                restBridge.setApiToken(configService.getApiToken());
-                syncBridgeFiles();
-                
+                configService.resetVault();
+                configService.unlock(defaultPass);
                 if (configService.isVaultFresh()) {
                     String url = "https://raw.githubusercontent.com/Comfy-Org/ComfyUI-Manager/main/model-list.json";
                     modelListService.importFromUrl(url);
                 }
-                
                 return true;
-            } catch (Exception e) {
-                JOptionPane.showMessageDialog(this, "Unlock Failed: " + e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);        
+            } catch (Exception ex) {
+                logger.error("Failed to reset and unlock vault: {}", ex.getMessage(), ex);
+                return false;
             }
-        }
-    }
-
-    private void handleVaultReset() {
-        int confirm = JOptionPane.showConfirmDialog(this,
-            "Warning: Resetting the vault will delete all your stored API keys.\n" +
-            "This action cannot be undone. Do you want to proceed?",
-            "Confirm Vault Reset", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
-
-        if (confirm == JOptionPane.YES_OPTION) {
-            configService.resetVault();
         }
     }
 
@@ -5614,14 +5407,20 @@ public class Main extends JFrame {
         helpBtn.setMaximumSize(new Dimension(360, 40));
         helpBtn.addActionListener(e -> showHelpDialog());
 
-        JButton resetVaultBtn = new JButton("🔒 Reset Secure Vault...");
-        resetVaultBtn.setFont(btnFont);
-        resetVaultBtn.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
-        resetVaultBtn.setMaximumSize(new Dimension(360, 40));
-        resetVaultBtn.addActionListener(e -> {
-            int confirm = JOptionPane.showConfirmDialog(this, "This will reset all vault credentials and settings. Continue?", "Reset Vault", JOptionPane.YES_NO_OPTION);
+        JButton resetSettingsBtn = new JButton("🔄 Reset Application Settings...");
+        resetSettingsBtn.setFont(btnFont);
+        resetSettingsBtn.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        resetSettingsBtn.setMaximumSize(new Dimension(360, 40));
+        resetSettingsBtn.addActionListener(e -> {
+            int confirm = JOptionPane.showConfirmDialog(this, "This will reset all application configurations and profiles. Continue?", "Reset Settings", JOptionPane.YES_NO_OPTION);
             if (confirm == JOptionPane.YES_OPTION) {
                 configService.resetVault();
+                try {
+                    configService.unlock("companion_default_vault_key");
+                    JOptionPane.showMessageDialog(this, "Settings reset successfully. Please restart the application.", "Success", JOptionPane.INFORMATION_MESSAGE);
+                } catch (Exception ex) {
+                    logger.error("Failed to unlock vault after reset: {}", ex.getMessage());
+                }
             }
         });
 
@@ -5716,7 +5515,7 @@ public class Main extends JFrame {
         right.add(Box.createVerticalStrut(20));
         right.add(apiBtn);
         right.add(Box.createVerticalStrut(10));
-        right.add(resetVaultBtn);
+        right.add(resetSettingsBtn);
         right.add(Box.createVerticalStrut(10));
         right.add(parseBlueprintsBtn);
         right.add(Box.createVerticalStrut(20));

@@ -52,7 +52,8 @@ public class AgenticWorkflowOrchestrator {
         com.thomaskippster.comfyuicompanion.service.provisioning.MissingResourceReport report = gapAnalyzer.analyze(intent);
         
         String finalModelName;
-        if (!report.isMissing() && report.getResolvedModelName() != null) {
+        boolean hasResolvedModel = report != null && !report.isMissing() && report.getResolvedModelName() != null;
+        if (hasResolvedModel) {
             // Windows path separator replace just in case, ComfyUI needs forward slashes or double backslashes
             finalModelName = report.getResolvedModelName().replace("\\", "\\\\");
             logger.info("Auto-Provisioning: Nutze bestes lokal verfügbares Modell '{}' für Architektur '{}'", finalModelName, intent.getArchitecture());

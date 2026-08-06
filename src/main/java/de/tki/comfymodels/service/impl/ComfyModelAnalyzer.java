@@ -20,8 +20,6 @@ public class ComfyModelAnalyzer implements IModelAnalyzer {
     @Autowired
     private ModelListService modelListService;
 
-    @Autowired(required = false)
-    private GeminiAIService geminiService;
 
     private final Pattern FILE_PATTERN = Pattern.compile("([a-zA-Z0-9_\\-\\.\\/\\\\\\:]+\\.(?:safetensors|sft|ckpt|pth|pt|bin|onnx|yaml))", Pattern.CASE_INSENSITIVE);
     private final Pattern COMP_VAE_PATTERN = Pattern.compile("(vae|tokenizer|autoencoder|encoder|decoder)", Pattern.CASE_INSENSITIVE);

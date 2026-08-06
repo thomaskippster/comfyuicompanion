@@ -22,9 +22,7 @@ public interface IConfigService {
     // API KEYS & TOKENS
     // ========================================
     
-    String getGeminiApiKey();
-    void setGeminiApiKey(String key);
-    
+
     String getHfToken();
     void setHfToken(String token);
     

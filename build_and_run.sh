@@ -1,5 +1,5 @@
 #!/bin/bash
-echo "=== Building ComfyUI Companion ==="
+echo "=== Building Companion for ComfyUI ==="
 mvn clean package -DskipTests
 if [ $? -ne 0 ]; then
     echo "[ERROR] Build failed!"

@@ -7,7 +7,7 @@
       "method": "shell.run",
       "params": {
         "conda": "env",
-        "message": "conda install -y -c conda-forge openjdk=17 maven",
+        "message": "conda install -y -c conda-forge openjdk=21 maven",
         "title": "Installing Java & Maven (Local Environment)"
       }
     },

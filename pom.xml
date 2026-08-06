@@ -126,18 +126,19 @@
         <dependency>
             <groupId>org.openjfx</groupId>
             <artifactId>javafx-controls</artifactId>
-            <version>17.0.10</version>
+            <version>21.0.6</version>
         </dependency>
         <dependency>
             <groupId>org.openjfx</groupId>
             <artifactId>javafx-swing</artifactId>
-            <version>17.0.10</version>
+            <version>21.0.6</version>
         </dependency>
         <dependency>
             <groupId>org.openjfx</groupId>
             <artifactId>javafx-web</artifactId>
-            <version>17.0.10</version>
+            <version>21.0.6</version>
         </dependency>
+
         <dependency>
             <groupId>io.metaloom.video</groupId>
             <artifactId>video4j</artifactId>
@@ -173,7 +174,7 @@
                 <artifactId>maven-compiler-plugin</artifactId>
                 <version>3.15.0</version>
                 <configuration>
-                    <release>17</release>
+                    <release>21</release>
                 </configuration>
             </plugin>
             <plugin>
@@ -191,6 +192,9 @@
                             <transformers>
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
                                     <mainClass>de.tki.comfymodels.Main</mainClass>
+                                    <manifestEntries>
+                                        <Add-Opens>jdk.unsupported/sun.misc java.base/java.lang java.base/java.nio java.base/java.util org.openjfx.graphics/com.sun.marlin</Add-Opens>
+                                    </manifestEntries>
                                 </transformer>
                             </transformers>
                             <filters>
@@ -217,9 +221,11 @@
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>3.5.6</version>
                 <configuration>
-                    <argLine>-Dnet.bytebuddy.experimental=true -Dcomfyuicompanion.appdata=${project.build.directory}/temp-appdata</argLine>
+                    <argLine>--sun-misc-unsafe-memory-access=allow --add-opens=jdk.unsupported/sun.misc=ALL-UNNAMED -Dnet.bytebuddy.experimental=true -Dcomfyuicompanion.appdata=${project.build.directory}/temp-appdata</argLine>
                 </configuration>
             </plugin>
+
+
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-release-plugin</artifactId>

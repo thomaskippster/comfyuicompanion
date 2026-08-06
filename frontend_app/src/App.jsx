@@ -83,7 +83,7 @@ function App() {
   return (
     <div className="app-container">
       <header className="header animate-fade-in">
-        <h1>ComfyUI Companion</h1>
+        <h1>Companion for ComfyUI</h1>
         <p>Intelligent Model Orchestration & Execution</p>
       </header>
 

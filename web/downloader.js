@@ -1,4 +1,4 @@
-// ComfyUI Companion - Bridge Extension
+// Companion for ComfyUI - Bridge Extension
 let app = null;
 let api = null;
 

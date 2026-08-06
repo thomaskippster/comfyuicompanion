@@ -201,6 +201,9 @@ public class EnvironmentBootstrapperImpl {
                         if (maxComputeCap >= 12.0) {
                             cudaVersion = "cu128";
                             cudaLogName = "CUDA 12.8 (Blackwell/Modern)";
+                        } else if (maxComputeCap >= 8.9) {
+                            cudaVersion = "cu124";
+                            cudaLogName = "CUDA 12.4 (Modern)";
                         } else if (maxComputeCap >= 5.0) {
                             cudaVersion = "cu121";
                             cudaLogName = "CUDA 12.1 (Standard)";

@@ -129,7 +129,7 @@ The app comes with **10 pre-configured launch profiles**, ordered logically by u
 ## 🚀 Getting Started
 
 ### Prerequisites
-* **Java 17** or higher
+* **Java 21** or higher
 * **Maven** (only if building from source)
 
 ---

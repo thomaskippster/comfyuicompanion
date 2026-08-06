@@ -120,36 +120,79 @@ public class ComfyRegistryClient implements IComfyRegistryClient {
                             wf.setRequiredModels(models);
                             wf.setCategory(categoryTitle);
 
-                            // Construct raw Github URLs for JSON and previews
-                            // Encode path segments correctly to avoid URI syntax exceptions
+                            String repoBase = "https://raw.githubusercontent.com/Comfy-Org/workflow_templates/main/";
                             String encodedName = encodeUrlPath(name);
-                            wf.setJsonDownloadUrl("https://raw.githubusercontent.com/Comfy-Org/workflow_templates/main/templates/" + encodedName + ".json");
+                            wf.setJsonDownloadUrl(repoBase + "templates/" + encodedName + ".json");
                             
                             // The registry returns the actual preview as a relative path inside
-                            // the "thumbnail" array (e.g. "output/foo.mp4", "thumbnail/foo.png").
-                            // mediaType/mediaSubtype are unreliable (mediaType is always "image" even
-                            // for video templates). Use the file extension of the first thumbnail
-                            // path to decide whether the preview is a video.
-                            String rawBase = "https://raw.githubusercontent.com/Comfy-Org/workflow_templates/main/templates/";
+                            // the "thumbnail" array (e.g. "output/foo.mp4", "thumbnail/foo.png", "input/foo.png").
                             String thumbRel = null;
                             JsonNode thumbNode = tNode.path("thumbnail");
                             if (thumbNode.isArray() && thumbNode.size() > 0 && thumbNode.get(0).isTextual()) {
                                 thumbRel = thumbNode.get(0).asText();
                             }
-                            String thumbnailExt = mediaSubtype.isEmpty() ? "webp" : mediaSubtype;
-                            wf.setThumbnailUrl(rawBase + encodedName + "-1." + thumbnailExt);
+
+                            // Collect static image preview candidates from io.inputs and io.outputs
+                            List<String> candidates = new ArrayList<>();
+                            JsonNode ioNode = tNode.path("io");
+                            JsonNode inputsNode = ioNode.path("inputs");
+                            if (inputsNode.isArray()) {
+                                for (JsonNode inNode : inputsNode) {
+                                    String inFile = inNode.path("file").asText("");
+                                    if (!inFile.isEmpty()) {
+                                        candidates.add(repoBase + "input/" + encodeUrlPath(inFile));
+                                    }
+                                }
+                            }
+                            JsonNode outputsNode = ioNode.path("outputs");
+                            if (outputsNode.isArray()) {
+                                for (JsonNode outNode : outputsNode) {
+                                    String outFile = outNode.path("file").asText("");
+                                    if (!outFile.isEmpty()) {
+                                        candidates.add(repoBase + "output/" + encodeUrlPath(outFile));
+                                    }
+                                }
+                            }
+                            wf.setPreviewCandidates(candidates);
+
+                            // Fallback to io.outputs or io.inputs if thumbnail array is missing/empty
+                            if (thumbRel == null || thumbRel.isEmpty()) {
+                                if (outputsNode.isArray() && outputsNode.size() > 0) {
+                                    String outFile = outputsNode.get(0).path("file").asText("");
+                                    if (!outFile.isEmpty()) {
+                                        thumbRel = "output/" + outFile;
+                                    }
+                                }
+                                if (thumbRel == null || thumbRel.isEmpty()) {
+                                    if (inputsNode.isArray() && inputsNode.size() > 0) {
+                                        for (JsonNode inNode : inputsNode) {
+                                            String inFile = inNode.path("file").asText("");
+                                            if (!inFile.isEmpty()) {
+                                                thumbRel = "input/" + inFile;
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
 
                             if (thumbRel != null && !thumbRel.isEmpty()) {
                                 String lower = thumbRel.toLowerCase();
+                                String normalizedThumbPath = thumbRel.startsWith("/") ? thumbRel.substring(1) : thumbRel;
+                                wf.setThumbnailUrl(repoBase + encodeUrlPath(normalizedThumbPath));
                                 if (lower.endsWith(".mp4") || lower.endsWith(".webm") || lower.endsWith(".mov")) {
                                     wf.setMediaType("video");
                                 } else {
                                     wf.setMediaType(mediaType);
                                 }
                             } else {
+                                String thumbnailExt = mediaSubtype.isEmpty() ? "webp" : mediaSubtype;
+                                wf.setThumbnailUrl(repoBase + "templates/" + encodedName + "-1." + thumbnailExt);
                                 wf.setMediaType(mediaType);
                             }
                             wf.setMediaSubtype(mediaSubtype);
+
+
 
                             workflows.add(wf);
                         }

@@ -74,6 +74,7 @@ public class BlueprintGalleryTab extends JPanel {
     private final ArchiveService archiveService;
     private final de.tki.comfymodels.service.impl.LocalAIService localAIService;
     private final ProcessTracker processTracker;
+    private final de.tki.comfymodels.service.IModelSearchService modelSearchService;
     private final ObjectMapper mapper = new ObjectMapper();
 
     // ── ui ────────────────────────────────────────────────────────────────────
@@ -171,6 +172,7 @@ public class BlueprintGalleryTab extends JPanel {
                                LocalModelScanner localModelScanner,
                                ArchiveService archiveService,
                                de.tki.comfymodels.service.impl.LocalAIService localAIService,
+                               de.tki.comfymodels.service.IModelSearchService modelSearchService,
                                @org.springframework.beans.factory.annotation.Autowired(required = false) ProcessTracker processTracker) {
         this.configService = configService;
         this.modelArchitectureService = modelArchitectureService;
@@ -181,6 +183,7 @@ public class BlueprintGalleryTab extends JPanel {
         this.localModelScanner = localModelScanner;
         this.archiveService = archiveService;
         this.localAIService = localAIService;
+        this.modelSearchService = modelSearchService;
         this.processTracker = processTracker;
         this.filterDebounceTimer.setRepeats(false);
 
@@ -1187,7 +1190,7 @@ public class BlueprintGalleryTab extends JPanel {
         Window owner = SwingUtilities.getWindowAncestor(this);
         JDialog dlg = new JDialog(owner instanceof Frame ? (Frame) owner : null,
                 "Blueprint: " + entry.name, true);
-        dlg.setSize(840, 680);
+        dlg.setSize(1000, 680);
         dlg.setLocationRelativeTo(this);
 
         Color bg = configService.isDarkMode() ? new Color(20, 22, 30) : new Color(245, 247, 250);
@@ -1231,7 +1234,7 @@ public class BlueprintGalleryTab extends JPanel {
         if (previewImg != null) {
             JLabel imgLabel = new JLabel();
             imgLabel.setAlignmentX(JComponent.CENTER_ALIGNMENT);
-            int targetW = 740;
+            int targetW = 900;
             int imgW = previewImg.getWidth(null);
             int imgH = previewImg.getHeight(null);
             if (imgW > 0 && imgH > 0) {
@@ -1249,13 +1252,13 @@ public class BlueprintGalleryTab extends JPanel {
                 imgPanel.setBorder(new EmptyBorder(0, 0, 14, 0));
                 imgPanel.add(imgLabel);
                 body.add(imgPanel);
-                dlg.setSize(840, 820);
+                dlg.setSize(1000, 820);
             }
         }
 
         if (!entry.category.isEmpty()) addRow(body, "Category", entry.category);
         if (!entry.description.isEmpty()) {
-            JLabel desc = new JLabel("<html><body style='width:740px'>" +
+            JLabel desc = new JLabel("<html><body style='width:900px'>" +
                     escapeHtml(entry.description) + "</body></html>");
             desc.setFont(new Font("SansSerif", Font.PLAIN, 11));
             desc.setForeground(textSecondary);
@@ -1283,12 +1286,34 @@ public class BlueprintGalleryTab extends JPanel {
                 @Override public boolean isCellEditable(int r, int c) { return false; }
             };
 
-            for (ModelInfo info : entry.requiredModels) {
+            for (int i = 0; i < entry.requiredModels.size(); i++) {
+                ModelInfo info = entry.requiredModels.get(i);
                 String name = info.getName();
                 String type = info.getType() != null ? info.getType() : "checkpoints";
                 String size = resolveModelSize(info);
                 String statusStr = getModelStatus(info);
                 modelTblModel.addRow(new Object[]{name, type, size, statusStr});
+
+                if ("Unknown".equalsIgnoreCase(size) && info.getUrl() != null && !info.getUrl().isBlank() && !"MISSING".equals(info.getUrl())) {
+                    final int rowIndex = i;
+                    final ModelInfo finalInfo = info;
+                    CompletableFuture.supplyAsync(() -> {
+                        long bytes = modelSearchService.getRemoteSize(finalInfo.getUrl());
+                        return modelSearchService.formatSize(bytes);
+                    }).thenAccept(resolvedSize -> {
+                        if (!"Unknown".equalsIgnoreCase(resolvedSize) && !resolvedSize.contains("Auth")) {
+                            finalInfo.setSize(resolvedSize);
+                            SwingUtilities.invokeLater(() -> {
+                                if (rowIndex < modelTblModel.getRowCount()) {
+                                    modelTblModel.setValueAt(resolvedSize, rowIndex, 2);
+                                }
+                            });
+                        }
+                    }).exceptionally(ex -> {
+                        logger.warn("Failed to fetch remote size for model: " + name, ex);
+                        return null;
+                    });
+                }
             }
 
             JTable table = new JTable(modelTblModel);
@@ -1303,11 +1328,11 @@ public class BlueprintGalleryTab extends JPanel {
             table.getTableHeader().setFont(new Font("SansSerif", Font.BOLD, 11));
             table.setAutoResizeMode(JTable.AUTO_RESIZE_ALL_COLUMNS);
 
-            // Set column width distribution to ratio 6 : 2 : 1 : 1 (Model Name 6, Type 2, Size 1, Status 1)
-            table.getColumnModel().getColumn(0).setPreferredWidth(450); // Model Name (6x ratio)
-            table.getColumnModel().getColumn(1).setPreferredWidth(150); // Type (2x ratio)
-            table.getColumnModel().getColumn(2).setPreferredWidth(80);  // Size (1x ratio)
-            table.getColumnModel().getColumn(3).setPreferredWidth(100); // Status (1x ratio)
+            // Set column width distribution to ratio 5.5 : 1.2 : 1.0 : 1.3
+            table.getColumnModel().getColumn(0).setPreferredWidth(550); // Model Name
+            table.getColumnModel().getColumn(1).setPreferredWidth(120); // Type
+            table.getColumnModel().getColumn(2).setPreferredWidth(100); // Size
+            table.getColumnModel().getColumn(3).setPreferredWidth(130); // Status
 
             table.setDefaultRenderer(Object.class, new javax.swing.table.DefaultTableCellRenderer() {
                 @Override
@@ -1336,7 +1361,7 @@ public class BlueprintGalleryTab extends JPanel {
             });
 
             JScrollPane tblScroll = new JScrollPane(table);
-            tblScroll.setPreferredSize(new Dimension(740, 180));
+            tblScroll.setPreferredSize(new Dimension(900, 180));
             tblScroll.setMaximumSize(new Dimension(Integer.MAX_VALUE, 180));
             tblScroll.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
             tblScroll.getViewport().setBackground(bg);

@@ -1,4 +1,4 @@
-# ComfyUI Companion Bridge
+# Companion for ComfyUI Bridge
 import server
 import folder_paths
 import os

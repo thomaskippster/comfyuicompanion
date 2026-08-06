@@ -65,7 +65,7 @@ public class Video4jEditorService {
 
 
     private boolean convertImageToVideo(File imageFile, File destVideo, int duration) {
-        logger.info("ðŸ–¼ï¸ [Video4jEditorService] Converting static image " + imageFile.getName() + " to MP4 video (Duration: " + duration + "s)");
+        logger.info("🖼️ [Video4jEditorService] Converting static image " + imageFile.getName() + " to MP4 video (Duration: " + duration + "s)");
         try {
             ProcessBuilder pb = new ProcessBuilder(
                 configService.getFfmpegPath(), "-y",
@@ -88,13 +88,13 @@ public class Video4jEditorService {
             }
             int exitCode = process.waitFor();
             if (exitCode == 0 && destVideo.exists() && destVideo.length() > 1024) {
-                logger.info("âœ… [Video4jEditorService] Successfully converted image to video: " + destVideo.getAbsolutePath());
+                logger.info("✅ [Video4jEditorService] Successfully converted image to video: " + destVideo.getAbsolutePath());
                 return true;
             } else {
-                logger.error("âŒ [Video4jEditorService] FFmpeg Img2Vid failed with exit code: " + exitCode);
+                logger.error("❌ [Video4jEditorService] FFmpeg Img2Vid failed with exit code: " + exitCode);
             }
         } catch (Exception e) {
-            logger.error("âŒ [Video4jEditorService] Failed to run FFmpeg Img2Vid: " + e.getMessage());
+            logger.error("❌ [Video4jEditorService] Failed to run FFmpeg Img2Vid: " + e.getMessage());
             e.printStackTrace();
         }
         return false;
@@ -148,7 +148,7 @@ public class Video4jEditorService {
     public File applyTrimming(Scene scene) throws Exception {
         validateFfmpeg();
         String videoPath = scene.getVideoPath();
-        logger.info("ðŸ” [Video4jEditorService] Trimming/Processing Scene " + scene.getSceneId());
+        logger.info("🔍 [Video4jEditorService] Trimming/Processing Scene " + scene.getSceneId());
         logger.info("   -> Configured Video Path: " + videoPath);
 
         File tempFile = new File(System.getProperty("java.io.tmpdir"), "temp_scene_" + scene.getSceneId() + ".mp4");
@@ -314,7 +314,7 @@ public class Video4jEditorService {
             }
         }
 
-        logger.info("ðŸŽ¬ [Video4jEditorService] Trimmed scene " + scene.getSceneId() + " successfully. Temp File: " + tempFile.getAbsolutePath());
+        logger.info("🎬 [Video4jEditorService] Trimmed scene " + scene.getSceneId() + " successfully. Temp File: " + tempFile.getAbsolutePath());
         return tempFile;
     }
 
@@ -358,7 +358,7 @@ public class Video4jEditorService {
                 return new javafx.scene.image.Image(new java.io.ByteArrayInputStream(bytes));
             }
         } catch (Throwable t) {
-            logger.error("âš ï¸ [Video4jEditorService] Failed to load/enhance video preview: " + t.getMessage());
+            logger.error("⚠️ [Video4jEditorService] Failed to load/enhance video preview: " + t.getMessage());
         }
         return null;
     }
@@ -372,7 +372,7 @@ public class Video4jEditorService {
         // 1. For each scene: trim video, generate/use audio, merge into a single segment with audio
         for (int i = 0; i < scenes.size(); i++) {
             Scene scene = scenes.get(i);
-            logger.info("ðŸŽ¬ [Video4jEditorService] Processing segment " + (i + 1) + "/" + scenes.size() + ": " + scene.getSceneId());
+            logger.info("🎬 [Video4jEditorService] Processing segment " + (i + 1) + "/" + scenes.size() + ": " + scene.getSceneId());
 
             File trimmedVideo = applyTrimming(scene);
 
@@ -466,7 +466,7 @@ public class Video4jEditorService {
             concatCmd.add("-c"); concatCmd.add("copy");
             concatCmd.add(exportFile.getAbsolutePath());
 
-            logger.info("ðŸŽ¬ [Video4jEditorService] Running concat: " + String.join(" ", concatCmd));
+            logger.info("🎬 [Video4jEditorService] Running concat: " + String.join(" ", concatCmd));
             ProcessBuilder pb = new ProcessBuilder(concatCmd);
             pb.redirectErrorStream(true);
             Process process = processTracker.start(pb);
@@ -493,7 +493,7 @@ public class Video4jEditorService {
                 }
             }
         } catch (Exception e) {
-            logger.error("âš ï¸ [Video4jEditorService] FFmpeg stitching failed: " + e.getMessage());
+            logger.error("⚠️ [Video4jEditorService] FFmpeg stitching failed: " + e.getMessage());
             throw new Exception("FFmpeg stitching process failed. " + e.getMessage() + 
                 "\n\nPossible reasons:\n1. The 'ffmpeg' executable is not installed or not in your system environment PATH.\n2. One or more generated video or audio clips are corrupted or missing.", e);
         } finally {
@@ -509,7 +509,7 @@ public class Video4jEditorService {
         }
 
         // 5. Save final video as master_export.mp4 and open system folder containing it
-        logger.info("âœ… [Video4jEditorService] Master render complete: " + exportFile.getAbsolutePath());
+        logger.info("✅ [Video4jEditorService] Master render complete: " + exportFile.getAbsolutePath());
         openSystemFolder(exportFile);
 
         return exportFile;
@@ -542,7 +542,7 @@ public class Video4jEditorService {
             p.waitFor();
             if (duration > 0) return duration;
         } catch (Exception e) {
-            logger.error("âš ï¸ [Video4jEditorService] Could not probe duration: " + e.getMessage());
+            logger.error("⚠️ [Video4jEditorService] Could not probe duration: " + e.getMessage());
         }
         return 0.0;
     }
@@ -572,7 +572,7 @@ public class Video4jEditorService {
         }
         if (duration <= 0) duration = 1;
 
-        logger.info("ðŸŽµ [Video4jEditorService] Generating silence WAV fallback for Scene " + scene.getSceneId() + " (Duration: " + duration + "s) to: " + dest.getAbsolutePath());
+        logger.info("🎵 [Video4jEditorService] Generating silence WAV fallback for Scene " + scene.getSceneId() + " (Duration: " + duration + "s) to: " + dest.getAbsolutePath());
         ProcessBuilder pb = new ProcessBuilder(buildDummyWavCommand(configService.getFfmpegPath(), duration, dest));
         pb.redirectErrorStream(true);
         Process process = processTracker.start(pb);
@@ -591,7 +591,7 @@ public class Video4jEditorService {
         if (System.getProperty("surefire.real.class.path") != null || 
             System.getProperty("java.class.path").contains("junit") || 
             java.awt.GraphicsEnvironment.isHeadless()) {
-            logger.info("â„¹ï¸ Test or headless environment detected. Skipping opening system folder: " + targetFile.getAbsolutePath());
+            logger.info("ℹ️ Test or headless environment detected. Skipping opening system folder: " + targetFile.getAbsolutePath());
             return;
         }
         try {
@@ -604,7 +604,7 @@ public class Video4jEditorService {
                 processTracker.start(new ProcessBuilder("xdg-open", targetFile.getParentFile().getAbsolutePath()));
             }
         } catch (Exception e) {
-            logger.error("âš ï¸ Could not open system folder: " + e.getMessage());
+            logger.error("⚠️ Could not open system folder: " + e.getMessage());
         }
     }
 

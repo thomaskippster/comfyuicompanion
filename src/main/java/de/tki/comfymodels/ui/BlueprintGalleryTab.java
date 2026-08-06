@@ -107,6 +107,12 @@ public class BlueprintGalleryTab extends JPanel {
     private boolean initialLoadComplete = false;
     private boolean hasSetInitialDefaultCategory = false;
     private final Set<String> failedPaths = ConcurrentHashMap.newKeySet();
+    private Runnable onDataLoadedCallback;
+
+    public void setOnDataLoadedCallback(Runnable callback) {
+        this.onDataLoadedCallback = callback;
+    }
+
 
     // ── design ────────────────────────────────────────────────────────────────
     private Color bgPage          = new Color(15, 16, 21);
@@ -469,7 +475,13 @@ public class BlueprintGalleryTab extends JPanel {
                     if (localAIService != null) {
                         localAIService.setGemmaEnabled(true);
                     }
+                    if (onDataLoadedCallback != null) {
+                        try {
+                            onDataLoadedCallback.run();
+                        } catch (Exception ignored) {}
+                    }
                 });
+
             } catch (Exception e) {
                 logger.error("❌ [BlueprintGallery] Refresh failed: " + e.getMessage());
                 SwingUtilities.invokeLater(() -> {
@@ -975,6 +987,15 @@ public class BlueprintGalleryTab extends JPanel {
     private Image loadPreviewImage(BlueprintEntry entry) {
         if (entry.previewPath != null && !entry.previewPath.isEmpty()) {
             String pathOrUrl = entry.previewPath;
+            // Fix legacy cached URLs that erroneously included /templates/ for root folders
+            if (pathOrUrl.contains("/main/templates/input/")) {
+                pathOrUrl = pathOrUrl.replace("/main/templates/input/", "/main/input/");
+            } else if (pathOrUrl.contains("/main/templates/output/")) {
+                pathOrUrl = pathOrUrl.replace("/main/templates/output/", "/main/output/");
+            } else if (pathOrUrl.contains("/main/templates/thumbnail/")) {
+                pathOrUrl = pathOrUrl.replace("/main/templates/thumbnail/", "/main/thumbnail/");
+            }
+
             if (pathOrUrl.startsWith("http://") || pathOrUrl.startsWith("https://")) {
                 Image img = readImageNoJavaFX(pathOrUrl);
                 if (img != null) return img;
@@ -1006,8 +1027,42 @@ public class BlueprintGalleryTab extends JPanel {
                 }
             }
         }
+
+        // Secondary fallback by workflow ID if primary preview URL failed
+        if (entry.registryWorkflow != null && entry.registryWorkflow.getId() != null) {
+            String id = entry.registryWorkflow.getId();
+            String repoBase = "https://raw.githubusercontent.com/Comfy-Org/workflow_templates/main/";
+            String[] candidates = new String[] {
+                repoBase + "thumbnail/" + id + "_thumbnail.mp4",
+                repoBase + "thumbnail/" + id + "_preview.mp4",
+                repoBase + "thumbnail/" + id + ".png",
+                repoBase + "thumbnail/" + id + ".webp",
+                repoBase + "output/" + id + ".mp4",
+                repoBase + "output/" + id + ".png",
+                repoBase + "output/" + id + ".webp",
+                repoBase + "input/" + id + "_input_image.png",
+                repoBase + "input/" + id + ".png"
+            };
+            for (String cand : candidates) {
+                if (cand.equals(entry.previewPath)) continue;
+                Image img = readImageNoJavaFX(cand);
+                if (img != null) return img;
+            }
+
+            // Also try any previewCandidates populated from io.inputs / io.outputs
+            if (entry.registryWorkflow.getPreviewCandidates() != null) {
+                for (String cand : entry.registryWorkflow.getPreviewCandidates()) {
+                    if (cand != null && !cand.equals(entry.previewPath)) {
+                        Image img = readImageNoJavaFX(cand);
+                        if (img != null) return img;
+                    }
+                }
+            }
+        }
+
         return null;
     }
+
 
     private Image readImageNoJavaFX(String urlStr) {
         int maxRetries = 3;
@@ -1054,6 +1109,11 @@ public class BlueprintGalleryTab extends JPanel {
                     Files.write(tempFile.toPath(), bytes);
                     
                     try {
+                        // Ensure OpenCV native binaries are loaded before Video4j / VideoCapture
+                        try {
+                            de.tki.comfymodels.util.OpenCvLoader.load();
+                        } catch (Throwable ignored) {}
+
                         if (isVideo) {
                             try {
                                 Video4j.init();
@@ -1069,11 +1129,8 @@ public class BlueprintGalleryTab extends JPanel {
                             }
                         }
 
-                        try {
-                            de.tki.comfymodels.util.OpenCvLoader.load();
-                        } catch (Throwable ignored) {}
-
                         Mat mat = Imgcodecs.imread(tempFile.getAbsolutePath());
+
                         if (mat != null && !mat.empty()) {
                             MatOfByte buffer = new MatOfByte();
                             Imgcodecs.imencode(".png", mat, buffer);
@@ -1130,7 +1187,7 @@ public class BlueprintGalleryTab extends JPanel {
         Window owner = SwingUtilities.getWindowAncestor(this);
         JDialog dlg = new JDialog(owner instanceof Frame ? (Frame) owner : null,
                 "Blueprint: " + entry.name, true);
-        dlg.setSize(540, 580);
+        dlg.setSize(840, 680);
         dlg.setLocationRelativeTo(this);
 
         Color bg = configService.isDarkMode() ? new Color(20, 22, 30) : new Color(245, 247, 250);
@@ -1174,13 +1231,13 @@ public class BlueprintGalleryTab extends JPanel {
         if (previewImg != null) {
             JLabel imgLabel = new JLabel();
             imgLabel.setAlignmentX(JComponent.CENTER_ALIGNMENT);
-            int targetW = 440;
+            int targetW = 740;
             int imgW = previewImg.getWidth(null);
             int imgH = previewImg.getHeight(null);
             if (imgW > 0 && imgH > 0) {
                 int targetH = (int) (imgH * ((double) targetW / imgW));
-                if (targetH > 240) {
-                    targetH = 240;
+                if (targetH > 280) {
+                    targetH = 280;
                     targetW = (int) (imgW * ((double) targetH / imgH));
                 }
                 Image scaled = previewImg.getScaledInstance(targetW, targetH, Image.SCALE_SMOOTH);
@@ -1188,19 +1245,21 @@ public class BlueprintGalleryTab extends JPanel {
                 
                 JPanel imgPanel = new JPanel(new FlowLayout(FlowLayout.CENTER));
                 imgPanel.setOpaque(false);
+                imgPanel.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
                 imgPanel.setBorder(new EmptyBorder(0, 0, 14, 0));
                 imgPanel.add(imgLabel);
                 body.add(imgPanel);
-                dlg.setSize(540, 720);
+                dlg.setSize(840, 820);
             }
         }
 
         if (!entry.category.isEmpty()) addRow(body, "Category", entry.category);
         if (!entry.description.isEmpty()) {
-            JLabel desc = new JLabel("<html><body style='width:400px'>" +
+            JLabel desc = new JLabel("<html><body style='width:740px'>" +
                     escapeHtml(entry.description) + "</body></html>");
             desc.setFont(new Font("SansSerif", Font.PLAIN, 11));
             desc.setForeground(textSecondary);
+            desc.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
             body.add(Box.createVerticalStrut(6));
             body.add(desc);
             body.add(Box.createVerticalStrut(10));
@@ -1211,10 +1270,11 @@ public class BlueprintGalleryTab extends JPanel {
         addRow(body, "Missing", String.valueOf(status.missingCount));
 
         if (!entry.requiredModels.isEmpty()) {
-            body.add(Box.createVerticalStrut(10));
+            body.add(Box.createVerticalStrut(12));
             JLabel hdr = new JLabel("Required Models Status:");
-            hdr.setFont(new Font("SansSerif", Font.BOLD, 11));
+            hdr.setFont(new Font("SansSerif", Font.BOLD, 12));
             hdr.setForeground(textPrimary);
+            hdr.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
             body.add(hdr);
             body.add(Box.createVerticalStrut(6));
 
@@ -1226,7 +1286,7 @@ public class BlueprintGalleryTab extends JPanel {
             for (ModelInfo info : entry.requiredModels) {
                 String name = info.getName();
                 String type = info.getType() != null ? info.getType() : "checkpoints";
-                String size = info.getSize() != null ? info.getSize() : "Unknown";
+                String size = resolveModelSize(info);
                 String statusStr = getModelStatus(info);
                 modelTblModel.addRow(new Object[]{name, type, size, statusStr});
             }
@@ -1241,6 +1301,13 @@ public class BlueprintGalleryTab extends JPanel {
             table.getTableHeader().setBackground(bg);
             table.getTableHeader().setForeground(textSecondary);
             table.getTableHeader().setFont(new Font("SansSerif", Font.BOLD, 11));
+            table.setAutoResizeMode(JTable.AUTO_RESIZE_ALL_COLUMNS);
+
+            // Set column width distribution to ratio 6 : 2 : 1 : 1 (Model Name 6, Type 2, Size 1, Status 1)
+            table.getColumnModel().getColumn(0).setPreferredWidth(450); // Model Name (6x ratio)
+            table.getColumnModel().getColumn(1).setPreferredWidth(150); // Type (2x ratio)
+            table.getColumnModel().getColumn(2).setPreferredWidth(80);  // Size (1x ratio)
+            table.getColumnModel().getColumn(3).setPreferredWidth(100); // Status (1x ratio)
 
             table.setDefaultRenderer(Object.class, new javax.swing.table.DefaultTableCellRenderer() {
                 @Override
@@ -1269,13 +1336,16 @@ public class BlueprintGalleryTab extends JPanel {
             });
 
             JScrollPane tblScroll = new JScrollPane(table);
-            tblScroll.setPreferredSize(new Dimension(460, 160));
+            tblScroll.setPreferredSize(new Dimension(740, 180));
+            tblScroll.setMaximumSize(new Dimension(Integer.MAX_VALUE, 180));
+            tblScroll.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
             tblScroll.getViewport().setBackground(bg);
-            tblScroll.setBorder(BorderFactory.createLineBorder(cardBorder, 1, true));
             body.add(tblScroll);
         }
 
         JScrollPane scroll = new JScrollPane(body,
+
+
                 JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED,
                 JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
         scroll.setBackground(bg);
@@ -1466,6 +1536,7 @@ public class BlueprintGalleryTab extends JPanel {
     private void addRow(JPanel parent, String label, String value) {
         JPanel row = new JPanel(new BorderLayout(10, 0));
         row.setOpaque(false);
+        row.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
         row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 22));
 
         JLabel lbl = new JLabel(label + ":");
@@ -1611,7 +1682,78 @@ public class BlueprintGalleryTab extends JPanel {
         return list;
     }
 
+    private String resolveModelSize(ModelInfo info) {
+        if (info == null) return "Unknown";
+        if (info.getSize() != null && !info.getSize().isBlank() && !"Unknown".equalsIgnoreCase(info.getSize())) {
+            return info.getSize();
+        }
+
+        String filename = info.getName();
+        if (filename == null || filename.isBlank()) return "Unknown";
+
+        String base = configService != null ? configService.getModelsPath() : null;
+        String archive = configService != null ? configService.getArchivePath() : null;
+        String type = info.getType() != null ? info.getType() : "checkpoints";
+        String folder = info.getSave_path() != null ? info.getSave_path() : type;
+        String normalizedFolder = archiveService != null ? archiveService.normalizeFolder(folder) : folder;
+
+        if (base != null && !base.isBlank()) {
+            java.nio.file.Path p = "root".equals(normalizedFolder)
+                    ? java.nio.file.Paths.get(base, filename)
+                    : java.nio.file.Paths.get(base, normalizedFolder, filename);
+            if (java.nio.file.Files.exists(p) && java.nio.file.Files.isRegularFile(p)) {
+                try {
+                    return formatByteSize(java.nio.file.Files.size(p));
+                } catch (Exception ignored) {}
+            }
+        }
+
+        if (archive != null && !archive.isBlank()) {
+            java.nio.file.Path p = "root".equals(normalizedFolder)
+                    ? java.nio.file.Paths.get(archive, filename)
+                    : java.nio.file.Paths.get(archive, normalizedFolder, filename);
+            if (java.nio.file.Files.exists(p) && java.nio.file.Files.isRegularFile(p)) {
+                try {
+                    return formatByteSize(java.nio.file.Files.size(p));
+                } catch (Exception ignored) {}
+            }
+        }
+
+        if (base != null && !base.isBlank() && localModelScanner != null) {
+            try {
+                java.util.Optional<java.nio.file.Path> found = localModelScanner.findModelWithPrefSizeAndType(
+                        java.nio.file.Paths.get(base), filename, 0L, type);
+                if (found.isPresent()) {
+                    return formatByteSize(java.nio.file.Files.size(found.get()));
+                }
+            } catch (Exception ignored) {}
+        }
+
+        if (archive != null && !archive.isBlank() && localModelScanner != null) {
+            try {
+                java.util.Optional<java.nio.file.Path> found = localModelScanner.findModelWithPrefSize(
+                        java.nio.file.Paths.get(archive), filename, 0L);
+                if (found.isPresent()) {
+                    return formatByteSize(java.nio.file.Files.size(found.get()));
+                }
+            } catch (Exception ignored) {}
+        }
+
+        return "Unknown";
+    }
+
+    private String formatByteSize(long bytes) {
+        if (bytes <= 0) return "Unknown";
+        double mb = bytes / (1024.0 * 1024.0);
+        if (mb >= 1024.0) {
+            return String.format(java.util.Locale.US, "%.2fGB", mb / 1024.0);
+        } else {
+            return String.format(java.util.Locale.US, "%.0fMB", mb);
+        }
+    }
+
     private String getModelStatus(ModelInfo info) {
+
         if (info == null || info.getName() == null || info.getName().isBlank()) return "Idle";
         
         // If it is a high level model name (no extension), fuzzy match it using localModelValidator cache
@@ -1715,8 +1857,9 @@ public class BlueprintGalleryTab extends JPanel {
 
     private boolean isModelPresentDeep(ModelInfo req) {
         String status = getModelStatus(req);
-        return status.equals("✅ Already exists") || status.equals("📦 Archived");
+        return status.equals("✅ Already exists");
     }
+
 
     private BlueprintStatus computeStatusInternal(BlueprintEntry entry) {
         int present = 0, missing = 0;
@@ -1938,6 +2081,9 @@ public class BlueprintGalleryTab extends JPanel {
         for (BlueprintEntry e : allEntries) {
             BlueprintStatus s = e.status;
             if (s != null && s.missingCount == 0) {
+                if (e.registryWorkflow != null && e.registryWorkflow.isCloudOnly()) {
+                    continue;
+                }
                 list.add(e);
             }
         }

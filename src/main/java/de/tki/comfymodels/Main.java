@@ -7,10 +7,9 @@ import de.tki.comfymodels.domain.ModelInfo;
 import de.tki.comfymodels.service.IDownloadManager;
 import de.tki.comfymodels.service.IModelAnalyzer;
 import de.tki.comfymodels.service.IWorkflowService;
-import de.tki.comfymodels.service.IModelValidator;
 import de.tki.comfymodels.service.IModelSearchService;
+import de.tki.comfymodels.service.IModelValidator;
 import de.tki.comfymodels.service.impl.ConfigService;
-import de.tki.comfymodels.service.impl.GeminiAIService;
 import de.tki.comfymodels.service.impl.ModelListService;
 import de.tki.comfymodels.service.impl.ModelHashRegistry;
 import com.formdev.flatlaf.FlatDarkLaf;
@@ -78,8 +77,7 @@ public class Main extends JFrame {
     @Autowired
     private de.tki.comfymodels.service.IComfyTemplateService comfyTemplateService;
 
-    @Autowired
-    private GeminiAIService geminiService;
+
 
     @Autowired
     private de.tki.comfymodels.service.impl.LocalAIService localAIService;
@@ -95,6 +93,8 @@ public class Main extends JFrame {
 
     @Autowired
     private de.tki.comfymodels.service.impl.PathResolver pathResolver;
+
+    private final java.util.Map<Integer, String> apiWorkflowCache = new java.util.concurrent.ConcurrentHashMap<>();
 
     @Autowired
     private de.tki.comfymodels.service.impl.VersionService versionService;
@@ -124,6 +124,13 @@ public class Main extends JFrame {
 
     @Autowired
     private de.tki.comfymodels.service.impl.ProcessTracker processTracker;
+
+    @Autowired
+    private de.tki.comfymodels.service.PromptBlueprintApiService promptBlueprintApiService;
+
+    @Autowired(required = false)
+    private de.tki.comfymodels.service.IWorkflowDownloader workflowDownloader;
+
 
     private JProgressBar progressCpu;
     private JProgressBar progressRam;
@@ -200,6 +207,11 @@ public class Main extends JFrame {
     private JSpinner promptHeightSpinner;
     private JSpinner promptStepsSpinner;
     private JSpinner promptCfgSpinner;
+    private JTextField promptNegativeField;
+    private JComboBox<String> promptSamplerCombo;
+    private JComboBox<String> promptSchedulerCombo;
+    private JSpinner promptDenoiseSpinner;
+    private JSpinner promptBatchSizeSpinner;
     private JLabel promptPresetLabel;
 
     private JCheckBox chkPhotorealistic;
@@ -222,6 +234,10 @@ public class Main extends JFrame {
     private JProgressBar promptLabProgressBar;
     private Image currentPreviewImage;
     private JTabbedPane promptLabRightTabbedPane;
+
+    /** Pre-loaded GUI-format JSON for the currently selected blueprint (null = not loaded yet). */
+    private volatile String currentBlueprintGuiJson = null;
+
 
     public Main(IModelAnalyzer analyzer, IDownloadManager downloadManager,
                 IWorkflowService workflowService, IModelSearchService searchService,
@@ -265,7 +281,7 @@ public class Main extends JFrame {
 
         if (de.tki.comfymodels.util.PlatformUtils.isMac()) {
             System.setProperty("apple.laf.useScreenMenuBar", "true");
-            System.setProperty("apple.awt.application.name", "ComfyUI Companion");
+            System.setProperty("apple.awt.application.name", "Companion for ComfyUI");
             System.setProperty("apple.awt.application.appearance", "system");
         }
 
@@ -589,7 +605,7 @@ public class Main extends JFrame {
         popup.addSeparator();
         popup.add(exitItem);
 
-        TrayIcon trayIcon = new TrayIcon(trayImage, "ComfyUI Companion", popup);
+        TrayIcon trayIcon = new TrayIcon(trayImage, "Companion for ComfyUI", popup);
         trayIcon.setImageAutoSize(true);
         trayIcon.addActionListener(e -> setVisible(true));
 
@@ -994,35 +1010,14 @@ public class Main extends JFrame {
         }
     }
 
-    private boolean isGeminiKeyConfigured() {
-        String key = configService.getGeminiApiKey();
-        return key != null && !key.trim().isEmpty();
-    }
-
     private boolean isOllamaConfigured() {
         return false;
     }
 
     private void updateAiModelDisplay() {
         backgroundExecutor.execute(() -> {
-            String model = geminiService.discoverBestModel();
-            final String finalModel = model;
-            final boolean hasGemini = isGeminiKeyConfigured();
             final boolean hasGemma = localAIService != null && localAIService.isLocalGemmaDownloaded();
             SwingUtilities.invokeLater(() -> {
-                activeAiModelLabel.setText("Active AI: " + finalModel);
-                if (btnOptimizePrompt != null) {
-                    if (hasGemini) {
-                        btnOptimizePrompt.setText("✨ Optimize with Gemini");
-                        btnOptimizePrompt.setToolTipText("Optimizes the assembled prompt using Google Gemini for better image quality.");
-                    } else if (hasGemma) {
-                        btnOptimizePrompt.setText("✨ Optimize with Gemma");
-                        btnOptimizePrompt.setToolTipText("Optimizes the assembled prompt using local Gemma for better image quality.");
-                    } else {
-                        btnOptimizePrompt.setText("✨ Optimize with Gemma");
-                        btnOptimizePrompt.setToolTipText("Download local Gemma model or configure a Gemini API key to unlock optimization.");
-                    }
-                }
                 if (btnSuggestSubject != null) {
                     if (hasGemma) {
                         btnSuggestSubject.setToolTipText("Suggest creative expansions for this subject using local Gemma.");
@@ -1036,7 +1031,7 @@ public class Main extends JFrame {
 
     private void initUI() {
         loadIcon();
-        setTitle("ComfyUI Companion");
+        setTitle("Companion for ComfyUI");
         setSize(1450, 950);
         setMinimumSize(new java.awt.Dimension(1200, 800));
         setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
@@ -1108,7 +1103,7 @@ public class Main extends JFrame {
         leftHeader.setOpaque(false);
         JLabel logoLabel = new JLabel("🌀");
         logoLabel.setFont(new Font("Segoe UI Emoji", Font.PLAIN, 22));
-        JLabel titleLabel = new JLabel("ComfyUI Companion") {
+        JLabel titleLabel = new JLabel("Companion for ComfyUI") {
             @Override
             public void updateUI() {
                 super.updateUI();
@@ -1251,7 +1246,9 @@ public class Main extends JFrame {
         this.blueprintGalleryWrapper.setOpaque(false);
         if (blueprintGalleryTab != null) {
             this.blueprintGalleryWrapper.add(blueprintGalleryTab, BorderLayout.CENTER);
+            blueprintGalleryTab.setOnDataLoadedCallback(this::refreshPromptLabModels);
         } else {
+
             this.blueprintGalleryWrapper.add(new JPanel(), BorderLayout.CENTER);
         }
 
@@ -1354,14 +1351,13 @@ public class Main extends JFrame {
             "    }\n" +
             "  }\n" +
             "}";
-
     private JPanel createPromptLabPanel() {
         JPanel panel = new JPanel();
         panel.setOpaque(false);
         panel.setLayout(new BorderLayout(15, 15));
         panel.setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
 
-        // LEFT: Prompt builder controls (Was?, Wo?, Wie?)
+        // LEFT: Prompt Lab controls (Blueprint selection + Generic execution parameters)
         de.tki.comfymodels.ui.CardPanel leftPanel = new de.tki.comfymodels.ui.CardPanel();
         leftPanel.setLayout(new BoxLayout(leftPanel, BoxLayout.Y_AXIS));
 
@@ -1372,133 +1368,13 @@ public class Main extends JFrame {
         leftPanel.add(titleLabel);
         leftPanel.add(Box.createVerticalStrut(15));
 
-        // Step 1: Subject Definition (Was?)
-        JLabel lblSubject = new JLabel("1. Subject Definition (What?)");
-        lblSubject.putClientProperty("FlatLaf.styleClass", "h4");
-        lblSubject.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
-        leftPanel.add(lblSubject);
+        // 1. Blueprint / Workflow Selection
+        JLabel lblBlueprint = new JLabel("1. Blueprint / Workflow");
+        lblBlueprint.putClientProperty("FlatLaf.styleClass", "h4");
+        lblBlueprint.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        leftPanel.add(lblBlueprint);
         leftPanel.add(Box.createVerticalStrut(5));
 
-        JPanel subjectRow = new JPanel(new BorderLayout(8, 0));
-        subjectRow.setOpaque(false);
-        subjectRow.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
-        subjectRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 35));
-
-        promptSubjectField = new JTextField("cybernetic tiger");
-        promptSubjectField.setFont(new Font("SansSerif", Font.PLAIN, 14));
-        subjectRow.add(promptSubjectField, BorderLayout.CENTER);
-
-        btnSuggestSubject = new JButton("✨ Suggest");
-        btnSuggestSubject.setFont(new Font("SansSerif", Font.BOLD, 12));
-        btnSuggestSubject.putClientProperty("Button.background", de.tki.comfymodels.ui.ThemeManager.getAccentColor()); 
-        btnSuggestSubject.putClientProperty("Button.foreground", Color.WHITE);
-        if (localAIService == null || !localAIService.isLocalGemmaDownloaded()) {
-            btnSuggestSubject.setToolTipText("Download local Gemma model to unlock suggestions.");
-        } else {
-            btnSuggestSubject.setToolTipText("Suggest creative expansions for this subject using local Gemma.");
-        }
-        btnSuggestSubject.addActionListener(e -> suggestSubjectCompletions());
-        subjectRow.add(btnSuggestSubject, BorderLayout.EAST);
-
-        leftPanel.add(subjectRow);
-        leftPanel.add(Box.createVerticalStrut(5));
-
-        // Hidden suggestions container
-        promptSubjectSuggestionsWrapper = new JPanel(new BorderLayout(5, 5));
-        promptSubjectSuggestionsWrapper.setOpaque(false);
-        promptSubjectSuggestionsWrapper.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
-        promptSubjectSuggestionsWrapper.setVisible(false);
-        promptSubjectSuggestionsWrapper.setBorder(BorderFactory.createEmptyBorder(5, 0, 10, 0));
-
-        JPanel headerPanel = new JPanel(new BorderLayout());
-        headerPanel.setOpaque(false);
-        JLabel title = new JLabel("Gemma Suggestions:");
-        title.setFont(new Font("SansSerif", Font.BOLD, 11));
-        title.setForeground(Color.GRAY);
-        headerPanel.add(title, BorderLayout.CENTER);
-        
-        JButton btnClose = new JButton("✕");
-        btnClose.setFont(new Font("SansSerif", Font.PLAIN, 10));
-        btnClose.addActionListener(e -> {
-            promptSubjectSuggestionsWrapper.setVisible(false);
-            promptLabLeftPanel.revalidate();
-            promptLabLeftPanel.repaint();
-        });
-        headerPanel.add(btnClose, BorderLayout.EAST);
-        
-        promptSubjectSuggestionsWrapper.add(headerPanel, BorderLayout.NORTH);
-
-        promptSubjectSuggestionsPanel = new JPanel(new GridLayout(0, 1, 0, 5));
-        promptSubjectSuggestionsPanel.setOpaque(false);
-
-        promptSubjectSuggestionsWrapper.add(promptSubjectSuggestionsPanel, BorderLayout.CENTER);
-        leftPanel.add(promptSubjectSuggestionsWrapper);
-
-        promptLabLeftPanel = leftPanel;
-        leftPanel.add(Box.createVerticalStrut(15));
-
-        // Step 2: Umgebungs-Kontext (Wo?)
-        JLabel lblEnv = new JLabel("2. Environmental Context (Where?)");
-        lblEnv.putClientProperty("FlatLaf.styleClass", "h4");
-        lblEnv.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
-        leftPanel.add(lblEnv);
-        leftPanel.add(Box.createVerticalStrut(5));
-
-        DropdownItem[] envs = {
-            new DropdownItem("None (Optional)", ""),
-            new DropdownItem("Neon-lit alley", "neon-lit alley"),
-            new DropdownItem("Cyberpunk laboratory", "cyberpunk laboratory"),
-            new DropdownItem("Steaming jungle", "steaming jungle"),
-            new DropdownItem("Ancient temple ruins", "ancient temple ruins"),
-            new DropdownItem("Misty mountaintop", "misty mountaintop"),
-            new DropdownItem("Futuristic space station", "futuristic space station"),
-            new DropdownItem("Cozy library with fireplace", "cozy library with fireplace"),
-            new DropdownItem("Sun-drenched beach", "sun-drenched beach"),
-            new DropdownItem("Surreal dreamscape", "surreal dreamscape"),
-            new DropdownItem("Ruined post-apocalyptic city", "ruined post-apocalyptic city")
-        };
-        promptEnvCombo = new JComboBox<>(envs);
-        promptEnvCombo.setFont(new Font("SansSerif", Font.PLAIN, 14));
-        promptEnvCombo.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
-        promptEnvCombo.setMaximumSize(new Dimension(Integer.MAX_VALUE, 35));
-        leftPanel.add(promptEnvCombo);
-        leftPanel.add(Box.createVerticalStrut(15));
-
-        // Step 3: Stil-Filter (Wie?)
-        JLabel lblStyles = new JLabel("3. Style Filter (How?)");
-        lblStyles.putClientProperty("FlatLaf.styleClass", "h4");
-        lblStyles.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
-        leftPanel.add(lblStyles);
-        leftPanel.add(Box.createVerticalStrut(8));
-
-        JPanel stylesPanel = new JPanel(new GridLayout(0, 2, 8, 8));
-        stylesPanel.setOpaque(false);
-        stylesPanel.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
-        
-        chkPhotorealistic = new JCheckBox("Photorealistic", true);
-        chkOil = new JCheckBox("Oil painting", false);
-        chkEngine = new JCheckBox("Unreal Engine 5 Render", true);
-        chkAnime = new JCheckBox("Anime Style", false);
-        chkFantasy = new JCheckBox("Dark Fantasy / Cinematic", false);
-        chkSketch = new JCheckBox("Watercolor Sketch", false);
-
-        stylesPanel.add(chkPhotorealistic);
-        stylesPanel.add(chkOil);
-        stylesPanel.add(chkEngine);
-        stylesPanel.add(chkAnime);
-        stylesPanel.add(chkFantasy);
-        stylesPanel.add(chkSketch);
-        leftPanel.add(stylesPanel);
-        leftPanel.add(Box.createVerticalStrut(20));
-
-        // Step 4: Model & Size Settings
-        JLabel lblSettings = new JLabel("4. Model & Size Settings");
-        lblSettings.putClientProperty("FlatLaf.styleClass", "h4");
-        lblSettings.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
-        leftPanel.add(lblSettings);
-        leftPanel.add(Box.createVerticalStrut(5));
-
-        // Model Selection row with refresh button
         JPanel modelRow = new JPanel(new BorderLayout(5, 0));
         modelRow.setOpaque(false);
         modelRow.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
@@ -1515,17 +1391,14 @@ public class Main extends JFrame {
         modelRow.add(btnRefreshModels, BorderLayout.EAST);
 
         leftPanel.add(modelRow);
-        leftPanel.add(Box.createVerticalStrut(10));
+        leftPanel.add(Box.createVerticalStrut(6));
 
-        // Model capability label
         promptPresetLabel = new JLabel("Detected Preset: Stable Diffusion 1.5 (SD 1.5)") {
             @Override
             public void updateUI() {
                 super.updateUI();
                 Color c = UIManager.getColor("PromptLab.presetForeground");
-                if (c != null) {
-                    setForeground(c);
-                }
+                if (c != null) setForeground(c);
             }
         };
         promptPresetLabel.setFont(new Font("SansSerif", Font.ITALIC | Font.BOLD, 12));
@@ -1533,10 +1406,114 @@ public class Main extends JFrame {
         if (pc != null) promptPresetLabel.setForeground(pc);
         promptPresetLabel.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
         leftPanel.add(promptPresetLabel);
-        leftPanel.add(Box.createVerticalStrut(10));
+        leftPanel.add(Box.createVerticalStrut(18));
 
-        // Size Inputs (Width & Height)
-        JPanel sizeRow = new JPanel(new GridLayout(1, 2, 10, 0));
+        // 2. Positive Prompt Input & AI Assistance
+        JLabel lblSubject = new JLabel("2. Positive Prompt");
+        lblSubject.putClientProperty("FlatLaf.styleClass", "h4");
+        lblSubject.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        leftPanel.add(lblSubject);
+        leftPanel.add(Box.createVerticalStrut(5));
+
+        JPanel subjectRow = new JPanel(new BorderLayout(8, 0));
+        subjectRow.setOpaque(false);
+        subjectRow.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        subjectRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 38));
+
+        promptSubjectField = new JTextField("cybernetic tiger, detailed, 8k");
+        promptSubjectField.setFont(new Font("SansSerif", Font.PLAIN, 14));
+        subjectRow.add(promptSubjectField, BorderLayout.CENTER);
+
+        btnSuggestSubject = new JButton("✨ Suggest");
+        btnSuggestSubject.setFont(new Font("SansSerif", Font.BOLD, 12));
+        btnSuggestSubject.putClientProperty("Button.background", de.tki.comfymodels.ui.ThemeManager.getAccentColor());
+        btnSuggestSubject.putClientProperty("Button.foreground", Color.WHITE);
+        btnSuggestSubject.setToolTipText("Suggest creative completions for this prompt using local Gemma AI.");
+        btnSuggestSubject.addActionListener(e -> suggestSubjectCompletions());
+        subjectRow.add(btnSuggestSubject, BorderLayout.EAST);
+
+        leftPanel.add(subjectRow);
+        leftPanel.add(Box.createVerticalStrut(5));
+
+        // Hidden suggestions container
+        promptSubjectSuggestionsWrapper = new JPanel(new BorderLayout(5, 5));
+        promptSubjectSuggestionsWrapper.setOpaque(false);
+        promptSubjectSuggestionsWrapper.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        promptSubjectSuggestionsWrapper.setVisible(false);
+        promptSubjectSuggestionsWrapper.setBorder(BorderFactory.createEmptyBorder(5, 0, 10, 0));
+
+        JPanel headerPanel = new JPanel(new BorderLayout());
+        headerPanel.setOpaque(false);
+        JLabel sugTitle = new JLabel("AI Suggestions:");
+        sugTitle.setFont(new Font("SansSerif", Font.BOLD, 11));
+        sugTitle.setForeground(Color.GRAY);
+        headerPanel.add(sugTitle, BorderLayout.CENTER);
+
+        JButton btnCloseSug = new JButton("✕");
+        btnCloseSug.setFont(new Font("SansSerif", Font.PLAIN, 10));
+        btnCloseSug.addActionListener(e -> {
+            promptSubjectSuggestionsWrapper.setVisible(false);
+            if (promptLabLeftPanel != null) {
+                promptLabLeftPanel.revalidate();
+                promptLabLeftPanel.repaint();
+            }
+        });
+        headerPanel.add(btnCloseSug, BorderLayout.EAST);
+        promptSubjectSuggestionsWrapper.add(headerPanel, BorderLayout.NORTH);
+
+        promptSubjectSuggestionsPanel = new JPanel();
+        promptSubjectSuggestionsPanel.setLayout(new javax.swing.BoxLayout(promptSubjectSuggestionsPanel, javax.swing.BoxLayout.Y_AXIS));
+        promptSubjectSuggestionsPanel.setOpaque(false);
+
+        JScrollPane sugScrollPane = new JScrollPane(promptSubjectSuggestionsPanel);
+        sugScrollPane.setOpaque(false);
+        sugScrollPane.getViewport().setOpaque(false);
+        sugScrollPane.setBorder(BorderFactory.createEmptyBorder(2, 2, 2, 2));
+        sugScrollPane.setPreferredSize(new Dimension(0, 120));
+        sugScrollPane.setMaximumSize(new Dimension(Integer.MAX_VALUE, 120));
+        sugScrollPane.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
+        sugScrollPane.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED);
+
+        promptSubjectSuggestionsWrapper.add(sugScrollPane, BorderLayout.CENTER);
+        promptSubjectSuggestionsWrapper.setMaximumSize(new Dimension(Integer.MAX_VALUE, 155));
+        leftPanel.add(promptSubjectSuggestionsWrapper);
+
+        promptLabLeftPanel = leftPanel;
+
+        // Negative Prompt Field
+        leftPanel.add(Box.createVerticalStrut(8));
+        JLabel lblNegative = new JLabel("Negative Prompt");
+        lblNegative.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        lblNegative.setForeground(Color.GRAY);
+        lblNegative.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        leftPanel.add(lblNegative);
+        leftPanel.add(Box.createVerticalStrut(3));
+
+        promptNegativeField = new JTextField("blurry, low quality, distortion, bad anatomy");
+        promptNegativeField.setFont(new Font("SansSerif", Font.PLAIN, 12));
+        promptNegativeField.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        promptNegativeField.setMaximumSize(new Dimension(Integer.MAX_VALUE, 32));
+        leftPanel.add(promptNegativeField);
+        leftPanel.add(Box.createVerticalStrut(15));
+
+        // Dummy objects for backward compatibility with unused fields
+        promptAssembleArea = new JTextArea();
+        promptEnvCombo = new JComboBox<>();
+        chkPhotorealistic = new JCheckBox();
+        chkOil = new JCheckBox();
+        chkEngine = new JCheckBox();
+        chkAnime = new JCheckBox();
+        chkFantasy = new JCheckBox();
+        chkSketch = new JCheckBox();
+
+        // 3. Image Dimensions & Batch Size
+        JLabel lblDimensions = new JLabel("3. Output Dimensions & Batching");
+        lblDimensions.putClientProperty("FlatLaf.styleClass", "h4");
+        lblDimensions.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        leftPanel.add(lblDimensions);
+        leftPanel.add(Box.createVerticalStrut(5));
+
+        JPanel sizeRow = new JPanel(new GridLayout(1, 3, 8, 0));
         sizeRow.setOpaque(false);
         sizeRow.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
         sizeRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 50));
@@ -1557,17 +1534,31 @@ public class Main extends JFrame {
         heightPanel.add(lblHeight, BorderLayout.NORTH);
         heightPanel.add(promptHeightSpinner, BorderLayout.CENTER);
 
+        JPanel batchPanel = new JPanel(new BorderLayout(0, 2));
+        batchPanel.setOpaque(false);
+        JLabel lblBatch = new JLabel("Batch Size");
+        lblBatch.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        promptBatchSizeSpinner = new JSpinner(new SpinnerNumberModel(1, 1, 16, 1));
+        batchPanel.add(lblBatch, BorderLayout.NORTH);
+        batchPanel.add(promptBatchSizeSpinner, BorderLayout.CENTER);
+
         sizeRow.add(widthPanel);
         sizeRow.add(heightPanel);
-
+        sizeRow.add(batchPanel);
         leftPanel.add(sizeRow);
-        leftPanel.add(Box.createVerticalStrut(10));
+        leftPanel.add(Box.createVerticalStrut(15));
 
-        // Sampler Settings: Steps & CFG
-        JPanel samplerRow = new JPanel(new GridLayout(1, 2, 10, 0));
-        samplerRow.setOpaque(false);
-        samplerRow.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
-        samplerRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 50));
+        // 4. Sampler Parameters (Steps, CFG, Denoise, Sampler & Scheduler)
+        JLabel lblSampler = new JLabel("4. Generation & Sampling Parameters");
+        lblSampler.putClientProperty("FlatLaf.styleClass", "h4");
+        lblSampler.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        leftPanel.add(lblSampler);
+        leftPanel.add(Box.createVerticalStrut(5));
+
+        JPanel samplerRow1 = new JPanel(new GridLayout(1, 3, 8, 0));
+        samplerRow1.setOpaque(false);
+        samplerRow1.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        samplerRow1.setMaximumSize(new Dimension(Integer.MAX_VALUE, 50));
 
         JPanel stepsPanel = new JPanel(new BorderLayout(0, 2));
         stepsPanel.setOpaque(false);
@@ -1585,87 +1576,82 @@ public class Main extends JFrame {
         cfgPanel.add(lblCfg, BorderLayout.NORTH);
         cfgPanel.add(promptCfgSpinner, BorderLayout.CENTER);
 
-        samplerRow.add(stepsPanel);
-        samplerRow.add(cfgPanel);
+        JPanel denoisePanel = new JPanel(new BorderLayout(0, 2));
+        denoisePanel.setOpaque(false);
+        JLabel lblDenoise = new JLabel("Denoise");
+        lblDenoise.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        promptDenoiseSpinner = new JSpinner(new SpinnerNumberModel(1.0, 0.0, 1.0, 0.05));
+        denoisePanel.add(lblDenoise, BorderLayout.NORTH);
+        denoisePanel.add(promptDenoiseSpinner, BorderLayout.CENTER);
 
-        leftPanel.add(samplerRow);
-        leftPanel.add(Box.createVerticalStrut(20));
+        samplerRow1.add(stepsPanel);
+        samplerRow1.add(cfgPanel);
+        samplerRow1.add(denoisePanel);
+        leftPanel.add(samplerRow1);
+        leftPanel.add(Box.createVerticalStrut(8));
 
-        // Step 5: Assembler (Die "Antigravity"-Logik)
-        JLabel lblAssembled = new JLabel("5. Assembler (The \"Antigravity\" logic)");
-        lblAssembled.putClientProperty("FlatLaf.styleClass", "h4");
-        lblAssembled.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
-        leftPanel.add(lblAssembled);
-        leftPanel.add(Box.createVerticalStrut(5));
+        JPanel samplerRow2 = new JPanel(new GridLayout(1, 2, 8, 0));
+        samplerRow2.setOpaque(false);
+        samplerRow2.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        samplerRow2.setMaximumSize(new Dimension(Integer.MAX_VALUE, 50));
 
-        promptAssembleArea = new JTextArea(3, 20);
-        promptAssembleArea.setLineWrap(true);
-        promptAssembleArea.setWrapStyleWord(true);
-        promptAssembleArea.setFont(new Font("SansSerif", Font.BOLD, 14));
-        promptAssembleArea.setEditable(false);
-        promptAssembleArea.putClientProperty("FlatLaf.style", "background: $TextField.background");
-        
-        JScrollPane assembleScroll = new JScrollPane(promptAssembleArea);
-        assembleScroll.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
-        assembleScroll.setMaximumSize(new Dimension(Integer.MAX_VALUE, 80));
-        leftPanel.add(assembleScroll);
-        leftPanel.add(Box.createVerticalStrut(10));
+        JPanel samplerNamePanel = new JPanel(new BorderLayout(0, 2));
+        samplerNamePanel.setOpaque(false);
+        JLabel lblSamplerName = new JLabel("Sampler Name");
+        lblSamplerName.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        promptSamplerCombo = new JComboBox<>(new String[]{
+            "Auto", "euler", "euler_ancestral", "heun", "heunpp2", "dpmpp_2m", 
+            "dpmpp_sde", "dpmpp_2m_sde", "dpmpp_3m_sde", "ddim", "uni_pc", "lcm", "res_multistep"
+        });
+        samplerNamePanel.add(lblSamplerName, BorderLayout.NORTH);
+        samplerNamePanel.add(promptSamplerCombo, BorderLayout.CENTER);
 
-        boolean hasGeminiInit = isGeminiKeyConfigured();
-        boolean hasGemmaInit = localAIService != null && localAIService.isLocalGemmaDownloaded();
-        btnOptimizePrompt = new JButton(hasGeminiInit ? "✨ Optimize with Gemini" : "✨ Optimize with gemma");
-        btnOptimizePrompt.setFont(new Font("SansSerif", Font.BOLD, 13));
-        btnOptimizePrompt.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
-        btnOptimizePrompt.setMaximumSize(new Dimension(Integer.MAX_VALUE, 40));
-        btnOptimizePrompt.putClientProperty("Button.background", new Color(58, 117, 196));
-        btnOptimizePrompt.putClientProperty("Button.foreground", Color.WHITE);
-        btnOptimizePrompt.addActionListener(e -> optimizePromptWithAI());
+        JPanel schedulerPanel = new JPanel(new BorderLayout(0, 2));
+        schedulerPanel.setOpaque(false);
+        JLabel lblScheduler = new JLabel("Scheduler");
+        lblScheduler.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        promptSchedulerCombo = new JComboBox<>(new String[]{
+            "Auto", "normal", "karras", "exponential", "sgm_uniform", "simple", "ddim_uniform", "beta"
+        });
+        schedulerPanel.add(lblScheduler, BorderLayout.NORTH);
+        schedulerPanel.add(promptSchedulerCombo, BorderLayout.CENTER);
 
-        if (hasGeminiInit) {
-            btnOptimizePrompt.setToolTipText("Optimizes the assembled prompt using Google Gemini for better image quality.");
-        } else if (hasGemmaInit) {
-            btnOptimizePrompt.setToolTipText("Optimizes the assembled prompt using local Gemma for better image quality.");
-        } else {
-            btnOptimizePrompt.setToolTipText("Download local Gemma model or configure a Gemini API key to unlock optimization.");
-        }
-        leftPanel.add(btnOptimizePrompt);
-
+        samplerRow2.add(samplerNamePanel);
+        samplerRow2.add(schedulerPanel);
+        leftPanel.add(samplerRow2);
         leftPanel.add(Box.createVerticalGlue());
 
-        // Document / Item Listeners to update prompt instantly
+        // Event Listeners
         promptSubjectField.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
             public void insertUpdate(javax.swing.event.DocumentEvent e) { updatePromptLabJson(); }
             public void removeUpdate(javax.swing.event.DocumentEvent e) { updatePromptLabJson(); }
             public void changedUpdate(javax.swing.event.DocumentEvent e) { updatePromptLabJson(); }
         });
-        promptEnvCombo.addActionListener(e -> updatePromptLabJson());
-        ActionListener styleChanger = e -> updatePromptLabJson();
-        chkPhotorealistic.addActionListener(styleChanger);
-        chkOil.addActionListener(styleChanger);
-        chkEngine.addActionListener(styleChanger);
-        chkAnime.addActionListener(styleChanger);
-        chkFantasy.addActionListener(styleChanger);
-        chkSketch.addActionListener(styleChanger);
+
+        promptNegativeField.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
+            public void insertUpdate(javax.swing.event.DocumentEvent e) { updatePromptLabJson(); }
+            public void removeUpdate(javax.swing.event.DocumentEvent e) { updatePromptLabJson(); }
+            public void changedUpdate(javax.swing.event.DocumentEvent e) { updatePromptLabJson(); }
+        });
 
         promptModelCombo.addActionListener(e -> {
             String selected = (String) promptModelCombo.getSelectedItem();
-            if (selected != null && comfyTemplateService != null) {
-                de.tki.comfymodels.domain.ComfyTemplate template = comfyTemplateService.determineTemplateForModel(selected);
-                if (template != null) {
-                    promptJsonArea.setText(template.getContent());
-                }
+            if (selected != null) {
+                onPromptBlueprintSelected(selected);
             }
-            applyModelPreset(selected);
-            updatePromptLabJson();
         });
+
         promptWidthSpinner.addChangeListener(e -> updatePromptLabJson());
         promptHeightSpinner.addChangeListener(e -> updatePromptLabJson());
+        promptBatchSizeSpinner.addChangeListener(e -> updatePromptLabJson());
         promptStepsSpinner.addChangeListener(e -> updatePromptLabJson());
         promptCfgSpinner.addChangeListener(e -> updatePromptLabJson());
+        promptDenoiseSpinner.addChangeListener(e -> updatePromptLabJson());
+        promptSamplerCombo.addActionListener(e -> updatePromptLabJson());
+        promptSchedulerCombo.addActionListener(e -> updatePromptLabJson());
+        promptCfgSpinner.addChangeListener(e -> updatePromptLabJson());
         
-        // Initial load of models in background
         refreshPromptLabModels();
-
 
         // RIGHT: ComfyUI integration / API payload view
         de.tki.comfymodels.ui.CardPanel rightPanel = new de.tki.comfymodels.ui.CardPanel();
@@ -1783,9 +1769,13 @@ public class Main extends JFrame {
         if (comfyTemplateService != null) {
             de.tki.comfymodels.domain.ComfyTemplate template = comfyTemplateService.determineTemplateForModel(modelName);
             if (template != null) {
-                promptJsonArea.setText(template.getContent());
+                // Pre-cache the original GUI JSON so sendPromptToComfyUI can send it
+                // unmodified to the browser for app.graphToPrompt() conversion.
+                currentBlueprintGuiJson = template.getContent();
+                promptJsonArea.setText(currentBlueprintGuiJson);
             }
         }
+
         
         String lower = modelName.toLowerCase();
         if (lower.contains("flux1-schnell") || lower.contains("flux_schnell") || lower.contains("schnell")) {
@@ -2075,283 +2065,21 @@ public class Main extends JFrame {
         return expected;
     }
 
+    /**
+     * @deprecated No-op since the generic architecture refactor.
+     *
+     * <p>Java no longer manipulates model loaders, {@code class_type} fields, or graph wiring.
+     * The blueprint's own workflow JSON — as produced by ComfyUI's {@code app.graphToPrompt()} —
+     * is authoritative. All loader-level decisions remain inside the workflow JSON itself.
+     *
+     * <p>Only generic parameters (prompt text, dimensions, sampler steps / CFG, seed) are
+     * injected by {@link de.tki.comfymodels.service.PromptBlueprintApiService#injectLabInputs}.
+     */
+    @SuppressWarnings("unused")
     private void adaptWorkflowJsonForModel(JSONObject promptObj, String selectedModelRaw) {
-        if (promptObj == null || selectedModelRaw == null) return;
-        
-        String selectedModel = getActualModelForPromptLab(selectedModelRaw);
-
-
-        
-        boolean isDiff = isDiffusionModel(selectedModel);
-        
-        if (isDiff) {
-            // Find CheckpointLoaderSimple and convert to UNETLoader
-            String targetCheckpointNodeId = null;
-            for (String key : promptObj.keySet()) {
-                JSONObject node = promptObj.getJSONObject(key);
-                if (node.has("class_type") && "CheckpointLoaderSimple".equals(node.getString("class_type"))) {
-                    targetCheckpointNodeId = key;
-                    break;
-                }
-            }
-            
-            if (targetCheckpointNodeId != null) {
-                JSONObject node = promptObj.getJSONObject(targetCheckpointNodeId);
-                node.put("class_type", "UNETLoader");
-                
-                JSONObject inputs = node.optJSONObject("inputs");
-                if (inputs == null) {
-                    inputs = new JSONObject();
-                    node.put("inputs", inputs);
-                }
-                inputs.remove("ckpt_name");
-                
-                String unetName = findExactUnetName(selectedModel);
-                inputs.put("unet_name", unetName);
-                
-                // Add weight_dtype dynamically
-                if (comfyUnetWeightDtypes != null && !comfyUnetWeightDtypes.isEmpty()) {
-                    if (comfyUnetWeightDtypes.contains("default")) {
-                        inputs.put("weight_dtype", "default");
-                    } else {
-                        inputs.put("weight_dtype", comfyUnetWeightDtypes.iterator().next());
-                    }
-                } else {
-                    inputs.put("weight_dtype", "default");
-                }
-                
-                // Create CLIPLoader
-                String clipNodeId = targetCheckpointNodeId + "_clip";
-                JSONObject clipNode = new JSONObject();
-                clipNode.put("class_type", "CLIPLoader");
-                JSONObject clipInputs = new JSONObject();
-                String clipModel = resolveClipForModel(selectedModel);
-                if (clipModel.startsWith("clip/")) clipModel = clipModel.substring(5);
-                else if (clipModel.startsWith("clip\\")) clipModel = clipModel.substring(5);
-                else if (clipModel.startsWith("text_encoders/")) clipModel = clipModel.substring(14);
-                else if (clipModel.startsWith("text_encoders\\")) clipModel = clipModel.substring(14);
-                clipInputs.put("clip_name", clipModel);
-                
-                String clipType = resolveClipType(clipModel, selectedModel);
-                clipInputs.put("type", clipType);
-                
-                clipNode.put("inputs", clipInputs);
-                promptObj.put(clipNodeId, clipNode);
-                
-                // Create VAELoader
-                String vaeNodeId = targetCheckpointNodeId + "_vae";
-                JSONObject vaeNode = new JSONObject();
-                vaeNode.put("class_type", "VAELoader");
-                JSONObject vaeInputs = new JSONObject();
-                String vaeModel = resolveVaeForModel(selectedModel);
-                if (vaeModel.startsWith("vae/")) vaeModel = vaeModel.substring(4);
-                else if (vaeModel.startsWith("vae\\")) vaeModel = vaeModel.substring(4);
-                vaeInputs.put("vae_name", vaeModel);
-                vaeNode.put("inputs", vaeInputs);
-                promptObj.put(vaeNodeId, vaeNode);
-                
-                // Redirect outputs
-                for (String key : promptObj.keySet()) {
-                    if (key.equals(targetCheckpointNodeId) || key.equals(clipNodeId) || key.equals(vaeNodeId)) {
-                        continue;
-                    }
-                    JSONObject otherNode = promptObj.getJSONObject(key);
-                    if (otherNode.has("inputs")) {
-                        JSONObject otherInputs = otherNode.getJSONObject("inputs");
-                        for (String inputKey : otherInputs.keySet()) {
-                            Object val = otherInputs.get(inputKey);
-                            if (val instanceof org.json.JSONArray) {
-                                org.json.JSONArray link = (org.json.JSONArray) val;
-                                if (link.length() == 2 && targetCheckpointNodeId.equals(link.getString(0))) {
-                                    int outputIndex = link.getInt(1);
-                                    if (outputIndex == 1) {
-                                        link.put(0, clipNodeId);
-                                        link.put(1, 0);
-                                    } else if (outputIndex == 2) {
-                                        link.put(0, vaeNodeId);
-                                        link.put(1, 0);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            } else {
-                String unetName = findExactUnetName(selectedModel);
-                String clipModel = resolveClipForModel(selectedModel);
-                if (clipModel.startsWith("clip/")) clipModel = clipModel.substring(5);
-                else if (clipModel.startsWith("clip\\")) clipModel = clipModel.substring(5);
-                else if (clipModel.startsWith("text_encoders/")) clipModel = clipModel.substring(14);
-                else if (clipModel.startsWith("text_encoders\\")) clipModel = clipModel.substring(14);
-
-                String clipType = resolveClipType(clipModel, selectedModel);
-
-                String vaeModel = resolveVaeForModel(selectedModel);
-                if (vaeModel.startsWith("vae/")) vaeModel = vaeModel.substring(4);
-                else if (vaeModel.startsWith("vae\\")) vaeModel = vaeModel.substring(4);
-
-                for (String key : promptObj.keySet()) {
-                    JSONObject node = promptObj.getJSONObject(key);
-                    if (!node.has("class_type")) continue;
-                    String classType = node.getString("class_type");
-                    
-                    if ("UNETLoader".equals(classType)) {
-                        JSONObject inputs = node.optJSONObject("inputs");
-                        if (inputs != null) {
-                            inputs.put("unet_name", unetName);
-                            if (!inputs.has("weight_dtype")) {
-                                if (comfyUnetWeightDtypes != null && !comfyUnetWeightDtypes.isEmpty()) {
-                                    if (comfyUnetWeightDtypes.contains("default")) {
-                                        inputs.put("weight_dtype", "default");
-                                    } else {
-                                        inputs.put("weight_dtype", comfyUnetWeightDtypes.iterator().next());
-                                    }
-                                } else {
-                                    inputs.put("weight_dtype", "default");
-                                }
-                            }
-                        }
-                    } else if ("CLIPLoader".equals(classType)) {
-                        JSONObject inputs = node.optJSONObject("inputs");
-                        if (inputs != null) {
-                            inputs.put("clip_name", clipModel);
-                            inputs.put("type", clipType);
-                        }
-                    } else if ("DualCLIPLoader".equals(classType)) {
-                        JSONObject inputs = node.optJSONObject("inputs");
-                        if (inputs != null) {
-                            if ("lumina2".equals(clipType) || "wan".equals(clipType) || "mochi".equals(clipType) || "ltxv".equals(clipType) || "cosmos".equals(clipType)) {
-                                node.put("class_type", "CLIPLoader");
-                                inputs.remove("clip_name1");
-                                inputs.remove("clip_name2");
-                                inputs.put("clip_name", clipModel);
-                                inputs.put("type", clipType);
-                            } else {
-                                String clipL = "clip_l.safetensors";
-                                for (String c : comfyClips) {
-                                    String cl = c.toLowerCase();
-                                    if (cl.contains("clip_l") || cl.contains("viit") || cl.contains("l_clip")) {
-                                        clipL = c;
-                                        break;
-                                    }
-                                }
-                                if (clipL.startsWith("clip/")) clipL = clipL.substring(5);
-                                else if (clipL.startsWith("clip\\")) clipL = clipL.substring(5);
-                                else if (clipL.startsWith("text_encoders/")) clipL = clipL.substring(14);
-                                else if (clipL.startsWith("text_encoders\\")) clipL = clipL.substring(14);
-
-                                inputs.put("clip_name1", clipL);
-                                inputs.put("clip_name2", clipModel);
-                                inputs.put("type", clipType);
-                            }
-                        }
-                    } else if ("VAELoader".equals(classType)) {
-                        JSONObject inputs = node.optJSONObject("inputs");
-                        if (inputs != null) {
-                            inputs.put("vae_name", vaeModel);
-                        }
-                    }
-                }
-            }
-        } else {
-            String targetUnetNodeId = null;
-            for (String key : promptObj.keySet()) {
-                JSONObject node = promptObj.getJSONObject(key);
-                if (node.has("class_type") && "UNETLoader".equals(node.getString("class_type"))) {
-                    targetUnetNodeId = key;
-                    break;
-                }
-            }
-            
-            if (targetUnetNodeId != null) {
-                JSONObject node = promptObj.getJSONObject(targetUnetNodeId);
-                node.put("class_type", "CheckpointLoaderSimple");
-                
-                JSONObject inputs = node.optJSONObject("inputs");
-                if (inputs == null) {
-                    inputs = new JSONObject();
-                    node.put("inputs", inputs);
-                }
-                inputs.remove("unet_name");
-                inputs.remove("weight_dtype");
-                
-                String ckptName = findExactCheckpointName(selectedModel);
-                inputs.put("ckpt_name", ckptName);
-                
-                String clipNodeId = targetUnetNodeId + "_clip";
-                String vaeNodeId = targetUnetNodeId + "_vae";
-                
-                for (String key : promptObj.keySet()) {
-                    if (key.equals(targetUnetNodeId)) continue;
-                    JSONObject otherNode = promptObj.getJSONObject(key);
-                    if (otherNode.has("inputs")) {
-                        JSONObject otherInputs = otherNode.getJSONObject("inputs");
-                        for (String inputKey : otherInputs.keySet()) {
-                            Object val = otherInputs.get(inputKey);
-                            if (val instanceof org.json.JSONArray) {
-                                org.json.JSONArray link = (org.json.JSONArray) val;
-                                if (link.length() == 2) {
-                                    String sourceNode = link.getString(0);
-                                    if (clipNodeId.equals(sourceNode)) {
-                                        link.put(0, targetUnetNodeId);
-                                        link.put(1, 1);
-                                    } else if (vaeNodeId.equals(sourceNode)) {
-                                        link.put(0, targetUnetNodeId);
-                                        link.put(1, 2);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                
-                promptObj.remove(clipNodeId);
-                promptObj.remove(vaeNodeId);
-            } else {
-                for (String key : promptObj.keySet()) {
-                    JSONObject node = promptObj.getJSONObject(key);
-                    if (node.has("class_type") && "CheckpointLoaderSimple".equals(node.getString("class_type"))) {
-                        JSONObject inputs = node.optJSONObject("inputs");
-                        if (inputs != null) {
-                            String ckptName = findExactCheckpointName(selectedModel);
-                            inputs.put("ckpt_name", ckptName);
-                        }
-                    }
-                }
-            }
-        }
-
-        // Auto-adapt KSampler sampler and scheduler for Flux models vs others
-        String resolvedSampler = null;
-        String resolvedScheduler = null;
-        if (modelArchitectureService != null) {
-            de.tki.comfymodels.service.IModelArchitectureService.ModelDefaults defaults = modelArchitectureService.getDefaultsForModel(selectedModel);
-            if (defaults != null) {
-                resolvedSampler = defaults.samplerName;
-                resolvedScheduler = defaults.scheduler;
-            }
-        }
-        
-        boolean isFlux = selectedModel.toLowerCase().contains("flux") || selectedModel.toLowerCase().contains("schnell");
-        if (resolvedScheduler == null) {
-            resolvedScheduler = isFlux ? "simple" : "normal";
-        }
-        if (resolvedSampler == null) {
-            resolvedSampler = "euler";
-        }
-
-        for (String key : promptObj.keySet()) {
-            JSONObject nodeObj = promptObj.getJSONObject(key);
-            String classType = nodeObj.optString("class_type", "");
-            if ("KSampler".equals(classType) || "KSamplerAdvanced".equals(classType)) {
-                if (nodeObj.has("inputs")) {
-                    JSONObject inputs = nodeObj.getJSONObject("inputs");
-                    inputs.put("sampler_name", resolvedSampler);
-                    inputs.put("scheduler", resolvedScheduler);
-                }
-            }
-        }
+        // Intentionally empty — no model/loader mutation. See PromptBlueprintApiService.
     }
+
 
     private String getActualModelForPromptLab(String comboSelection) {
         if (comboSelection == null) return null;
@@ -2383,122 +2111,45 @@ public class Main extends JFrame {
         if (promptSubjectField == null || promptEnvCombo == null || promptAssembleArea == null || promptJsonArea == null) {
             return;
         }
-        
-        String selectedModel = getActualModelForPromptLab((promptModelCombo != null) ? (String) promptModelCombo.getSelectedItem() : null);
-        Integer width = (promptWidthSpinner != null) ? (Integer) promptWidthSpinner.getValue() : null;
-        Integer height = (promptHeightSpinner != null) ? (Integer) promptHeightSpinner.getValue() : null;
-        Integer steps = (promptStepsSpinner != null) ? (Integer) promptStepsSpinner.getValue() : null;
-        Double cfg = (promptCfgSpinner != null) ? ((Number) promptCfgSpinner.getValue()).doubleValue() : null;
-        
+
+        // ── Assemble prompt text ────────────────────────────────────────────
         String subject = promptSubjectField.getText().trim();
-        DropdownItem envItem = (DropdownItem) promptEnvCombo.getSelectedItem();
-        String env = (envItem != null) ? envItem.getValue() : "";
-        
-        java.util.List<String> parts = new java.util.ArrayList<>();
-        if (!subject.isEmpty()) {
-            parts.add(subject);
-        }
-        if (!env.isEmpty()) {
-            parts.add(env);
-        }
-        
-        if (chkPhotorealistic.isSelected()) parts.add("photorealistic");
-        if (chkOil.isSelected()) parts.add("oil painting");
-        if (chkEngine.isSelected()) parts.add("8k, unreal engine 5 render");
-        if (chkAnime.isSelected()) parts.add("anime style");
-        if (chkFantasy.isSelected()) parts.add("dark fantasy, cinematic lighting");
-        if (chkSketch.isSelected()) parts.add("watercolor sketch");
-        
-        String assembled = String.join(", ", parts);
-        promptAssembleArea.setText(assembled);
-        
+        String negative = (promptNegativeField != null) ? promptNegativeField.getText().trim() : "";
+
+        promptAssembleArea.setText(subject);
+
+        // ── Fast generic injection into the current API JSON ─────────────────
         try {
             String currentJsonStr = promptJsonArea.getText();
+            if (currentJsonStr == null || currentJsonStr.isBlank()) return;
+
             JSONObject mainObj = new JSONObject(currentJsonStr);
-            if (mainObj.has("prompt")) {
-                JSONObject promptObj = mainObj.getJSONObject("prompt");
-                
-                String targetId = null;
-                for (String key : promptObj.keySet()) {
-                    JSONObject nodeObj = promptObj.getJSONObject(key);
-                    if (nodeObj.has("class_type") && "CLIPTextEncode".equals(nodeObj.getString("class_type"))) {
-                        if (nodeObj.has("inputs")) {
-                            JSONObject inputsObj = nodeObj.getJSONObject("inputs");
-                            if (inputsObj.has("text")) {
-                                String textVal = inputsObj.getString("text").toLowerCase();
-                                if (textVal.contains("bad") || textVal.contains("blurry") || textVal.contains("low quality") || textVal.contains("worst")) {
-                                    continue;
-                                }
-                                targetId = key;
-                                break;
-                            }
-                        }
-                    }
-                }
-                
-                if (targetId == null) {
-                    for (String key : promptObj.keySet()) {
-                        JSONObject nodeObj = promptObj.getJSONObject(key);
-                        if (nodeObj.has("class_type") && "CLIPTextEncode".equals(nodeObj.getString("class_type"))) {
-                            targetId = key;
-                            break;
-                        }
-                    }
-                }
-                
-                if (targetId != null) {
-                    JSONObject nodeObj = promptObj.getJSONObject(targetId);
-                    if (nodeObj.has("inputs")) {
-                        JSONObject inputsObj = nodeObj.getJSONObject("inputs");
-                        inputsObj.put("text", assembled);
-                    }
-                }
-                
-                // Adapt loaders for the selected model
-                if (selectedModel != null && !selectedModel.trim().isEmpty()) {
-                    adaptWorkflowJsonForModel(promptObj, selectedModel.trim());
-                }
+            if (!mainObj.has("prompt")) return;
 
-                // Update Latent Image Dimensions
-                if (width != null && height != null) {
-                    for (String key : promptObj.keySet()) {
-                        JSONObject nodeObj = promptObj.getJSONObject(key);
-                        if (nodeObj.has("class_type") && ("EmptyLatentImage".equals(nodeObj.getString("class_type")) || "EmptySD3LatentImage".equals(nodeObj.getString("class_type")))) {
-                            if (nodeObj.has("inputs")) {
-                                JSONObject inputs = nodeObj.getJSONObject("inputs");
-                                inputs.put("width", width);
-                                inputs.put("height", height);
-                            }
-                        }
-                    }
-                }
+            JSONObject promptObj = mainObj.getJSONObject("prompt");
 
-                // Update KSampler / BasicScheduler / FluxGuidance Steps & CFG
-                if (steps != null && cfg != null) {
-                    for (String key : promptObj.keySet()) {
-                        JSONObject nodeObj = promptObj.getJSONObject(key);
-                        String classType = nodeObj.optString("class_type", "");
-                        if (nodeObj.has("inputs")) {
-                            JSONObject inputs = nodeObj.getJSONObject("inputs");
-                            if ("KSampler".equals(classType) || "KSamplerAdvanced".equals(classType)) {
-                                inputs.put("steps", steps);
-                                inputs.put("cfg", cfg);
-                            } else if ("BasicScheduler".equals(classType)) {
-                                inputs.put("steps", steps);
-                            } else if ("FluxGuidance".equals(classType)) {
-                                inputs.put("guidance", cfg);
-                            }
-                        }
-                    }
-                }
+            int width  = (promptWidthSpinner  != null) ? (Integer) promptWidthSpinner.getValue()  : 512;
+            int height = (promptHeightSpinner != null) ? (Integer) promptHeightSpinner.getValue() : 512;
+            int batch  = (promptBatchSizeSpinner != null) ? (Integer) promptBatchSizeSpinner.getValue() : 1;
+            int steps  = (promptStepsSpinner  != null) ? (Integer) promptStepsSpinner.getValue()   : 20;
+            double cfg = (promptCfgSpinner    != null) ? ((Number) promptCfgSpinner.getValue()).doubleValue() : 7.0;
+            double denoise = (promptDenoiseSpinner != null) ? ((Number) promptDenoiseSpinner.getValue()).doubleValue() : 1.0;
+            String samplerName = (promptSamplerCombo != null && promptSamplerCombo.getSelectedItem() != null) ? (String) promptSamplerCombo.getSelectedItem() : "Auto";
+            String scheduler   = (promptSchedulerCombo != null && promptSchedulerCombo.getSelectedItem() != null) ? (String) promptSchedulerCombo.getSelectedItem() : "Auto";
 
-                promptJsonArea.setText(mainObj.toString(2));
-            }
+            de.tki.comfymodels.service.PromptBlueprintApiService.PromptLabInputs previewInputs =
+                new de.tki.comfymodels.service.PromptBlueprintApiService.PromptLabInputs(
+                    subject, negative, width, height, steps, cfg, 0L, samplerName, scheduler, denoise, batch
+                );
+            promptBlueprintApiService.injectLabInputs(promptObj, previewInputs);
+
+            promptJsonArea.setText(mainObj.toString(2));
         } catch (Exception ex) {
-            // ignore manually modified JSON errors
+            // Ignore JSON parse errors from manually-edited content
         }
         savePromptLabSession();
     }
+
 
     private void updateComfyModelSets(JSONObject info) {
         comfyCheckpoints.clear();
@@ -2639,109 +2290,250 @@ public class Main extends JFrame {
         }
     }
 
-    private void refreshPromptLabModels() {
-        String comfyUrl = configService.getComfyUIUrl();
-        backgroundExecutor.execute(() -> {
-            java.util.Set<String> apiModels = new java.util.TreeSet<>();
-            
-            // Query ComfyUI API status & available checkpoints/unets
-            try {
-                java.net.http.HttpClient client = java.net.http.HttpClient.newBuilder()
-                        .connectTimeout(java.time.Duration.ofSeconds(10))
-                        .build();
-                java.net.http.HttpRequest request = java.net.http.HttpRequest.newBuilder()
-                        .uri(java.net.URI.create(comfyUrl + "/object_info"))
-                        .timeout(java.time.Duration.ofSeconds(10))
-                        .GET()
-                        .build();
-                java.net.http.HttpResponse<String> response = client.send(request, java.net.http.HttpResponse.BodyHandlers.ofString());
-                if (response.statusCode() == 200) {
-                    JSONObject info = new JSONObject(response.body());
-                    updateComfyModelSets(info);
-                    for (String ckpt : comfyCheckpoints) {
-                        apiModels.add(ckpt.replace("\\", "/"));
-                    }
-                    for (String unet : comfyUnetModels) {
-                        apiModels.add(unet.replace("\\", "/"));
+    private void onPromptBlueprintSelected(String selectedName) {
+
+        if (selectedName == null || selectedName.isEmpty()) return;
+
+        de.tki.comfymodels.ui.BlueprintGalleryTab.BlueprintEntry matchedEntry = null;
+        if (blueprintGalleryTab != null) {
+            for (de.tki.comfymodels.ui.BlueprintGalleryTab.BlueprintEntry e : blueprintGalleryTab.getAvailableBlueprints()) {
+                if (e.name.equalsIgnoreCase(selectedName) || e.filename.equalsIgnoreCase(selectedName)) {
+                    matchedEntry = e;
+                    break;
+                }
+            }
+            if (matchedEntry == null) {
+                for (de.tki.comfymodels.ui.BlueprintGalleryTab.BlueprintEntry e : blueprintGalleryTab.getAvailableBlueprints()) {
+                    if (e.name.toLowerCase().contains(selectedName.toLowerCase()) || selectedName.toLowerCase().contains(e.name.toLowerCase())) {
+                        matchedEntry = e;
+                        break;
                     }
                 }
-            } catch (Exception ex) {
-                // silent fallback
+            }
+        }
+
+        if (matchedEntry != null) {
+            if (promptPresetLabel != null) {
+                promptPresetLabel.setText("Selected Blueprint: " + matchedEntry.name + " (" + matchedEntry.category + ")");
             }
 
-            java.util.List<String> list = new java.util.ArrayList<>();
-            for (String modelName : apiModels) {
-                if (!isVideoModel(modelName)) {
-                    list.add(modelName);
-                }
+            // Adjust default dimension & sampler spinners based on blueprint type
+            String nameLower = matchedEntry.name.toLowerCase();
+            String catLower = matchedEntry.category.toLowerCase();
+            if (nameLower.contains("flux") || catLower.contains("flux")) {
+                if (promptWidthSpinner != null) promptWidthSpinner.setValue(1024);
+                if (promptHeightSpinner != null) promptHeightSpinner.setValue(1024);
+                if (promptStepsSpinner != null) promptStepsSpinner.setValue(20);
+                if (promptCfgSpinner != null) promptCfgSpinner.setValue(1.0);
+            } else if (nameLower.contains("sdxl") || catLower.contains("sdxl")) {
+                if (promptWidthSpinner != null) promptWidthSpinner.setValue(1024);
+                if (promptHeightSpinner != null) promptHeightSpinner.setValue(1024);
+                if (promptStepsSpinner != null) promptStepsSpinner.setValue(25);
+                if (promptCfgSpinner != null) promptCfgSpinner.setValue(7.0);
+            } else if (nameLower.contains("wan") || nameLower.contains("video") || catLower.contains("video")) {
+                if (promptWidthSpinner != null) promptWidthSpinner.setValue(832);
+                if (promptHeightSpinner != null) promptHeightSpinner.setValue(480);
+                if (promptStepsSpinner != null) promptStepsSpinner.setValue(20);
+                if (promptCfgSpinner != null) promptCfgSpinner.setValue(6.0);
+            } else {
+                if (promptWidthSpinner != null) promptWidthSpinner.setValue(512);
+                if (promptHeightSpinner != null) promptHeightSpinner.setValue(512);
+                if (promptStepsSpinner != null) promptStepsSpinner.setValue(20);
+                if (promptCfgSpinner != null) promptCfgSpinner.setValue(7.0);
             }
-            if (list.isEmpty()) {
-                // Fallback 1: Scan actual ComfyUI models directory (fixes missing models if server isn't fully ready)
-                String comfyPath = configService.getComfyUIPath();
-                if (comfyPath != null && !comfyPath.isEmpty()) {
-                    java.io.File comfyModels = new java.io.File(comfyPath, "models");
-                    if (comfyModels.exists() && comfyModels.isDirectory()) {
-                        java.io.File checkpointsDir = new java.io.File(comfyModels, "checkpoints");
-                        if (checkpointsDir.exists() && checkpointsDir.isDirectory()) {
-                            scanModelsRecursively(checkpointsDir, "", list);
+
+            // Load GUI workflow JSON async
+            de.tki.comfymodels.ui.BlueprintGalleryTab.BlueprintEntry targetEntry = matchedEntry;
+            backgroundExecutor.execute(() -> {
+                try {
+                    String jsonContent = null;
+                    if (targetEntry.filePath != null) {
+                        File localFile = new File(targetEntry.filePath);
+                        if (localFile.exists()) {
+                            jsonContent = Files.readString(localFile.toPath(), java.nio.charset.StandardCharsets.UTF_8).trim();
                         }
-                        java.io.File unetDir = new java.io.File(comfyModels, "unet");
-                        if (unetDir.exists() && unetDir.isDirectory()) {
-                            scanModelsRecursively(unetDir, "", list);
+                    }
+                    if (jsonContent == null && targetEntry.registryWorkflow != null && workflowDownloader != null) {
+                        File downloaded = workflowDownloader.downloadWorkflowAsync(targetEntry.registryWorkflow).get();
+                        if (downloaded != null && downloaded.exists()) {
+                            jsonContent = Files.readString(downloaded.toPath(), java.nio.charset.StandardCharsets.UTF_8).trim();
                         }
                     }
+                    if (jsonContent == null && comfyTemplateService != null) {
+                        de.tki.comfymodels.domain.ComfyTemplate template = comfyTemplateService.determineTemplateForModel(targetEntry.name);
+                        if (template != null) {
+                            jsonContent = template.getContent();
+                        }
+                    }
+
+                    if (jsonContent != null) {
+                        final String finalJson = jsonContent;
+                        SwingUtilities.invokeLater(() -> {
+                            currentBlueprintGuiJson = finalJson;
+                            if (promptJsonArea != null) {
+                                promptJsonArea.setText(currentBlueprintGuiJson);
+                            }
+                            updatePromptLabJson();
+                        });
+                    }
+                } catch (Exception ex) {
+                    logger.error("Failed loading workflow JSON for blueprint " + targetEntry.name, ex);
                 }
-                
-                // Fallback 2: Scan extra models path
-                String modelsPath = configService.getModelsPath();
-                if (modelsPath != null && !modelsPath.isEmpty()) {
-                    java.io.File checkpointsDir = new java.io.File(modelsPath, "checkpoints");
-                    if (checkpointsDir.exists() && checkpointsDir.isDirectory()) {
-                        scanModelsRecursively(checkpointsDir, "", list);
-                    }
-                    java.io.File unetDir = new java.io.File(modelsPath, "unet");
-                    if (unetDir.exists() && unetDir.isDirectory()) {
-                        scanModelsRecursively(unetDir, "", list);
-                    }
+            });
+        } else {
+            // Fallback for raw model selection
+            if (comfyTemplateService != null) {
+                de.tki.comfymodels.domain.ComfyTemplate template = comfyTemplateService.determineTemplateForModel(selectedName);
+                if (template != null) {
+                    currentBlueprintGuiJson = template.getContent();
+                    if (promptJsonArea != null) promptJsonArea.setText(currentBlueprintGuiJson);
                 }
             }
-            if (list.isEmpty()) {
-                list.add("v1-5-pruned-emaonly.safetensors");
-            }
+            applyModelPreset(selectedName);
+            updatePromptLabJson();
+        }
+    }
+
+    private boolean isTextToImageBlueprint(de.tki.comfymodels.ui.BlueprintGalleryTab.BlueprintEntry entry) {
+        if (entry == null) return false;
+
+        // 1. Exclude Cloud-Only workflows
+        if (entry.registryWorkflow != null && entry.registryWorkflow.isCloudOnly()) {
+            return false;
+        }
+
+        String name = entry.name != null ? entry.name.toLowerCase() : "";
+        String filename = entry.filename != null ? entry.filename.toLowerCase() : "";
+        String cat = entry.category != null ? entry.category.toLowerCase() : "";
+        String desc = entry.description != null ? entry.description.toLowerCase() : "";
+
+        // Hide Cloud-Only blueprints by keyword
+        if (cat.contains("cloud") || name.contains("cloud") || desc.contains("cloud api")
+                || name.contains("replicate") || desc.contains("replicate")
+                || name.contains("fal.ai") || name.contains("runware") || name.contains("dall-e")
+                || name.contains("openai") || name.contains("midjourney")) {
+            return false;
+        }
+
+        // 2. Exclude Video, Img2Img, ControlNet, Inpaint, Upscale, Audio, 3D, etc.
+        if (cat.contains("video") || cat.contains("animate") || cat.contains("motion") 
+                || cat.contains("i2v") || cat.contains("t2v") || cat.contains("image to video")
+                || cat.contains("image edit") || cat.contains("image to image") || cat.contains("img2img")
+                || cat.contains("inpaint") || cat.contains("outpaint") || cat.contains("controlnet")
+                || cat.contains("depth") || cat.contains("pose") || cat.contains("upscal")
+                || cat.contains("3d") || cat.contains("audio")) {
+            return false;
+        }
+
+        if (isVideoModel(name) || isVideoModel(filename)) {
+            return false;
+        }
+        if (name.contains("img2img") || name.contains("i2i") || name.contains("controlnet") 
+                || name.contains("inpaint") || name.contains("upscale")) {
+            return false;
+        }
+
+        // Must be Text-to-Image category or general local image model
+        return cat.contains("text to image") || cat.contains("txt2img") || cat.contains("text-to-image")
+                || name.contains("text to image") || name.contains("txt2img") || cat.equals("general") || cat.isEmpty();
+    }
+
+    private void refreshPromptLabModels() {
+        backgroundExecutor.execute(() -> {
+            java.util.List<String> itemsToAdd = new java.util.ArrayList<>();
             
+            // 1. Primary Source: Ready Text-to-Image Blueprints from Blueprint Gallery (excluding Cloud-Only)
+            if (blueprintGalleryTab != null) {
+                java.util.List<de.tki.comfymodels.ui.BlueprintGalleryTab.BlueprintEntry> readyBlueprints = blueprintGalleryTab.getAvailableBlueprints();
+                for (de.tki.comfymodels.ui.BlueprintGalleryTab.BlueprintEntry e : readyBlueprints) {
+                    if (isTextToImageBlueprint(e)) {
+                        if (e.name != null && !e.name.isBlank() && !itemsToAdd.contains(e.name)) {
+                            itemsToAdd.add(e.name);
+                        }
+                    }
+                }
+            }
+
+            // 2. Generic Discovery: Query local ComfyUI API / scan local models if no ready gallery blueprints found
+            if (itemsToAdd.isEmpty()) {
+                String comfyUrl = configService.getComfyUIUrl();
+                java.util.Set<String> apiModels = new java.util.TreeSet<>();
+                try {
+                    java.net.http.HttpClient client = java.net.http.HttpClient.newBuilder()
+                            .connectTimeout(java.time.Duration.ofSeconds(5))
+                            .build();
+                    java.net.http.HttpRequest request = java.net.http.HttpRequest.newBuilder()
+                            .uri(java.net.URI.create(comfyUrl + "/object_info"))
+                            .timeout(java.time.Duration.ofSeconds(5))
+                            .GET()
+                            .build();
+                    java.net.http.HttpResponse<String> response = client.send(request, java.net.http.HttpResponse.BodyHandlers.ofString());
+                    if (response.statusCode() == 200) {
+                        JSONObject info = new JSONObject(response.body());
+                        updateComfyModelSets(info);
+                        for (String ckpt : comfyCheckpoints) apiModels.add(ckpt.replace("\\", "/"));
+                        for (String unet : comfyUnetModels) apiModels.add(unet.replace("\\", "/"));
+                    }
+                } catch (Exception ignored) {}
+
+                for (String m : apiModels) {
+                    String mLower = m.toLowerCase();
+                    if (!isVideoModel(m) && !mLower.contains("cloud") && !itemsToAdd.contains(m)) {
+                        itemsToAdd.add(m);
+                    }
+                }
+
+                if (itemsToAdd.isEmpty()) {
+                    String comfyPath = configService.getComfyUIPath();
+                    if (comfyPath != null && !comfyPath.isEmpty()) {
+                        java.io.File comfyModels = new java.io.File(comfyPath, "models");
+                        if (comfyModels.exists() && comfyModels.isDirectory()) {
+                            java.io.File checkpointsDir = new java.io.File(comfyModels, "checkpoints");
+                            if (checkpointsDir.exists()) scanModelsRecursively(checkpointsDir, "", itemsToAdd);
+                            java.io.File unetDir = new java.io.File(comfyModels, "unet");
+                            if (unetDir.exists()) scanModelsRecursively(unetDir, "", itemsToAdd);
+                        }
+                    }
+                }
+            }
+
+            // Exclude cloud-only keywords
+            itemsToAdd.removeIf(item -> {
+                String lower = item.toLowerCase();
+                return lower.contains("cloud") || lower.contains("replicate") || lower.contains("fal.ai") || lower.contains("dall-e") || lower.contains("openai");
+            });
+
             SwingUtilities.invokeLater(() -> {
                 if (promptModelCombo != null) {
                     String selected = (String) promptModelCombo.getSelectedItem();
                     promptModelCombo.removeAllItems();
-                    
-                    java.util.List<String> itemsToAdd = new java.util.ArrayList<>(list);
-                    
-                    for (String modelName : itemsToAdd) {
-                        promptModelCombo.addItem(modelName);
-                    }
-                    
-                    String matched = null;
-                    if (selected != null) {
-                        for (String m : itemsToAdd) {
-                            if (modelsMatch(selected, m) || selected.equals(m)) {
-                                matched = m;
-                                break;
-                            }
+
+                    if (itemsToAdd.isEmpty()) {
+                        promptModelCombo.addItem("No ready offline blueprints available");
+                        promptModelCombo.setEnabled(false);
+                    } else {
+                        promptModelCombo.setEnabled(true);
+                        for (String name : itemsToAdd) {
+                            promptModelCombo.addItem(name);
+                        }
+
+                        if (selected != null && itemsToAdd.contains(selected)) {
+                            promptModelCombo.setSelectedItem(selected);
+                        } else {
+                            promptModelCombo.setSelectedIndex(0);
                         }
                     }
-                    if (matched != null) {
-                        promptModelCombo.setSelectedItem(matched);
-                    } else if (!itemsToAdd.isEmpty()) {
-                        promptModelCombo.setSelectedIndex(0);
+
+                    String currentSelection = (String) promptModelCombo.getSelectedItem();
+                    if (currentSelection != null && !currentSelection.startsWith("No ready")) {
+                        onPromptBlueprintSelected(currentSelection);
                     }
-                    if (promptModelCombo.getSelectedItem() != null) {
-                        applyModelPreset((String) promptModelCombo.getSelectedItem());
-                    }
-                    promptLabConsole.append("🔄 Prompt Lab: Available ComfyUI models loaded (" + itemsToAdd.size() + " models fetched).\n");
+                    promptLabConsole.append("🔄 Prompt Lab: Ready Offline Blueprints loaded (" + itemsToAdd.size() + " ready offline workflows available).\n");
                 }
             });
         });
     }
+
 
     private void scanModelsRecursively(java.io.File dir, String prefix, java.util.List<String> list) {
         java.io.File[] files = dir.listFiles();
@@ -2778,519 +2570,390 @@ public class Main extends JFrame {
 
 
     private void sendPromptToComfyUI() {
-        String comfyUrl = configService.getComfyUIUrl();
-        String selectedModelVal = getActualModelForPromptLab((promptModelCombo != null) ? (String) promptModelCombo.getSelectedItem() : null);
-        int widthVal = (promptWidthSpinner != null) ? (int) promptWidthSpinner.getValue() : 512;
-        int heightVal = (promptHeightSpinner != null) ? (int) promptHeightSpinner.getValue() : 512;
-        int stepsVal = (promptStepsSpinner != null) ? (int) promptStepsSpinner.getValue() : 20;
-        double cfgVal = (promptCfgSpinner != null) ? ((Number) promptCfgSpinner.getValue()).doubleValue() : 8.0;
-        
+        final String comfyUrl = configService.getComfyUIUrl();
+        final String assembledPrompt = (promptSubjectField != null) ? promptSubjectField.getText().trim() : "";
+        final String negativePrompt  = (promptNegativeField != null) ? promptNegativeField.getText().trim() : "";
+        final int    widthVal        = (promptWidthSpinner  != null) ? (int) promptWidthSpinner.getValue()                 : 512;
+        final int    heightVal       = (promptHeightSpinner != null) ? (int) promptHeightSpinner.getValue()                : 512;
+        final int    batchSizeVal    = (promptBatchSizeSpinner != null) ? (int) promptBatchSizeSpinner.getValue()          : 1;
+        final int    stepsVal        = (promptStepsSpinner  != null) ? (int) promptStepsSpinner.getValue()                 : 20;
+        final double cfgVal          = (promptCfgSpinner    != null) ? ((Number) promptCfgSpinner.getValue()).doubleValue() : 7.0;
+        final double denoiseVal      = (promptDenoiseSpinner != null) ? ((Number) promptDenoiseSpinner.getValue()).doubleValue() : 1.0;
+        final String samplerNameVal  = (promptSamplerCombo != null && promptSamplerCombo.getSelectedItem() != null) ? (String) promptSamplerCombo.getSelectedItem() : "Auto";
+        final String schedulerVal    = (promptSchedulerCombo != null && promptSchedulerCombo.getSelectedItem() != null) ? (String) promptSchedulerCombo.getSelectedItem() : "Auto";
+
         btnSendToComfy.setEnabled(false);
-        promptLabConsole.append("Checking connection to ComfyUI and loading models...\n");
-        
+        btnSendToComfy.setText("⏳ Generating...");
+        promptLabConsole.append("🚀 Starting generation pipeline...\n");
+
         backgroundExecutor.execute(() -> {
             try {
                 java.net.http.HttpClient client = java.net.http.HttpClient.newBuilder()
-                        .connectTimeout(java.time.Duration.ofSeconds(4))
+                        .connectTimeout(java.time.Duration.ofSeconds(5))
                         .build();
-                        
-                // Step 1: Query ComfyUI status & available checkpoints
+
+                // ── Step 1: Ensure ComfyUI is online ──────────────────────────────
                 java.net.http.HttpRequest infoRequest = java.net.http.HttpRequest.newBuilder()
                         .uri(java.net.URI.create(comfyUrl + "/object_info"))
-                        .GET()
-                        .build();
-                        
+                        .GET().build();
+
                 java.net.http.HttpResponse<String> infoResponse = null;
                 boolean connected = false;
                 try {
                     infoResponse = client.send(infoRequest, java.net.http.HttpResponse.BodyHandlers.ofString());
-                    if (infoResponse.statusCode() == 200) {
-                        connected = true;
-                    }
-                } catch (Exception ex) {
-                    // Offline, we will try to start it
-                }
+                    connected = infoResponse.statusCode() == 200;
+                } catch (Exception ignored) {}
 
                 if (!connected) {
+                    // Auto-start ComfyUI with the active profile
                     String activeId = configService.getActiveProfile();
-                    List<de.tki.comfymodels.domain.LaunchProfile> profiles = profileManager.loadProfiles();
+                    java.util.List<de.tki.comfymodels.domain.LaunchProfile> profiles = profileManager.loadProfiles();
                     de.tki.comfymodels.domain.LaunchProfile activeProfile = profiles.stream()
-                        .filter(p -> p.id().equals(activeId))
-                        .findFirst()
-                        .orElse(null);
-                    if (activeProfile == null && !profiles.isEmpty()) {
-                        activeProfile = profiles.get(0);
-                    }
+                            .filter(p -> p.id().equals(activeId)).findFirst().orElse(null);
+                    if (activeProfile == null && !profiles.isEmpty()) activeProfile = profiles.get(0);
 
                     if (activeProfile != null) {
-                        final de.tki.comfymodels.domain.LaunchProfile finalProfile = activeProfile;
-                        SwingUtilities.invokeLater(() -> {
-                            promptLabConsole.append("🔌 ComfyUI is offline. Starting ComfyUI automatically with profile: " + finalProfile.name() + "...\n");
-                        });
+                        final de.tki.comfymodels.domain.LaunchProfile fp = activeProfile;
+                        SwingUtilities.invokeLater(() -> promptLabConsole.append(
+                                "🔌 ComfyUI offline — auto-starting with profile: " + fp.name() + "\n"));
                         startComfyUI(activeProfile, false, !configService.isHideComfyUI());
-                        
-                        // Wait up to 45 seconds for ComfyUI to start
-                        for (int i = 1; i <= 45; i++) {
-                            final int attempt = i;
-                            SwingUtilities.invokeLater(() -> {
-                                promptLabConsole.append("⏳ Waiting for ComfyUI to start (Attempt " + attempt + "/45)...\n");
-                            });
+
+                        for (int i = 1; i <= 45 && !connected; i++) {
+                            final int att = i;
+                            SwingUtilities.invokeLater(() -> promptLabConsole.append(
+                                    "⏳ Waiting for ComfyUI to start (attempt " + att + "/45)...\n"));
                             try {
                                 Thread.sleep(1000);
                                 infoResponse = client.send(infoRequest, java.net.http.HttpResponse.BodyHandlers.ofString());
                                 if (infoResponse.statusCode() == 200) {
                                     connected = true;
-                                    SwingUtilities.invokeLater(() -> {
-                                        promptLabConsole.append("🟢 ComfyUI is now online!\n");
-                                    });
-                                    break;
+                                    SwingUtilities.invokeLater(() -> promptLabConsole.append("🟢 ComfyUI is online!\n"));
                                 }
-                            } catch (Exception ignored) {
-                            }
+                            } catch (Exception ignored) {}
                         }
                     }
                 }
 
-                if (!connected || infoResponse == null || infoResponse.statusCode() != 200) {
+                if (!connected) {
                     SwingUtilities.invokeLater(() -> {
                         btnSendToComfy.setEnabled(true);
-                        promptLabConsole.append("❌ Could not connect to ComfyUI. Automatic startup failed or no profiles exist.\n\n");
-                        JOptionPane.showMessageDialog(this, 
-                            "Could not connect to ComfyUI. Please start ComfyUI manually.", 
-                            "Connection Failed", JOptionPane.ERROR_MESSAGE);
+                        btnSendToComfy.setText("🚀 Generate");
+                        promptLabConsole.append("❌ Cannot connect to ComfyUI.\n\n");
+                        JOptionPane.showMessageDialog(this, "Could not connect to ComfyUI. Please start it manually.",
+                                "Connection Failed", JOptionPane.ERROR_MESSAGE);
                     });
                     return;
                 }
-                
-                // Parse checkpoints and unet models from response
-                try {
-                    JSONObject info = new JSONObject(infoResponse.body());
-                    updateComfyModelSets(info);
-                } catch (Exception ex) {
-                    // JSON parsing error
+
+                // ── Step 2: Update model sets (for path sanitization later) ──────
+                if (infoResponse != null && infoResponse.statusCode() == 200) {
+                    try { updateComfyModelSets(new JSONObject(infoResponse.body())); } catch (Exception ignored) {}
                 }
-                
-                java.util.List<String> checkpoints = new java.util.ArrayList<>(comfyCheckpoints);
-                java.util.List<String> unetModels = new java.util.ArrayList<>(comfyUnetModels);
-                
-                if (checkpoints.isEmpty() && unetModels.isEmpty()) {
+
+                // ── Step 3: Get the GUI workflow JSON for the selected blueprint ──
+                // We use currentBlueprintGuiJson if pre-loaded; otherwise fall back to promptJsonArea content
+                String guiJsonStr = currentBlueprintGuiJson;
+                if (guiJsonStr == null || guiJsonStr.isBlank()) {
+                    // If no blueprint was pre-loaded, check if promptJsonArea already holds API JSON
+                    guiJsonStr = (promptJsonArea != null) ? promptJsonArea.getText().trim() : null;
+                }
+                if (guiJsonStr == null || guiJsonStr.isBlank()) {
                     SwingUtilities.invokeLater(() -> {
                         btnSendToComfy.setEnabled(true);
-                        promptLabConsole.append("❌ No checkpoints or UNet models found in ComfyUI.\n\n");
-                        JOptionPane.showMessageDialog(this, 
-                            "No models (checkpoints or UNets) were found in ComfyUI. Please install a model first!", 
-                            "No Models Available", JOptionPane.WARNING_MESSAGE);
+                        btnSendToComfy.setText("🚀 Generate");
+                        JOptionPane.showMessageDialog(this, "No workflow JSON available. Please select a blueprint first.",
+                                "No Workflow", JOptionPane.WARNING_MESSAGE);
                     });
                     return;
                 }
-                
-                String selectedModel = selectedModelVal;
-                boolean isDiff = isDiffusionModel(selectedModel);
-                boolean isValid = false;
-                String matchedModel = null;
-                
-                if (selectedModel != null && !selectedModel.trim().isEmpty()) {
-                    final String sel = selectedModel;
-                    if (isDiff) {
-                        for (String u : unetModels) {
-                            if (modelsMatch(sel, u)) {
-                                isValid = true;
-                                matchedModel = u;
-                                break;
+
+                // ── Step 4: Determine if workflow needs GUI→API conversion ────────
+                final String guiJson = guiJsonStr;
+                JSONObject parsedJson = new JSONObject(guiJson);
+                boolean isGuiFormat = parsedJson.has("nodes"); // GUI format has "nodes" array
+                if (!isGuiFormat && parsedJson.has("workflow")) {
+                    try {
+                        isGuiFormat = new JSONObject(parsedJson.get("workflow").toString()).has("nodes");
+                    } catch (Exception ignored) {}
+                }
+
+                String convertedApiJson;
+
+                if (isGuiFormat && apiWorkflowCache.containsKey(guiJson.hashCode())) {
+                    convertedApiJson = apiWorkflowCache.get(guiJson.hashCode());
+                    SwingUtilities.invokeLater(() -> promptLabConsole.append("⚡ Using cached API workflow (skipping browser conversion).\n"));
+                } else if (isGuiFormat) {
+                    // ── Step 4a: Convert GUI → API via browser (app.graphToPrompt()) ──
+                    SwingUtilities.invokeLater(() -> promptLabConsole.append(
+                            "🔄 Sending blueprint to browser for conversion (app.graphToPrompt())...\n"));
+
+                    java.util.concurrent.CompletableFuture<String> conversionFuture = new java.util.concurrent.CompletableFuture<>();
+                    restBridge.setWorkflowReadyConsumer(conversionFuture::complete);
+
+                    // POST the GUI JSON to the ComfyUI bridge endpoint
+                    JSONObject convRequest = new JSONObject();
+                    convRequest.put("workflow", parsedJson.has("nodes") ? parsedJson : parsedJson.optJSONObject("workflow"));
+                    convRequest.put("callbackUrl", "http://127.0.0.1:12345/api/workflow-ready");
+
+                    java.net.http.HttpRequest convHttpReq = java.net.http.HttpRequest.newBuilder()
+                            .uri(java.net.URI.create(comfyUrl + "/cmfc/convert-workflow"))
+                            .header("Content-Type", "application/json")
+                            .POST(java.net.http.HttpRequest.BodyPublishers.ofString(convRequest.toString()))
+                            .build();
+
+                    java.net.http.HttpResponse<String> convResponse = client.send(
+                            convHttpReq, java.net.http.HttpResponse.BodyHandlers.ofString());
+
+                    if (convResponse.statusCode() != 200) {
+                        restBridge.setWorkflowReadyConsumer(null);
+                        SwingUtilities.invokeLater(() -> {
+                            btnSendToComfy.setEnabled(true);
+                            btnSendToComfy.setText("🚀 Generate");
+                            JOptionPane.showMessageDialog(this,
+                                    "Bridge conversion failed (HTTP " + convResponse.statusCode() + ").\n"
+                                    + "Make sure ComfyUI is running and the Bridge extension is installed.",
+                                    "Conversion Failed", JOptionPane.ERROR_MESSAGE);
+                        });
+                        return;
+                    }
+
+                    // Wait for browser conversion, auto-opening browser if tab isn't already active
+                    String resultJson = null;
+                    try {
+                        resultJson = conversionFuture.get(2500, java.util.concurrent.TimeUnit.MILLISECONDS);
+                    } catch (java.util.concurrent.TimeoutException te) {
+                        SwingUtilities.invokeLater(() -> promptLabConsole.append(
+                                "🌐 Opening ComfyUI in your browser (http://127.0.0.1:8188) to process conversion...\n"));
+                        try {
+                            if (java.awt.Desktop.isDesktopSupported() && java.awt.Desktop.getDesktop().isSupported(java.awt.Desktop.Action.BROWSE)) {
+                                java.awt.Desktop.getDesktop().browse(new java.net.URI(comfyUrl));
                             }
-                        }
-                    } else {
-                        for (String c : checkpoints) {
-                            if (modelsMatch(sel, c)) {
-                                isValid = true;
-                                matchedModel = c;
-                                break;
-                            }
+                        } catch (Exception ignored) {}
+
+                        try {
+                            Thread.sleep(1500);
+                            client.send(convHttpReq, java.net.http.HttpResponse.BodyHandlers.ofString());
+                        } catch (Exception ignored) {}
+
+                        try {
+                            resultJson = conversionFuture.get(30, java.util.concurrent.TimeUnit.SECONDS);
+                        } catch (java.util.concurrent.TimeoutException te2) {
+                            restBridge.setWorkflowReadyConsumer(null);
+                            SwingUtilities.invokeLater(() -> {
+                                btnSendToComfy.setEnabled(true);
+                                btnSendToComfy.setText("🚀 Generate");
+                                JOptionPane.showMessageDialog(this,
+                                        "Timeout waiting for browser to convert the workflow.\n"
+                                        + "Please make sure ComfyUI is loaded in your browser with the Bridge extension installed.",
+                                        "Timeout", JOptionPane.ERROR_MESSAGE);
+                            });
+                            return;
                         }
                     }
-                }
-                
-                if (isValid && matchedModel != null) {
-                    selectedModel = matchedModel;
+
+                    convertedApiJson = resultJson;
+
+                    // Check for browser-side conversion errors
+                    JSONObject receivedObj = new JSONObject(convertedApiJson);
+                    if (receivedObj.has("error")) {
+                        final String errMsg = receivedObj.getString("error");
+                        SwingUtilities.invokeLater(() -> {
+                            btnSendToComfy.setEnabled(true);
+                            btnSendToComfy.setText("🚀 Generate");
+                            promptLabConsole.append("❌ Browser conversion error: " + errMsg + "\n\n");
+                            JOptionPane.showMessageDialog(this,
+                                    "Workflow conversion failed:\n" + errMsg, "Conversion Error", JOptionPane.ERROR_MESSAGE);
+                        });
+                        return;
+                    }
+
+                    if (convertedApiJson != null && !convertedApiJson.isBlank()) {
+                        apiWorkflowCache.put(guiJson.hashCode(), convertedApiJson);
+                    }
+                    SwingUtilities.invokeLater(() -> promptLabConsole.append("✅ Conversion successful.\n"));
+
                 } else {
-                    if (isDiff && !unetModels.isEmpty()) {
-                        selectedModel = unetModels.get(0);
-                        final String fallback = selectedModel;
-                        SwingUtilities.invokeLater(() -> {
-                            promptModelCombo.setSelectedItem(getBlueprintNameForModel(fallback));
-                            promptLabConsole.append("⚠️ Selected diffusion model not loaded. Falling back to: " + fallback + "\n");
-                        });
-                    } else if (!checkpoints.isEmpty()) {
-                        selectedModel = checkpoints.get(0);
-                        final String fallback = selectedModel;
-                        SwingUtilities.invokeLater(() -> {
-                            promptModelCombo.setSelectedItem(getBlueprintNameForModel(fallback));
-                            promptLabConsole.append("⚠️ Selected model not loaded. Falling back to checkpoint: " + fallback + "\n");
-                        });
-                    }
+                    // Already API format — use as-is
+                    convertedApiJson = guiJson;
+                    SwingUtilities.invokeLater(() -> promptLabConsole.append("ℹ️ Workflow already in API format — skipping conversion.\n"));
                 }
-                
-                final String finalModel = selectedModel;
-                SwingUtilities.invokeLater(() -> {
-                    promptLabConsole.append("Using model: " + finalModel + "\n");
-                });
-                
-                // Parse and update JSON payload
-                String rawJson = promptJsonArea.getText().trim();
-                JSONObject mainObj = new JSONObject(rawJson);
-                if (mainObj.has("prompt")) {
-                    JSONObject promptObj = mainObj.getJSONObject("prompt");
-                    
-                    // Adapt loaders for the selected model
-                    adaptWorkflowJsonForModel(promptObj, finalModel);
-                    
-                    // Update EmptyLatentImage width & height
-                    for (String key : promptObj.keySet()) {
-                        JSONObject nodeObj = promptObj.getJSONObject(key);
-                        if (nodeObj.has("class_type") && ("EmptyLatentImage".equals(nodeObj.getString("class_type")) || "EmptySD3LatentImage".equals(nodeObj.getString("class_type")))) {
-                            if (nodeObj.has("inputs")) {
-                                JSONObject inputs = nodeObj.getJSONObject("inputs");
-                                inputs.put("width", widthVal);
-                                inputs.put("height", heightVal);
-                            }
-                        }
-                    }
 
-                    // Update KSampler / KSamplerAdvanced steps, cfg, and randomize seed to force execution
-                    for (String key : promptObj.keySet()) {
-                        JSONObject nodeObj = promptObj.getJSONObject(key);
-                        String classType = nodeObj.optString("class_type", "");
-                        if (nodeObj.has("inputs")) {
-                            JSONObject inputs = nodeObj.getJSONObject("inputs");
-                            
-                            // Update steps and cfg for standard samplers / custom schedulers
-                            if ("KSampler".equals(classType) || "KSamplerAdvanced".equals(classType)) {
-                                inputs.put("steps", stepsVal);
-                                inputs.put("cfg", cfgVal);
-                            } else if ("BasicScheduler".equals(classType)) {
-                                inputs.put("steps", stepsVal);
-                            } else if ("FluxGuidance".equals(classType)) {
-                                inputs.put("guidance", cfgVal);
-                            }
-                            
-                            // Randomize any seed/noise_seed field in any node (including custom samplers) to bypass ComfyUI caching
-                            java.util.List<String> inputKeys = new java.util.ArrayList<>(inputs.keySet());
-                            long randomSeed = Math.abs(new java.util.Random().nextLong()) % 9007199254740991L;
-                            for (String inputKey : inputKeys) {
-                                String lowerKey = inputKey.toLowerCase();
-                                if (lowerKey.equals("seed") || lowerKey.equals("noise_seed") || lowerKey.endsWith("_seed") || lowerKey.startsWith("seed_")) {
-                                    Object existingVal = inputs.get(inputKey);
-                                    if (existingVal instanceof Number) {
-                                        inputs.put(inputKey, randomSeed);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    
-                    // Update positive CLIPTextEncode
-                    String assembledPrompt = promptAssembleArea.getText().trim();
-                    String positiveNodeId = null;
-                    for (String key : promptObj.keySet()) {
-                        JSONObject nodeObj = promptObj.getJSONObject(key);
-                        if (nodeObj.has("class_type") && "CLIPTextEncode".equals(nodeObj.getString("class_type"))) {
-                            if (nodeObj.has("inputs")) {
-                                JSONObject inputs = nodeObj.getJSONObject("inputs");
-                                if (inputs.has("text")) {
-                                    String textVal = inputs.getString("text").toLowerCase();
-                                    if (textVal.contains("bad") || textVal.contains("blurry") || textVal.contains("low quality") || textVal.contains("worst")) {
-                                        continue;
-                                    }
-                                    positiveNodeId = key;
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                    
-                    if (positiveNodeId == null) {
-                        for (String key : promptObj.keySet()) {
-                            JSONObject nodeObj = promptObj.getJSONObject(key);
-                            if (nodeObj.has("class_type") && "CLIPTextEncode".equals(nodeObj.getString("class_type"))) {
-                                positiveNodeId = key;
-                                break;
-                            }
-                        }
-                    }
-                    
-                    if (positiveNodeId != null) {
-                        JSONObject nodeObj = promptObj.getJSONObject(positiveNodeId);
-                        if (nodeObj.has("inputs")) {
-                            JSONObject inputs = nodeObj.getJSONObject("inputs");
-                            inputs.put("text", assembledPrompt);
-                        }
-                    }
-                }
-                
-                String updatedJsonPayload = mainObj.toString(2);
+                // ── Step 5: Build the final API prompt object ────────────────────
+                JSONObject mainObj = promptBlueprintApiService.extractApiPayload(convertedApiJson);
+                JSONObject promptObj = mainObj.getJSONObject("prompt");
+
+
+                // ── Step 6: Generically inject Prompt Lab values (no loader logic) ─
+                long randomSeed = Math.abs(new java.util.Random().nextLong()) % 9007199254740991L;
+                de.tki.comfymodels.service.PromptBlueprintApiService.PromptLabInputs labInputs =
+                    new de.tki.comfymodels.service.PromptBlueprintApiService.PromptLabInputs(
+                        assembledPrompt, negativePrompt, widthVal, heightVal, stepsVal, cfgVal, randomSeed,
+                        samplerNameVal, schedulerVal, denoiseVal, batchSizeVal);
+                promptBlueprintApiService.injectLabInputs(promptObj, labInputs);
+
+                // ── Step 7: Sanitize model file paths (slash / backslash) ────────
+                sanitizeModelInputsInPrompt(promptObj, null);
+
+                // ── Step 8: POST to ComfyUI /prompt ──────────────────────────────
+                final String finalPayload = mainObj.toString(2);
                 SwingUtilities.invokeLater(() -> {
-                    promptJsonArea.setText(updatedJsonPayload);
-                    promptLabConsole.append("Sending prompt to ComfyUI...\n");
+                    promptJsonArea.setText(finalPayload);
+                    promptLabConsole.append("📤 Sending prompt to ComfyUI...\n");
                 });
-                
-                java.net.http.HttpRequest request = java.net.http.HttpRequest.newBuilder()
+
+                java.net.http.HttpRequest promptReq = java.net.http.HttpRequest.newBuilder()
                         .uri(java.net.URI.create(comfyUrl + "/prompt"))
                         .header("Content-Type", "application/json")
-                        .POST(java.net.http.HttpRequest.BodyPublishers.ofString(updatedJsonPayload))
+                        .POST(java.net.http.HttpRequest.BodyPublishers.ofString(finalPayload))
                         .build();
-                        
-                java.net.http.HttpResponse<String> response = client.send(request, java.net.http.HttpResponse.BodyHandlers.ofString());
-                
+
+                java.net.http.HttpResponse<String> response = client.send(
+                        promptReq, java.net.http.HttpResponse.BodyHandlers.ofString());
+
                 SwingUtilities.invokeLater(() -> {
                     btnSendToComfy.setEnabled(true);
+                    btnSendToComfy.setText("🚀 Generate");
                     if (response.statusCode() == 200) {
-                        promptLabConsole.append("Successfully sent! Status Code: 200\n");
-                        promptLabConsole.append("Response: " + response.body() + "\n\n");
-                        
+                        promptLabConsole.append("✅ Successfully queued! Status: 200\n\n");
                         try {
                             JSONObject respObj = new JSONObject(response.body());
                             String promptId = respObj.optString("prompt_id");
                             if (promptId != null && !promptId.isEmpty()) {
                                 startPollingPromptStatus(promptId);
                             }
-                        } catch (Exception e) {
-                            logger.error("Failed to parse prompt response: " + e.getMessage());
-                        }
+                        } catch (Exception ignored) {}
                     } else if (response.statusCode() == 400) {
-                        promptLabConsole.append("Error! Status Code: 400\n");
-                        promptLabConsole.append("Response: " + response.body() + "\n\n");
-                        
-                        String errMsg = "ComfyUI reported a validation error (400 Bad Request).\n";
+                        promptLabConsole.append("❌ Validation error (400):\n" + response.body() + "\n\n");
+                        String errMsg = "ComfyUI validation error (400 Bad Request).\n";
                         try {
                             JSONObject errObj = new JSONObject(response.body());
                             if (errObj.has("error")) {
                                 JSONObject subErr = errObj.getJSONObject("error");
-                                String type = subErr.optString("type", "");
-                                String msg = subErr.optString("message", "");
-                                errMsg += "\nType: " + type + "\nMessage: " + msg;
-                                if (subErr.has("details")) {
-                                    errMsg += "\nDetails: " + subErr.get("details").toString();
-                                }
+                                errMsg += "\nType: "    + subErr.optString("type", "")
+                                        + "\nMessage: " + subErr.optString("message", "");
+                                if (subErr.has("details")) errMsg += "\nDetails: " + subErr.get("details");
                             } else {
-                                errMsg += "\nResponse content:\n" + response.body();
+                                errMsg += "\n" + response.body();
                             }
-                        } catch (Exception ex) {
-                            errMsg += "\nResponse content:\n" + response.body();
-                        }
-                        
+                        } catch (Exception ignored) { errMsg += "\n" + response.body(); }
                         JOptionPane.showMessageDialog(this, errMsg, "Validation Error (400)", JOptionPane.ERROR_MESSAGE);
                     } else {
-                        promptLabConsole.append("Error! Status Code: " + response.statusCode() + "\n");
-                        promptLabConsole.append("Response: " + response.body() + "\n\n");
-                        JOptionPane.showMessageDialog(this, 
-                            "ComfyUI reported an error: " + response.statusCode() + "\nResponse: " + response.body(), 
-                            "API Error", JOptionPane.ERROR_MESSAGE);
+                        promptLabConsole.append("❌ Error! Status: " + response.statusCode() + "\n" + response.body() + "\n\n");
+                        JOptionPane.showMessageDialog(this,
+                                "ComfyUI error: " + response.statusCode() + "\n" + response.body(),
+                                "API Error", JOptionPane.ERROR_MESSAGE);
                     }
                 });
+
             } catch (Exception ex) {
                 SwingUtilities.invokeLater(() -> {
                     btnSendToComfy.setEnabled(true);
-                    promptLabConsole.append("Error: " + ex.getMessage() + "\n\n");
-                    JOptionPane.showMessageDialog(this, 
-                        "Connection to ComfyUI failed:\n" + ex.getMessage(), 
-                        "Connection Error", JOptionPane.ERROR_MESSAGE);
+                    btnSendToComfy.setText("🚀 Generate");
+                    promptLabConsole.append("❌ Error: " + ex.getMessage() + "\n\n");
+                    JOptionPane.showMessageDialog(this,
+                            "Generation failed:\n" + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
                 });
             }
         });
     }
 
-    private void optimizePromptWithAI() {
-        boolean hasGemini = isGeminiKeyConfigured();
-        boolean hasGemma = localAIService != null && localAIService.isLocalGemmaDownloaded();
+    private String findExactComfyModelOption(String classType, String inputKey, String targetValue) {
+        if (targetValue == null || targetValue.isBlank()) return null;
 
-        if (!hasGemini && !hasGemma) {
-            int choice = JOptionPane.showConfirmDialog(this,
-                "Neither a Gemini API Key is configured nor the local Gemma model is downloaded.\n" +
-                "Would you like to download the Gemma-3-4B GGUF model (approx. 3 GB) now to run optimizations locally?",
-                "Download Local Gemma Model?", JOptionPane.YES_NO_OPTION, JOptionPane.QUESTION_MESSAGE);
-            if (choice == JOptionPane.YES_OPTION) {
-                downloadLocalGemmaModel();
-            }
-            return;
+        String targetClean = targetValue.replaceAll("[/\\\\]+", "/").toLowerCase();
+        String targetFileName = targetClean.contains("/") ? targetClean.substring(targetClean.lastIndexOf('/') + 1) : targetClean;
+
+        java.util.List<java.util.Set<String>> candidateLists = new java.util.ArrayList<>();
+        String ikLower = inputKey != null ? inputKey.toLowerCase() : "";
+        String ctLower = classType != null ? classType.toLowerCase() : "";
+
+        if (ikLower.contains("vae") || ctLower.contains("vae")) {
+            candidateLists.add(comfyVaes);
+        } else if (ikLower.contains("unet") || ctLower.contains("unet")) {
+            candidateLists.add(comfyUnetModels);
+        } else if (ikLower.contains("clip") || ctLower.contains("clip")) {
+            candidateLists.add(comfyClips);
+        } else if (ikLower.contains("ckpt") || ctLower.contains("checkpoint")) {
+            candidateLists.add(comfyCheckpoints);
         }
 
-        String rawPrompt = promptAssembleArea.getText().trim();
-        if (rawPrompt.isEmpty()) {
-            JOptionPane.showMessageDialog(this, 
-                "Please create a prompt first (What?, Where?, How?).", 
-                "Empty Prompt", JOptionPane.WARNING_MESSAGE);
-            return;
-        }
-        
-        String selectedModel = getActualModelForPromptLab((promptModelCombo != null) ? (String) promptModelCombo.getSelectedItem() : null);
-        
-        btnOptimizePrompt.setEnabled(false);
-        String originalText = btnOptimizePrompt.getText();
-        btnOptimizePrompt.setText("✨ Optimizing...");
-        
-        if (hasGemini) {
-            promptLabConsole.append("Optimizing prompt with Google Gemini API...\n");
-        } else {
-            promptLabConsole.append("Optimizing prompt with local Gemma...\n");
-        }
-        
-        backgroundExecutor.execute(() -> {
-            String optimized = null;
-            StringBuilder errorLogs = new StringBuilder();
-            try {
-                if (hasGemini) {
-                    optimized = geminiService.optimizePrompt(rawPrompt, selectedModel);
-                } else {
-                    promptLabConsole.append("Running direct local Gemma optimizer...\n");
-                    optimized = localAIService.optimizePromptDirectly(rawPrompt, selectedModel);
+        // Fallback candidates
+        candidateLists.add(comfyVaes);
+        candidateLists.add(comfyCheckpoints);
+        candidateLists.add(comfyUnetModels);
+        candidateLists.add(comfyClips);
+
+        for (java.util.Set<String> options : candidateLists) {
+            if (options == null || options.isEmpty()) continue;
+
+            // 1. Try exact normalized match
+            for (String opt : options) {
+                String optClean = opt.replaceAll("[/\\\\]+", "/").toLowerCase();
+                if (optClean.equals(targetClean)) {
+                    return opt;
                 }
-            } catch (Throwable ex) {
-                java.io.StringWriter sw = new java.io.StringWriter();
-                ex.printStackTrace(new java.io.PrintWriter(sw));
-                errorLogs.append("AI prompt optimization failed:\n").append(sw.toString()).append("\n");
-                logger.error("AI prompt optimization failed: " + ex.getMessage());
             }
-            
-            final String finalOptimized = optimized;
-            final String finalErrors = errorLogs.toString();
-            SwingUtilities.invokeLater(() -> {
-                btnOptimizePrompt.setEnabled(true);
-                btnOptimizePrompt.setText(originalText);
-                if (finalOptimized != null && !finalOptimized.isEmpty()) {
-                    String cleanOptimized = finalOptimized.trim();
-                    if (cleanOptimized.startsWith("```")) {
-                        cleanOptimized = cleanOptimized.replaceAll("^```(json)?", "").replaceAll("```$", "").trim();
-                    }
-                    
-                    boolean parsedAsJson = false;
-                    try {
-                        org.json.JSONObject aiResult = new org.json.JSONObject(cleanOptimized);
-                        String positive = aiResult.optString("positive_prompt", "").trim();
-                        String negative = aiResult.optString("negative_prompt", "").trim();
-                        double cfgVal = aiResult.optDouble("cfg", -1.0);
-                        int stepsVal = aiResult.optInt("steps", -1);
-                        
-                        if (!positive.isEmpty()) {
-                            // Update Steps & CFG spinners if parsed successfully
-                            if (stepsVal > 0 && promptStepsSpinner != null) {
-                                promptStepsSpinner.setValue(stepsVal);
-                            }
-                            if (cfgVal > 0 && promptCfgSpinner != null) {
-                                promptCfgSpinner.setValue(cfgVal);
-                            }
-                            
-                            // Update Subject Field (triggers updatePromptLabJson via document listener)
-                            if (promptSubjectField != null) {
-                                promptSubjectField.setText(positive);
-                            } else {
-                                promptAssembleArea.setText(positive);
-                            }
-                            
-                            // Inject negative prompt into JSON if present
-                            if (!negative.isEmpty() && promptJsonArea != null) {
-                                try {
-                                    String currentJsonStr = promptJsonArea.getText();
-                                    org.json.JSONObject mainObj = new org.json.JSONObject(currentJsonStr);
-                                    if (mainObj.has("prompt")) {
-                                        org.json.JSONObject promptObj = mainObj.getJSONObject("prompt");
-                                        for (String key : promptObj.keySet()) {
-                                            org.json.JSONObject nodeObj = promptObj.getJSONObject(key);
-                                            if (nodeObj.has("class_type") && "CLIPTextEncode".equals(nodeObj.getString("class_type"))) {
-                                                org.json.JSONObject inputs = nodeObj.optJSONObject("inputs");
-                                                if (inputs != null && inputs.has("text")) {
-                                                    String textVal = inputs.getString("text").toLowerCase();
-                                                    if (textVal.contains("bad") || textVal.contains("blurry") || textVal.contains("low quality") || textVal.contains("worst")) {
-                                                        inputs.put("text", negative);
-                                                        break;
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        promptJsonArea.setText(mainObj.toString(2));
-                                    }
-                                } catch (Exception ex) {
-                                    // ignore JSON injection error
-                                }
-                            }
-                            parsedAsJson = true;
-                            promptLabConsole.append("Generated parameters from AI: Steps=" + stepsVal + ", CFG=" + cfgVal + "\n");
-                        }
-                    } catch (Exception jsonEx) {
-                        // Not a valid JSON or parsing failed, fall back to plain text optimization
-                    }
-                    
-                    if (!parsedAsJson) {
-                        promptAssembleArea.setText(cleanOptimized);
-                        
-                        // Manually inject optimized prompt into JSON prompt area (original behavior)
-                        try {
-                            String currentJsonStr = promptJsonArea.getText();
-                            org.json.JSONObject mainObj = new org.json.JSONObject(currentJsonStr);
-                            if (mainObj.has("prompt")) {
-                                org.json.JSONObject promptObj = mainObj.getJSONObject("prompt");
-                                String positiveNodeId = null;
-                                for (String key : promptObj.keySet()) {
-                                    org.json.JSONObject nodeObj = promptObj.getJSONObject(key);
-                                    if (nodeObj.has("class_type") && "CLIPTextEncode".equals(nodeObj.getString("class_type"))) {
-                                        if (nodeObj.has("inputs")) {
-                                            org.json.JSONObject inputs = nodeObj.getJSONObject("inputs");
-                                            if (inputs.has("text")) {
-                                                String textVal = inputs.getString("text").toLowerCase();
-                                                if (textVal.contains("bad") || textVal.contains("blurry") || textVal.contains("low quality") || textVal.contains("worst")) {
-                                                    continue;
-                                                }
-                                                positiveNodeId = key;
-                                                break;
-                                            }
-                                        }
-                                    }
-                                }
-                                
-                                if (positiveNodeId == null) {
-                                    for (String key : promptObj.keySet()) {
-                                        org.json.JSONObject nodeObj = promptObj.getJSONObject(key);
-                                        if (nodeObj.has("class_type") && "CLIPTextEncode".equals(nodeObj.getString("class_type"))) {
-                                            positiveNodeId = key;
-                                            break;
-                                        }
-                                    }
-                                }
-                                
-                                if (positiveNodeId != null) {
-                                    org.json.JSONObject nodeObj = promptObj.getJSONObject(positiveNodeId);
-                                    if (nodeObj.has("inputs")) {
-                                        org.json.JSONObject inputs = nodeObj.getJSONObject("inputs");
-                                        inputs.put("text", cleanOptimized);
-                                    }
-                                }
-                                promptJsonArea.setText(mainObj.toString(2));
-                            }
-                        } catch (Exception ex) {
-                            // ignore json error
-                        }
-                    }
-                    
-                    if (hasGemini) {
-                        promptLabConsole.append("Prompt successfully optimized with Google Gemini API!\n\n");
-                    } else {
-                        promptLabConsole.append("Prompt successfully optimized with local Gemma!\n\n");
-                    }
-                } else {
-                    promptLabConsole.append("❌ Error: Prompt could not be optimized.\n");
-                    if (!finalErrors.isEmpty()) {
-                        promptLabConsole.append(finalErrors + "\n");
-                    }
-                    JOptionPane.showMessageDialog(this, 
-                        "Prompt optimization failed. Please check your API credentials or local Gemma status.", 
-                        "Error", JOptionPane.ERROR_MESSAGE);
+
+            // 2. Try filename-only match
+            for (String opt : options) {
+                String optClean = opt.replaceAll("[/\\\\]+", "/").toLowerCase();
+                String optFileName = optClean.contains("/") ? optClean.substring(optClean.lastIndexOf('/') + 1) : optClean;
+                if (optFileName.equals(targetFileName)) {
+                    return opt;
                 }
-            });
-        });
+            }
+
+            // 3. Try suffix match
+            for (String opt : options) {
+                String optClean = opt.replaceAll("[/\\\\]+", "/").toLowerCase();
+                if (optClean.endsWith("/" + targetFileName)) {
+                    return opt;
+                }
+            }
+        }
+        return null;
     }
 
+    private void sanitizeModelInputsInPrompt(JSONObject promptObj, @SuppressWarnings("unused") String unused) {
+        if (promptObj == null) return;
+        for (String key : promptObj.keySet()) {
+            JSONObject node = promptObj.optJSONObject(key);
+            if (node == null) continue;
+            JSONObject inp = node.optJSONObject("inputs");
+            if (inp == null) continue;
+            String classType = node.optString("class_type", "");
+
+            for (String ik : new java.util.ArrayList<>(inp.keySet())) {
+                Object val = inp.opt(ik);
+                if (val instanceof String s && !s.isBlank()) {
+                    // Clean duplicate slashes & backslashes
+                    String cleaned = s.replaceAll("[/\\\\]+", "/").trim();
+                    if (s.startsWith("/") || s.startsWith("\\")) {
+                        cleaned = "/" + cleaned.replaceAll("^/+", "");
+                    }
+
+                    boolean isModelKey = ik.endsWith("_name") || ik.endsWith("_path") || ik.equals("model") || ik.equals("vae") || ik.equals("clip") || ik.equals("unet");
+                    boolean isModelFile = cleaned.endsWith(".safetensors") || cleaned.endsWith(".ckpt") || cleaned.endsWith(".pt") || cleaned.endsWith(".bin") || cleaned.endsWith(".onnx") || cleaned.endsWith(".sft");
+
+                    if (isModelKey || isModelFile) {
+                        String matchedOption = findExactComfyModelOption(classType, ik, cleaned);
+                        if (matchedOption != null) {
+                            inp.put(ik, matchedOption);
+                        } else {
+                            inp.put(ik, cleaned);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+
     private void downloadLocalGemmaModel() {
-        btnOptimizePrompt.setEnabled(false);
-        btnOptimizePrompt.setText("⏳ Downloading...");
+        if (btnSuggestSubject != null) {
+            btnSuggestSubject.setEnabled(false);
+            btnSuggestSubject.setText("⏳ Downloading...");
+        }
         promptLabConsole.append("Starting download of Gemma-3-4B GGUF model (3 GB) from Hugging Face...\n");
         
         localAIService.getLocalGemmaService().downloadModel(
@@ -3298,17 +2961,21 @@ public class Main extends JFrame {
                 promptLabConsole.append("Download: " + status + "\n");
             }),
             () -> SwingUtilities.invokeLater(() -> {
-                btnOptimizePrompt.setEnabled(true);
-                btnOptimizePrompt.setText("✨ Optimize with gemma");
-                promptLabConsole.append("✅ Local Gemma model downloaded successfully! You can now use local Gemma optimization.\n");
+                if (btnSuggestSubject != null) {
+                    btnSuggestSubject.setEnabled(true);
+                    btnSuggestSubject.setText("✨ Suggest");
+                }
+                promptLabConsole.append("✅ Local Gemma model downloaded successfully!\n");
                 JOptionPane.showMessageDialog(this,
                     "Local Gemma model downloaded successfully!",
                     "Download Complete", JOptionPane.INFORMATION_MESSAGE);
                 updateAiModelDisplay();
             }),
             (errorMsg, ex) -> SwingUtilities.invokeLater(() -> {
-                btnOptimizePrompt.setEnabled(true);
-                btnOptimizePrompt.setText("✨ Optimize with gemma");
+                if (btnSuggestSubject != null) {
+                    btnSuggestSubject.setEnabled(true);
+                    btnSuggestSubject.setText("✨ Suggest");
+                }
                 promptLabConsole.append("❌ Download failed: " + errorMsg + "\n");
                 JOptionPane.showMessageDialog(this,
                     "Failed to download Gemma model: " + errorMsg,
@@ -3318,10 +2985,12 @@ public class Main extends JFrame {
     }
 
     private void suggestSubjectCompletions() {
-        if (localAIService == null || !localAIService.isLocalGemmaDownloaded()) {
+        boolean hasGemma = localAIService != null && localAIService.isLocalGemmaDownloaded();
+
+        if (!hasGemma) {
             int choice = JOptionPane.showConfirmDialog(this,
                 "The local Gemma model is not downloaded.\n" +
-                "Would you like to download the Gemma-3-4B GGUF model (approx. 3 GB) now to get suggestions directly in Java?",
+                "Would you like to download the Gemma-3-4B GGUF model (approx. 3 GB) now to get suggestions?",
                 "Download Local Gemma Model?", JOptionPane.YES_NO_OPTION, JOptionPane.QUESTION_MESSAGE);
             if (choice == JOptionPane.YES_OPTION) {
                 downloadLocalGemmaModel();
@@ -3332,25 +3001,24 @@ public class Main extends JFrame {
         String currentSubject = promptSubjectField.getText().trim();
         if (currentSubject.isEmpty()) {
             JOptionPane.showMessageDialog(this, 
-                "Please enter a basic subject first (e.g. 'cat', 'cybernetic tiger').", 
-                "Empty Subject", JOptionPane.WARNING_MESSAGE);
+                "Please enter a basic prompt or subject first.", 
+                "Empty Prompt", JOptionPane.WARNING_MESSAGE);
             return;
         }
 
         btnSuggestSubject.setEnabled(false);
         btnSuggestSubject.setText("✨ Suggesting...");
-        promptLabConsole.append("Generating subject completion suggestions using local Gemma...\n");
+        promptLabConsole.append("Generating prompt completion suggestions using local Gemma...\n");
 
         backgroundExecutor.execute(() -> {
             java.util.List<String> suggestions = null;
             StringBuilder errorLogs = new StringBuilder();
             try {
-                promptLabConsole.append("Running direct local Gemma suggestions...\n");
                 suggestions = localAIService.getDirectGemmaCompletions(currentSubject);
             } catch (Throwable ex) {
                 java.io.StringWriter sw = new java.io.StringWriter();
                 ex.printStackTrace(new java.io.PrintWriter(sw));
-                errorLogs.append("Local Gemma suggestions failed:\n").append(sw.toString()).append("\n");
+                errorLogs.append("AI suggestions failed:\n").append(sw.toString()).append("\n");
             }
 
             final java.util.List<String> finalSuggestions = suggestions;
@@ -3361,13 +3029,17 @@ public class Main extends JFrame {
                 
                 if (finalSuggestions != null && !finalSuggestions.isEmpty()) {
                     promptSubjectSuggestionsPanel.removeAll();
+
                     for (String suggestion : finalSuggestions) {
                         JButton sugBtn = new JButton(suggestion);
                         sugBtn.setHorizontalAlignment(SwingConstants.LEFT);
-                        sugBtn.setFont(new Font("SansSerif", Font.PLAIN, 12));
-                        sugBtn.putClientProperty("FlatLaf.style", "arc: 8; background: $TextField.background; border: 8,12,8,12,$Card.border,1,8");
+                        sugBtn.setFont(new Font("SansSerif", Font.PLAIN, 11));
+                        sugBtn.putClientProperty("FlatLaf.style", "arc: 6; background: $TextField.background; border: 4,8,4,8,$Card.border,1,6");
                         sugBtn.setCursor(new Cursor(Cursor.HAND_CURSOR));
-                        sugBtn.setToolTipText("Click to use this suggestion");
+                        sugBtn.setToolTipText("Click to use: " + suggestion);
+                        sugBtn.setMaximumSize(new Dimension(Integer.MAX_VALUE, 30));
+                        sugBtn.setPreferredSize(new Dimension(300, 30));
+                        sugBtn.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
                         sugBtn.addActionListener(e -> {
                             promptSubjectField.setText(suggestion);
                             promptSubjectSuggestionsWrapper.setVisible(false);
@@ -3375,6 +3047,7 @@ public class Main extends JFrame {
                             promptLabLeftPanel.repaint();
                         });
                         promptSubjectSuggestionsPanel.add(sugBtn);
+                        promptSubjectSuggestionsPanel.add(Box.createVerticalStrut(4));
                     }
                     promptSubjectSuggestionsWrapper.setVisible(true);
                     promptLabLeftPanel.revalidate();
@@ -4442,8 +4115,8 @@ public class Main extends JFrame {
     }
 
     private void showApiKeysDialog() {
-        de.tki.comfymodels.ui.StandardDialog dialog = new de.tki.comfymodels.ui.StandardDialog(this, "AI & API Keys");
-        dialog.setSize(600, 680);
+        de.tki.comfymodels.ui.StandardDialog dialog = new de.tki.comfymodels.ui.StandardDialog(this, "Audio & TTS Settings");
+        dialog.setSize(600, 520);
         dialog.setLocationRelativeTo(this);
 
         JPanel panel = dialog.createContentPanel();
@@ -4451,30 +4124,6 @@ public class Main extends JFrame {
         gbc.fill = GridBagConstraints.HORIZONTAL;
         gbc.gridx = 0; gbc.gridy = 0; gbc.weightx = 1.0;
 
-        panel.add(new JLabel("Gemini AI API Key:"), gbc);
-        gbc.gridy++;
-        gbc.insets = new Insets(5, 0, 15, 0);
-        JPasswordField geminiField = new JPasswordField(configService.getGeminiApiKey());
-        panel.add(geminiField, gbc);
-
-        gbc.gridy++;
-        gbc.insets = new Insets(0, 0, 0, 0);
-        panel.add(new JLabel("Hugging Face Access Token:"), gbc);
-        gbc.gridy++;
-        gbc.insets = new Insets(5, 0, 15, 0);
-        JPasswordField hfField = new JPasswordField(configService.getHfToken());
-        panel.add(hfField, gbc);
-
-        gbc.gridy++;
-        gbc.insets = new Insets(0, 0, 0, 0);
-        panel.add(new JLabel("Civitai API Key:"), gbc);
-        gbc.gridy++;
-        gbc.insets = new Insets(5, 0, 15, 0);
-        JPasswordField civitaiField = new JPasswordField(configService.getCivitaiApiKey());
-        panel.add(civitaiField, gbc);
-
-        gbc.gridy++;
-        gbc.insets = new Insets(0, 0, 0, 0);
         panel.add(new JLabel("TTS Provider:"), gbc);
         gbc.gridy++;
         gbc.insets = new Insets(5, 0, 15, 0);
@@ -4516,7 +4165,9 @@ public class Main extends JFrame {
         qwenAutoRow.add(detectButton);
         qwenAutoRow.add(Box.createHorizontalStrut(10));
         qwenAutoRow.add(qwenAutoStatus);
-        panel.add(qwenAutoRow, gbc);        gbc.gridy++;
+        panel.add(qwenAutoRow, gbc);
+
+        gbc.gridy++;
         gbc.insets = new Insets(0, 0, 0, 0);
         panel.add(new JLabel("Piper TTS Binary Path (if using Local Piper):"), gbc);
         gbc.gridy++;
@@ -4534,14 +4185,6 @@ public class Main extends JFrame {
 
         gbc.gridy++;
         gbc.insets = new Insets(0, 0, 0, 0);
-        panel.add(new JLabel("ElevenLabs API Key (if using ComfyUI ElevenLabs):"), gbc);
-        gbc.gridy++;
-        gbc.insets = new Insets(5, 0, 15, 0);
-        JPasswordField elevenLabsApiKeyField = new JPasswordField(configService.getElevenLabsApiKey());
-        panel.add(elevenLabsApiKeyField, gbc);
-
-        gbc.gridy++;
-        gbc.insets = new Insets(0, 0, 0, 0);
         panel.add(new JLabel("ElevenLabs Voice ID (if using ComfyUI ElevenLabs):"), gbc);
         gbc.gridy++;
         gbc.insets = new Insets(5, 0, 15, 0);
@@ -4551,7 +4194,6 @@ public class Main extends JFrame {
         // Dynamic UI enabling/disabling based on selected provider
         Runnable updateTtsVisibility = () -> {
             boolean isEleven = "ComfyUI ElevenLabs".equals(ttsProviderCombo.getSelectedItem());
-            elevenLabsApiKeyField.setEnabled(isEleven);
             elevenLabsVoiceField.setEnabled(isEleven);
             
             boolean isPiper = false; // Piper support removed; fields stay disabled
@@ -4559,7 +4201,7 @@ public class Main extends JFrame {
             piperModelField.setEnabled(isPiper);
             boolean isQwen = "ComfyUI Qwen-TTS".equals(ttsProviderCombo.getSelectedItem());
             qwenVoiceCombo.setEnabled(isQwen);
-                        qwenModelRepoField.setEnabled(isQwen);
+            qwenModelRepoField.setEnabled(isQwen);
         };
         ttsProviderCombo.addActionListener(e -> updateTtsVisibility.run());
         updateTtsVisibility.run();
@@ -4576,17 +4218,12 @@ public class Main extends JFrame {
         JButton save = new JButton("Save");
         save.putClientProperty("JButton.buttonType", "accent");
         save.addActionListener(e -> {
-            configService.setGeminiApiKey(new String(geminiField.getPassword()).trim());
-            configService.setHfToken(new String(hfField.getPassword()).trim());
-            configService.setCivitaiApiKey(new String(civitaiField.getPassword()).trim());
             configService.setTtsProvider((String) ttsProviderCombo.getSelectedItem());
             configService.setPiperPath(piperPathField.getText().trim());
             configService.setPiperModelPath(piperModelField.getText().trim());
             configService.setQwenTtsVoice((String) qwenVoiceCombo.getSelectedItem());
             configService.setQwenTtsModelRepo(qwenModelRepoField.getText().trim());
             configService.setQwenTtsModelAuto(qwenAutoSelectCheck.isSelected());
-            configService.setQwenTtsModelAuto(qwenAutoSelectCheck.isSelected());
-            configService.setElevenLabsApiKey(new String(elevenLabsApiKeyField.getPassword()).trim());
             configService.setElevenLabsVoiceId(elevenLabsVoiceField.getText().trim());
             statusLabel.setText("Settings updated.");
             updateAiModelDisplay();
@@ -4697,7 +4334,7 @@ public class Main extends JFrame {
 
         // Explanation text
         JTextArea infoArea = new JTextArea(
-            "This installer will set up the ComfyUI Companion bridge.\n\n" +
+            "This installer will set up the Companion for ComfyUI bridge.\n\n" +
             "1. Select your ComfyUI main directory.\n" +
             "2. Old or conflicting bridge files will be cleaned up.\n" +
             "3. A link or copy of the UI extension will be created.\n\n" +
@@ -5528,7 +5165,7 @@ public class Main extends JFrame {
         managerPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
 
         de.tki.comfymodels.ui.CardPanel toolbarCard = new de.tki.comfymodels.ui.CardPanel();
-        toolbarCard.setLayout(new FlowLayout(FlowLayout.LEFT, 12, 0));
+        toolbarCard.setLayout(new BorderLayout());
         toolbarCard.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
 
         JPanel toolbar = new JPanel(new FlowLayout(FlowLayout.LEFT, 12, 0));
@@ -5588,6 +5225,7 @@ public class Main extends JFrame {
         toolbar.add(sep);
         
         toolbar.add(diagnosticBtn);
+        toolbarCard.add(toolbar, BorderLayout.CENTER);
 
         JSplitPane splitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
         de.tki.comfymodels.ui.CardPanel jsonPanel = new de.tki.comfymodels.ui.CardPanel();
@@ -5976,7 +5614,7 @@ public class Main extends JFrame {
         aiHeader.putClientProperty("FlatLaf.styleClass", "h3");
         aiHeader.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
 
-        JButton apiBtn = new JButton("🔑 AI & API Keys...");
+        JButton apiBtn = new JButton("🎙️ Audio & TTS Settings...");
         apiBtn.setFont(btnFont);
         apiBtn.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
         apiBtn.setMaximumSize(new Dimension(360, 40));
@@ -5993,7 +5631,7 @@ public class Main extends JFrame {
         resetVaultBtn.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
         resetVaultBtn.setMaximumSize(new Dimension(360, 40));
         resetVaultBtn.addActionListener(e -> {
-            int confirm = JOptionPane.showConfirmDialog(this, "This will delete all stored API keys. Continue?", "Reset Vault", JOptionPane.YES_NO_OPTION);
+            int confirm = JOptionPane.showConfirmDialog(this, "This will reset all vault credentials and settings. Continue?", "Reset Vault", JOptionPane.YES_NO_OPTION);
             if (confirm == JOptionPane.YES_OPTION) {
                 configService.resetVault();
             }
@@ -6784,14 +6422,14 @@ public class Main extends JFrame {
 
         StringBuilder sb = new StringBuilder();
         sb.append("<html><body style='padding: 25px; font-family: sans-serif; background-color: ").append(bgColor).append("; color: ").append(textColor).append(";'>");
-        sb.append("<h1 style='color: ").append(accentColor).append("; text-align: center; margin-bottom: 25px;'>🚀 ComfyUI Companion</h1>");
+        sb.append("<h1 style='color: ").append(accentColor).append("; text-align: center; margin-bottom: 25px;'>🚀 Companion for ComfyUI</h1>");
         
         sb.append("<div style='background-color: ").append(boxBg).append("; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 1px solid ").append(boxBorder).append(";'>");
         sb.append("<h2 style='color: ").append(accentColor).append("; margin-top: 0;'>🛠️ Getting Started (Setup)</h2>");
         sb.append("<ol>");
         sb.append("<li><b>Set Directories:</b> Navigate to <i>Settings -> Directories</i> and specify your ComfyUI root and 'models' paths. Choose a 'Cold Archive' path (e.g. on a high-capacity HDD) to offload unused models.</li>");
         sb.append("<li><b>Unlock Vault:</b> Establish a Master Password on first startup. This AES-256 encrypted vault securely stores your sensitive API keys.</li>");
-        sb.append("<li><b>Configure API Keys:</b> Go to <i>Settings -> AI & API Keys</i> to add your Civitai API Key, Hugging Face Token, and Gemini API Key. A Gemini key is highly recommended for prompt optimizations.</li>");
+        sb.append("<li><b>Configure Audio & TTS:</b> Go to <i>Settings -> Audio & TTS Settings</i> to configure text-to-speech output.</li>");
         sb.append("<li><b>Install Canvas Bridge:</b> Click <i>Settings -> ComfyUI Bridge...</i> to add the 🚀 floating button to your ComfyUI workspace for seamless 1-click canvas syncing.</li>");
         sb.append("</ol></div>");
 
@@ -6881,7 +6519,24 @@ public class Main extends JFrame {
         java.util.concurrent.atomic.AtomicBoolean cudaError = new java.util.concurrent.atomic.AtomicBoolean(false);
         processController.start(selected, Paths.get(configService.getComfyUIPath()), configService.getPythonPath(), log -> {
             if (log.contains("Torch not compiled with CUDA enabled") || log.contains("AssertionError: Torch not compiled with CUDA enabled")) {
-                cudaError.set(true);
+                if (!cudaError.getAndSet(true)) {
+                    SwingUtilities.invokeLater(() -> {
+                        if (promptLabConsole != null) {
+                            promptLabConsole.append("\n❌ CUDA ERROR: PyTorch is not compiled with CUDA enabled in your Python environment!\n");
+                            promptLabConsole.append("💡 PyTorch is running as a CPU-only build. Click 'Environment Repair' in Settings to reinstall CUDA PyTorch.\n\n");
+                        }
+                        int choice = JOptionPane.showConfirmDialog(this,
+                            "ComfyUI / PyTorch reported a CUDA error:\n'Torch not compiled with CUDA enabled'\n\n" +
+                            "Your Python environment has a CPU-only PyTorch build installed.\n" +
+                            "Would you like to automatically reinstall PyTorch with CUDA support now?",
+                            "CUDA PyTorch Error Detected", JOptionPane.YES_NO_OPTION, JOptionPane.ERROR_MESSAGE);
+                        if (choice == JOptionPane.YES_OPTION) {
+                            triggerEnvironmentRepair();
+                        } else if (choice == JOptionPane.NO_OPTION) {
+                            switchToCpuModeProfile();
+                        }
+                    });
+                }
             }
             if (log.contains("To see the GUI go to:")) {
                 refreshPromptLabModels();
@@ -6912,22 +6567,26 @@ public class Main extends JFrame {
                         "Would you like to switch to 'CPU Mode' profile and start ComfyUI on your CPU?",
                         "CUDA Error Detected", JOptionPane.YES_NO_OPTION, JOptionPane.ERROR_MESSAGE);
                     if (choice == JOptionPane.YES_OPTION) {
-                        List<de.tki.comfymodels.domain.LaunchProfile> profiles = profileManager.loadProfiles();
-                        de.tki.comfymodels.domain.LaunchProfile cpuProfile = profiles.stream()
-                            .filter(p -> p.id().equals("cpu_mode"))
-                            .findFirst().orElse(null);
-                        if (cpuProfile != null) {
-                            if (profileList != null) {
-                                profileList.setSelectedValue(cpuProfile, true);
-                            }
-                            startComfyUI(cpuProfile, true, true);
-                        } else {
-                            JOptionPane.showMessageDialog(this, "CPU Mode profile not found. Please add or use a custom profile with '--cpu'.");
-                        }
+                        switchToCpuModeProfile();
                     }
                 });
             }
         });
+    }
+
+    private void switchToCpuModeProfile() {
+        List<de.tki.comfymodels.domain.LaunchProfile> profiles = profileManager.loadProfiles();
+        de.tki.comfymodels.domain.LaunchProfile cpuProfile = profiles.stream()
+            .filter(p -> p.id().equals("cpu_mode"))
+            .findFirst().orElse(null);
+        if (cpuProfile != null) {
+            if (profileList != null) {
+                profileList.setSelectedValue(cpuProfile, true);
+            }
+            startComfyUI(cpuProfile, true, true);
+        } else {
+            JOptionPane.showMessageDialog(this, "CPU Mode profile not found. Please add '--cpu' to your launch profile extra args in Settings.");
+        }
     }
 
     private static class CivitaiModel {

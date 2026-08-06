@@ -42,7 +42,18 @@ public class ComfyRegistryWorkflow {
 
     private String category;
 
+    private List<String> previewCandidates = new ArrayList<>();
+
+    public List<String> getPreviewCandidates() {
+        return previewCandidates;
+    }
+
+    public void setPreviewCandidates(List<String> previewCandidates) {
+        this.previewCandidates = previewCandidates;
+    }
+
     public ComfyRegistryWorkflow() {}
+
 
     public List<ModelInfo> getRequiredModelInfos() {
         return requiredModelInfos;

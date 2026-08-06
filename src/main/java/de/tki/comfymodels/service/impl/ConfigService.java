@@ -480,14 +480,12 @@ public class ConfigService implements IConfigService {
         }
     }
 
-    public synchronized String getGeminiApiKey() { return settings.optString("gemini_api_key", ""); }
-    public synchronized void setGeminiApiKey(String key) { settings.put("gemini_api_key", key); save(); }
 
-    public synchronized String getHfToken() { return settings.optString("hf_token", ""); }
-    public synchronized void setHfToken(String token) { settings.put("hf_token", token); save(); }
+    public synchronized String getHfToken() { return ""; }
+    public synchronized void setHfToken(String token) { settings.remove("hf_token"); save(); }
 
-    public synchronized String getCivitaiApiKey() { return settings.optString("civitai_api_key", ""); }
-    public synchronized void setCivitaiApiKey(String key) { settings.put("civitai_api_key", key); save(); }
+    public synchronized String getCivitaiApiKey() { return ""; }
+    public synchronized void setCivitaiApiKey(String key) { settings.remove("civitai_api_key"); save(); }
 
     public synchronized boolean isFastHashEnabled() { return settings.optBoolean("fast_hash", false); }
     public synchronized void setFastHashEnabled(boolean enabled) { settings.put("fast_hash", enabled); save(); }
@@ -860,8 +858,8 @@ public class ConfigService implements IConfigService {
     }
     public synchronized void setQwenTtsVoice(String voice) { settings.put("qwen_tts_voice", voice); save(); }
 
-    public synchronized String getElevenLabsApiKey() { return settings.optString("elevenlabs_api_key", ""); }
-    public synchronized void setElevenLabsApiKey(String apiKey) { settings.put("elevenlabs_api_key", apiKey); save(); }
+    public synchronized String getElevenLabsApiKey() { return ""; }
+    public synchronized void setElevenLabsApiKey(String apiKey) { settings.remove("elevenlabs_api_key"); save(); }
 
     public synchronized String getElevenLabsVoiceId() { return settings.optString("elevenlabs_voice_id", "21m00Tcm4TlvDq8ikWAM"); }
     public synchronized void setElevenLabsVoiceId(String voiceId) { settings.put("elevenlabs_voice_id", voiceId); save(); }

@@ -26,8 +26,6 @@ public class ModelSearchService implements IModelSearchService {
     @Autowired
     private ConfigService configService;
 
-    @Autowired
-    private GeminiAIService geminiService;
 
     @Autowired
     private ModelListService modelListService;
@@ -132,17 +130,6 @@ public class ModelSearchService implements IModelSearchService {
             }
         }
 
-        if (manual) {
-            onStatusUpdate.accept(index, "✨ Gemini Scouting...");
-            String aiHint = geminiService.discoverBestRepo(info.getName(), fileName, workflowContext);
-            if (aiHint != null && !aiHint.equalsIgnoreCase("UNKNOWN")) {
-                if (aiHint.startsWith("http")) {
-                    if (validateAndSetUrl(info, index, aiHint, "✨ AI DIRECT", onStatusUpdate, onModelFound)) return;
-                }
-                onStatusUpdate.accept(index, "🔍 Validating Repo: " + aiHint);
-                if (fetchHuggingFaceUrlInSpecificRepo(info, index, aiHint, onStatusUpdate, onModelFound)) return;
-            }
-        }
 
         String modelName = info.getName();
         String cleanName = modelName.replaceAll("(_fp8|_fp16|_bf16|_v\\d+|\\d+v|_fix|\\.safetensors|\\.sft|\\.ckpt)", "");

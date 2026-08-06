@@ -41,7 +41,6 @@ public class GuiStatusTransitionTest {
     @Mock private CivitaiService civitaiService;
     @Mock private HuggingFaceService huggingFaceService;
     @Mock private ConfigService configService;
-    @Mock private GeminiAIService geminiService;
     @Mock private ModelListService modelListService;
     @Mock private ModelHashRegistry hashRegistry;
     @Mock private LocalModelScanner localScanner;
@@ -80,7 +79,6 @@ public class GuiStatusTransitionTest {
             
             // Inject @Autowired fields
             ReflectionTestUtils.setField(mainFrame, "configService", configService);
-            ReflectionTestUtils.setField(mainFrame, "geminiService", geminiService);
             ReflectionTestUtils.setField(mainFrame, "modelListService", modelListService);
             ReflectionTestUtils.setField(mainFrame, "hashRegistry", hashRegistry);
             ReflectionTestUtils.setField(mainFrame, "localScanner", localScanner);
@@ -298,8 +296,6 @@ public class GuiStatusTransitionTest {
     
     @Test
     public void testAiModelDisplay() throws Exception {
-        when(geminiService.discoverBestModel()).thenReturn("gemini-1.5-pro");
-        
         SwingUtilities.invokeAndWait(() -> {
             ReflectionTestUtils.invokeMethod(mainFrame, "updateAiModelDisplay");
         });
@@ -308,7 +304,7 @@ public class GuiStatusTransitionTest {
         
         SwingUtilities.invokeAndWait(() -> {
             JLabel activeAiModelLabel = (JLabel) ReflectionTestUtils.getField(mainFrame, "activeAiModelLabel");
-            assertThat(activeAiModelLabel.getText()).isEqualTo("Active AI: gemini-1.5-pro");
+            assertThat(activeAiModelLabel.getText()).contains("Local Gemma");
         });
     }
 

@@ -481,11 +481,11 @@ public class ConfigService implements IConfigService {
     }
 
 
-    public synchronized String getHfToken() { return ""; }
-    public synchronized void setHfToken(String token) { settings.remove("hf_token"); save(); }
+    public synchronized String getHfToken() { return settings.optString("hf_token", ""); }
+    public synchronized void setHfToken(String token) { settings.put("hf_token", token); save(); }
 
-    public synchronized String getCivitaiApiKey() { return ""; }
-    public synchronized void setCivitaiApiKey(String key) { settings.remove("civitai_api_key"); save(); }
+    public synchronized String getCivitaiApiKey() { return settings.optString("civitai_api_key", ""); }
+    public synchronized void setCivitaiApiKey(String key) { settings.put("civitai_api_key", key); save(); }
 
     public synchronized boolean isFastHashEnabled() { return settings.optBoolean("fast_hash", false); }
     public synchronized void setFastHashEnabled(boolean enabled) { settings.put("fast_hash", enabled); save(); }

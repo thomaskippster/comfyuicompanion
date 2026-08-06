@@ -4430,6 +4430,25 @@ public class Main extends JFrame {
                 }
             }
 
+            // Resolve local file size if current size is Unknown
+            if ("Unknown".equalsIgnoreCase(info.getSize()) || info.getSize() == null || info.getSize().isBlank()) {
+                Path fileToMeasure = null;
+                if (exists && local != null) {
+                    fileToMeasure = local;
+                } else if (inArchive && archivedPath != null) {
+                    fileToMeasure = archivedPath;
+                }
+                if (fileToMeasure != null && Files.exists(fileToMeasure)) {
+                    try {
+                        long bytes = Files.size(fileToMeasure);
+                        if (bytes > 0) {
+                            info.setByteSize(bytes);
+                            info.setSize(searchService.formatSize(bytes));
+                        }
+                    } catch (Exception ignored) {}
+                }
+            }
+
             // 6. Final Status Determination
             String status;
             if (exists) {

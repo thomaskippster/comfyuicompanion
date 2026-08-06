@@ -198,9 +198,9 @@ public class EnvironmentBootstrapperImpl {
                     if (hasNvidia) {
                         String cudaVersion;
                         String cudaLogName;
-                        if (maxComputeCap >= 12.0) {
-                            cudaVersion = "cu128";
-                            cudaLogName = "CUDA 12.8 (Blackwell/Modern)";
+                        if (maxComputeCap >= 10.0) {
+                            cudaVersion = "cu124";
+                            cudaLogName = "CUDA 12.4+ (Blackwell RTX 50-series / Modern)";
                         } else if (maxComputeCap >= 8.9) {
                             cudaVersion = "cu124";
                             cudaLogName = "CUDA 12.4 (Modern)";

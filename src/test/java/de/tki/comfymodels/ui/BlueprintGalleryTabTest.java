@@ -42,6 +42,7 @@ public class BlueprintGalleryTabTest {
     @Mock private ArchiveService archiveService;
     @Mock private de.tki.comfymodels.service.impl.LocalAIService localAIService;
     @Mock private ProcessTracker processTracker;
+    @Mock private de.tki.comfymodels.service.IModelSearchService modelSearchService;
 
     private ComfyRegistryClient registryClient;
     private LocalModelValidator localModelValidator;
@@ -67,6 +68,7 @@ public class BlueprintGalleryTabTest {
                 localModelScanner,
                 archiveService,
                 localAIService,
+                modelSearchService,
                 processTracker
         );
     }

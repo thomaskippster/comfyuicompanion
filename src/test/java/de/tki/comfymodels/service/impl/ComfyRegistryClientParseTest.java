@@ -43,7 +43,7 @@ public class ComfyRegistryClientParseTest {
         assertEquals(1, list.size());
         ComfyRegistryWorkflow wf = list.get(0);
         assertEquals("Seedance 2.0: Reference to Video", wf.getTitle());
-        assertEquals("https://raw.githubusercontent.com/Comfy-Org/workflow_templates/main/templates/output/Seedance2.0_r2v_00006_.mp4",
+        assertEquals("https://raw.githubusercontent.com/Comfy-Org/workflow_templates/main/output/Seedance2.0_r2v_00006_.mp4",
                 wf.getThumbnailUrl());
         assertTrue(wf.isVideoPreview(), "Entry with .mp4 thumbnail must be marked as video preview");
     }
@@ -92,7 +92,7 @@ public class ComfyRegistryClientParseTest {
         List<ComfyRegistryWorkflow> list = parse(json);
         assertEquals(1, list.size());
         ComfyRegistryWorkflow wf = list.get(0);
-        assertEquals("https://raw.githubusercontent.com/Comfy-Org/workflow_templates/main/templates/thumbnail/api_sdxl.png",
+        assertEquals("https://raw.githubusercontent.com/Comfy-Org/workflow_templates/main/thumbnail/api_sdxl.png",
                 wf.getThumbnailUrl());
         assertFalse(wf.isVideoPreview(), "PNG thumbnail must not be reported as a video preview");
     }

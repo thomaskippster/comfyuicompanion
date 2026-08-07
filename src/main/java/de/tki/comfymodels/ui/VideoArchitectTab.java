@@ -108,7 +108,7 @@ public class VideoArchitectTab extends JFXPanel {
 
             fxScene = new javafx.scene.Scene(rootNode);
             boolean isDark = configService == null || configService.isDarkMode();
-            fxScene.setFill(isDark ? javafx.scene.paint.Color.rgb(18, 19, 22) : javafx.scene.paint.Color.rgb(240, 242, 245));
+            fxScene.setFill(isDark ? javafx.scene.paint.Color.rgb(0, 0, 0) : javafx.scene.paint.Color.rgb(240, 242, 245));
             setScene(fxScene);
         } catch (Throwable e) {
             logger.error("Error initializing Video Architect JavaFX UI: {}", e.getMessage(), e);
@@ -742,7 +742,7 @@ public class VideoArchitectTab extends JFXPanel {
                 }
             }
             if (fxScene != null) {
-                fxScene.setFill(darkMode ? javafx.scene.paint.Color.rgb(18, 19, 22) : javafx.scene.paint.Color.rgb(240, 242, 245));
+                fxScene.setFill(darkMode ? javafx.scene.paint.Color.rgb(0, 0, 0) : javafx.scene.paint.Color.rgb(240, 242, 245));
             }
         });
     }

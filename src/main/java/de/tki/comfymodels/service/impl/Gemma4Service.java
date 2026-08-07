@@ -16,7 +16,7 @@ public class Gemma4Service {
     public String generateScript(String idea) throws Exception {
         if (localGemmaService == null || !localGemmaService.isModelDownloaded()) {
             throw new IllegalStateException("Local Gemma model is not downloaded. " +
-                    "Please navigate to the Prompt Lab tab and click 'Download local Gemma' to download the model first.");
+                    "Please navigate to the Image Lab tab and click 'Download local Gemma' to download the model first.");
         }
 
         String systemPrompt = "You are a professional video scriptwriter and director. " +

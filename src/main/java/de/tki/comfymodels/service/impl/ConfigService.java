@@ -352,6 +352,12 @@ public class ConfigService implements IConfigService {
         if (override != null && !override.isEmpty()) {
             return override;
         }
+        // Schutz: Falls Tests direkt in der IDE (ohne maven argLine) ausgeführt werden,
+        // verhindern wir, dass sie die echten Nutzerdaten überschreiben.
+        String command = System.getProperty("sun.java.command", "");
+        if (command.contains("surefire") || command.contains("junit") || command.contains("testng")) {
+            return new java.io.File(System.getProperty("java.io.tmpdir"), "comfy_test_appdata_safe").getAbsolutePath();
+        }
         return System.getProperty("user.dir");
     }
 

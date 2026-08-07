@@ -124,7 +124,7 @@ public class BlueprintGalleryTab extends JPanel {
     private Color textSecondary   = new Color(120, 126, 152);
     private Color textDim         = new Color(80, 86, 110);
     private static final Color GREEN_READY     = new Color(34, 197, 130);
-    private static final Color AMBER_PARTIAL   = new Color(245, 158, 11);
+    private static final Color AMBER_PARTIAL   = new Color(255, 153, 0); // Neon Orange #FF9900
     private static final Color RED_MISSING     = new Color(239, 68, 68);
     private static final Color BADGE_BG        = new Color(0, 0, 0, 160);
 
@@ -732,11 +732,26 @@ public class BlueprintGalleryTab extends JPanel {
             protected void paintComponent(Graphics g) {
                 Graphics2D g2 = (Graphics2D) g.create();
                 g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-                g2.setColor(cardBg);
-                g2.fill(new RoundRectangle2D.Float(0, 0, getWidth(), getHeight(), ARC, ARC));
-                g2.setStroke(new BasicStroke(hovered ? 1.5f : 1f));
-                g2.setColor(hovered ? cardHoverBorder : cardBorder);
-                g2.draw(new RoundRectangle2D.Float(0.5f, 0.5f, getWidth()-1, getHeight()-1, ARC, ARC));
+                
+                // Pure Black Background
+                g2.setColor(Color.BLACK);
+                g2.fillRect(0, 0, getWidth(), getHeight());
+
+                // Sci-Fi Glowing Neon Cyan Border
+                Color neonCyan = new Color(0, 255, 255);
+                g2.setStroke(new BasicStroke(hovered ? 2f : 1f));
+                
+                if (hovered) {
+                    // Outer glow
+                    g2.setColor(new Color(0, 255, 255, 100)); // semi-transparent cyan
+                    g2.drawRect(1, 1, getWidth()-3, getHeight()-3);
+                    g2.drawRect(2, 2, getWidth()-5, getHeight()-5);
+                }
+                
+                // Solid border
+                g2.setColor(neonCyan);
+                g2.drawRect(0, 0, getWidth()-1, getHeight()-1);
+                
                 g2.dispose();
             }
         };
@@ -843,8 +858,8 @@ public class BlueprintGalleryTab extends JPanel {
                     g2.dispose();
                     return;
                 }
-                RoundRectangle2D clip = new RoundRectangle2D.Float(0, 0, w, h + ARC, ARC, ARC);
-                g2.setClip(clip);
+                // No rounded corners for the preview clip
+                g2.setClip(0, 0, w, h);
 
                 Image img = previewCache.get(entry.filePath);
                 if (img != null) {
@@ -888,7 +903,8 @@ public class BlueprintGalleryTab extends JPanel {
                     badgeColor = new Color(34, 197, 130, 200);
                 } else if (status.missingCount > 0) {
                     badgeText  = "⚠  " + status.missingCount + " missing";
-                    badgeColor = new Color(245, 158, 11, 200);
+                    badgeColor = new Color(255, 153, 0, 200); // Neon Orange #FF9900
+
                 } else {
                     badgeText  = null;
                     badgeColor = null;
@@ -902,7 +918,7 @@ public class BlueprintGalleryTab extends JPanel {
                     int bx = w - bw - 6;
                     int by = 6;
                     g2.setColor(badgeColor);
-                    g2.fillRoundRect(bx, by, bw, bh, 6, 6);
+                    g2.fillRect(bx, by, bw, bh); // Sharp corners
                     g2.setColor(Color.WHITE);
                     g2.drawString(badgeText, bx + 5, by + bh - 4);
                 }
@@ -935,23 +951,12 @@ public class BlueprintGalleryTab extends JPanel {
     }
 
     private void paintBokehFallback(Graphics2D g2, int w, int h, Color[] palette, BlueprintEntry entry) {
-        GradientPaint bg = new GradientPaint(0, 0, palette[0], w, h, palette[1]);
-        g2.setPaint(bg);
+        // Pure black background
+        g2.setColor(Color.BLACK);
         g2.fillRect(0, 0, w, h);
 
-        long seed = entry.name.hashCode() & 0xFFFFFFFFL;
-        Random rng = new Random(seed);
-        for (int i = 0; i < 6; i++) {
-            int cx = (int)(rng.nextDouble() * w);
-            int cy = (int)(rng.nextDouble() * h);
-            int r  = 20 + rng.nextInt(50);
-            Color bc = i % 2 == 0 ? palette[2] : palette[1];
-            g2.setColor(new Color(bc.getRed(), bc.getGreen(), bc.getBlue(),
-                    30 + rng.nextInt(60)));
-            g2.fillOval(cx - r, cy - r, r * 2, r * 2);
-        }
-
-        g2.setColor(new Color(255, 255, 255, 10));
+        // Cyberpunk grid
+        g2.setColor(new Color(0, 255, 255, 40)); // faint cyan grid
         g2.setStroke(new BasicStroke(0.5f));
         for (int x = 0; x < w; x += 20) g2.drawLine(x, 0, x, h);
         for (int y = 0; y < h; y += 20) g2.drawLine(0, y, w, y);
@@ -962,10 +967,7 @@ public class BlueprintGalleryTab extends JPanel {
         FontMetrics fm = g2.getFontMetrics();
         int ix = (w - fm.stringWidth(icon)) / 2;
         int iy = h / 2 - 4;
-        g2.setColor(new Color(0, 0, 0, 80));
-        g2.drawString(icon, ix + 1, iy + 1);
-        g2.setColor(new Color(palette[2].getRed(), palette[2].getGreen(),
-                palette[2].getBlue(), 210));
+        g2.setColor(new Color(0, 255, 255, 210)); // Neon cyan icon
         g2.drawString(icon, ix, iy);
     }
 

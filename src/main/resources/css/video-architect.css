@@ -1,22 +1,22 @@
 .root {
     -fx-font-family: "Segoe UI", "Inter", "Roboto", sans-serif;
     -fx-font-size: 13px;
-    -fx-custom-bg-color: #121316;
-    -fx-custom-panel-bg: rgba(18, 19, 22, 0.9);
-    -fx-custom-text-color: #ffffff;
-    -fx-custom-text-muted: #b4becd;
-    -fx-custom-border-color: rgba(255, 255, 255, 0.12);
-    -fx-custom-accent-color: #0078d7;
-    -fx-custom-accent-hover: #008ceb;
-    -fx-custom-accent-pressed: #0064b4;
-    -fx-custom-input-bg: rgba(30, 34, 42, 0.8);
-    -fx-custom-card-bg: rgba(30, 34, 42, 0.7);
-    -fx-custom-card-border: rgba(255, 255, 255, 0.12);
-    -fx-custom-card-selected-bg: rgba(0, 120, 215, 0.15);
-    -fx-custom-card-selected-border: #0078d7;
-    -fx-custom-scroll-track: rgba(18, 19, 22, 0.5);
-    -fx-custom-scroll-thumb: rgba(100, 100, 100, 0.5);
-    -fx-custom-scroll-thumb-hover: rgba(100, 100, 100, 0.8);
+    -fx-custom-bg-color: #000000;
+    -fx-custom-panel-bg: #000000;
+    -fx-custom-text-color: #00FFFF;
+    -fx-custom-text-muted: #008888;
+    -fx-custom-border-color: #00FFFF;
+    -fx-custom-accent-color: #00FFFF;
+    -fx-custom-accent-hover: #00FFFF;
+    -fx-custom-accent-pressed: #008888;
+    -fx-custom-input-bg: #000000;
+    -fx-custom-card-bg: #000000;
+    -fx-custom-card-border: #00FFFF;
+    -fx-custom-card-selected-bg: #000000;
+    -fx-custom-card-selected-border: #00FFFF;
+    -fx-custom-scroll-track: #000000;
+    -fx-custom-scroll-thumb: #008888;
+    -fx-custom-scroll-thumb-hover: #00FFFF;
     
     -fx-background-color: -fx-custom-bg-color;
 }
@@ -63,9 +63,9 @@
 }
 .text-area .content {
     -fx-background-color: -fx-custom-input-bg;
-    -fx-background-radius: 8px;
+    -fx-background-radius: 0px;
     -fx-border-color: -fx-custom-border-color;
-    -fx-border-radius: 8px;
+    -fx-border-radius: 0px;
     -fx-text-fill: -fx-custom-text-color;
 }
 .text-area:focused .content {
@@ -74,9 +74,9 @@
 
 .text-field {
     -fx-background-color: -fx-custom-input-bg;
-    -fx-background-radius: 6px;
+    -fx-background-radius: 0px;
     -fx-border-color: -fx-custom-border-color;
-    -fx-border-radius: 6px;
+    -fx-border-radius: 0px;
     -fx-text-fill: -fx-custom-text-color;
     -fx-padding: 6px;
 }
@@ -87,12 +87,12 @@
 .spinner {
     -fx-background-color: transparent;
     -fx-border-color: -fx-custom-border-color;
-    -fx-border-radius: 6px;
-    -fx-background-radius: 6px;
+    -fx-border-radius: 0px;
+    -fx-background-radius: 0px;
 }
 .spinner .editor {
     -fx-background-color: -fx-custom-input-bg;
-    -fx-background-radius: 6px 0 0 6px;
+    -fx-background-radius: 0px;
     -fx-text-fill: -fx-custom-text-color;
     -fx-padding: 6px;
 }
@@ -107,28 +107,29 @@
 .button {
     -fx-background-color: -fx-custom-card-bg;
     -fx-text-fill: -fx-custom-text-color;
-    -fx-background-radius: 8px;
+    -fx-background-radius: 0px;
     -fx-border-color: -fx-custom-border-color;
-    -fx-border-radius: 8px;
+    -fx-border-radius: 0px;
     -fx-padding: 8px 16px;
     -fx-cursor: hand;
     -fx-font-weight: bold;
 }
 .button:hover {
-    -fx-background-color: rgba(255, 255, 255, 0.08);
-    -fx-border-color: -fx-custom-accent-color;
+    -fx-background-color: -fx-custom-accent-color;
+    -fx-text-fill: #000000;
 }
 .button:pressed {
-    -fx-background-color: rgba(255, 255, 255, 0.15);
+    -fx-background-color: -fx-custom-accent-pressed;
 }
 
 .button.primary-button {
-    -fx-background-color: -fx-custom-accent-color;
-    -fx-text-fill: #ffffff;
-    -fx-border-color: transparent;
+    -fx-background-color: -fx-custom-card-bg;
+    -fx-text-fill: -fx-custom-text-color;
+    -fx-border-color: -fx-custom-accent-color;
 }
 .button.primary-button:hover {
     -fx-background-color: -fx-custom-accent-hover;
+    -fx-text-fill: #000000;
 }
 .button.primary-button:pressed {
     -fx-background-color: -fx-custom-accent-pressed;
@@ -146,17 +147,17 @@
 
 .glass-panel {
     -fx-background-color: -fx-custom-panel-bg;
-    -fx-background-radius: 12px;
+    -fx-background-radius: 0px;
     -fx-border-color: -fx-custom-border-color;
-    -fx-border-radius: 12px;
+    -fx-border-radius: 0px;
     -fx-padding: 16px;
 }
 
 .card-panel {
     -fx-background-color: -fx-custom-card-bg;
-    -fx-background-radius: 12px;
+    -fx-background-radius: 0px;
     -fx-border-color: -fx-custom-card-border;
-    -fx-border-radius: 12px;
+    -fx-border-radius: 0px;
     -fx-padding: 16px;
 }
 
@@ -164,7 +165,7 @@
 .list-view {
     -fx-background-color: transparent;
     -fx-border-color: -fx-custom-border-color;
-    -fx-border-radius: 8px;
+    -fx-border-radius: 0px;
     -fx-padding: 4px;
 }
 .list-view .viewport {
@@ -187,9 +188,9 @@
 /* Scene Card within ListView */
 .scene-card {
     -fx-background-color: -fx-custom-card-bg;
-    -fx-background-radius: 8px;
+    -fx-background-radius: 0px;
     -fx-border-color: -fx-custom-card-border;
-    -fx-border-radius: 8px;
+    -fx-border-radius: 0px;
     -fx-padding: 10px;
 }
 .list-cell:filled:selected .scene-card {
@@ -203,7 +204,7 @@
 }
 .scroll-bar .thumb {
     -fx-background-color: -fx-custom-scroll-thumb;
-    -fx-background-radius: 4px;
+    -fx-background-radius: 0px;
 }
 .scroll-bar .thumb:hover {
     -fx-background-color: -fx-custom-scroll-thumb-hover;

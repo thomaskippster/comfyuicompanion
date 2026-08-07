@@ -27,11 +27,12 @@ public class PromptBlueprintApiService {
             String samplerName,
             String scheduler,
             double denoise,
-            int    batchSize
+            int    batchSize,
+            String inputImageFile
     ) {
         // Overloaded constructor for backward compatibility
         public PromptLabInputs(String positivePrompt, int width, int height, int steps, double cfg, long seed) {
-            this(positivePrompt, "", width, height, steps, cfg, seed, "Auto", "Auto", 1.0, 1);
+            this(positivePrompt, "", width, height, steps, cfg, seed, "Auto", "Auto", 1.0, 1, null);
         }
     }
 
@@ -116,6 +117,13 @@ public class PromptBlueprintApiService {
                 }
             } else if ("FluxGuidance".equals(ct)) {
                 inp.put("guidance", inputs.cfg());
+            }
+
+            // Image input injection for Image Edit / Img2Img
+            if ("LoadImage".equals(ct)) {
+                if (inputs.inputImageFile() != null && !inputs.inputImageFile().isBlank()) {
+                    inp.put("image", inputs.inputImageFile());
+                }
             }
 
             // Seed in any node that carries a numeric seed field

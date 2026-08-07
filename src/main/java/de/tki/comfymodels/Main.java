@@ -208,6 +208,9 @@ public class Main extends JFrame {
     private JSpinner promptStepsSpinner;
     private JSpinner promptCfgSpinner;
     private JTextField promptNegativeField;
+    private JPanel promptImageInputPanel;
+    private JTextField promptImageFileField;
+    private File selectedInputImage;
     private JComboBox<String> promptSamplerCombo;
     private JComboBox<String> promptSchedulerCombo;
     private JSpinner promptDenoiseSpinner;
@@ -387,6 +390,7 @@ public class Main extends JFrame {
                 if (blueprintGalleryTab != null) {
                     blueprintGalleryTab.refreshAllData();
                 }
+                scanAndVerifyComfyUIInstallation(false);
             } catch (Exception e) {
                 e.printStackTrace();
                 JOptionPane.showMessageDialog(null, "Critical UI Error: " + e.getMessage());
@@ -396,15 +400,15 @@ public class Main extends JFrame {
 
     public void setupTheme(boolean darkMode) {
         try {
-            // Global arcs for a modern feel - rounded corners
-            UIManager.put("Button.arc", 12);
-            UIManager.put("Component.arc", 16);
-            UIManager.put("TextComponent.arc", 12);
-            UIManager.put("ProgressBar.arc", 999);
+            // Global arcs for a sci-fi feel - ZERO rounded corners
+            UIManager.put("Button.arc", 0);
+            UIManager.put("Component.arc", 0);
+            UIManager.put("TextComponent.arc", 0);
+            UIManager.put("ProgressBar.arc", 0);
             UIManager.put("TitlePane.unifiedBackground", true);
             UIManager.put("CheckBox.iconSize", 20);
 
-            // Clean, highly readable typography (serifenlose Schriftart)
+            // Clean, highly readable typography
             Font defaultFont = new Font("Segoe UI", Font.PLAIN, 13);
             for (String fontName : GraphicsEnvironment.getLocalGraphicsEnvironment().getAvailableFontFamilyNames()) {
                 if (fontName.equalsIgnoreCase("Inter") || fontName.equalsIgnoreCase("Roboto")) {
@@ -415,61 +419,70 @@ public class Main extends JFrame {
             UIManager.put("defaultFont", defaultFont);
 
             if (darkMode) {
-                // Corporate Base Dark Palette
-                Color nodeBg = new javax.swing.plaf.ColorUIResource(18, 19, 22); 
-                Color comfySurface = new javax.swing.plaf.ColorUIResource(18, 19, 22); 
-                Color comfyAccent = new javax.swing.plaf.ColorUIResource(0, 120, 215); // Corporate Blue
-                Color comfyText = new javax.swing.plaf.ColorUIResource(Color.WHITE); 
-                Color comfyBorder = new javax.swing.plaf.ColorUIResource(new Color(255, 255, 255, 30));
+                // SCI-FI CYBERSPACE Dark Palette
+                Color nodeBg = new javax.swing.plaf.ColorUIResource(0, 0, 0); // Absolute Black
+                Color comfySurface = new javax.swing.plaf.ColorUIResource(0, 0, 0); 
+                Color comfyAccent = new javax.swing.plaf.ColorUIResource(0, 255, 255); // Neon Cyan
+                Color comfyText = new javax.swing.plaf.ColorUIResource(0, 255, 255); // Neon Cyan text
+                Color comfyBorder = new javax.swing.plaf.ColorUIResource(0, 255, 255); // Neon Cyan Borders
+                Color componentBg = new javax.swing.plaf.ColorUIResource(0, 0, 0); // Absolute Black Inputs/Buttons
+                Color paleBlue = new javax.swing.plaf.ColorUIResource(0, 100, 100); // Dimmed blue for inactive
 
                 UIManager.put("DefaultBackgroundColor", comfySurface);
                 UIManager.put("Panel.background", nodeBg);
-                UIManager.put("Table.background", new javax.swing.plaf.ColorUIResource(30, 34, 42));
-                UIManager.put("TextArea.background", new javax.swing.plaf.ColorUIResource(30, 34, 42));
-                UIManager.put("TextField.background", new javax.swing.plaf.ColorUIResource(30, 34, 42));
-                UIManager.put("PasswordField.background", new javax.swing.plaf.ColorUIResource(30, 34, 42));
+                UIManager.put("Table.background", componentBg);
+                UIManager.put("TextArea.background", componentBg);
+                UIManager.put("TextField.background", componentBg);
+                UIManager.put("PasswordField.background", componentBg);
                 
                 UIManager.put("Label.foreground", comfyText);
                 UIManager.put("Table.foreground", comfyText);
                 UIManager.put("TextArea.foreground", comfyText);
+                UIManager.put("TextField.foreground", comfyText);
                 
-                UIManager.put("Table.selectionBackground", new javax.swing.plaf.ColorUIResource(new Color(0, 120, 215, 60))); 
-                UIManager.put("Table.selectionForeground", Color.WHITE);
+                UIManager.put("Table.selectionBackground", comfyAccent); 
+                UIManager.put("Table.selectionForeground", Color.BLACK);
                 UIManager.put("Component.focusedBorderColor", comfyAccent);
+                UIManager.put("Component.borderColor", comfyBorder);
+                UIManager.put("TextComponent.borderWidth", 1);
                 UIManager.put("Separator.foreground", comfyBorder);
                 
-                UIManager.put("Button.background", new javax.swing.plaf.ColorUIResource(30, 34, 42));
+                UIManager.put("Button.background", componentBg);
                 UIManager.put("Button.foreground", comfyText);
-                UIManager.put("Button.focusedBackground", new javax.swing.plaf.ColorUIResource(0, 120, 215)); 
-                UIManager.put("Button.hoverBackground", new javax.swing.plaf.ColorUIResource(0, 140, 235));
-                UIManager.put("Button.pressedBackground", new javax.swing.plaf.ColorUIResource(0, 100, 190));
+                UIManager.put("Button.focusedBackground", comfyAccent); 
+                UIManager.put("Button.hoverBackground", comfyAccent); // Invert on hover
+                UIManager.put("Button.hoverForeground", Color.BLACK); // Invert text on hover
+                UIManager.put("Button.pressedBackground", paleBlue);
                 UIManager.put("Button.borderColor", comfyBorder);
+                UIManager.put("Button.borderWidth", 1);
                 
                 UIManager.put("ScrollBar.track", comfySurface);
-                UIManager.put("ScrollBar.thumb", new javax.swing.plaf.ColorUIResource(100, 100, 100));
+                UIManager.put("ScrollBar.thumb", paleBlue);
                 
-                UIManager.put("TabbedPane.selectedBackground", new javax.swing.plaf.ColorUIResource(new Color(0, 120, 215, 40)));
-                UIManager.put("TabbedPane.selectedForeground", Color.WHITE);
+                UIManager.put("TabbedPane.selectedBackground", nodeBg);
+                UIManager.put("TabbedPane.selectedForeground", comfyAccent);
+                UIManager.put("TabbedPane.foreground", paleBlue);
                 UIManager.put("TabbedPane.underlineColor", comfyAccent);
+                UIManager.put("TabbedPane.underlineHeight", 2);
 
                 // ProgressBar custom styles
                 UIManager.put("ProgressBar.foreground", comfyAccent);
-                UIManager.put("ProgressBar.background", new Color(30, 34, 42));
-                UIManager.put("ProgressBar.arc", 999);
+                UIManager.put("ProgressBar.background", componentBg);
+                UIManager.put("ProgressBar.arc", 0);
 
                 // Card panel & UI styling variables
-                UIManager.put("Card.background", new Color(30, 34, 42)); 
+                UIManager.put("Card.background", componentBg); 
                 UIManager.put("Card.border", comfyBorder); 
-                UIManager.put("Card.placeholder", new Color(30, 34, 42, 144)); 
-                UIManager.put("Card.placeholderBorder", new Color(255, 255, 255, 18));
-                UIManager.put("Toolbar.customBg", new Color(30, 34, 42));
-                UIManager.put("SlimStat.titleForeground", new Color(180, 190, 205));
+                UIManager.put("Card.placeholder", new Color(0, 0, 0, 255)); 
+                UIManager.put("Card.placeholderBorder", comfyBorder);
+                UIManager.put("Toolbar.customBg", componentBg);
+                UIManager.put("SlimStat.titleForeground", paleBlue);
                 UIManager.put("SlimStat.valueForeground", comfyAccent);
                 UIManager.put("SlimStat.barForeground", comfyAccent);
-                UIManager.put("SlimStat.barBackground", new Color(18, 19, 22));
-                UIManager.put("MainTabs.gradientStart", new Color(18, 19, 22));
-                UIManager.put("MainTabs.gradientEnd", new Color(18, 19, 22));
-                UIManager.put("MainTabs.glowStart", new Color(0, 120, 215, 20));
+                UIManager.put("SlimStat.barBackground", nodeBg);
+                UIManager.put("MainTabs.gradientStart", nodeBg);
+                UIManager.put("MainTabs.gradientEnd", nodeBg);
+                UIManager.put("MainTabs.glowStart", comfyAccent);
                 UIManager.put("PromptLab.presetForeground", comfyAccent);
                 
                 UIManager.setLookAndFeel(new FlatDarkLaf());
@@ -526,8 +539,8 @@ public class Main extends JFrame {
             // Update text area backgrounds / foregrounds dynamically if already instantiated
             if (consoleOutput != null) {
                 if (darkMode) {
-                    consoleOutput.setBackground(new Color(25, 25, 25));
-                    consoleOutput.setForeground(new Color(0, 220, 0));
+                    consoleOutput.setBackground(UIManager.getColor("TextArea.background"));
+                    consoleOutput.setForeground(UIManager.getColor("TextArea.foreground"));
                 } else {
                     consoleOutput.setBackground(new Color(245, 247, 250));
                     consoleOutput.setForeground(new Color(30, 30, 30));
@@ -535,8 +548,8 @@ public class Main extends JFrame {
             }
             if (promptLabConsole != null) {
                 if (darkMode) {
-                    promptLabConsole.setBackground(new Color(25, 25, 25));
-                    promptLabConsole.setForeground(new Color(0, 220, 0));
+                    promptLabConsole.setBackground(UIManager.getColor("TextArea.background"));
+                    promptLabConsole.setForeground(UIManager.getColor("TextArea.foreground"));
                 } else {
                     promptLabConsole.setBackground(new Color(245, 247, 250));
                     promptLabConsole.setForeground(new Color(30, 30, 30));
@@ -784,7 +797,7 @@ public class Main extends JFrame {
             mainTabs.addTab("📂 Blueprint Gallery", blueprintGalleryWrapper);
         }
         if (configService.isPromptLabEnabled() && promptLabPanel != null) {
-            mainTabs.addTab("🔬 Prompt Lab", promptLabPanel);
+            mainTabs.addTab("🖼️ Image Lab", promptLabPanel);
         }
         if (configService.isVideoArchitectEnabled() && videoArchitectWrapper != null) {
             mainTabs.addTab("🎬 Video Architect", videoArchitectWrapper);
@@ -908,7 +921,7 @@ public class Main extends JFrame {
         titleLabel.setFont(new Font("SansSerif", Font.BOLD, 18));
         titleLabel.setForeground(configService.isDarkMode() ? new Color(0, 255, 204) : new Color(0, 102, 204));
         
-        JLabel tagline = new JLabel("|  Unified AI Model Manager & Prompt Lab");
+        JLabel tagline = new JLabel("|  Unified AI Model Manager & Image Lab");
         tagline.setFont(new Font("SansSerif", Font.ITALIC, 11));
         tagline.setForeground(Color.GRAY);
         
@@ -1156,19 +1169,19 @@ public class Main extends JFrame {
         panel.setLayout(new BorderLayout(15, 15));
         panel.setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
 
-        // LEFT: Prompt Lab controls (Blueprint selection + Generic execution parameters)
+        // LEFT: Image Lab controls (Blueprint selection + Generic execution parameters)
         de.tki.comfymodels.ui.CardPanel leftPanel = new de.tki.comfymodels.ui.CardPanel();
         leftPanel.setLayout(new BoxLayout(leftPanel, BoxLayout.Y_AXIS));
 
         // Header Title
-        JLabel titleLabel = new JLabel("🔬 Prompt Lab");
+        JLabel titleLabel = new JLabel("🖼️ Image Lab");
         titleLabel.putClientProperty("FlatLaf.styleClass", "h2");
         titleLabel.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
         leftPanel.add(titleLabel);
         leftPanel.add(Box.createVerticalStrut(15));
 
-        // 1. Blueprint / Workflow Selection
-        JLabel lblBlueprint = new JLabel("1. Blueprint / Workflow");
+        // Blueprint / Workflow Selection
+        JLabel lblBlueprint = new JLabel("Blueprint / Workflow");
         lblBlueprint.putClientProperty("FlatLaf.styleClass", "h4");
         lblBlueprint.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
         leftPanel.add(lblBlueprint);
@@ -1207,12 +1220,20 @@ public class Main extends JFrame {
         leftPanel.add(promptPresetLabel);
         leftPanel.add(Box.createVerticalStrut(18));
 
-        // 2. Positive Prompt Input & AI Assistance
-        JLabel lblSubject = new JLabel("2. Positive Prompt");
-        lblSubject.putClientProperty("FlatLaf.styleClass", "h4");
+        // Prompt Group Header & Positive/Negative Prompts
+        JLabel lblPromptGroup = new JLabel("Prompt");
+        lblPromptGroup.putClientProperty("FlatLaf.styleClass", "h4");
+        lblPromptGroup.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        leftPanel.add(lblPromptGroup);
+        leftPanel.add(Box.createVerticalStrut(6));
+
+        Font promptSubLabelFont = new Font("SansSerif", Font.PLAIN, 12);
+
+        JLabel lblSubject = new JLabel("Positive Prompt");
+        lblSubject.setFont(promptSubLabelFont);
         lblSubject.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
         leftPanel.add(lblSubject);
-        leftPanel.add(Box.createVerticalStrut(5));
+        leftPanel.add(Box.createVerticalStrut(4));
 
         JPanel subjectRow = new JPanel(new BorderLayout(8, 0));
         subjectRow.setOpaque(false);
@@ -1282,17 +1303,56 @@ public class Main extends JFrame {
         // Negative Prompt Field
         leftPanel.add(Box.createVerticalStrut(8));
         JLabel lblNegative = new JLabel("Negative Prompt");
-        lblNegative.setFont(new Font("SansSerif", Font.PLAIN, 11));
-        lblNegative.setForeground(Color.GRAY);
+        lblNegative.setFont(promptSubLabelFont);
         lblNegative.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
         leftPanel.add(lblNegative);
-        leftPanel.add(Box.createVerticalStrut(3));
+        leftPanel.add(Box.createVerticalStrut(4));
 
         promptNegativeField = new JTextField("blurry, low quality, distortion, bad anatomy");
         promptNegativeField.setFont(new Font("SansSerif", Font.PLAIN, 12));
         promptNegativeField.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
         promptNegativeField.setMaximumSize(new Dimension(Integer.MAX_VALUE, 32));
         leftPanel.add(promptNegativeField);
+        leftPanel.add(Box.createVerticalStrut(10));
+
+        // Image Input Field (Hidden by default, shown for img2img/inpaint)
+        promptImageInputPanel = new JPanel();
+        promptImageInputPanel.setLayout(new BoxLayout(promptImageInputPanel, BoxLayout.Y_AXIS));
+        promptImageInputPanel.setOpaque(false);
+        promptImageInputPanel.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        promptImageInputPanel.setVisible(false); // Initially hidden
+        
+        JLabel lblInputImage = new JLabel("Input Image (Required)");
+        lblInputImage.setFont(promptSubLabelFont);
+        lblInputImage.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        promptImageInputPanel.add(lblInputImage);
+        promptImageInputPanel.add(Box.createVerticalStrut(4));
+
+        JPanel imageFileRow = new JPanel(new BorderLayout(8, 0));
+        imageFileRow.setOpaque(false);
+        imageFileRow.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        imageFileRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 32));
+
+        promptImageFileField = new JTextField();
+        promptImageFileField.setEditable(false);
+        promptImageFileField.setFont(new Font("SansSerif", Font.PLAIN, 12));
+        imageFileRow.add(promptImageFileField, BorderLayout.CENTER);
+
+        JButton btnBrowseImage = new JButton("Browse...");
+        btnBrowseImage.addActionListener(e -> {
+            JFileChooser chooser = new JFileChooser();
+            chooser.setDialogTitle("Select Input Image");
+            chooser.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("Images", "jpg", "png", "jpeg", "webp"));
+            if (chooser.showOpenDialog(Main.this) == JFileChooser.APPROVE_OPTION) {
+                selectedInputImage = chooser.getSelectedFile();
+                promptImageFileField.setText(selectedInputImage.getAbsolutePath());
+            }
+        });
+        imageFileRow.add(btnBrowseImage, BorderLayout.EAST);
+        
+        promptImageInputPanel.add(imageFileRow);
+        
+        leftPanel.add(promptImageInputPanel);
         leftPanel.add(Box.createVerticalStrut(15));
 
         // Dummy objects for backward compatibility with unused fields
@@ -1305,8 +1365,8 @@ public class Main extends JFrame {
         chkFantasy = new JCheckBox();
         chkSketch = new JCheckBox();
 
-        // 3. Image Dimensions & Batch Size
-        JLabel lblDimensions = new JLabel("3. Output Dimensions & Batching");
+        // Image Dimensions & Batch Size
+        JLabel lblDimensions = new JLabel("Output Dimensions & Batching");
         lblDimensions.putClientProperty("FlatLaf.styleClass", "h4");
         lblDimensions.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
         leftPanel.add(lblDimensions);
@@ -1347,8 +1407,8 @@ public class Main extends JFrame {
         leftPanel.add(sizeRow);
         leftPanel.add(Box.createVerticalStrut(15));
 
-        // 4. Sampler Parameters (Steps, CFG, Denoise, Sampler & Scheduler)
-        JLabel lblSampler = new JLabel("4. Generation & Sampling Parameters");
+        // Sampler Parameters (Steps, CFG, Denoise, Sampler & Scheduler)
+        JLabel lblSampler = new JLabel("Generation & Sampling Parameters");
         lblSampler.putClientProperty("FlatLaf.styleClass", "h4");
         lblSampler.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
         leftPanel.add(lblSampler);
@@ -1522,8 +1582,8 @@ public class Main extends JFrame {
         rightBottomPanel.setOpaque(false);
 
         promptLabConsole = new JTextArea(4, 20);
-        promptLabConsole.setBackground(configService.isDarkMode() ? new Color(25, 25, 25) : new Color(245, 247, 250));
-        promptLabConsole.setForeground(configService.isDarkMode() ? new Color(0, 220, 0) : new Color(30, 30, 30));
+        promptLabConsole.setBackground(UIManager.getColor("TextArea.background"));
+        promptLabConsole.setForeground(UIManager.getColor("TextArea.foreground"));
         promptLabConsole.setFont(new Font("Monospaced", Font.PLAIN, 12));
         promptLabConsole.setEditable(false);
         promptLabConsole.setText("System: Prompt Lab ready.\n");
@@ -1936,9 +1996,10 @@ public class Main extends JFrame {
             String samplerName = (promptSamplerCombo != null && promptSamplerCombo.getSelectedItem() != null) ? (String) promptSamplerCombo.getSelectedItem() : "Auto";
             String scheduler   = (promptSchedulerCombo != null && promptSchedulerCombo.getSelectedItem() != null) ? (String) promptSchedulerCombo.getSelectedItem() : "Auto";
 
+            String inputImage = (promptImageFileField != null) ? promptImageFileField.getText() : null;
             de.tki.comfymodels.service.PromptBlueprintApiService.PromptLabInputs previewInputs =
                 new de.tki.comfymodels.service.PromptBlueprintApiService.PromptLabInputs(
-                    subject, negative, width, height, steps, cfg, 0L, samplerName, scheduler, denoise, batch
+                    subject, negative, width, height, steps, cfg, 0L, samplerName, scheduler, denoise, batch, inputImage
                 );
             promptBlueprintApiService.injectLabInputs(promptObj, previewInputs);
 
@@ -2103,7 +2164,7 @@ public class Main extends JFrame {
             }
             if (matchedEntry == null) {
                 for (de.tki.comfymodels.ui.BlueprintGalleryTab.BlueprintEntry e : blueprintGalleryTab.getAvailableBlueprints()) {
-                    if (e.name.toLowerCase().contains(selectedName.toLowerCase()) || selectedName.toLowerCase().contains(e.name.toLowerCase())) {
+                    if (isBlueprintNameMatch(e.name, selectedName) || isBlueprintNameMatch(e.filename, selectedName)) {
                         matchedEntry = e;
                         break;
                     }
@@ -2119,7 +2180,12 @@ public class Main extends JFrame {
             // Adjust default dimension & sampler spinners based on blueprint type
             String nameLower = matchedEntry.name.toLowerCase();
             String catLower = matchedEntry.category.toLowerCase();
-            if (nameLower.contains("flux") || catLower.contains("flux")) {
+            if (nameLower.contains("z-image") || nameLower.contains("turbo") || nameLower.contains("schnell") || nameLower.contains("lightning") || nameLower.contains("hyper")) {
+                if (promptWidthSpinner != null) promptWidthSpinner.setValue(1024);
+                if (promptHeightSpinner != null) promptHeightSpinner.setValue(1024);
+                if (promptStepsSpinner != null) promptStepsSpinner.setValue(8);
+                if (promptCfgSpinner != null) promptCfgSpinner.setValue(1.0);
+            } else if (nameLower.contains("flux") || catLower.contains("flux")) {
                 if (promptWidthSpinner != null) promptWidthSpinner.setValue(1024);
                 if (promptHeightSpinner != null) promptHeightSpinner.setValue(1024);
                 if (promptStepsSpinner != null) promptStepsSpinner.setValue(20);
@@ -2141,6 +2207,19 @@ public class Main extends JFrame {
                 if (promptCfgSpinner != null) promptCfgSpinner.setValue(7.0);
             }
 
+            if (promptImageInputPanel != null) {
+                boolean needsImage = isImageEditBlueprint(matchedEntry);
+                promptImageInputPanel.setVisible(needsImage);
+                if (!needsImage) {
+                    promptImageFileField.setText("");
+                    selectedInputImage = null;
+                }
+                if (promptLabLeftPanel != null) {
+                    promptLabLeftPanel.revalidate();
+                    promptLabLeftPanel.repaint();
+                }
+            }
+
             // Load GUI workflow JSON async
             de.tki.comfymodels.ui.BlueprintGalleryTab.BlueprintEntry targetEntry = matchedEntry;
             backgroundExecutor.execute(() -> {
@@ -2153,11 +2232,31 @@ public class Main extends JFrame {
                         }
                     }
                     if (jsonContent == null && targetEntry.registryWorkflow != null && workflowDownloader != null) {
-                        File downloaded = workflowDownloader.downloadWorkflowAsync(targetEntry.registryWorkflow).get();
-                        if (downloaded != null && downloaded.exists()) {
-                            jsonContent = Files.readString(downloaded.toPath(), java.nio.charset.StandardCharsets.UTF_8).trim();
+                        try {
+                            File downloaded = workflowDownloader.downloadWorkflowAsync(targetEntry.registryWorkflow).get();
+                            if (downloaded != null && downloaded.exists()) {
+                                jsonContent = Files.readString(downloaded.toPath(), java.nio.charset.StandardCharsets.UTF_8).trim();
+                            }
+                        } catch (Exception dlEx) {
+                            logger.warn("Failed to download workflow for blueprint " + targetEntry.name + ": " + dlEx.getMessage());
                         }
                     }
+                    if (jsonContent == null) {
+                        File dir = new File("workflows");
+                        if (dir.exists() && dir.isDirectory()) {
+                            File[] files = dir.listFiles((d, n) -> n.toLowerCase().endsWith(".json"));
+                            if (files != null) {
+                                for (File f : files) {
+                                    if (isBlueprintNameMatch(targetEntry.name, f.getName().replace(".json", ""))) {
+                                        jsonContent = Files.readString(f.toPath(), java.nio.charset.StandardCharsets.UTF_8).trim();
+                                        logger.info("Loaded fallback workflow from local workflows directory: " + f.getName());
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     if (jsonContent == null && comfyTemplateService != null) {
                         de.tki.comfymodels.domain.ComfyTemplate template = comfyTemplateService.determineTemplateForModel(targetEntry.name);
                         if (template != null) {
@@ -2172,6 +2271,7 @@ public class Main extends JFrame {
                             if (promptJsonArea != null) {
                                 promptJsonArea.setText(currentBlueprintGuiJson);
                             }
+                            populateInputFieldsFromBlueprint(finalJson);
                             updatePromptLabJson();
                         });
                     }
@@ -2186,6 +2286,7 @@ public class Main extends JFrame {
                 if (template != null) {
                     currentBlueprintGuiJson = template.getContent();
                     if (promptJsonArea != null) promptJsonArea.setText(currentBlueprintGuiJson);
+                    populateInputFieldsFromBlueprint(currentBlueprintGuiJson);
                 }
             }
             applyModelPreset(selectedName);
@@ -2193,7 +2294,319 @@ public class Main extends JFrame {
         }
     }
 
-    private boolean isTextToImageBlueprint(de.tki.comfymodels.ui.BlueprintGalleryTab.BlueprintEntry entry) {
+    private boolean isBlueprintNameMatch(String name1, String name2) {
+        if (name1 == null || name2 == null) return false;
+        String clean1 = name1.toLowerCase().replaceAll("[^a-zA-Z0-9]", " ").replaceAll("\\s+", " ").trim();
+        String clean2 = name2.toLowerCase().replaceAll("[^a-zA-Z0-9]", " ").replaceAll("\\s+", " ").trim();
+        if (clean1.equals(clean2)) return true;
+
+        String[] words1 = clean1.split(" ");
+        String[] words2 = clean2.split(" ");
+
+        java.util.Set<String> set1 = new java.util.HashSet<>(java.util.Arrays.asList(words1));
+        java.util.Set<String> set2 = new java.util.HashSet<>(java.util.Arrays.asList(words2));
+
+        return set1.equals(set2) || clean1.contains(clean2) || clean2.contains(clean1);
+    }
+
+    private void populateInputFieldsFromBlueprint(String jsonStr) {
+        if (jsonStr == null || jsonStr.isBlank()) return;
+        try {
+            ExtractedBlueprintData data = parseBlueprintWorkflowValues(jsonStr);
+            if (data == null) return;
+
+            if (data.positivePrompt != null) {
+                if (promptSubjectField != null) {
+                    promptSubjectField.setText(data.positivePrompt);
+                }
+            }
+            if (data.negativePrompt != null) {
+                if (promptNegativeField != null) {
+                    promptNegativeField.setText(data.negativePrompt);
+                }
+            }
+            if (data.width != null && data.width > 0 && promptWidthSpinner != null) {
+                promptWidthSpinner.setValue(data.width);
+            }
+            if (data.height != null && data.height > 0 && promptHeightSpinner != null) {
+                promptHeightSpinner.setValue(data.height);
+            }
+            if (data.batchSize != null && data.batchSize > 0 && promptBatchSizeSpinner != null) {
+                promptBatchSizeSpinner.setValue(data.batchSize);
+            }
+            if (data.steps != null && data.steps > 0 && promptStepsSpinner != null) {
+                promptStepsSpinner.setValue(data.steps);
+            }
+            if (data.cfg != null && data.cfg >= 0 && promptCfgSpinner != null) {
+                promptCfgSpinner.setValue(data.cfg);
+            }
+            if (data.denoise != null && data.denoise >= 0 && data.denoise <= 1.0 && promptDenoiseSpinner != null) {
+                promptDenoiseSpinner.setValue(data.denoise);
+            }
+            if (data.samplerName != null && promptSamplerCombo != null) {
+                selectComboItemIgnoreCase(promptSamplerCombo, data.samplerName);
+            }
+            if (data.scheduler != null && promptSchedulerCombo != null) {
+                selectComboItemIgnoreCase(promptSchedulerCombo, data.scheduler);
+            }
+        } catch (Exception ex) {
+            logger.warn("Could not populate UI fields from blueprint workflow JSON: " + ex.getMessage());
+        }
+    }
+
+    private void selectComboItemIgnoreCase(JComboBox<String> combo, String target) {
+        if (combo == null || target == null || target.isBlank()) return;
+        for (int i = 0; i < combo.getItemCount(); i++) {
+            String item = combo.getItemAt(i);
+            if (item != null && item.equalsIgnoreCase(target.trim())) {
+                combo.setSelectedIndex(i);
+                return;
+            }
+        }
+    }
+
+    private static class ExtractedBlueprintData {
+        String positivePrompt;
+        String negativePrompt;
+        Integer width;
+        Integer height;
+        Integer batchSize;
+        Integer steps;
+        Double cfg;
+        String samplerName;
+        String scheduler;
+        Double denoise;
+    }
+
+    private ExtractedBlueprintData parseBlueprintWorkflowValues(String jsonStr) {
+        if (jsonStr == null || jsonStr.isBlank()) return null;
+
+        ExtractedBlueprintData data = new ExtractedBlueprintData();
+        java.util.List<String> textPrompts = new java.util.ArrayList<>();
+
+        try {
+            org.json.JSONObject root = new org.json.JSONObject(jsonStr);
+
+            // ── Format A: GUI format with "nodes" array ──
+            if (root.has("nodes") && root.get("nodes") instanceof org.json.JSONArray) {
+                java.util.List<org.json.JSONObject> nodes = collectAllNodes(root);
+                
+                // First pass: map proxy widgets for Group Nodes
+                java.util.Map<String, String> overriddenTexts = new java.util.HashMap<>();
+                for (org.json.JSONObject node : nodes) {
+                    org.json.JSONObject props = node.optJSONObject("properties");
+                    if (props != null && props.has("proxyWidgets")) {
+                        org.json.JSONArray proxyWidgets = props.optJSONArray("proxyWidgets");
+                        org.json.JSONArray wVals = node.optJSONArray("widgets_values");
+                        if (proxyWidgets != null && wVals != null) {
+                            for (int i = 0; i < proxyWidgets.length(); i++) {
+                                org.json.JSONArray pw = proxyWidgets.optJSONArray(i);
+                                if (pw != null && pw.length() >= 2) {
+                                    String innerNodeId = pw.optString(0);
+                                    String widgetName = pw.optString(1);
+                                    if ("text".equals(widgetName) && wVals.length() > i) {
+                                        Object v = wVals.opt(i);
+                                        if (v instanceof String) {
+                                            overriddenTexts.put(innerNodeId, (String) v);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                for (org.json.JSONObject node : nodes) {
+                    String type = node.optString("type", node.optString("class_type", ""));
+                    org.json.JSONArray widgetValues = node.optJSONArray("widgets_values");
+                    org.json.JSONObject inputsObj = node.optJSONObject("inputs");
+
+                    // CLIPTextEncode / Text nodes
+                    if (type.equalsIgnoreCase("CLIPTextEncode") || type.contains("CLIPText") || type.contains("TextEncode")) {
+                        String text = overriddenTexts.get(String.valueOf(node.optInt("id")));
+                        
+                        if (text == null) {
+                            if (widgetValues != null && widgetValues.length() > 0 && widgetValues.get(0) instanceof String) {
+                                text = widgetValues.getString(0);
+                            } else if (inputsObj != null && inputsObj.has("text")) {
+                                text = inputsObj.optString("text", "");
+                            }
+                        }
+
+                        if (text != null && !text.isBlank()) {
+                            textPrompts.add(text.trim());
+                        }
+                    }
+
+                    // Latent Dimensions & Batch size
+                    if (type.contains("Latent") || type.contains("Empty")) {
+                        if (widgetValues != null && widgetValues.length() >= 2) {
+                            if (widgetValues.get(0) instanceof Number && widgetValues.get(1) instanceof Number) {
+                                if (data.width == null) data.width = widgetValues.getInt(0);
+                                if (data.height == null) data.height = widgetValues.getInt(1);
+                                if (widgetValues.length() >= 3 && widgetValues.get(2) instanceof Number && data.batchSize == null) {
+                                    data.batchSize = widgetValues.getInt(2);
+                                }
+                            }
+                        }
+                        if (inputsObj != null) {
+                            if (inputsObj.has("width") && data.width == null) data.width = inputsObj.optInt("width");
+                            if (inputsObj.has("height") && data.height == null) data.height = inputsObj.optInt("height");
+                            if (inputsObj.has("batch_size") && data.batchSize == null) data.batchSize = inputsObj.optInt("batch_size");
+                        }
+                    }
+
+                    // Sampler / Scheduler / Steps / CFG
+                    if (type.contains("KSampler") || type.contains("Sampler")) {
+                        if (inputsObj != null) {
+                            if (inputsObj.has("steps") && data.steps == null) data.steps = inputsObj.optInt("steps");
+                            if (inputsObj.has("cfg") && data.cfg == null) data.cfg = inputsObj.optDouble("cfg");
+                            if (inputsObj.has("sampler_name") && data.samplerName == null) data.samplerName = inputsObj.optString("sampler_name");
+                            if (inputsObj.has("scheduler") && data.scheduler == null) data.scheduler = inputsObj.optString("scheduler");
+                            if (inputsObj.has("denoise") && data.denoise == null) data.denoise = inputsObj.optDouble("denoise");
+                        }
+                        if (widgetValues != null) {
+                            for (int w = 0; w < widgetValues.length(); w++) {
+                                Object v = widgetValues.get(w);
+                                if (v instanceof String sVal) {
+                                    String sLower = sVal.toLowerCase();
+                                    if (data.samplerName == null && (sLower.equals("euler") || sLower.contains("dpm") || sLower.equals("heun") || sLower.equals("lms") || sLower.equals("ddim") || sLower.equals("uni_pc") || sLower.equals("lcm"))) {
+                                        data.samplerName = sVal;
+                                    }
+                                    if (data.scheduler == null && (sLower.equals("normal") || sLower.equals("karras") || sLower.equals("exponential") || sLower.equals("sgm_uniform") || sLower.equals("simple") || sLower.equals("ddim_uniform"))) {
+                                        data.scheduler = sVal;
+                                    }
+                                } else if (v instanceof Number nVal) {
+                                    if (w == 2 && data.steps == null && nVal.intValue() > 0 && nVal.intValue() <= 200) {
+                                        data.steps = nVal.intValue();
+                                    }
+                                    if (w == 3 && data.cfg == null && nVal.doubleValue() >= 0.0 && nVal.doubleValue() <= 50.0) {
+                                        data.cfg = nVal.doubleValue();
+                                    }
+                                    if (w == 6 && data.denoise == null && nVal.doubleValue() >= 0.0 && nVal.doubleValue() <= 1.0) {
+                                        data.denoise = nVal.doubleValue();
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ── Format B: API format or object map (key -> node) ──
+            else {
+                for (String key : root.keySet()) {
+                    org.json.JSONObject node = root.optJSONObject(key);
+                    if (node == null) continue;
+                    String ct = node.optString("class_type", "");
+                    org.json.JSONObject inp = node.optJSONObject("inputs");
+                    if (inp == null) continue;
+
+                    if (ct.equalsIgnoreCase("CLIPTextEncode") || ct.contains("CLIPText") || ct.contains("TextEncode")) {
+                        if (inp.has("text") && inp.get("text") instanceof String) {
+                            String t = inp.getString("text").trim();
+                            if (!t.isBlank()) textPrompts.add(t);
+                        }
+                    }
+
+                    if ((ct.contains("Latent") || ct.contains("Empty")) && (inp.has("width") || inp.has("height"))) {
+                        if (inp.has("width") && data.width == null) data.width = inp.optInt("width");
+                        if (inp.has("height") && data.height == null) data.height = inp.optInt("height");
+                        if (inp.has("batch_size") && data.batchSize == null) data.batchSize = inp.optInt("batch_size");
+                    }
+
+                    if (ct.contains("KSampler") || ct.contains("Sampler")) {
+                        if (inp.has("steps") && data.steps == null) data.steps = inp.optInt("steps");
+                        if (inp.has("cfg") && data.cfg == null) data.cfg = inp.optDouble("cfg");
+                        if (inp.has("sampler_name") && data.samplerName == null) data.samplerName = inp.optString("sampler_name");
+                        if (inp.has("scheduler") && data.scheduler == null) data.scheduler = inp.optString("scheduler");
+                        if (inp.has("denoise") && data.denoise == null) data.denoise = inp.optDouble("denoise");
+                    }
+                }
+            }
+
+            // Classify positive & negative prompts from textPrompts list
+            for (String prompt : textPrompts) {
+                String lower = prompt.toLowerCase();
+                boolean isNeg = lower.contains("blurry") || lower.contains("bad anatomy") || lower.contains("low quality") || lower.contains("worst quality") || lower.contains("watermark") || lower.contains("bad hands");
+                if (isNeg && data.negativePrompt == null) {
+                    data.negativePrompt = prompt;
+                } else if (!isNeg && data.positivePrompt == null) {
+                    data.positivePrompt = prompt;
+                }
+            }
+            if (data.positivePrompt == null && !textPrompts.isEmpty()) {
+                data.positivePrompt = textPrompts.get(0);
+                if (textPrompts.size() > 1 && data.negativePrompt == null) {
+                    data.negativePrompt = textPrompts.get(1);
+                }
+            }
+        } catch (Exception ex) {
+            logger.warn("Error parsing blueprint workflow JSON: " + ex.getMessage());
+        }
+
+        return data;
+    }
+
+    private java.util.List<org.json.JSONObject> collectAllNodes(org.json.JSONObject root) {
+        java.util.List<org.json.JSONObject> allNodes = new java.util.ArrayList<>();
+        if (root == null) return allNodes;
+
+        // 1. Root level nodes
+        if (root.has("nodes") && root.get("nodes") instanceof org.json.JSONArray) {
+            org.json.JSONArray nodes = root.getJSONArray("nodes");
+            for (int i = 0; i < nodes.length(); i++) {
+                org.json.JSONObject node = nodes.optJSONObject(i);
+                if (node != null) {
+                    allNodes.add(node);
+                }
+            }
+        }
+
+        // 2. Subgraph nodes via "definitions -> subgraphs"
+        if (root.has("definitions") && root.get("definitions") instanceof org.json.JSONObject) {
+            org.json.JSONObject definitions = root.getJSONObject("definitions");
+            if (definitions.has("subgraphs") && definitions.get("subgraphs") instanceof org.json.JSONArray) {
+                org.json.JSONArray subgraphs = definitions.getJSONArray("subgraphs");
+                for (int i = 0; i < subgraphs.length(); i++) {
+                    org.json.JSONObject subgraph = subgraphs.optJSONObject(i);
+                    if (subgraph != null && subgraph.has("nodes") && subgraph.get("nodes") instanceof org.json.JSONArray) {
+                        org.json.JSONArray subnodes = subgraph.getJSONArray("nodes");
+                        for (int j = 0; j < subnodes.length(); j++) {
+                            org.json.JSONObject node = subnodes.optJSONObject(j);
+                            if (node != null) {
+                                allNodes.add(node);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 3. Subgraph nodes via "extra_data -> subgraphs"
+        if (root.has("extra_data") && root.get("extra_data") instanceof org.json.JSONObject) {
+            org.json.JSONObject extraData = root.getJSONObject("extra_data");
+            if (extraData.has("subgraphs") && extraData.get("subgraphs") instanceof org.json.JSONArray) {
+                org.json.JSONArray subgraphs = extraData.getJSONArray("subgraphs");
+                for (int i = 0; i < subgraphs.length(); i++) {
+                    org.json.JSONObject subgraph = subgraphs.optJSONObject(i);
+                    if (subgraph != null && subgraph.has("nodes") && subgraph.get("nodes") instanceof org.json.JSONArray) {
+                        org.json.JSONArray subnodes = subgraph.getJSONArray("nodes");
+                        for (int j = 0; j < subnodes.length(); j++) {
+                            org.json.JSONObject node = subnodes.optJSONObject(j);
+                            if (node != null) {
+                                allNodes.add(node);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        return allNodes;
+    }
+
+    private boolean isSupportedPromptLabBlueprint(de.tki.comfymodels.ui.BlueprintGalleryTab.BlueprintEntry entry) {
         if (entry == null) return false;
 
         // 1. Exclude Cloud-Only workflows
@@ -2214,27 +2627,37 @@ public class Main extends JFrame {
             return false;
         }
 
-        // 2. Exclude Video, Img2Img, ControlNet, Inpaint, Upscale, Audio, 3D, etc.
+        // 2. Exclude Video, Audio, 3D, Pose, Depth, Upscale, ControlNet
         if (cat.contains("video") || cat.contains("animate") || cat.contains("motion") 
                 || cat.contains("i2v") || cat.contains("t2v") || cat.contains("image to video")
-                || cat.contains("image edit") || cat.contains("image to image") || cat.contains("img2img")
-                || cat.contains("inpaint") || cat.contains("outpaint") || cat.contains("controlnet")
                 || cat.contains("depth") || cat.contains("pose") || cat.contains("upscal")
-                || cat.contains("3d") || cat.contains("audio")) {
+                || cat.contains("3d") || cat.contains("audio") || cat.contains("controlnet")
+                || cat.contains("outpaint")) {
             return false;
         }
 
         if (isVideoModel(name) || isVideoModel(filename)) {
             return false;
         }
-        if (name.contains("img2img") || name.contains("i2i") || name.contains("controlnet") 
-                || name.contains("inpaint") || name.contains("upscale")) {
+        if (name.contains("controlnet") || name.contains("upscale")) {
             return false;
         }
 
-        // Must be Text-to-Image category or general local image model
+        // Must be Text-to-Image, Image Edit, or general
         return cat.contains("text to image") || cat.contains("txt2img") || cat.contains("text-to-image")
-                || name.contains("text to image") || name.contains("txt2img") || cat.equals("general") || cat.isEmpty();
+                || name.contains("text to image") || name.contains("txt2img") 
+                || cat.contains("image edit") || cat.contains("image to image") || cat.contains("img2img") || cat.contains("inpaint")
+                || name.contains("img2img") || name.contains("i2i") || name.contains("inpaint") || name.contains("image edit")
+                || cat.equals("general") || cat.isEmpty();
+    }
+
+    private boolean isImageEditBlueprint(de.tki.comfymodels.ui.BlueprintGalleryTab.BlueprintEntry entry) {
+        if (entry == null) return false;
+        String name = entry.name != null ? entry.name.toLowerCase() : "";
+        String cat = entry.category != null ? entry.category.toLowerCase() : "";
+        
+        return cat.contains("image edit") || cat.contains("image to image") || cat.contains("img2img") || cat.contains("inpaint")
+                || name.contains("img2img") || name.contains("i2i") || name.contains("inpaint") || name.contains("image edit");
     }
 
     private void refreshPromptLabModels() {
@@ -2245,7 +2668,7 @@ public class Main extends JFrame {
             if (blueprintGalleryTab != null) {
                 java.util.List<de.tki.comfymodels.ui.BlueprintGalleryTab.BlueprintEntry> readyBlueprints = blueprintGalleryTab.getAvailableBlueprints();
                 for (de.tki.comfymodels.ui.BlueprintGalleryTab.BlueprintEntry e : readyBlueprints) {
-                    if (isTextToImageBlueprint(e)) {
+                    if (isSupportedPromptLabBlueprint(e)) {
                         if (e.name != null && !e.name.isBlank() && !itemsToAdd.contains(e.name)) {
                             itemsToAdd.add(e.name);
                         }
@@ -2581,13 +3004,48 @@ public class Main extends JFrame {
                 JSONObject mainObj = promptBlueprintApiService.extractApiPayload(convertedApiJson);
                 JSONObject promptObj = mainObj.getJSONObject("prompt");
 
+                // ── Step 5.5: Upload input image to ComfyUI input folder via API ───────────
+                String inputImageFile = null;
+                if (selectedInputImage != null && selectedInputImage.exists()) {
+                    try {
+                        String boundary = "---" + System.currentTimeMillis() + "---";
+                        String mimeType = selectedInputImage.getName().endsWith(".wav") ? "audio/wav" : (selectedInputImage.getName().endsWith(".mp3") ? "audio/mpeg" : "image/png");
+                        
+                        byte[] header = ("--" + boundary + "\r\n" +
+                                "Content-Disposition: form-data; name=\"image\"; filename=\"" + selectedInputImage.getName() + "\"\r\n" +
+                                "Content-Type: " + mimeType + "\r\n\r\n").getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                        byte[] footer = ("\r\n--" + boundary + "--\r\n").getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                        byte[] fileBytes = java.nio.file.Files.readAllBytes(selectedInputImage.toPath());
+                        
+                        java.util.List<byte[]> body = java.util.List.of(header, fileBytes, footer);
+                        
+                        java.net.http.HttpRequest uploadReq = java.net.http.HttpRequest.newBuilder()
+                                .uri(java.net.URI.create(comfyUrl + "/upload/image"))
+                                .header("Content-Type", "multipart/form-data; boundary=" + boundary)
+                                .POST(java.net.http.HttpRequest.BodyPublishers.ofByteArrays(body))
+                                .build();
+                                
+                        java.net.http.HttpResponse<String> uploadRes = client.send(uploadReq, java.net.http.HttpResponse.BodyHandlers.ofString());
+                        if (uploadRes.statusCode() == 200) {
+                            JSONObject resObj = new JSONObject(uploadRes.body());
+                            inputImageFile = resObj.getString("name");
+                            final String finalImageName = inputImageFile;
+                            SwingUtilities.invokeLater(() -> promptLabConsole.append("🖼️ Uploaded input image to ComfyUI: " + finalImageName + "\n"));
+                        } else {
+                            throw new java.io.IOException("Upload failed. Status: " + uploadRes.statusCode() + " Body: " + uploadRes.body());
+                        }
+                    } catch (Exception ex) {
+                        logger.error("Failed to upload image to ComfyUI", ex);
+                        SwingUtilities.invokeLater(() -> promptLabConsole.append("⚠️ Failed to upload input image: " + ex.getMessage() + "\n"));
+                    }
+                }
 
                 // ── Step 6: Generically inject Prompt Lab values (no loader logic) ─
                 long randomSeed = Math.abs(new java.util.Random().nextLong()) % 9007199254740991L;
                 de.tki.comfymodels.service.PromptBlueprintApiService.PromptLabInputs labInputs =
                     new de.tki.comfymodels.service.PromptBlueprintApiService.PromptLabInputs(
                         assembledPrompt, negativePrompt, widthVal, heightVal, stepsVal, cfgVal, randomSeed,
-                        samplerNameVal, schedulerVal, denoiseVal, batchSizeVal);
+                        samplerNameVal, schedulerVal, denoiseVal, batchSizeVal, inputImageFile);
                 promptBlueprintApiService.injectLabInputs(promptObj, labInputs);
 
                 // ── Step 7: Sanitize model file paths (slash / backslash) ────────
@@ -3314,8 +3772,8 @@ public class Main extends JFrame {
 
         // Console Output
         consoleOutput = new JTextArea();
-        consoleOutput.setBackground(configService.isDarkMode() ? new Color(25, 25, 25) : new Color(245, 247, 250));
-        consoleOutput.setForeground(configService.isDarkMode() ? new Color(0, 220, 0) : new Color(30, 30, 30));
+        consoleOutput.setBackground(UIManager.getColor("TextArea.background"));
+        consoleOutput.setForeground(UIManager.getColor("TextArea.foreground"));
         consoleOutput.setFont(new Font("Monospaced", Font.PLAIN, 13));
         consoleOutput.setEditable(false);
         consoleOutput.setMargin(new Insets(10, 10, 10, 10));
@@ -3598,12 +4056,90 @@ public class Main extends JFrame {
         });
     }
 
+    /**
+     * Scans for ComfyUI installation in the designated folder (~/.comfyui-companion/ComfyUI or configured path).
+     * If not found, prompts the user with a dialog asking if they want to start the setup.
+     * If yes, launches the EnvironmentInstallerDialog.
+     *
+     * @param showDialogIfFound whether to display an informational message if ComfyUI is verified
+     * @return true if ComfyUI is installed; false otherwise
+     */
+    public boolean scanAndVerifyComfyUIInstallation(boolean showDialogIfFound) {
+        if (configService != null) {
+            configService.autoDiscoverPaths();
+        }
+
+        Path designatedPath = Paths.get(System.getProperty("user.home"), ".comfyui-companion", "ComfyUI");
+        String currentComfyPath = configService != null ? configService.getComfyUIPath() : "";
+        boolean installed = false;
+        File verifiedDir = null;
+
+        if (currentComfyPath != null && !currentComfyPath.trim().isEmpty()) {
+            File comfyDir = new File(currentComfyPath);
+            if (comfyDir.exists() && comfyDir.isDirectory() && new File(comfyDir, "main.py").exists()) {
+                installed = true;
+                verifiedDir = comfyDir;
+            }
+        }
+
+        if (!installed && Files.exists(designatedPath)) {
+            File designatedDir = designatedPath.toFile();
+            if (designatedDir.exists() && designatedDir.isDirectory() && new File(designatedDir, "main.py").exists()) {
+                installed = true;
+                verifiedDir = designatedDir;
+                if (configService != null) {
+                    configService.setComfyUIPath(designatedDir.getAbsolutePath());
+                }
+            }
+        }
+
+        if (installed) {
+            logger.info("✅ [Scan] ComfyUI installation verified at: " + (verifiedDir != null ? verifiedDir.getAbsolutePath() : currentComfyPath));
+            if (showDialogIfFound) {
+                JOptionPane.showMessageDialog(
+                    this,
+                    "✅ ComfyUI is installed and verified in designated folder:\n" + (verifiedDir != null ? verifiedDir.getAbsolutePath() : currentComfyPath),
+                    "ComfyUI Verified",
+                    JOptionPane.INFORMATION_MESSAGE
+                );
+            }
+            return true;
+        } else {
+            logger.warn("⚠️ [Scan] ComfyUI is not installed in designated folder: " + designatedPath);
+            int choice = JOptionPane.showConfirmDialog(
+                this,
+                "ComfyUI was not found in the designated folder (" + designatedPath + ").\n\nWould you like to start the ComfyUI installation setup now?",
+                "ComfyUI Installation Required",
+                JOptionPane.YES_NO_OPTION,
+                JOptionPane.QUESTION_MESSAGE
+            );
+
+            if (choice == JOptionPane.YES_OPTION) {
+                de.tki.comfymodels.ui.EnvironmentInstallerDialog dialog = new de.tki.comfymodels.ui.EnvironmentInstallerDialog(
+                    this,
+                    bootstrapper,
+                    configService,
+                    profileManager,
+                    () -> {
+                        syncBridgeFiles();
+                        refreshVersions();
+                    }
+                );
+                dialog.setVisible(true);
+            }
+            return false;
+        }
+    }
+
     private void showSettingsMenu(JButton parent) {
         JPopupMenu menu = new JPopupMenu();
         
         JMenuItem pathsItem = new JMenuItem("📁 Directories...");
         pathsItem.addActionListener(e -> showPathsDialog());
         
+        JMenuItem scanItem = new JMenuItem("🔍 Scan ComfyUI Installation...");
+        scanItem.addActionListener(e -> scanAndVerifyComfyUIInstallation(true));
+
         JMenuItem apiItem = new JMenuItem("🔑 AI & API Keys...");
         apiItem.addActionListener(e -> showApiKeysDialog());
         
@@ -3617,6 +4153,7 @@ public class Main extends JFrame {
         exitItem.addActionListener(e -> performAppExit());
 
         menu.add(pathsItem);
+        menu.add(scanItem);
         menu.add(apiItem);
         menu.addSeparator();
         menu.add(bridgeItem);
@@ -5272,6 +5809,12 @@ public class Main extends JFrame {
         pathsBtn.setMaximumSize(new Dimension(360, 40));
         pathsBtn.addActionListener(e -> showPathsDialog());
 
+        JButton scanComfyBtn = new JButton("🔍 Scan ComfyUI Installation...");
+        scanComfyBtn.setFont(btnFont);
+        scanComfyBtn.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        scanComfyBtn.setMaximumSize(new Dimension(360, 40));
+        scanComfyBtn.addActionListener(e -> scanAndVerifyComfyUIInstallation(true));
+
         JButton repairBtn = new JButton("🛠️ Repair Environment Automatically...");
         repairBtn.setFont(btnFont);
         repairBtn.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
@@ -5398,6 +5941,8 @@ public class Main extends JFrame {
         left.add(pathsHeader);
         left.add(Box.createVerticalStrut(20));
         left.add(pathsBtn);
+        left.add(Box.createVerticalStrut(10));
+        left.add(scanComfyBtn);
         left.add(Box.createVerticalStrut(10));
         left.add(repairBtn);
         left.add(Box.createVerticalStrut(10));

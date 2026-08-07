@@ -10,13 +10,13 @@ public class ThemeManager {
     private static boolean isDarkMode = true;
     private static final List<Runnable> observers = new ArrayList<>();
 
-    // --- CORPORATE DARK MODE COLORS ---
-    public static final Color APP_BG_COLOR = new Color(18, 19, 22);
-    public static final Color CARD_BG_COLOR = new Color(30, 34, 42);
-    public static final Color TEXT_PRIMARY = Color.WHITE;
+    // --- SCI-FI CYBERSPACE DARK MODE COLORS ---
+    public static final Color APP_BG_COLOR = new Color(0, 0, 0); // Pure Black
+    public static final Color CARD_BG_COLOR = new Color(0, 0, 0); // Pure Black
+    public static final Color TEXT_PRIMARY = new Color(0, 255, 255); // Neon Cyan
     public static final Color TEXT_SECONDARY = new Color(180, 190, 205);
-    public static final Color BORDER_COLOR = new Color(255, 255, 255, 30);
-    public static final Color ACCENT_COLOR_PRIMARY = new Color(0, 120, 215); // Corporate Blue
+    public static final Color BORDER_COLOR = new Color(0, 255, 255); // Neon Cyan
+    public static final Color ACCENT_COLOR_PRIMARY = new Color(0, 255, 255); // Neon Cyan
     
     // --- LIGHT MODE COLORS ---
     public static final Color LIGHT_BG = new Color(245, 245, 250);

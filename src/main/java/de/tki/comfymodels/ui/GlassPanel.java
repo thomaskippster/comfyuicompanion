@@ -20,6 +20,13 @@ public class GlassPanel extends JPanel {
     }
 
     @Override
+    public void updateUI() {
+        super.updateUI();
+        // Repaint when FlatLaf theme changes so we pick up new UIManager colors
+        repaint();
+    }
+
+    @Override
     protected void paintComponent(Graphics g) {
         // Nicht super.paintComponent aufrufen, da wir custom zeichnen
         Graphics2D g2 = (Graphics2D) g.create();

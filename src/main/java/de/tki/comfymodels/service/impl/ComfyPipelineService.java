@@ -193,6 +193,9 @@ public class ComfyPipelineService {
     }
 
     public static JSONObject convertUiToApi(JSONObject uiWorkflow) {
+        if (uiWorkflow != null && uiWorkflow.has("definitions") && uiWorkflow.getJSONObject("definitions").has("subgraphs")) {
+            uiWorkflow = flattenWorkflow(uiWorkflow);
+        }
         JSONObject apiPayload = new JSONObject();
         JSONObject apiPrompt = new JSONObject();
         apiPayload.put("prompt", apiPrompt);

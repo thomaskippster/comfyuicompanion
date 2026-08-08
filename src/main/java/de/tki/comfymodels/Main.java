@@ -400,13 +400,16 @@ public class Main extends JFrame {
 
     public void setupTheme(boolean darkMode) {
         try {
+            // Sync ThemeManager so GlassPanel/CardPanel paint with correct colors
+            de.tki.comfymodels.ui.ThemeManager.setDarkMode(darkMode);
             // Global arcs for a sci-fi feel - ZERO rounded corners
             UIManager.put("Button.arc", 0);
             UIManager.put("Component.arc", 0);
             UIManager.put("TextComponent.arc", 0);
             UIManager.put("ProgressBar.arc", 0);
             UIManager.put("TitlePane.unifiedBackground", true);
-            UIManager.put("CheckBox.iconSize", 20);
+            // Note: "CheckBox.iconSize" is not a valid FlatLaf style; use icon Dimension instead
+            UIManager.put("CheckBox.icon.focusWidth", 1);
 
             // Clean, highly readable typography
             Font defaultFont = new Font("Segoe UI", Font.PLAIN, 13);
@@ -419,21 +422,21 @@ public class Main extends JFrame {
             UIManager.put("defaultFont", defaultFont);
 
             if (darkMode) {
-                // SCI-FI CYBERSPACE Dark Palette
-                Color nodeBg = new javax.swing.plaf.ColorUIResource(0, 0, 0); // Absolute Black
-                Color comfySurface = new javax.swing.plaf.ColorUIResource(0, 0, 0); 
-                Color comfyAccent = new javax.swing.plaf.ColorUIResource(0, 255, 255); // Neon Cyan
-                Color comfyText = new javax.swing.plaf.ColorUIResource(0, 255, 255); // Neon Cyan text
-                Color comfyBorder = new javax.swing.plaf.ColorUIResource(0, 255, 255); // Neon Cyan Borders
-                Color componentBg = new javax.swing.plaf.ColorUIResource(0, 0, 0); // Absolute Black Inputs/Buttons
-                Color paleBlue = new javax.swing.plaf.ColorUIResource(0, 100, 100); // Dimmed blue for inactive
+                // SCI-FI CYBERSPACE Dark Palette - Redesign
+                Color nodeBg = new javax.swing.plaf.ColorUIResource(10, 11, 14); // #0a0b0e (Deep blue-black background)
+                Color comfySurface = new javax.swing.plaf.ColorUIResource(10, 11, 14); // #0a0b0e
+                Color componentBg = new javax.swing.plaf.ColorUIResource(24, 27, 33); // #181b21 (Panels/Cards)
+                Color comfyAccent = new javax.swing.plaf.ColorUIResource(30, 190, 170); // #1ebeaa (Subtle Teal/Cyan Accent)
+                Color comfyText = new javax.swing.plaf.ColorUIResource(224, 248, 245); // #e0f8f5 (Soft cyan/white text)
+                Color paleBlue = new javax.swing.plaf.ColorUIResource(112, 138, 144); // #708a90 (Dimmed text/inactive)
+                Color comfyBorder = new javax.swing.plaf.ColorUIResource(42, 46, 56); // #2a2e38 (Subtle panel borders)
 
                 UIManager.put("DefaultBackgroundColor", comfySurface);
                 UIManager.put("Panel.background", nodeBg);
                 UIManager.put("Table.background", componentBg);
-                UIManager.put("TextArea.background", componentBg);
-                UIManager.put("TextField.background", componentBg);
-                UIManager.put("PasswordField.background", componentBg);
+                UIManager.put("TextArea.background", nodeBg); // Console area background
+                UIManager.put("TextField.background", nodeBg); // Search field background
+                UIManager.put("PasswordField.background", nodeBg);
                 
                 UIManager.put("Label.foreground", comfyText);
                 UIManager.put("Table.foreground", comfyText);
@@ -441,7 +444,9 @@ public class Main extends JFrame {
                 UIManager.put("TextField.foreground", comfyText);
                 
                 UIManager.put("Table.selectionBackground", comfyAccent); 
-                UIManager.put("Table.selectionForeground", Color.BLACK);
+                UIManager.put("Table.selectionForeground", nodeBg); // Dark text on cyan selection
+                UIManager.put("List.selectionBackground", comfyAccent); 
+                UIManager.put("List.selectionForeground", nodeBg); 
                 UIManager.put("Component.focusedBorderColor", comfyAccent);
                 UIManager.put("Component.borderColor", comfyBorder);
                 UIManager.put("TextComponent.borderWidth", 1);
@@ -450,20 +455,20 @@ public class Main extends JFrame {
                 UIManager.put("Button.background", componentBg);
                 UIManager.put("Button.foreground", comfyText);
                 UIManager.put("Button.focusedBackground", comfyAccent); 
-                UIManager.put("Button.hoverBackground", comfyAccent); // Invert on hover
-                UIManager.put("Button.hoverForeground", Color.BLACK); // Invert text on hover
+                UIManager.put("Button.hoverBackground", comfyAccent); 
+                UIManager.put("Button.hoverForeground", nodeBg); 
                 UIManager.put("Button.pressedBackground", paleBlue);
                 UIManager.put("Button.borderColor", comfyBorder);
                 UIManager.put("Button.borderWidth", 1);
                 
                 UIManager.put("ScrollBar.track", comfySurface);
-                UIManager.put("ScrollBar.thumb", paleBlue);
+                UIManager.put("ScrollBar.thumb", comfyBorder);
                 
                 UIManager.put("TabbedPane.selectedBackground", nodeBg);
                 UIManager.put("TabbedPane.selectedForeground", comfyAccent);
                 UIManager.put("TabbedPane.foreground", paleBlue);
                 UIManager.put("TabbedPane.underlineColor", comfyAccent);
-                UIManager.put("TabbedPane.underlineHeight", 2);
+                UIManager.put("TabbedPane.underlineHeight", 3);
 
                 // ProgressBar custom styles
                 UIManager.put("ProgressBar.foreground", comfyAccent);
@@ -473,16 +478,16 @@ public class Main extends JFrame {
                 // Card panel & UI styling variables
                 UIManager.put("Card.background", componentBg); 
                 UIManager.put("Card.border", comfyBorder); 
-                UIManager.put("Card.placeholder", new Color(0, 0, 0, 255)); 
+                UIManager.put("Card.placeholder", new Color(10, 11, 14, 200)); 
                 UIManager.put("Card.placeholderBorder", comfyBorder);
                 UIManager.put("Toolbar.customBg", componentBg);
-                UIManager.put("SlimStat.titleForeground", paleBlue);
+                UIManager.put("SlimStat.titleForeground", comfyText);
                 UIManager.put("SlimStat.valueForeground", comfyAccent);
                 UIManager.put("SlimStat.barForeground", comfyAccent);
                 UIManager.put("SlimStat.barBackground", nodeBg);
                 UIManager.put("MainTabs.gradientStart", nodeBg);
                 UIManager.put("MainTabs.gradientEnd", nodeBg);
-                UIManager.put("MainTabs.glowStart", comfyAccent);
+                UIManager.put("MainTabs.glowStart", new Color(30, 190, 170, 10)); // Very faint subtle cyan glow
                 UIManager.put("PromptLab.presetForeground", comfyAccent);
                 
                 UIManager.setLookAndFeel(new FlatDarkLaf());
@@ -492,7 +497,7 @@ public class Main extends JFrame {
                     "DefaultBackgroundColor", "Panel.background", "Table.background", "TextArea.background",
                     "TextField.background", "PasswordField.background", "Label.foreground",
                     "Table.foreground", "TextArea.foreground", "Table.selectionBackground",
-                    "Table.selectionForeground", "Component.focusedBorderColor", "Separator.foreground",
+                    "Table.selectionForeground", "List.selectionBackground", "List.selectionForeground", "Component.focusedBorderColor", "Separator.foreground",
                     "Button.background", "Button.foreground", "Button.focusedBackground",
                     "Button.hoverBackground", "Button.pressedBackground", "Button.borderColor",
                     "ScrollBar.track", "ScrollBar.thumb", "TabbedPane.selectedBackground",
@@ -891,11 +896,13 @@ public class Main extends JFrame {
                 int h = getHeight();
                 
                 boolean dark = configService.isDarkMode();
-                Color bgColor = dark ? new Color(25, 30, 40, 100) : new Color(255, 255, 255, 120);
+                // Deep dark background for header
+                Color bgColor = dark ? new Color(10, 11, 14, 230) : new Color(255, 255, 255, 120);
                 g2.setColor(bgColor);
                 g2.fillRect(0, 0, w, h);
                 
-                g2.setColor(dark ? new Color(0, 255, 204, 40) : new Color(0, 120, 150, 30));
+                // Vibrant cyan accent line for dark mode
+                g2.setColor(dark ? new Color(38, 255, 223, 150) : new Color(0, 120, 150, 30));
                 g2.fillRect(0, h - 1, w, 1);
                 
                 g2.dispose();
@@ -914,16 +921,16 @@ public class Main extends JFrame {
             public void updateUI() {
                 super.updateUI();
                 if (configService != null) {
-                    setForeground(configService.isDarkMode() ? new Color(0, 255, 204) : new Color(0, 102, 204));
+                    setForeground(configService.isDarkMode() ? new Color(30, 190, 170) : new Color(0, 102, 204));
                 }
             }
         };
         titleLabel.setFont(new Font("SansSerif", Font.BOLD, 18));
-        titleLabel.setForeground(configService.isDarkMode() ? new Color(0, 255, 204) : new Color(0, 102, 204));
+        titleLabel.setForeground(configService.isDarkMode() ? new Color(30, 190, 170) : new Color(0, 102, 204));
         
         JLabel tagline = new JLabel("|  Unified AI Model Manager & Image Lab");
         tagline.setFont(new Font("SansSerif", Font.ITALIC, 11));
-        tagline.setForeground(Color.GRAY);
+        tagline.setForeground(configService.isDarkMode() ? new Color(112, 138, 144) : Color.GRAY);
         
         leftHeader.add(logoLabel);
         leftHeader.add(titleLabel);
@@ -935,11 +942,11 @@ public class Main extends JFrame {
         
         JLabel activeProfileLabel = new JLabel("👤 Profile: Loading...");
         activeProfileLabel.setFont(new Font("SansSerif", Font.PLAIN, 12));
-        activeProfileLabel.setForeground(Color.GRAY);
+        activeProfileLabel.setForeground(configService.isDarkMode() ? new Color(224, 248, 245) : Color.GRAY);
         
         JLabel globalStatusIndicator = new JLabel("Server: Offline 🔴");
         globalStatusIndicator.setFont(new Font("SansSerif", Font.BOLD, 12));
-        globalStatusIndicator.setForeground(Color.GRAY);
+        globalStatusIndicator.setForeground(configService.isDarkMode() ? new Color(112, 138, 144) : Color.GRAY);
         
         JButton quickActionBtn = new JButton("▶ Start");
         quickActionBtn.putClientProperty("JButton.buttonType", "roundRect");
@@ -989,16 +996,16 @@ public class Main extends JFrame {
             if (running) {
                 if (starting) {
                     globalStatusIndicator.setText("Server: Starting 🟡");
-                    globalStatusIndicator.setForeground(new Color(255, 204, 0));
+                    globalStatusIndicator.setForeground(new Color(200, 160, 0)); // More subtle yellow/amber
                     quickActionBtn.setText("⏹ Stop");
                 } else {
                     globalStatusIndicator.setText("Server: Running 🟢");
-                    globalStatusIndicator.setForeground(new Color(0, 204, 150));
+                    globalStatusIndicator.setForeground(new Color(30, 190, 170)); // Subtle Cyan/Teal
                     quickActionBtn.setText("⏹ Stop");
                 }
             } else {
                 globalStatusIndicator.setText("Server: Offline 🔴");
-                globalStatusIndicator.setForeground(Color.GRAY);
+                globalStatusIndicator.setForeground(configService.isDarkMode() ? new Color(112, 138, 144) : Color.GRAY);
                 quickActionBtn.setText("▶ Start");
             }
             

@@ -733,23 +733,22 @@ public class BlueprintGalleryTab extends JPanel {
                 Graphics2D g2 = (Graphics2D) g.create();
                 g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
                 
-                // Pure Black Background
-                g2.setColor(Color.BLACK);
+                // Theme-aware card background
+                g2.setColor(cardBg);
                 g2.fillRect(0, 0, getWidth(), getHeight());
 
-                // Sci-Fi Glowing Neon Cyan Border
-                Color neonCyan = new Color(0, 255, 255);
+                // Theme-aware border
                 g2.setStroke(new BasicStroke(hovered ? 2f : 1f));
                 
                 if (hovered) {
-                    // Outer glow
-                    g2.setColor(new Color(0, 255, 255, 100)); // semi-transparent cyan
+                    // Outer glow using hover border with transparency
+                    g2.setColor(new Color(cardHoverBorder.getRed(), cardHoverBorder.getGreen(), cardHoverBorder.getBlue(), 100));
                     g2.drawRect(1, 1, getWidth()-3, getHeight()-3);
                     g2.drawRect(2, 2, getWidth()-5, getHeight()-5);
                 }
                 
                 // Solid border
-                g2.setColor(neonCyan);
+                g2.setColor(hovered ? cardHoverBorder : cardBorder);
                 g2.drawRect(0, 0, getWidth()-1, getHeight()-1);
                 
                 g2.dispose();
@@ -951,12 +950,12 @@ public class BlueprintGalleryTab extends JPanel {
     }
 
     private void paintBokehFallback(Graphics2D g2, int w, int h, Color[] palette, BlueprintEntry entry) {
-        // Pure black background
-        g2.setColor(Color.BLACK);
+        // Theme-aware fallback background
+        g2.setColor(cardBg);
         g2.fillRect(0, 0, w, h);
 
-        // Cyberpunk grid
-        g2.setColor(new Color(0, 255, 255, 40)); // faint cyan grid
+        // Subtle grid using border color with transparency
+        g2.setColor(new Color(cardBorder.getRed(), cardBorder.getGreen(), cardBorder.getBlue(), 40));
         g2.setStroke(new BasicStroke(0.5f));
         for (int x = 0; x < w; x += 20) g2.drawLine(x, 0, x, h);
         for (int y = 0; y < h; y += 20) g2.drawLine(0, y, w, y);
@@ -967,7 +966,7 @@ public class BlueprintGalleryTab extends JPanel {
         FontMetrics fm = g2.getFontMetrics();
         int ix = (w - fm.stringWidth(icon)) / 2;
         int iy = h / 2 - 4;
-        g2.setColor(new Color(0, 255, 255, 210)); // Neon cyan icon
+        g2.setColor(new Color(textPrimary.getRed(), textPrimary.getGreen(), textPrimary.getBlue(), 210));
         g2.drawString(icon, ix, iy);
     }
 
@@ -2052,7 +2051,6 @@ public class BlueprintGalleryTab extends JPanel {
             chkReadyOnly.setForeground(textSecondary);
             if (darkMode) {
                 chkReadyOnly.putClientProperty("FlatLaf.style", 
-                    "iconSize: 20,20; " +
                     "icon.borderColor: #FFFFFF; " +
                     "icon.selectedBorderColor: #FFFFFF; " +
                     "icon.checkmarkColor: #121318; " +
@@ -2061,7 +2059,6 @@ public class BlueprintGalleryTab extends JPanel {
                 );
             } else {
                 chkReadyOnly.putClientProperty("FlatLaf.style", 
-                    "iconSize: 20,20; " +
                     "icon.borderColor: #121318; " +
                     "icon.selectedBorderColor: #009688; " +
                     "icon.checkmarkColor: #FFFFFF; " +
@@ -2076,7 +2073,6 @@ public class BlueprintGalleryTab extends JPanel {
             chkHideCloud.setForeground(textSecondary);
             if (darkMode) {
                 chkHideCloud.putClientProperty("FlatLaf.style", 
-                    "iconSize: 20,20; " +
                     "icon.borderColor: #FFFFFF; " +
                     "icon.selectedBorderColor: #FFFFFF; " +
                     "icon.checkmarkColor: #121318; " +
@@ -2085,7 +2081,6 @@ public class BlueprintGalleryTab extends JPanel {
                 );
             } else {
                 chkHideCloud.putClientProperty("FlatLaf.style", 
-                    "iconSize: 20,20; " +
                     "icon.borderColor: #121318; " +
                     "icon.selectedBorderColor: #009688; " +
                     "icon.checkmarkColor: #FFFFFF; " +

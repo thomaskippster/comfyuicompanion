@@ -60,5 +60,11 @@ comfyfs/
 *.gif
 *.wav
 output/
-*.onnx
-*.onnx.json
+# Node dependencies
+node_modules/
+**/node_modules/
+
+# Script exceptions
+!build_and_run.bat
+!build_and_run.sh
+

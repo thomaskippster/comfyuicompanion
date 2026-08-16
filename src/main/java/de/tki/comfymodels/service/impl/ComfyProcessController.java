@@ -228,6 +228,7 @@ public class ComfyProcessController {
                 pb.environment().put("PYTHONIOENCODING", "utf-8");
                 pb.environment().put("TERM", "dumb");
                 pb.environment().put("COLUMNS", "120");
+                pb.environment().put("GIT_PYTHON_REFRESH", "quiet");
                 
                 if (profile.envVars() != null) {
                     pb.environment().putAll(profile.envVars());

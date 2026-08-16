@@ -4,16 +4,23 @@
   <img src="assets/icon.png" width="128" height="128" alt="ComfyUI Companion Icon" />
 </p>
 
+<p align="center">
+  <a href="https://github.com/thomaskippster/comfyuicompanion/releases"><img src="https://img.shields.io/github/v/release/thomaskippster/comfyuicompanion?style=for-the-badge&color=blue" alt="Release" /></a>
+  <a href="https://pinokio.computer/item?uri=https://github.com/thomaskippster/comfyuicompanion"><img src="https://img.shields.io/badge/Pinokio-1--Click%20Install-FF6B6B?style=for-the-badge&logo=pinokio&logoColor=white" alt="Pinokio 1-Click Install" /></a>
+  <a href="https://www.oracle.com/java/technologies/downloads/#java21"><img src="https://img.shields.io/badge/Java-21+-ED8B00?style=for-the-badge&logo=openjdk&logoColor=white" alt="Java 21+" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="License" /></a>
+</p>
+
 > **Automate your model management and keep your creative flow uninterrupted.**
 
 <p align="center">
   <video src="https://github.com/thomaskippster/comfyuicompanion/raw/main/assets/comfyuicompanion.mp4" controls width="100%" poster="https://github.com/thomaskippster/comfyuicompanion/raw/main/assets/icon.png"></video>
 </p>
 
-
 ComfyUI Companion is a local companion app designed to eliminate the manual frustration of managing model files for ComfyUI. Instead of hunting down models, downloading them to temporary folders, and manually moving them to `custom_nodes`, `checkpoints`, `loras`, or `vae` folders, ComfyUI Companion automates the entire process. 
 
 From **AI-powered workflow analysis** and **one-click canvas integration** to **reclaiming disk space with cold archives**, this tool ensures your ComfyUI environment is optimized, secure, and always ready to run.
+
 
 ---
 
@@ -145,10 +152,9 @@ The app comes with **10 pre-configured launch profiles**, ordered logically by u
 
 ### Option 2: ⚡ Quick Install (Pinokio)
 If you use [Pinokio](https://pinokio.computer):
-1. Open Pinokio and click **Discover**.
-2. Search for `ComfyUI Companion`.
-3. Click **Download** and click **Install**. 
-4. The script will automatically configure Java, Maven, compile the JAR, and set up the start commands.
+* **1-Click Install:** Click [Install on Pinokio](pinokio://download?uri=https://github.com/thomaskippster/comfyuicompanion) or open the web link [pinokio.computer/item?uri=https://github.com/thomaskippster/comfyuicompanion](https://pinokio.computer/item?uri=https://github.com/thomaskippster/comfyuicompanion).
+* **Or via Pinokio App:** Open Pinokio, paste `https://github.com/thomaskippster/comfyuicompanion` into the address bar, and click **Download** -> **Install**.
+* The script automatically configures OpenJDK 21, Maven, builds the JAR, and manages 1-click start/stop and updates.
 
 ---
 

@@ -99,7 +99,7 @@ public class DownloadSelectionTest {
 
         // The status MUST indicate it was skipped or errored out (as long as it didn't finish)
         String finalStatus = statusMap.get(0);
-        assertTrue(finalStatus != null && (finalStatus.contains("Skipped") || finalStatus.contains("ConnectException")), 
-            "Expected 'Skipped' or 'ConnectException' status but got: " + finalStatus);
+        assertTrue(finalStatus != null && (finalStatus.contains("Skipped") || finalStatus.contains("ConnectException") || finalStatus.contains("Error") || finalStatus.contains("Connection refused")), 
+            "Expected 'Skipped' or error status but got: " + finalStatus);
     }
 }

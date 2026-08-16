@@ -17,7 +17,9 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
 @Service
@@ -27,6 +29,9 @@ public class ComfyRegistryClient implements IComfyRegistryClient {
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
     
+    @Autowired(required = false)
+    private ConfigService configService;
+
     // Default API Endpoint for the Comfy.org Registry/Workflows
     private static final String DEFAULT_API_URL = "https://raw.githubusercontent.com/Comfy-Org/workflow_templates/main/templates/index.json";
 
@@ -38,15 +43,26 @@ public class ComfyRegistryClient implements IComfyRegistryClient {
                 .build();
     }
 
+    private java.io.File getIndexCacheFile() {
+        String baseDir = (configService != null && configService.getAppDataPath() != null)
+                ? configService.getAppDataPath()
+                : (System.getProperty("user.home") + java.io.File.separator + ".comfyui-companion");
+        java.io.File cacheDir = new java.io.File(baseDir, "cache");
+        if (!cacheDir.exists()) cacheDir.mkdirs();
+        return new java.io.File(cacheDir, "registry_index.json");
+    }
+
     @Override
     public CompletableFuture<List<ComfyRegistryWorkflow>> fetchWorkflowsAsync() {
         return fetchWorkflowsAsync(DEFAULT_API_URL);
     }
 
     public CompletableFuture<List<ComfyRegistryWorkflow>> fetchWorkflowsAsync(String apiUrl) {
+        java.io.File cacheFile = getIndexCacheFile();
+
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(apiUrl))
-                .timeout(Duration.ofSeconds(10))
+                .timeout(Duration.ofSeconds(6))
                 .header("Accept", "application/json")
                 .GET()
                 .build();
@@ -56,10 +72,25 @@ public class ComfyRegistryClient implements IComfyRegistryClient {
                     if (response.statusCode() != 200) {
                         throw new RuntimeException("Failed to fetch workflows: HTTP status " + response.statusCode());
                     }
-                    return parseWorkflowsJson(response.body());
+                    String body = response.body();
+                    CompletableFuture.runAsync(() -> {
+                        try {
+                            java.nio.file.Files.writeString(cacheFile.toPath(), body, java.nio.charset.StandardCharsets.UTF_8);
+                        } catch (Exception ignored) {}
+                    });
+                    return parseWorkflowsJson(body);
                 })
                 .exceptionally(ex -> {
-                    logger.error("❌ [ComfyRegistryClient] Error fetching workflows from API: " + ex.getMessage());
+                    logger.warn("⚠️ [ComfyRegistryClient] Network request failed ({}), checking local index cache.", ex.getMessage());
+                    if (cacheFile.exists() && cacheFile.length() > 1000) {
+                        try {
+                            String cachedBody = java.nio.file.Files.readString(cacheFile.toPath(), java.nio.charset.StandardCharsets.UTF_8);
+                            logger.info("ℹ️ [ComfyRegistryClient] Loaded cached index.json from disk.");
+                            return parseWorkflowsJson(cachedBody);
+                        } catch (Exception readEx) {
+                            logger.error("❌ [ComfyRegistryClient] Failed reading local index cache: " + readEx.getMessage());
+                        }
+                    }
                     return getFallbackWorkflows();
                 });
     }
@@ -85,6 +116,7 @@ public class ComfyRegistryClient implements IComfyRegistryClient {
         try {
             JsonNode root = objectMapper.readTree(json);
             List<ComfyRegistryWorkflow> workflows = new ArrayList<>();
+            Set<String> seenNames = new HashSet<>();
 
             if (root.isArray()) {
                 for (JsonNode categoryNode : root) {
@@ -92,8 +124,13 @@ public class ComfyRegistryClient implements IComfyRegistryClient {
                     JsonNode templatesNode = categoryNode.path("templates");
                     if (templatesNode.isArray()) {
                         for (JsonNode tNode : templatesNode) {
-                            ComfyRegistryWorkflow wf = new ComfyRegistryWorkflow();
                             String name = tNode.path("name").asText("");
+                            if (name.isEmpty() || seenNames.contains(name)) {
+                                continue;
+                            }
+                            seenNames.add(name);
+
+                            ComfyRegistryWorkflow wf = new ComfyRegistryWorkflow();
                             String title = tNode.path("title").asText("");
                             String description = tNode.path("description").asText("");
                             String mediaType = tNode.path("mediaType").asText("image");
@@ -101,6 +138,16 @@ public class ComfyRegistryClient implements IComfyRegistryClient {
                             String date = tNode.path("date").asText("");
                             String username = tNode.path("username").asText("Unknown");
                             double usage = tNode.path("usage").asDouble(0.0);
+                            boolean openSource = tNode.path("openSource").asBoolean(true);
+
+                            // Tags
+                            List<String> tags = new ArrayList<>();
+                            JsonNode tagsNode = tNode.path("tags");
+                            if (tagsNode.isArray()) {
+                                for (JsonNode tagNode : tagsNode) {
+                                    tags.add(tagNode.asText());
+                                }
+                            }
 
                             // Required models
                             List<String> models = new ArrayList<>();
@@ -110,6 +157,9 @@ public class ComfyRegistryClient implements IComfyRegistryClient {
                                     models.add(m.asText());
                                 }
                             }
+
+                            boolean isApi = name.toLowerCase().startsWith("api_") || tags.stream().anyMatch(t -> t.equalsIgnoreCase("API"));
+                            wf.setCloudOnly(isApi);
 
                             wf.setId(name);
                             wf.setTitle(title);

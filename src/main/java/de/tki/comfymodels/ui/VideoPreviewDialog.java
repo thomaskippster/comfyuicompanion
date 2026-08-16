@@ -16,7 +16,9 @@ import javafx.geometry.Insets;
 
 import javax.swing.JDialog;
 import javax.swing.JFrame;
+import javax.swing.SwingUtilities;
 import java.awt.Frame;
+import java.awt.Window;
 import javax.swing.WindowConstants;
 import java.io.File;
 import java.net.URI;
@@ -31,7 +33,11 @@ public class VideoPreviewDialog extends JDialog {
     private MediaPlayer mediaPlayer;
 
     public VideoPreviewDialog(Frame owner, String title, File videoFile, boolean darkMode) {
-        super(owner, "Preview: " + title, false);
+        this((Window) owner, title, videoFile, darkMode);
+    }
+
+    public VideoPreviewDialog(Window owner, String title, File videoFile, boolean darkMode) {
+        super(owner, "Preview: " + title, ModalityType.MODELESS);
         setSize(720, 540);
         setLocationRelativeTo(owner);
         setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
@@ -120,6 +126,11 @@ public class VideoPreviewDialog extends JDialog {
 
                 Scene scene = new Scene(root, Color.BLACK);
                 fxPanel.setScene(scene);
+
+                SwingUtilities.invokeLater(() -> {
+                    toFront();
+                    requestFocus();
+                });
             } catch (Exception ex) {
                 javafx.scene.control.Label error = new javafx.scene.control.Label(
                         "Could not open video preview: " + ex.getMessage());

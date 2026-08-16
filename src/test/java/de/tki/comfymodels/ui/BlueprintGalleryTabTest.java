@@ -117,4 +117,96 @@ public class BlueprintGalleryTabTest {
             }
         });
     }
+
+    @Test
+    public void testHiDreamModelStatusWhenNotInstalled() {
+        ModelInfo info = new ModelInfo();
+        info.setName("HiDream");
+        info.setType("checkpoints");
+        
+        try {
+            java.lang.reflect.Method m = BlueprintGalleryTab.class.getDeclaredMethod("getModelStatus", ModelInfo.class);
+            m.setAccessible(true);
+            String status = (String) m.invoke(blueprintGalleryTab, info);
+            assertThat(status).isNotEqualTo("✅ Already exists");
+            assertThat(status).isEqualTo("Idle");
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @Test
+    public void testIdeogramModelStatusWhenNotInstalled() {
+        ModelInfo info = new ModelInfo();
+        info.setName("Ideogram");
+        info.setType("checkpoints");
+        
+        try {
+            java.lang.reflect.Method m = BlueprintGalleryTab.class.getDeclaredMethod("getModelStatus", ModelInfo.class);
+            m.setAccessible(true);
+            String status = (String) m.invoke(blueprintGalleryTab, info);
+            assertThat(status).isNotEqualTo("✅ Already exists");
+            assertThat(status).isEqualTo("Idle");
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @Test
+    public void testFluxKreaDevModelStatusWhenNotInstalled() {
+        ModelInfo info = new ModelInfo();
+        info.setName("Flux.1 Krea Dev");
+        info.setType("checkpoints");
+        
+        try {
+            java.lang.reflect.Method m = BlueprintGalleryTab.class.getDeclaredMethod("getModelStatus", ModelInfo.class);
+            m.setAccessible(true);
+            String status = (String) m.invoke(blueprintGalleryTab, info);
+            assertThat(status).isNotEqualTo("✅ Already exists");
+            assertThat(status).isEqualTo("Idle");
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @Test
+    public void testArchivedModelNotCountedAsReady() {
+        ModelInfo info = new ModelInfo();
+        info.setName("flux2-vae.safetensors");
+        info.setType("vae");
+        
+        // Mock isModelArchived to return true
+        LocalModelValidator mockValidator = org.mockito.Mockito.mock(LocalModelValidator.class);
+        when(mockValidator.isModelActive(any())).thenReturn(false);
+        when(mockValidator.isModelArchived("flux2-vae.safetensors")).thenReturn(true);
+        when(mockValidator.getActiveLocalModelNames()).thenReturn(Collections.emptySet());
+        
+        BlueprintGalleryTab tabWithMock = new BlueprintGalleryTab(
+                configService,
+                modelArchitectureService,
+                lifecycleService,
+                registryClient,
+                mockValidator,
+                workflowDownloader,
+                localModelScanner,
+                archiveService,
+                localAIService,
+                modelSearchService,
+                processTracker
+        );
+        
+        try {
+            java.lang.reflect.Method m = BlueprintGalleryTab.class.getDeclaredMethod("getModelStatus", ModelInfo.class);
+            m.setAccessible(true);
+            String status = (String) m.invoke(tabWithMock, info);
+            assertThat(status).isEqualTo("📦 Archived");
+            
+            java.lang.reflect.Method mDeep = BlueprintGalleryTab.class.getDeclaredMethod("isModelPresentDeep", ModelInfo.class);
+            mDeep.setAccessible(true);
+            boolean present = (boolean) mDeep.invoke(tabWithMock, info);
+            assertThat(present).isFalse();
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
 }

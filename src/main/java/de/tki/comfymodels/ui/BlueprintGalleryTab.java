@@ -42,7 +42,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-import io.metaloom.video4j.Video4j;
 import io.metaloom.video4j.VideoFile;
 import io.metaloom.video4j.VideoFrame;
 import io.metaloom.video4j.Videos;
@@ -88,6 +87,10 @@ public class BlueprintGalleryTab extends JPanel {
     private JLabel lblTitle;
     private JScrollPane scroll;
 
+    private static final HttpClient SHARED_HTTP_CLIENT = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(3))
+            .followRedirects(HttpClient.Redirect.ALWAYS)
+            .build();
     private static final ExecutorService imageLoadExecutor = Executors.newFixedThreadPool(4, r -> {
         Thread t = new Thread(r, "BlueprintPreviewLoader");
         t.setDaemon(true);
@@ -96,7 +99,8 @@ public class BlueprintGalleryTab extends JPanel {
 
     // ── data ──────────────────────────────────────────────────────────────────
     private final List<BlueprintEntry> allEntries = new CopyOnWriteArrayList<>();
-    private final javax.swing.Timer filterDebounceTimer = new javax.swing.Timer(250, e -> {
+    private final java.util.concurrent.atomic.AtomicBoolean isRefreshing = new java.util.concurrent.atomic.AtomicBoolean(false);
+    private final javax.swing.Timer filterDebounceTimer = new javax.swing.Timer(300, e -> {
         applyFilter();
         updateSummary();
     });
@@ -108,6 +112,7 @@ public class BlueprintGalleryTab extends JPanel {
     private boolean initialLoadComplete = false;
     private boolean hasSetInitialDefaultCategory = false;
     private final Set<String> failedPaths = ConcurrentHashMap.newKeySet();
+    private final Set<String> failedUrls = ConcurrentHashMap.newKeySet();
     private Runnable onDataLoadedCallback;
 
     public void setOnDataLoadedCallback(Runnable callback) {
@@ -192,6 +197,8 @@ public class BlueprintGalleryTab extends JPanel {
         setBackground(bgPage);
 
         buildUI();
+        boolean darkMode = configService != null ? configService.isDarkMode() : true;
+        updateTheme(darkMode);
         addComponentListener(new java.awt.event.ComponentAdapter() {
             @Override
             public void componentShown(java.awt.event.ComponentEvent e) {
@@ -206,33 +213,31 @@ public class BlueprintGalleryTab extends JPanel {
 
     private void buildUI() {
         // ── TOP BAR ──────────────────────────────────────────────────────────
-        JPanel topBar = new JPanel(new BorderLayout(12, 0));
+        JPanel topBar = new JPanel();
+        topBar.setLayout(new BoxLayout(topBar, BoxLayout.Y_AXIS));
         topBar.setOpaque(false);
-        topBar.setBorder(new EmptyBorder(16, 22, 10, 22));
+        topBar.setBorder(new EmptyBorder(14, 22, 6, 22));
 
-        // Left: title + summary
+        // Row 1: Left: summary / status, Right: search, category, refresh
+        JPanel row1 = new JPanel(new BorderLayout(12, 0));
+        row1.setOpaque(false);
+
         JPanel titleBlock = new JPanel();
         titleBlock.setLayout(new BoxLayout(titleBlock, BoxLayout.Y_AXIS));
         titleBlock.setOpaque(false);
 
-        lblTitle = new JLabel("Blueprint Gallery");
-        lblTitle.setFont(new Font("SansSerif", Font.BOLD, 22));
-        lblTitle.setForeground(textPrimary);
-
+        lblTitle = new JLabel(" ");
         lblSummary = new JLabel(" ");
-        lblSummary.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        lblSummary.setFont(new Font("SansSerif", Font.PLAIN, 12));
         lblSummary.setForeground(textSecondary);
 
-        titleBlock.add(lblTitle);
-        titleBlock.add(Box.createVerticalStrut(2));
         titleBlock.add(lblSummary);
-        topBar.add(titleBlock, BorderLayout.WEST);
+        row1.add(titleBlock, BorderLayout.WEST);
 
-        // Right: controls (Search + Sort + Filter + Refresh)
-        JPanel controls = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
-        controls.setOpaque(false);
+        JPanel mainControls = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
+        mainControls.setOpaque(false);
 
-        txtSearch = new JTextField(12);
+        txtSearch = new JTextField(14);
         txtSearch.putClientProperty("JTextField.placeholderText", "Search blueprints…");
         txtSearch.setFont(new Font("SansSerif", Font.PLAIN, 12));
         txtSearch.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
@@ -245,10 +250,30 @@ public class BlueprintGalleryTab extends JPanel {
         cbCategory.setFont(new Font("SansSerif", Font.PLAIN, 12));
         cbCategory.addActionListener(e -> applyFilter());
 
-        chkReadyOnly = new JCheckBox("Only workflows with no missing models");
-        chkReadyOnly.setFont(new Font("SansSerif", Font.BOLD, 12));
-        chkReadyOnly.setForeground(textSecondary);
+        JButton btnRefresh = new JButton("🔄  Refresh");
+        btnRefresh.setFont(new Font("SansSerif", Font.PLAIN, 12));
+        btnRefresh.putClientProperty("Button.arc", 999);
+        btnRefresh.addActionListener(e -> refreshAllData(true));
+
+        mainControls.add(txtSearch);
+        mainControls.add(cbCategory);
+        mainControls.add(btnRefresh);
+        row1.add(mainControls, BorderLayout.EAST);
+
+        // Row 2: Dedicated Filter Checkboxes Bar
+        JPanel row2 = new JPanel(new BorderLayout(12, 0));
+        row2.setOpaque(false);
+        row2.setBorder(new EmptyBorder(6, 0, 2, 0));
+
+        JPanel filterControls = new JPanel(new FlowLayout(FlowLayout.RIGHT, 16, 0));
+        filterControls.setOpaque(false);
+
+        chkReadyOnly = new JCheckBox("Ready only (no missing models)");
+        chkReadyOnly.setFont(new Font("SansSerif", Font.BOLD, 11));
+        chkReadyOnly.setForeground(textPrimary);
         chkReadyOnly.setOpaque(false);
+        chkReadyOnly.setFocusPainted(false);
+        chkReadyOnly.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
         chkReadyOnly.addActionListener(e -> {
             chkReadyOnly.revalidate();
             chkReadyOnly.repaint();
@@ -256,27 +281,24 @@ public class BlueprintGalleryTab extends JPanel {
         });
 
         chkHideCloud = new JCheckBox("Hide cloud-only workflows");
-        chkHideCloud.setFont(new Font("SansSerif", Font.BOLD, 12));
-        chkHideCloud.setForeground(textSecondary);
+        chkHideCloud.setFont(new Font("SansSerif", Font.BOLD, 11));
+        chkHideCloud.setForeground(textPrimary);
         chkHideCloud.setOpaque(false);
+        chkHideCloud.setFocusPainted(false);
         chkHideCloud.setSelected(true);
+        chkHideCloud.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
         chkHideCloud.addActionListener(e -> {
             chkHideCloud.revalidate();
             chkHideCloud.repaint();
             applyFilter();
         });
 
-        JButton btnRefresh = new JButton("🔄  Refresh");
-        btnRefresh.setFont(new Font("SansSerif", Font.PLAIN, 12));
-        btnRefresh.putClientProperty("Button.arc", 999);
-        btnRefresh.addActionListener(e -> refreshAllData(true));
+        filterControls.add(chkReadyOnly);
+        filterControls.add(chkHideCloud);
+        row2.add(filterControls, BorderLayout.EAST);
 
-        controls.add(txtSearch);
-        controls.add(cbCategory);
-        controls.add(chkReadyOnly);
-        controls.add(chkHideCloud);
-        controls.add(btnRefresh);
-        topBar.add(controls, BorderLayout.EAST);
+        topBar.add(row1);
+        topBar.add(row2);
 
         // Status line
         lblStatus = new JLabel(" ");
@@ -340,6 +362,13 @@ public class BlueprintGalleryTab extends JPanel {
     }
 
     public void refreshAllData(boolean forceRefresh) {
+        if (!forceRefresh && !isRefreshing.compareAndSet(false, true)) {
+            logger.info("ℹ️ [BlueprintGallery] Refresh already in progress, skipping duplicate call.");
+            return;
+        }
+        if (forceRefresh) {
+            isRefreshing.set(true);
+        }
         hasScanned = true;
         lblStatus.setText("⏳  Fetching workflows and checking local models…");
         previewCache.clear();
@@ -383,8 +412,7 @@ public class BlueprintGalleryTab extends JPanel {
                 // 2. Fetch cloud workflows from Comfy.org API
                 List<ComfyRegistryWorkflow> workflows = registryClient.fetchWorkflowsAsync().get();
 
-                // 3. Map to internal entries (skipping full JSON parsing of all entries on startup)
-                allEntries.clear();
+                // 3. Map to internal entries with indexed fast lookup
                 List<Map<String, Object>> scanResults = Collections.emptyList();
                 if (modelArchitectureService != null) {
                     try {
@@ -395,79 +423,81 @@ public class BlueprintGalleryTab extends JPanel {
                     } catch (Exception ignored) {}
                 }
 
+                Map<String, Map<String, Object>> scanLookup = new HashMap<>();
+                for (Map<String, Object> scan : scanResults) {
+                    String scanName = (String) scan.get("name");
+                    String scanFilename = (String) scan.get("filename");
+                    if (scanName != null) scanLookup.put(scanName.toLowerCase(Locale.ROOT), scan);
+                    if (scanFilename != null) {
+                        String fnLower = scanFilename.toLowerCase(Locale.ROOT);
+                        scanLookup.put(fnLower, scan);
+                        if (fnLower.endsWith(".json")) {
+                            scanLookup.put(fnLower.substring(0, fnLower.length() - 5), scan);
+                        }
+                    }
+                }
+
+                List<BlueprintEntry> loadedEntries = new ArrayList<>();
+                Set<String> seenIds = new HashSet<>();
+
                 for (ComfyRegistryWorkflow wf : workflows) {
+                    String wfId = wf.getId() != null ? wf.getId() : wf.getTitle();
+                    if (wfId == null || !seenIds.add(wfId)) {
+                        continue;
+                    }
+
                     BlueprintEntry entry = new BlueprintEntry(wf);
                     
-                    // Match with scanned results from ModelArchitectureService
+                    // Match with scanned results from ModelArchitectureService via O(1) lookup
                     Map<String, Object> matchedScan = null;
-                    String wfId = wf.getId();
-                    String wfTitle = wf.getTitle();
-                    for (Map<String, Object> scan : scanResults) {
-                        String scanFilename = (String) scan.get("filename");
-                        String scanName = (String) scan.get("name");
-                        
-                        // Check match by title
-                        if (scanName != null && wfTitle != null && scanName.equalsIgnoreCase(wfTitle)) {
-                            matchedScan = scan;
-                            break;
-                        }
-                        // Check match by ID / filename
-                        if (scanFilename != null && wfId != null && 
-                            (scanFilename.equalsIgnoreCase(wfId + ".json") || scanFilename.equalsIgnoreCase(wfId))) {
-                            matchedScan = scan;
-                            break;
-                        }
-                        if (scanName != null && wfId != null && scanName.equalsIgnoreCase(wfId)) {
-                            matchedScan = scan;
-                            break;
+                    if (wfId != null) matchedScan = scanLookup.get(wfId.toLowerCase(Locale.ROOT));
+                    if (matchedScan == null && wf.getTitle() != null) {
+                        matchedScan = scanLookup.get(wf.getTitle().toLowerCase(Locale.ROOT));
+                    }
+
+                    List<ModelInfo> resolved = null;
+                    if (matchedScan != null) {
+                        Object reqObj = matchedScan.get("requiredModels");
+                        resolved = extractModelInfos(reqObj, mapper);
+                    }
+                    if ((resolved == null || resolved.isEmpty()) && localModelValidator != null) {
+                        if (wfId != null) resolved = localModelValidator.getCachedModelsForWorkflow(wfId);
+                        if ((resolved == null || resolved.isEmpty()) && wf.getTitle() != null) {
+                            resolved = localModelValidator.getCachedModelsForWorkflow(wf.getTitle());
                         }
                     }
 
-                    if (matchedScan != null) {
-                        Object reqObj = matchedScan.get("requiredModels");
-                        List<ModelInfo> resolved = extractModelInfos(reqObj, mapper);
-                        if (!resolved.isEmpty()) {
-                            entry.requiredModels.clear();
-                            entry.requiredModels.addAll(resolved);
-                        }
+                    if (resolved != null && !resolved.isEmpty()) {
+                        entry.requiredModels.clear();
+                        entry.requiredModels.addAll(resolved);
+                        entry.status = computeStatusInternal(entry);
                     } else if (wf.getRequiredModelInfos() != null && !wf.getRequiredModelInfos().isEmpty()) {
                         entry.requiredModels.clear();
                         entry.requiredModels.addAll(wf.getRequiredModelInfos());
-                    } else if (wf.getRequiredModels() != null && !wf.getRequiredModels().isEmpty()) {
-                        // Populate entry.requiredModels with high-level models from index.json directly
-                        for (String mName : wf.getRequiredModels()) {
-                            ModelInfo info = new ModelInfo();
-                            info.setName(mName);
-                            info.setType(inferTypeFromFilename(mName));
-                            entry.requiredModels.add(info);
+                        entry.status = computeStatusInternal(entry);
+                    } else {
+                        // We don't have the actual models parsed yet. Set status to Unknown and fetch asynchronously.
+                        entry.status = new BlueprintStatus(0, 0, new ArrayList<>()); // Temporary unknown status
+                        if (localModelValidator != null) {
+                            localModelValidator.validateWorkflowModelsAsync(wf).thenAccept(v -> {
+                                SwingUtilities.invokeLater(() -> {
+                                    entry.requiredModels.clear();
+                                    if (wf.getRequiredModelInfos() != null) {
+                                        entry.requiredModels.addAll(wf.getRequiredModelInfos());
+                                    }
+                                    entry.status = computeStatusInternal(entry);
+                                    // Trigger a re-render of this specific card or the whole gallery
+                                    applyFilter();
+                                });
+                            });
                         }
                     }
 
-                    entry.status = computeStatusInternal(entry);
-                    allEntries.add(entry);
-
-                    // If empty requiredModels OR no actual model files (high-level fallback), download/validate async in background
-                    boolean needDetailedValidation = entry.requiredModels.isEmpty() || !hasActualModelFiles(entry.requiredModels);
-                    if (needDetailedValidation && wf.getJsonDownloadUrl() != null) {
-                        localModelValidator.validateWorkflowModelsAsync(wf).thenRun(() -> {
-                            entry.requiredModels.clear();
-                            if (wf.getRequiredModelInfos() != null && !wf.getRequiredModelInfos().isEmpty()) {
-                                entry.requiredModels.addAll(wf.getRequiredModelInfos());
-                            } else if (wf.getRequiredModels() != null) {
-                                for (String mName : wf.getRequiredModels()) {
-                                    ModelInfo info = new ModelInfo();
-                                    info.setName(mName);
-                                    info.setType(inferTypeFromFilename(mName));
-                                    entry.requiredModels.add(info);
-                                }
-                            }
-                            entry.status = computeStatusInternal(entry);
-                            SwingUtilities.invokeLater(() -> {
-                                filterDebounceTimer.restart();
-                            });
-                        });
-                    }
+                    loadedEntries.add(entry);
                 }
+
+                allEntries.clear();
+                allEntries.addAll(loadedEntries);
 
                 SwingUtilities.invokeLater(() -> {
                     updateCategoryComboBox();
@@ -486,10 +516,12 @@ public class BlueprintGalleryTab extends JPanel {
                 });
 
             } catch (Exception e) {
-                logger.error("❌ [BlueprintGallery] Refresh failed: " + e.getMessage());
+                logger.error("❌ [BlueprintGallery] Refresh failed: " + e.getMessage(), e);
                 SwingUtilities.invokeLater(() -> {
                     lblStatus.setText("❌ Failed to fetch registry data: " + e.getMessage());
                 });
+            } finally {
+                isRefreshing.set(false);
             }
         }, "BlueprintGalleryRefresh").start();
     }
@@ -536,20 +568,6 @@ public class BlueprintGalleryTab extends JPanel {
             cbCategory.addItem(cat);
         }
 
-        if (!hasSetInitialDefaultCategory) {
-            String imageCat = null;
-            for (String cat : categories) {
-                if ("Image".equalsIgnoreCase(cat)) {
-                    imageCat = cat;
-                    break;
-                }
-            }
-            if (imageCat != null) {
-                selected = imageCat;
-                hasSetInitialDefaultCategory = true;
-            }
-        }
-
         if (selected != null) {
             cbCategory.setSelectedItem(selected);
         } else {
@@ -566,7 +584,6 @@ public class BlueprintGalleryTab extends JPanel {
         
         final int scrollVal = scroll != null ? scroll.getVerticalScrollBar().getValue() : 0;
 
-        scaledPreviewCache.clear();
         String filter = txtSearch.getText().toLowerCase(Locale.ROOT).trim();
         String selectedCategory = (String) cbCategory.getSelectedItem();
         galleryWrapper.removeAll();
@@ -834,7 +851,7 @@ public class BlueprintGalleryTab extends JPanel {
                         if (entry.registryWorkflow != null && entry.registryWorkflow.isVideoPreview()) {
                             // Double click = open the video player; single click = show details.
                             if (e.getClickCount() == 2) {
-                                playVideoPreview(entry);
+                                playVideoPreview(entry, SwingUtilities.getWindowAncestor(BlueprintGalleryTab.this), null);
                             } else if (e.getClickCount() == 1) {
                                 showDetails(entry, status);
                             }
@@ -1068,30 +1085,77 @@ public class BlueprintGalleryTab extends JPanel {
     }
 
 
+    private File getPreviewDiskCacheDir() {
+        File dir = new File(configService != null ? configService.getAppDataPath() : System.getProperty("user.home") + File.separator + ".comfyuicompanion", "cache" + File.separator + "previews");
+        if (!dir.exists()) {
+            dir.mkdirs();
+        }
+        return dir;
+    }
+
+    private String hashUrl(String url) {
+        try {
+            java.security.MessageDigest md = java.security.MessageDigest.getInstance("MD5");
+            byte[] hash = md.digest(url.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder();
+            for (byte b : hash) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.toString();
+        } catch (Exception e) {
+            return Integer.toHexString(url.hashCode());
+        }
+    }
+
     private Image readImageNoJavaFX(String urlStr) {
-        int maxRetries = 3;
-        int delayMs = 500;
+        if (urlStr == null || urlStr.trim().isEmpty()) return null;
+        if (failedUrls.contains(urlStr)) return null;
+
+        String cleanUrl = urlStr.toLowerCase();
+        int qIdx = cleanUrl.indexOf('?');
+        if (qIdx > 0) cleanUrl = cleanUrl.substring(0, qIdx);
+
+        String ext = ".png";
+        if (cleanUrl.endsWith(".webp")) ext = ".webp";
+        else if (cleanUrl.endsWith(".mp4")) ext = ".mp4";
+        else if (cleanUrl.endsWith(".webm")) ext = ".webm";
+        else if (cleanUrl.endsWith(".gif")) ext = ".gif";
+
+        boolean isVideo = cleanUrl.endsWith(".mp4") || cleanUrl.endsWith(".webm") || cleanUrl.endsWith(".mov");
+
+        File cacheDir = getPreviewDiskCacheDir();
+        File cachedFile = new File(cacheDir, hashUrl(urlStr) + ext);
+
+        // 1. Check persistent disk cache first!
+        if (cachedFile.exists() && cachedFile.length() > 0) {
+            try {
+                if (!isVideo) {
+                    BufferedImage img = ImageIO.read(cachedFile);
+                    if (img != null) return img;
+                }
+                return readImageFromFile(cachedFile, isVideo, urlStr);
+            } catch (Exception ignored) {}
+        }
+
+        // 2. Fetch via shared HTTP client
+        int maxRetries = 2;
+        int delayMs = 300;
 
         for (int attempt = 1; attempt <= maxRetries; attempt++) {
             try {
-                HttpClient client = HttpClient.newBuilder()
-                        .connectTimeout(Duration.ofMillis(2000))
-                        .build();
                 HttpRequest request = HttpRequest.newBuilder()
                         .uri(URI.create(urlStr))
-                        .timeout(Duration.ofSeconds(15))
+                        .timeout(Duration.ofSeconds(8))
                         .GET().build();
-                java.net.http.HttpResponse<byte[]> response = client.send(request, java.net.http.HttpResponse.BodyHandlers.ofByteArray());
+                java.net.http.HttpResponse<byte[]> response = SHARED_HTTP_CLIENT.send(request, java.net.http.HttpResponse.BodyHandlers.ofByteArray());
                 
                 if (response.statusCode() == 200) {
                     byte[] bytes = response.body();
                     
-                    String cleanUrl = urlStr.toLowerCase();
-                    int qIdx = cleanUrl.indexOf('?');
-                    if (qIdx > 0) cleanUrl = cleanUrl.substring(0, qIdx);
-                    
-                    boolean isVideo = cleanUrl.endsWith(".mp4") || cleanUrl.endsWith(".webm") || cleanUrl.endsWith(".mov");
-                    
+                    try {
+                        Files.write(cachedFile.toPath(), bytes);
+                    } catch (Exception ignored) {}
+
                     if (!isVideo) {
                         try {
                             BufferedImage img = ImageIO.read(new ByteArrayInputStream(bytes));
@@ -1099,88 +1163,71 @@ public class BlueprintGalleryTab extends JPanel {
                         } catch (Exception ignored) {}
                     }
 
-                    // Fallback via Temp File (for OpenCV reading/WebP or Video frames)
-                    String ext = ".tmp";
-                    if (cleanUrl.endsWith(".mp4")) ext = ".mp4";
-                    else if (cleanUrl.endsWith(".webm")) ext = ".webm";
-                    else if (cleanUrl.endsWith(".gif")) ext = ".gif";
-                    else if (cleanUrl.endsWith(".webp")) ext = ".webp";
-                    
-                    // Generate a filename without numbers to prevent OpenCV's CV_IMAGES backend from treating it as an image sequence
-                    String nonce = UUID.randomUUID().toString().replaceAll("[0-9-]", "x");
-                    File tempFile = new File(System.getProperty("java.io.tmpdir"), "blueprint_preview_" + nonce + ext);
-                    tempFile.deleteOnExit();
-                    Files.write(tempFile.toPath(), bytes);
-                    
-                    try {
-                        // Ensure OpenCV native binaries are loaded before Video4j / VideoCapture
-                        try {
-                            de.tki.comfymodels.util.OpenCvLoader.load();
-                        } catch (Throwable ignored) {}
-
-                        if (isVideo) {
-                            try {
-                                Video4j.init();
-                                try (VideoFile vid = Videos.open(tempFile.getAbsolutePath())) {
-                                    vid.seekToFrame(0);
-                                    BufferedImage img = vid.frameToImage();
-                                    if (img != null) {
-                                        return img;
-                                    }
-                                }
-                            } catch (Exception ex) {
-                                logger.debug("Video4j fallback failed for " + urlStr, ex);
-                            }
-                        }
-
-                        Mat mat = Imgcodecs.imread(tempFile.getAbsolutePath());
-
-                        if (mat != null && !mat.empty()) {
-                            MatOfByte buffer = new MatOfByte();
-                            Imgcodecs.imencode(".png", mat, buffer);
-                            return ImageIO.read(new ByteArrayInputStream(buffer.toArray()));
-                        } else {
-                            try {
-                                org.opencv.videoio.VideoCapture cap = new org.opencv.videoio.VideoCapture(tempFile.getAbsolutePath(), org.opencv.videoio.Videoio.CAP_FFMPEG);
-                                if (!cap.isOpened()) {
-                                    // Fallback to default if FFMPEG is missing
-                                    cap = new org.opencv.videoio.VideoCapture(tempFile.getAbsolutePath());
-                                }
-                                if (cap.isOpened()) {
-                                    Mat frame = new Mat();
-                                    if (cap.read(frame) && !frame.empty()) {
-                                        MatOfByte buffer = new MatOfByte();
-                                        Imgcodecs.imencode(".png", frame, buffer);
-                                        cap.release();
-                                        return ImageIO.read(new ByteArrayInputStream(buffer.toArray()));
-                                    }
-                                    cap.release();
-                                }
-                            } catch (Exception ignored) {}
-                        }
-                    } finally {
-                        tempFile.delete();
-                    }
+                    return readImageFromFile(cachedFile, isVideo, urlStr);
                 } else if (response.statusCode() == 404) {
-                    // HTTP 404 means the file does not exist, fail immediately without retry
+                    failedUrls.add(urlStr);
                     break;
-                } else {
-                    logger.error("⚠️ [BlueprintGallery] HTTP " + response.statusCode() + " for: " + urlStr + " (Attempt " + attempt + ")");
                 }
-            } catch (java.net.ConnectException | java.net.http.HttpTimeoutException e) {
-                logger.error("⚠️ [BlueprintGallery] Connection error for: " + urlStr + " (Attempt " + attempt + "): " + e.getMessage());
             } catch (Exception e) {
-                logger.error("⚠️ [BlueprintGallery] Error loading image: " + urlStr + " (Attempt " + attempt + "): " + e.getMessage());
+                logger.debug("⚠️ [BlueprintGallery] Network error for {}: {}", urlStr, e.getMessage());
             }
 
             if (attempt < maxRetries) {
                 try {
-                    Thread.sleep(delayMs * attempt); // Exponential backoff: 500ms, 1000ms
+                    Thread.sleep(delayMs * attempt);
                 } catch (InterruptedException ie) {
                     Thread.currentThread().interrupt();
                     break;
                 }
             }
+        }
+        failedUrls.add(urlStr);
+        return null;
+    }
+
+    private Image readImageFromFile(File file, boolean isVideo, String originalUrl) {
+        try {
+            try {
+                de.tki.comfymodels.util.OpenCvLoader.load();
+            } catch (Throwable ignored) {}
+
+            if (isVideo) {
+                try {
+                    try (VideoFile vid = Videos.open(file.getAbsolutePath())) {
+                        vid.seekToFrame(0);
+                        BufferedImage img = vid.frameToImage();
+                        if (img != null) return img;
+                    }
+                } catch (Throwable ex) {
+                    logger.debug("Video4j fallback failed for " + originalUrl, ex);
+                }
+            }
+
+            Mat mat = Imgcodecs.imread(file.getAbsolutePath());
+            if (mat != null && !mat.empty()) {
+                MatOfByte buffer = new MatOfByte();
+                Imgcodecs.imencode(".png", mat, buffer);
+                return ImageIO.read(new ByteArrayInputStream(buffer.toArray()));
+            } else {
+                try {
+                    org.opencv.videoio.VideoCapture cap = new org.opencv.videoio.VideoCapture(file.getAbsolutePath(), org.opencv.videoio.Videoio.CAP_FFMPEG);
+                    if (!cap.isOpened()) {
+                        cap = new org.opencv.videoio.VideoCapture(file.getAbsolutePath());
+                    }
+                    if (cap.isOpened()) {
+                        Mat frame = new Mat();
+                        if (cap.read(frame) && !frame.empty()) {
+                            MatOfByte buffer = new MatOfByte();
+                            Imgcodecs.imencode(".png", frame, buffer);
+                            cap.release();
+                            return ImageIO.read(new ByteArrayInputStream(buffer.toArray()));
+                        }
+                        cap.release();
+                    }
+                } catch (Throwable ignored) {}
+            }
+        } catch (Throwable t) {
+            logger.debug("OpenCV/Video processing failed for preview: " + originalUrl, t);
         }
         return null;
     }
@@ -1191,14 +1238,14 @@ public class BlueprintGalleryTab extends JPanel {
         Window owner = SwingUtilities.getWindowAncestor(this);
         JDialog dlg = new JDialog(owner instanceof Frame ? (Frame) owner : null,
                 "Blueprint: " + entry.name, true);
-        dlg.setSize(1000, 680);
+        dlg.setSize(1250, 720);
         dlg.setLocationRelativeTo(this);
 
         Color bg = configService.isDarkMode() ? new Color(20, 22, 30) : new Color(245, 247, 250);
 
         JPanel root = new JPanel(new BorderLayout(0, 12));
         root.setBackground(bg);
-        root.setBorder(new EmptyBorder(22, 26, 18, 26));
+        root.setBorder(new EmptyBorder(18, 20, 16, 20));
 
         JLabel title = new JLabel(entry.name);
         title.setFont(new Font("SansSerif", Font.BOLD, 17));
@@ -1217,7 +1264,7 @@ public class BlueprintGalleryTab extends JPanel {
             btnPlayPreview.setForeground(Color.WHITE);
             btnPlayPreview.setFocusPainted(false);
             btnPlayPreview.putClientProperty("Button.arc", 999);
-            btnPlayPreview.addActionListener(evt -> playVideoPreview(entry));
+            btnPlayPreview.addActionListener(evt -> playVideoPreview(entry, dlg, btnPlayPreview));
             JPanel headerRight = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
             headerRight.setOpaque(false);
             headerRight.add(btnPlayPreview);
@@ -1235,7 +1282,7 @@ public class BlueprintGalleryTab extends JPanel {
         if (previewImg != null) {
             JLabel imgLabel = new JLabel();
             imgLabel.setAlignmentX(JComponent.CENTER_ALIGNMENT);
-            int targetW = 900;
+            int targetW = 1100;
             int imgW = previewImg.getWidth(null);
             int imgH = previewImg.getHeight(null);
             if (imgW > 0 && imgH > 0) {
@@ -1244,8 +1291,13 @@ public class BlueprintGalleryTab extends JPanel {
                     targetH = 280;
                     targetW = (int) (imgW * ((double) targetH / imgH));
                 }
-                Image scaled = previewImg.getScaledInstance(targetW, targetH, Image.SCALE_SMOOTH);
-                imgLabel.setIcon(new ImageIcon(scaled));
+                BufferedImage bImg = new BufferedImage(targetW, targetH, BufferedImage.TYPE_INT_ARGB);
+                Graphics2D g2 = bImg.createGraphics();
+                g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+                g2.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_SPEED);
+                g2.drawImage(previewImg, 0, 0, targetW, targetH, null);
+                g2.dispose();
+                imgLabel.setIcon(new ImageIcon(bImg));
                 
                 JPanel imgPanel = new JPanel(new FlowLayout(FlowLayout.CENTER));
                 imgPanel.setOpaque(false);
@@ -1253,17 +1305,26 @@ public class BlueprintGalleryTab extends JPanel {
                 imgPanel.setBorder(new EmptyBorder(0, 0, 14, 0));
                 imgPanel.add(imgLabel);
                 body.add(imgPanel);
-                dlg.setSize(1000, 820);
+                dlg.setSize(1250, 860);
             }
         }
 
         if (!entry.category.isEmpty()) addRow(body, "Category", entry.category);
         if (!entry.description.isEmpty()) {
-            JLabel desc = new JLabel("<html><body style='width:900px'>" +
-                    escapeHtml(entry.description) + "</body></html>");
+            JTextArea desc = new JTextArea(entry.description);
             desc.setFont(new Font("SansSerif", Font.PLAIN, 11));
             desc.setForeground(textSecondary);
+            desc.setLineWrap(true);
+            desc.setWrapStyleWord(true);
+            desc.setEditable(false);
+            desc.setFocusable(false);
+            desc.setOpaque(false);
+            desc.setBorder(null);
             desc.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+            
+            // Limit maximum width to ensure it wraps correctly within the BoxLayout
+            desc.setMaximumSize(new Dimension(1150, Integer.MAX_VALUE));
+
             body.add(Box.createVerticalStrut(6));
             body.add(desc);
             body.add(Box.createVerticalStrut(10));
@@ -1273,10 +1334,38 @@ public class BlueprintGalleryTab extends JPanel {
         addRow(body, "Available locally", String.valueOf(status.presentCount));
         addRow(body, "Missing", String.valueOf(status.missingCount));
 
-        if (!entry.requiredModels.isEmpty()) {
+        if (entry.requiredModels.isEmpty()) {
+            if (!entry.hasBeenValidated) {
+                entry.hasBeenValidated = true;
+                body.add(Box.createVerticalStrut(12));
+                JLabel loadingLbl = new JLabel("⏳ Analyzing workflow JSON for required models...");
+                loadingLbl.setFont(new Font("SansSerif", Font.ITALIC, 12));
+                loadingLbl.setForeground(textSecondary);
+                body.add(loadingLbl);
+                if (localModelValidator != null) {
+                    localModelValidator.validateWorkflowModelsAsync(entry.registryWorkflow).thenAccept(v -> {
+                        SwingUtilities.invokeLater(() -> {
+                            entry.requiredModels.clear();
+                            if (entry.registryWorkflow.getRequiredModelInfos() != null) {
+                                entry.requiredModels.addAll(entry.registryWorkflow.getRequiredModelInfos());
+                            }
+                            entry.status = computeStatusInternal(entry);
+                            dlg.dispose();
+                            showDetails(entry, entry.status); // Reopen with data
+                        });
+                    });
+                }
+            } else {
+                body.add(Box.createVerticalStrut(12));
+                JLabel noModelsLbl = new JLabel("✔ No external models required for this workflow.");
+                noModelsLbl.setFont(new Font("SansSerif", Font.ITALIC, 12));
+                noModelsLbl.setForeground(new Color(34, 197, 130)); // GREEN_READY
+                body.add(noModelsLbl);
+            }
+        } else {
             body.add(Box.createVerticalStrut(12));
             JLabel hdr = new JLabel("Required Models Status:");
-            hdr.setFont(new Font("SansSerif", Font.BOLD, 12));
+            hdr.setFont(new Font("SansSerif", Font.PLAIN, 12));
             hdr.setForeground(textPrimary);
             hdr.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
             body.add(hdr);
@@ -1326,14 +1415,18 @@ public class BlueprintGalleryTab extends JPanel {
             table.setForeground(textPrimary);
             table.getTableHeader().setBackground(bg);
             table.getTableHeader().setForeground(textSecondary);
-            table.getTableHeader().setFont(new Font("SansSerif", Font.BOLD, 11));
+            table.getTableHeader().setFont(new Font("SansSerif", Font.PLAIN, 11));
             table.setAutoResizeMode(JTable.AUTO_RESIZE_ALL_COLUMNS);
 
-            // Set column width distribution to ratio 5.5 : 1.2 : 1.0 : 1.3
-            table.getColumnModel().getColumn(0).setPreferredWidth(550); // Model Name
-            table.getColumnModel().getColumn(1).setPreferredWidth(120); // Type
-            table.getColumnModel().getColumn(2).setPreferredWidth(100); // Size
-            table.getColumnModel().getColumn(3).setPreferredWidth(130); // Status
+            // Set column widths so Model Name takes primary weight while Type, Size, and Status stay clear and legible
+            table.getColumnModel().getColumn(0).setPreferredWidth(620); // Model Name
+            table.getColumnModel().getColumn(0).setMinWidth(350);
+            table.getColumnModel().getColumn(1).setPreferredWidth(150); // Type
+            table.getColumnModel().getColumn(1).setMinWidth(100);
+            table.getColumnModel().getColumn(2).setPreferredWidth(120); // Size
+            table.getColumnModel().getColumn(2).setMinWidth(80);
+            table.getColumnModel().getColumn(3).setPreferredWidth(280); // Status
+            table.getColumnModel().getColumn(3).setMinWidth(180);
 
             table.setDefaultRenderer(Object.class, new javax.swing.table.DefaultTableCellRenderer() {
                 @Override
@@ -1362,8 +1455,9 @@ public class BlueprintGalleryTab extends JPanel {
             });
 
             JScrollPane tblScroll = new JScrollPane(table);
-            tblScroll.setPreferredSize(new Dimension(900, 180));
-            tblScroll.setMaximumSize(new Dimension(Integer.MAX_VALUE, 180));
+            int calcHeight = Math.min(220, Math.max(80, (entry.requiredModels.size() + 1) * 26 + 6));
+            tblScroll.setPreferredSize(new Dimension(1190, calcHeight));
+            tblScroll.setMaximumSize(new Dimension(Integer.MAX_VALUE, calcHeight));
             tblScroll.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
             tblScroll.getViewport().setBackground(bg);
             body.add(tblScroll);
@@ -1527,36 +1621,89 @@ public class BlueprintGalleryTab extends JPanel {
     }
 
     /**
-     * Downloads the entry preview (if remote) into a temp file and opens
-     * a self-contained video player dialog. For image previews this method
-     * just opens the URL in the OS default viewer.
+     * Downloads the entry preview (if remote) into a temp or cache file and opens
+     * a self-contained video player dialog in the foreground on top of the parent window.
      */
     private void playVideoPreview(BlueprintEntry entry) {
+        playVideoPreview(entry, null, null);
+    }
+
+    private void playVideoPreview(BlueprintEntry entry, Window parent, JButton triggerBtn) {
         String url = entry.previewPath;
         if (url == null || url.isEmpty()) return;
-        // Download to a temp file so the player can stream from a local path.
-        try {
-            String ext = ".mp4";
-            String lower = url.toLowerCase();
-            if (lower.endsWith(".webm")) ext = ".webm";
-            else if (lower.endsWith(".mov")) ext = ".mov";
-            String nonce = java.util.UUID.randomUUID().toString().replaceAll("[0-9-]", "x");
-            File tmp = new File(System.getProperty("java.io.tmpdir"),
-                "blueprint_video_" + nonce + ext);
-            tmp.deleteOnExit();
-            try (java.io.InputStream is = new java.net.URL(url).openStream()) {
-                java.nio.file.Files.copy(is, tmp.toPath(),
-                        java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-            }
-            // Launch a media player dialog.
-            Window owner = SwingUtilities.getWindowAncestor(this);
-            new VideoPreviewDialog(owner instanceof Frame ? (Frame) owner : null,
-                    entry.name, tmp, configService.isDarkMode()).setVisible(true);
-        } catch (Exception ex) {
-            JOptionPane.showMessageDialog(this,
-                    "Could not open video preview: " + ex.getMessage(),
-                    "Video Preview Error", JOptionPane.ERROR_MESSAGE);
+
+        if (triggerBtn != null) {
+            triggerBtn.setEnabled(false);
+            triggerBtn.setText("⏳ Loading Preview...");
         }
+
+        Window actualOwner = parent != null ? parent : SwingUtilities.getWindowAncestor(this);
+
+        CompletableFuture.supplyAsync(() -> {
+            try {
+                String ext = ".mp4";
+                String lower = url.toLowerCase(Locale.ROOT);
+                if (lower.endsWith(".webm")) ext = ".webm";
+                else if (lower.endsWith(".mov")) ext = ".mov";
+
+                File cacheDir = getPreviewDiskCacheDir();
+                File cachedFile = new File(cacheDir, hashUrl(url) + ext);
+
+                if (cachedFile.exists() && cachedFile.length() > 0) {
+                    return cachedFile;
+                }
+
+                // Download to a temp file or cache file so the player can stream from a local path.
+                String nonce = java.util.UUID.randomUUID().toString().replaceAll("[0-9-]", "x");
+                File tmp = new File(System.getProperty("java.io.tmpdir"), "blueprint_video_" + nonce + ext);
+                tmp.deleteOnExit();
+
+                try (java.io.InputStream is = new java.net.URL(url).openStream()) {
+                    java.nio.file.Files.copy(is, tmp.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                }
+
+                // Also try saving to disk cache if possible
+                try {
+                    if (!cachedFile.exists()) {
+                        java.nio.file.Files.copy(tmp.toPath(), cachedFile.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                        return cachedFile;
+                    }
+                } catch (Exception ignored) {}
+
+                return tmp;
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        }).thenAccept(videoFile -> SwingUtilities.invokeLater(() -> {
+            if (triggerBtn != null) {
+                triggerBtn.setEnabled(true);
+                triggerBtn.setText("▶  Play Preview");
+            }
+            VideoPreviewDialog previewDialog = new VideoPreviewDialog(
+                    actualOwner,
+                    entry.name,
+                    videoFile,
+                    configService.isDarkMode()
+            );
+            previewDialog.setLocationRelativeTo(actualOwner);
+            previewDialog.setVisible(true);
+            previewDialog.toFront();
+            previewDialog.requestFocus();
+        })).exceptionally(ex -> {
+            SwingUtilities.invokeLater(() -> {
+                if (triggerBtn != null) {
+                    triggerBtn.setEnabled(true);
+                    triggerBtn.setText("▶  Play Preview");
+                }
+                JOptionPane.showMessageDialog(
+                        actualOwner != null ? actualOwner : this,
+                        "Could not open video preview: " + (ex.getCause() != null ? ex.getCause().getMessage() : ex.getMessage()),
+                        "Video Preview Error",
+                        JOptionPane.ERROR_MESSAGE
+                );
+            });
+            return null;
+        });
     }
 
     private void addRow(JPanel parent, String label, String value) {
@@ -1581,113 +1728,6 @@ public class BlueprintGalleryTab extends JPanel {
     }
 
     // ── HELPERS ──────────────────────────────────────────────────────────────
-
-    private boolean isHighLevelModelPresentDeep(String reqName, Set<String> localBaseNames) {
-        if (reqName == null || reqName.isBlank()) return true;
-        String clean = reqName.toLowerCase(Locale.ROOT).trim();
-        
-        // Closed source / API-based models don't require local files
-        if (clean.contains("api") || clean.contains("seedance") || clean.contains("elevenlabs") ||
-            clean.contains("openai") || clean.contains("dall-e") || clean.contains("gpt-image") ||
-            clean.contains("luma") || clean.contains("kling") || clean.contains("runway") ||
-            clean.contains("vidu") || clean.contains("minimax") || clean.contains("happyhorse") ||
-            clean.contains("dream") || clean.contains("sonilo") || clean.contains("sustain") ||
-            clean.contains("midjourney") || clean.contains("google") || clean.contains("gemini") ||
-            clean.contains("anthropic") || clean.contains("claude") || clean.contains("openrouter")) {
-            return true;
-        }
-
-        // Fuzzy matching logic for open-source model families:
-        if (clean.contains("flux")) {
-            for (String local : localBaseNames) {
-                if (local.contains("flux")) return true;
-            }
-            return false;
-        }
-        if (clean.contains("sdxl")) {
-            for (String local : localBaseNames) {
-                if (local.contains("sdxl")) return true;
-            }
-            return false;
-        }
-        if (clean.contains("sd3") || clean.contains("stable diffusion 3")) {
-            for (String local : localBaseNames) {
-                if (local.contains("sd3") || local.contains("sd_3")) return true;
-            }
-            return false;
-        }
-        if (clean.contains("sd1.5") || clean.contains("sd 1.5") || clean.contains("sd15")) {
-            for (String local : localBaseNames) {
-                if (local.contains("sd15") || local.contains("sd1.5") || local.contains("v1-5")) return true;
-            }
-            return false;
-        }
-        if (clean.contains("wan")) {
-            for (String local : localBaseNames) {
-                if (local.contains("wan")) return true;
-            }
-            return false;
-        }
-        if (clean.contains("hunyuan")) {
-            for (String local : localBaseNames) {
-                if (local.contains("hunyuan")) return true;
-            }
-            return false;
-        }
-        if (clean.contains("qwen")) {
-            for (String local : localBaseNames) {
-                if (local.contains("qwen")) return true;
-            }
-            return false;
-        }
-        if (clean.contains("ltx")) {
-            for (String local : localBaseNames) {
-                if (local.contains("ltx")) return true;
-            }
-            return false;
-        }
-        if (clean.equals("vae") || clean.equals("ae") || clean.contains("autoencoder")) {
-            for (String local : localBaseNames) {
-                if (local.contains("vae") || local.contains("ae") || local.contains("autoencoder")) return true;
-            }
-            return false;
-        }
-        if (clean.contains("lora")) {
-            for (String local : localBaseNames) {
-                if (local.contains("lora")) return true;
-            }
-            return false;
-        }
-        if (clean.contains("clip") || clean.contains("t5") || clean.contains("encoder") || clean.contains("text_encoder")) {
-            for (String local : localBaseNames) {
-                if (local.contains("clip") || local.contains("t5") || local.contains("encoder") || local.contains("text_encoder")) return true;
-            }
-            return false;
-        }
-        if (clean.contains("unet") || clean.contains("diffusion")) {
-            for (String local : localBaseNames) {
-                if (local.contains("unet") || local.contains("diffusion")) return true;
-            }
-            return false;
-        }
-
-        // General fallback
-        String[] parts = clean.split("[\\s\\-\\.\\_\\/]+");
-        if (parts.length > 0) {
-            String bestPart = "";
-            for (String part : parts) {
-                if (part.length() > bestPart.length() && !part.equals("model") && !part.equals("text") && !part.equals("image") && !part.equals("edit") && !part.equals("generation")) {
-                    bestPart = part;
-                }
-            }
-            if (bestPart.length() >= 3) {
-                for (String local : localBaseNames) {
-                    if (local.contains(bestPart)) return true;
-                }
-            }
-        }
-        return false;
-    }
 
     private static List<String> getAlternativeFolders(String folder) {
         List<String> list = new ArrayList<>();
@@ -1745,22 +1785,11 @@ public class BlueprintGalleryTab extends JPanel {
             }
         }
 
-        if (base != null && !base.isBlank() && localModelScanner != null) {
+        if (localModelScanner != null) {
             try {
-                java.util.Optional<java.nio.file.Path> found = localModelScanner.findModelWithPrefSizeAndType(
-                        java.nio.file.Paths.get(base), filename, 0L, type);
-                if (found.isPresent()) {
-                    return formatByteSize(java.nio.file.Files.size(found.get()));
-                }
-            } catch (Exception ignored) {}
-        }
-
-        if (archive != null && !archive.isBlank() && localModelScanner != null) {
-            try {
-                java.util.Optional<java.nio.file.Path> found = localModelScanner.findModelWithPrefSize(
-                        java.nio.file.Paths.get(archive), filename, 0L);
-                if (found.isPresent()) {
-                    return formatByteSize(java.nio.file.Files.size(found.get()));
+                java.util.Optional<java.nio.file.Path> cached = localModelScanner.findModelFromCache(filename);
+                if (cached.isPresent()) {
+                    return formatByteSize(java.nio.file.Files.size(cached.get()));
                 }
             } catch (Exception ignored) {}
         }
@@ -1779,16 +1808,40 @@ public class BlueprintGalleryTab extends JPanel {
     }
 
     private String getModelStatus(ModelInfo info) {
-
         if (info == null || info.getName() == null || info.getName().isBlank()) return "Idle";
-        
-        // If it is a high level model name (no extension), fuzzy match it using localModelValidator cache
-        if (!isSupportedModelFile(info.getName())) {
-            Set<String> localBaseNames = localModelValidator.getLocalModelBaseNames();
-            boolean present = isHighLevelModelPresentDeep(info.getName(), localBaseNames);
-            return present ? "✅ Already exists" : "Idle";
+        String reqName = info.getName().trim();
+        String lowerName = reqName.toLowerCase(Locale.ROOT);
+
+        // 1. Fast in-memory check via LocalModelValidator
+        if (localModelValidator != null) {
+            if (localModelValidator.isModelActive(reqName)) {
+                return "✅ Already exists";
+            }
+            if (localModelValidator.isModelArchived(reqName)) {
+                return "📦 Archived";
+            }
+            Set<String> activeNames = localModelValidator.getActiveLocalModelNames();
+            if (activeNames != null && (activeNames.contains(lowerName) || activeNames.contains(baseName(lowerName)))) {
+                return "✅ Already exists";
+            }
         }
 
+        // 2. Closed source / Cloud API-based services that do not require local model files
+        if (lowerName.equals("openai") || lowerName.equals("dall-e") || lowerName.equals("dalle") ||
+            lowerName.equals("elevenlabs") || lowerName.equals("gemini") || lowerName.equals("anthropic") ||
+            lowerName.equals("claude") || lowerName.equals("openrouter")) {
+            return "✅ Already exists";
+        }
+
+        // 3. Fast in-memory lookup in LocalModelScanner
+        if (localModelScanner != null) {
+            Optional<java.nio.file.Path> cached = localModelScanner.findModelFromCache(reqName);
+            if (cached.isPresent()) {
+                return "✅ Already exists";
+            }
+        }
+
+        // 4. Direct single-path file checks (without recursive tree walk)
         String base = configService.getModelsPath();
         String archive = configService.getArchivePath();
         if (base == null || base.isEmpty()) return "Idle";
@@ -1797,84 +1850,19 @@ public class BlueprintGalleryTab extends JPanel {
         String folder = info.getSave_path() != null ? info.getSave_path() : type;
         String normalizedFolder = archiveService.normalizeFolder(folder);
 
-        // 1. Primary path check (Standard Models Path)
-        java.nio.file.Path local = "root".equals(normalizedFolder) ? java.nio.file.Paths.get(base, info.getName()) : java.nio.file.Paths.get(base, normalizedFolder, info.getName());
-        boolean exists = java.nio.file.Files.exists(local) && java.nio.file.Files.isRegularFile(local);
-
-        // 2. Primary archive check (Standard Archive Path)
-        boolean inArchive = false;
-        java.nio.file.Path archivedPath = null;
-        if (archive != null && !archive.trim().isEmpty()) {
-            archivedPath = "root".equals(normalizedFolder) ? java.nio.file.Paths.get(archive, info.getName()) : java.nio.file.Paths.get(archive, normalizedFolder, info.getName());
-            inArchive = java.nio.file.Files.exists(archivedPath) && java.nio.file.Files.isRegularFile(archivedPath);
-        }
-        
-        boolean sizeMismatch = false;
-
-        // 3. Robust existence and archive cross-check (Safety Guard)
-        if (archive != null && !archive.isEmpty()) {
-            try {
-                java.nio.file.Path absArchive = java.nio.file.Paths.get(archive).toAbsolutePath().normalize();
-                
-                // If 'local' is actually inside the archive, it's NOT a local active model
-                if (exists && local.toAbsolutePath().normalize().startsWith(absArchive)) {
-                    exists = false;
-                    inArchive = true;
-                }
-                
-                // If we found it in the primary archive location, verify size if known
-                if (inArchive && info.getByteSize() > 0) {
-                    if (java.nio.file.Files.size(archivedPath) != info.getByteSize()) {
-                        inArchive = false; // Size mismatch doesn't count
-                    }
-                }
-            } catch (Exception ignored) {}
-        }
-
-        // 4. Fallback: Recursive search in ARCHIVE if not found at primary archive location
-        if (!inArchive && archive != null && !archive.isEmpty()) {
-            java.util.Optional<java.nio.file.Path> foundInArchive = localModelScanner.findModelWithPrefSize(java.nio.file.Paths.get(archive), info.getName(), info.getByteSize());
-            if (foundInArchive.isPresent()) {
-                archivedPath = foundInArchive.get();
-                inArchive = true;
-            }
-        }
-
-        // 5. Fallback: Recursive search in LOCAL MODELS if not found OR size mismatch at primary location
-        if ((!exists || sizeMismatch) && base != null && !base.isEmpty()) {
-            java.util.Optional<java.nio.file.Path> foundLocally = localModelScanner.findModelWithPrefSizeAndType(java.nio.file.Paths.get(base), info.getName(), info.getByteSize(), type);
-            if (foundLocally.isPresent()) {
-                java.nio.file.Path potentialLocal = foundLocally.get();
-                try {
-                    long potSize = java.nio.file.Files.size(potentialLocal);
-                    if (info.getByteSize() <= 0 || potSize == info.getByteSize()) {
-                        local = potentialLocal;
-                        exists = true;
-                        sizeMismatch = false;
-                        
-                        java.nio.file.Path root = java.nio.file.Paths.get(base).toAbsolutePath().normalize();
-                        java.nio.file.Path absPotential = potentialLocal.toAbsolutePath().normalize();
-                        
-                        if (absPotential.startsWith(root)) {
-                            java.nio.file.Path rel = root.relativize(absPotential);
-                            normalizedFolder = (rel.getParent() != null) ? rel.getParent().toString().replace("\\", "/") : "root";
-                        } else {
-                            normalizedFolder = "extra/" + potentialLocal.getParent().getFileName();
-                        }
-                        info.setSave_path(normalizedFolder);
-                    }
-                } catch (Exception ignored) {}
-            }
-        }
-
-        // 6. Final Status Determination
-        if (exists) {
+        java.nio.file.Path local = "root".equals(normalizedFolder) ? java.nio.file.Paths.get(base, reqName) : java.nio.file.Paths.get(base, normalizedFolder, reqName);
+        if (java.nio.file.Files.exists(local) && java.nio.file.Files.isRegularFile(local)) {
             return "✅ Already exists";
-        } else if (inArchive) {
-            return "📦 Archived";
-        } else if (sizeMismatch) {
-            return "🔄 Size Mismatch";
-        } else if (info.getUrl() == null || info.getUrl().equals("MISSING")) {
+        }
+
+        if (archive != null && !archive.trim().isEmpty()) {
+            java.nio.file.Path archivedPath = "root".equals(normalizedFolder) ? java.nio.file.Paths.get(archive, reqName) : java.nio.file.Paths.get(archive, normalizedFolder, reqName);
+            if (java.nio.file.Files.exists(archivedPath) && java.nio.file.Files.isRegularFile(archivedPath)) {
+                return "📦 Archived";
+            }
+        }
+
+        if (info.getUrl() == null || info.getUrl().equals("MISSING")) {
             return "Idle";
         } else {
             return "✅ Known Good";
@@ -2048,21 +2036,21 @@ public class BlueprintGalleryTab extends JPanel {
             lblStatus.setForeground(textSecondary);
         }
         if (chkReadyOnly != null) {
-            chkReadyOnly.setForeground(textSecondary);
+            chkReadyOnly.setForeground(textPrimary);
             if (darkMode) {
                 chkReadyOnly.putClientProperty("FlatLaf.style", 
-                    "icon.borderColor: #FFFFFF; " +
-                    "icon.selectedBorderColor: #FFFFFF; " +
-                    "icon.checkmarkColor: #121318; " +
-                    "icon.focusWidth: 3; " +
-                    "icon.selectedBackground: #FFFFFF"
+                    "icon.borderColor: #485268; " +
+                    "icon.selectedBorderColor: #00D2BE; " +
+                    "icon.checkmarkColor: #FFFFFF; " +
+                    "icon.focusWidth: 2; " +
+                    "icon.selectedBackground: #009688"
                 );
             } else {
                 chkReadyOnly.putClientProperty("FlatLaf.style", 
                     "icon.borderColor: #121318; " +
                     "icon.selectedBorderColor: #009688; " +
                     "icon.checkmarkColor: #FFFFFF; " +
-                    "icon.focusWidth: 3; " +
+                    "icon.focusWidth: 2; " +
                     "icon.selectedBackground: #009688"
                 );
             }
@@ -2070,21 +2058,21 @@ public class BlueprintGalleryTab extends JPanel {
             chkReadyOnly.repaint();
         }
         if (chkHideCloud != null) {
-            chkHideCloud.setForeground(textSecondary);
+            chkHideCloud.setForeground(textPrimary);
             if (darkMode) {
                 chkHideCloud.putClientProperty("FlatLaf.style", 
-                    "icon.borderColor: #FFFFFF; " +
-                    "icon.selectedBorderColor: #FFFFFF; " +
-                    "icon.checkmarkColor: #121318; " +
-                    "icon.focusWidth: 3; " +
-                    "icon.selectedBackground: #FFFFFF"
+                    "icon.borderColor: #485268; " +
+                    "icon.selectedBorderColor: #00D2BE; " +
+                    "icon.checkmarkColor: #FFFFFF; " +
+                    "icon.focusWidth: 2; " +
+                    "icon.selectedBackground: #009688"
                 );
             } else {
                 chkHideCloud.putClientProperty("FlatLaf.style", 
                     "icon.borderColor: #121318; " +
                     "icon.selectedBorderColor: #009688; " +
                     "icon.checkmarkColor: #FFFFFF; " +
-                    "icon.focusWidth: 3; " +
+                    "icon.focusWidth: 2; " +
                     "icon.selectedBackground: #009688"
                 );
             }
@@ -2122,6 +2110,7 @@ public class BlueprintGalleryTab extends JPanel {
         public final ComfyRegistryWorkflow registryWorkflow;
         public String previewPath = "";
         public BlueprintStatus status = null;
+        public boolean hasBeenValidated = false;
 
         public BlueprintEntry(ComfyRegistryWorkflow workflow) {
             this.registryWorkflow = workflow;

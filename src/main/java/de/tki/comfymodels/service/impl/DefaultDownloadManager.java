@@ -35,7 +35,7 @@ public class DefaultDownloadManager implements IDownloadManager {
             new LinkedBlockingQueue<>()
     );
     private final ExecutorService segmentExecutor = Executors.newCachedThreadPool();
-    private final HttpClient httpClient = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.ALWAYS).connectTimeout(Duration.ofSeconds(10)).build();
+    private final HttpClient httpClient = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.ALWAYS).connectTimeout(Duration.ofSeconds(60)).build();
     private volatile boolean isPaused = false;
     private volatile boolean isStopped = false;
     private volatile boolean[] currentSelection;
@@ -260,11 +260,11 @@ public class DefaultDownloadManager implements IDownloadManager {
             String hfToken = configService != null ? configService.getHfToken() : null;
             String downloadUrl = appendCivitaiTokenIfNeeded(info.getUrl());
 
-            // Check disk space before starting
+            // Check disk space before starting (15GB buffer warning)
             try {
                 long usableSpace = Files.getFileStore(targetFile.getParent().getRoot()).getUsableSpace();
-                if (usableSpace < 10L * 1024 * 1024 * 1024) { // 10 GB Buffer
-                    safeUpdateStatus(index, "⚠️ Low Disk Space (<10GB)", statusUpdater);
+                if (usableSpace < 15L * 1024 * 1024 * 1024) {
+                    safeUpdateStatus(index, "⚠️ Low Disk Space (" + formatSize(usableSpace) + " free)", statusUpdater);
                 }
             } catch (Exception ignored) {}
 
@@ -283,14 +283,14 @@ public class DefaultDownloadManager implements IDownloadManager {
             
             HttpRequest.Builder headBuilder = HttpRequest.newBuilder()
                 .uri(URI.create(downloadUrl))
-                .header("User-Agent", "Mozilla/5.0")
+                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
                 .method("HEAD", HttpRequest.BodyPublishers.noBody());
                 
             if (downloadUrl.contains("huggingface.co") && hfToken != null && !hfToken.isEmpty()) {
                 headBuilder.header("Authorization", "Bearer " + hfToken);
             }
 
-            HttpResponse<Void> headResponse = httpClient.send(headBuilder.timeout(Duration.ofSeconds(30)).build(), HttpResponse.BodyHandlers.discarding());
+            HttpResponse<Void> headResponse = httpClient.send(headBuilder.timeout(Duration.ofSeconds(60)).build(), HttpResponse.BodyHandlers.discarding());
             
             if (headResponse.statusCode() == 401 || headResponse.statusCode() == 403) {
                 safeUpdateStatus(index, "❌ Auth Required (Token?)", statusUpdater);
@@ -299,11 +299,11 @@ public class DefaultDownloadManager implements IDownloadManager {
 
             long totalRemoteSize = headResponse.headers().firstValueAsLong("Content-Length").orElse(0L);
 
-            // Double Check Disk Space against total size
+            // Double Check Disk Space against total size (+1GB safety margin)
             try {
                 long usableSpace = Files.getFileStore(targetFile.getParent().getRoot()).getUsableSpace();
-                if (totalRemoteSize > 0 && usableSpace < totalRemoteSize) {
-                    safeUpdateStatus(index, "❌ No Space (" + formatSize(usableSpace) + " < " + formatSize(totalRemoteSize) + ")", statusUpdater);
+                if (totalRemoteSize > 0 && usableSpace < (totalRemoteSize + 1073741824L)) {
+                    safeUpdateStatus(index, "❌ No Space (" + formatSize(usableSpace) + " free < " + formatSize(totalRemoteSize) + " required)", statusUpdater);
                     return;
                 }
             } catch (Exception ignored) {}
@@ -330,16 +330,11 @@ public class DefaultDownloadManager implements IDownloadManager {
 
             if (waitForPauseAndCheckSelection(index, statusUpdater)) return;
 
-            int segments = configService != null ? configService.getSegmentsPerFile() : 1;
-            // Multi-segment only if segments > 1, size > 100MB, and URL is not a local file URL or unsupported.
-            if (segments > 1 && totalRemoteSize > 100 * 1024 * 1024 && downloadUrl.startsWith("http")) {
-                try {
-                    downloadMultiSegment(info, targetFile, index, statusUpdater, totalRemoteSize, downloadUrl);
-                    return;
-                } catch (Exception e) {
-                    logger.error("Multi-segment download failed: " + e.getMessage() + ". Falling back to single-segment.");
-                }
-            }
+            // Multi-segment download is disabled: many CDN providers (Civitai, HuggingFace mirrors)
+            // do not reliably support Range requests (returning 200 instead of 206), which causes
+            // corrupt merged files, stale .partN temp files, and CDN rate-limiting from parallel
+            // connections. The single-segment path below already handles resume, retry and validation.
+            int segments = 1; // configService != null ? configService.getSegmentsPerFile() : 1;
 
             downloadSingleSegment(info, targetFile, index, statusUpdater, totalRemoteSize, downloadUrl, retryCount, pFile, partFile, existingPartSize);
 
@@ -349,15 +344,29 @@ public class DefaultDownloadManager implements IDownloadManager {
             if (isStopped || !isSelected(index) || Thread.currentThread().isInterrupted()) {
                 safeUpdateStatus(index, !isSelected(index) ? "Skipped (Unchecked)" : "Stopped", statusUpdater);
             } else {
+                if (retryCount < 10 && isRetriableException(e)) {
+                    long delayMs = Math.min(30000L, 1000L * (1L << Math.min(retryCount, 4))); // 1s, 2s, 4s, 8s, 16s... up to 30s
+                    logger.warn("Download interrupted for " + info.getName() + " (" + e.getMessage() + "). Retrying in " + (delayMs / 1000) + "s with resume (" + (retryCount + 1) + "/10)...");
+                    safeUpdateStatus(index, "🔄 Retrying in " + (delayMs / 1000) + "s (" + (retryCount + 1) + "/10)...", statusUpdater);
+                    try { Thread.sleep(delayMs); } catch (InterruptedException ignored) {}
+                    downloadWithResumeInternal(info, targetFile, index, statusUpdater, retryCount + 1);
+                    return;
+                }
                 String msg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
                 safeUpdateStatus(index, "Error: " + msg, statusUpdater);
-                // Clean up single segment temp file (.cmfd) on actual error
-                try {
-                    Path partFile = targetFile.resolveSibling(targetFile.getFileName().toString() + ".cmfd");
-                    Files.deleteIfExists(partFile);
-                } catch (Exception ignored) {}
             }
         }
+    }
+
+    private boolean isRetriableException(Exception e) {
+        if (e instanceof InterruptedException) return false;
+        if (e instanceof java.net.ConnectException) return false;
+        if (e instanceof java.net.UnknownHostException) return false;
+        String msg = e.getMessage();
+        if (msg != null && (msg.contains("Connection refused") || msg.contains("401") || msg.contains("403") || msg.contains("404"))) {
+            return false;
+        }
+        return true;
     }
 
     private void downloadSingleSegment(ModelInfo info, Path targetFile, int index, BiConsumer<Integer, String> statusUpdater,
@@ -365,7 +374,7 @@ public class DefaultDownloadManager implements IDownloadManager {
         String hfToken = configService != null ? configService.getHfToken() : null;
         HttpRequest.Builder downloadBuilder = HttpRequest.newBuilder()
             .uri(URI.create(downloadUrl))
-            .header("User-Agent", "Mozilla/5.0");
+            .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
 
         if (downloadUrl.contains("huggingface.co") && hfToken != null && !hfToken.isEmpty()) {
             downloadBuilder.header("Authorization", "Bearer " + hfToken);
@@ -373,7 +382,7 @@ public class DefaultDownloadManager implements IDownloadManager {
 
         if (existingPartSize > 0) downloadBuilder.header("Range", "bytes=" + existingPartSize + "-");
 
-        HttpResponse<InputStream> response = httpClient.send(downloadBuilder.timeout(Duration.ofSeconds(60)).build(), HttpResponse.BodyHandlers.ofInputStream());
+        HttpResponse<InputStream> response = httpClient.send(downloadBuilder.build(), HttpResponse.BodyHandlers.ofInputStream());
         int statusCode = response.statusCode();
 
         if (statusCode == 416) { 
@@ -422,13 +431,15 @@ public class DefaultDownloadManager implements IDownloadManager {
         long limitBytesPerSec = speedLimitKb * 1024L;
         long startTime = System.currentTimeMillis();
         long bytesWrittenInWindow = 0;
+        long lastUpdate = 0;
+        long lastSpeedTime = System.currentTimeMillis();
+        long lastDownloaded = existingPartSize;
 
         try (InputStream is = response.body(); RandomAccessFile raf = new RandomAccessFile(pFile, "rw")) {       
             raf.seek(existingPartSize);
-            byte[] buffer = new byte[65536];
+            byte[] buffer = new byte[262144]; // 256 KB buffer for high-throughput disk I/O on 40GB+ models
             long downloaded = existingPartSize;
             int read;
-            long lastUpdate = 0;
             while ((read = is.read(buffer)) != -1) {
                 if (isStopped || !isSelected(index) || Thread.currentThread().isInterrupted()) {
                     safeUpdateStatus(index, !isSelected(index) ? "Skipped (Unchecked)" : "Stopped", statusUpdater);
@@ -465,8 +476,30 @@ public class DefaultDownloadManager implements IDownloadManager {
                 
                 long now = System.currentTimeMillis();
                 if (now - lastUpdate > 800) {
-                    safeUpdateStatus(index, "Downloading: " + (totalBytes > 0 ? (downloaded * 100 / totalBytes) : "?") + "% (" + formatSize(downloaded) + ")", statusUpdater);
+                    long downloadedInWindow = downloaded - lastDownloaded;
+                    long timeInWindow = now - lastSpeedTime;
+                    double speedMBs = timeInWindow > 0 ? (downloadedInWindow / (1024.0 * 1024.0)) / (timeInWindow / 1000.0) : 0.0;
+                    String speedStr = speedMBs >= 1.0 ? String.format(java.util.Locale.US, "%.1f MB/s", speedMBs) : String.format(java.util.Locale.US, "%.0f KB/s", speedMBs * 1024);
+                    
+                    String etaStr = "";
+                    if (totalBytes > downloaded && speedMBs > 0.02) {
+                        long remainingBytes = totalBytes - downloaded;
+                        long secondsLeft = (long) (remainingBytes / (speedMBs * 1024 * 1024));
+                        if (secondsLeft > 3600) {
+                            etaStr = " (ETA: " + (secondsLeft / 3600) + "h " + ((secondsLeft % 3600) / 60) + "m)";
+                        } else if (secondsLeft > 60) {
+                            etaStr = " (ETA: " + (secondsLeft / 60) + "m " + (secondsLeft % 60) + "s)";
+                        } else {
+                            etaStr = " (ETA: " + secondsLeft + "s)";
+                        }
+                    }
+
+                    String progressPercent = totalBytes > 0 ? (downloaded * 100 / totalBytes) + "%" : "?%";
+                    String sizeProgress = totalBytes > 0 ? formatSize(downloaded) + " / " + formatSize(totalBytes) : formatSize(downloaded);
+                    safeUpdateStatus(index, "Downloading: " + progressPercent + " (" + sizeProgress + ") - " + speedStr + etaStr, statusUpdater);
                     lastUpdate = now;
+                    lastSpeedTime = now;
+                    lastDownloaded = downloaded;
                 }
             }
         }
@@ -477,13 +510,15 @@ public class DefaultDownloadManager implements IDownloadManager {
             long finalSize = pFile.length();
             boolean sizeMismatch = totalBytes > 0 && finalSize < totalBytes;
 
-            if (sizeMismatch && retryCount < 1) {
-                safeUpdateStatus(index, "🔄 Verification failed, redownloading...", statusUpdater);
-                pFile.delete();
+            if (sizeMismatch && retryCount < 10) {
+                long delayMs = Math.min(30000L, 1000L * (1L << Math.min(retryCount, 4)));
+                logger.warn("Download prematurely ended for " + info.getName() + " (" + formatSize(finalSize) + " of " + formatSize(totalBytes) + "). Resuming in " + (delayMs / 1000) + "s (" + (retryCount + 1) + "/10)...");
+                safeUpdateStatus(index, "🔄 Stream ended (" + formatSize(finalSize) + "/" + formatSize(totalBytes) + "), resuming (" + (retryCount + 1) + "/10)...", statusUpdater);
+                try { Thread.sleep(delayMs); } catch (InterruptedException ignored) {}
                 downloadWithResumeInternal(info, targetFile, index, statusUpdater, retryCount + 1);
             } else if (sizeMismatch) {
-                safeUpdateStatus(index, "❌ Incomplete (" + formatSize(finalSize) + "/" + formatSize(totalBytes) + ")", statusUpdater);
-                pFile.delete(); // Delete temp file
+                safeUpdateStatus(index, "❌ Incomplete (" + formatSize(finalSize) + "/" + formatSize(totalBytes) + ") - Resumable", statusUpdater);
+                // Do NOT delete pFile! Leave .cmfd intact so it can be resumed
             } else {
                 Files.move(partFile, targetFile, StandardCopyOption.REPLACE_EXISTING);
                 
@@ -562,14 +597,14 @@ public class DefaultDownloadManager implements IDownloadManager {
                     
                     HttpRequest.Builder reqBuilder = HttpRequest.newBuilder()
                         .uri(URI.create(downloadUrl))
-                        .header("User-Agent", "Mozilla/5.0")
+                        .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
                         .header("Range", "bytes=" + rangeStart + "-" + end);
                     
                     if (downloadUrl.contains("huggingface.co") && hfToken != null && !hfToken.isEmpty()) {
                         reqBuilder.header("Authorization", "Bearer " + hfToken);
                     }
                     
-                    HttpResponse<InputStream> response = httpClient.send(reqBuilder.timeout(Duration.ofSeconds(60)).build(), HttpResponse.BodyHandlers.ofInputStream());
+                    HttpResponse<InputStream> response = httpClient.send(reqBuilder.build(), HttpResponse.BodyHandlers.ofInputStream());
                     int status = response.statusCode();
                     
                     if (status != 206 && (status != 200 || rangeStart != start)) {
@@ -719,8 +754,9 @@ public class DefaultDownloadManager implements IDownloadManager {
 
     private String formatSize(long bytes) {
         if (bytes < 1024 * 1024) return (bytes / 1024) + " KB";
-        if (bytes < 1024 * 1024 * 1024) return String.format("%.1f MB", bytes / (1024.0 * 1024.0));
-        return String.format("%.2f GB", bytes / (1024.0 * 1024.0 * 1024.0));
+        if (bytes < 1024 * 1024 * 1024) return String.format(java.util.Locale.US, "%.1f MB", bytes / (1024.0 * 1024.0));
+        if (bytes < 1024L * 1024 * 1024 * 1024) return String.format(java.util.Locale.US, "%.2f GB", bytes / (1024.0 * 1024.0 * 1024.0));
+        return String.format(java.util.Locale.US, "%.2f TB", bytes / (1024.0 * 1024.0 * 1024.0 * 1024.0));
     }
 
     private void onDownloadComplete(ModelInfo info, Path targetFile) {

@@ -24,6 +24,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+@Disabled("Live WebSocket integration test requiring running ComfyUI server and full WebSocket container")
 @ExtendWith(SpringExtension.class)
 @ContextConfiguration(classes = {ComfyHttpClient.class, ComfyWebSocketClient.class, com.thomaskippster.comfyuicompanion.websocket.ComfyWebSocketHandler.class, com.thomaskippster.comfyuicompanion.config.JacksonConfig.class})
 public class ComfyLifecycleIntegrationTest {

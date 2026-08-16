@@ -133,4 +133,34 @@ class PromptBlueprintApiServiceTest {
         JSONObject extraPngInfo = result.getJSONObject("extra_data").getJSONObject("extra_pnginfo");
         assertTrue(extraPngInfo.has("workflow"));
     }
+
+    @Test
+    void testInjectLabInputs_KSamplerSelect_replacesComboWithEuler() {
+        String inputJson = """
+        {
+          "75:61": {
+            "class_type": "KSamplerSelect",
+            "inputs": {
+              "sampler_name": "COMBO"
+            }
+          },
+          "75:62": {
+            "class_type": "Flux2Scheduler",
+            "inputs": {
+              "scheduler": "COMBO"
+            }
+          }
+        }
+        """;
+
+        JSONObject promptObj = new JSONObject(inputJson);
+        PromptBlueprintApiService.PromptLabInputs inputs = new PromptBlueprintApiService.PromptLabInputs(
+                "test prompt", 1024, 1024, 20, 3.5, 12345L
+        );
+
+        service.injectLabInputs(promptObj, inputs);
+
+        assertEquals("euler", promptObj.getJSONObject("75:61").getJSONObject("inputs").getString("sampler_name"));
+        assertEquals("normal", promptObj.getJSONObject("75:62").getJSONObject("inputs").getString("scheduler"));
+    }
 }

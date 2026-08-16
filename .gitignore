@@ -25,10 +25,14 @@ gemini.bat
 boot.key
 .env
 
-# User Model List (internal DB)
+# User Model List (internal DB) & Local Caches
 uploaded_models.json
 pending_downloads.json
 model_hashes.json
+object_info*.json
+cache/
+checkpoints/
+templates/comfyui/*_cache.json
 
 # Local config & assets
 __pycache__/
@@ -37,34 +41,61 @@ workflow.json
 !src/**
 *.png
 !assets/**
+!workflows/*.png
+!workflows/*.jpg
+!workflows/*.webp
 env/
 *.bat
+!build_and_run.bat
+!antigravity_admin.bat
 *.zip
-model_hashes.json
-uploaded_models.json
 config.json
 !src/main/resources/known_good_urls.json
 .antigravitycli/
 
 # Agent Rules
 agents.md
+AGENTS.md
+GEMINI.md
+Gemini.md
+.agents/
 
 # Cloned helper repositories
 comfyfs/
 
-# Log files
+# Log files and crash dumps
 *.log
+hs_err_pid*.log
 
 # Video / Output files
 *.mp4
+!assets/*.mp4
 *.gif
 *.wav
 output/
+
+# Model and binary weights
+*.safetensors
+*.ckpt
+*.onnx
+*.ort
+*.pt
+*.pth
+tools/tts/
+
 # Node dependencies
 node_modules/
 **/node_modules/
 
-# Script exceptions
-!build_and_run.bat
-!build_and_run.sh
-
+# Local dev/tools folders and backup dumps
+.git_old/
+13/
+14/
+Git/
+Meld/
+Miniconda3/
+NodeJS/
+VisualStudioCode/
+eclipse/
+workspace/
+*.bin

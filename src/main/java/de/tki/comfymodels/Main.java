@@ -128,6 +128,21 @@ public class Main extends JFrame {
     @Autowired
     private de.tki.comfymodels.service.PromptBlueprintApiService promptBlueprintApiService;
 
+    @Autowired
+    private de.tki.comfymodels.service.impl.ComfyApiClient comfyApiClient;
+
+    @Autowired
+    private de.tki.comfymodels.ui.PromptLabView promptLabView;
+
+    @Autowired
+    private de.tki.comfymodels.controller.PromptLabController promptLabController;
+
+    @Autowired
+    private de.tki.comfymodels.ui.DownloadManagerView downloadManagerView;
+
+    @Autowired
+    private de.tki.comfymodels.controller.DownloadManagerController downloadManagerController;
+
     @Autowired(required = false)
     private de.tki.comfymodels.service.IWorkflowDownloader workflowDownloader;
 
@@ -163,6 +178,7 @@ public class Main extends JFrame {
 
     private JTabbedPane mainTabs;
     private de.tki.comfymodels.ui.WorkflowGraphPanel workflowGraphPanel;
+    private JTable modelTable;
 
     private JCheckBox promptLabCheck;
     private JCheckBox videoArchitectCheck;
@@ -183,6 +199,11 @@ public class Main extends JFrame {
     private final java.util.Set<String> comfyVaes = java.util.concurrent.ConcurrentHashMap.newKeySet();
     private final java.util.Set<String> comfyClipTypes = java.util.concurrent.ConcurrentHashMap.newKeySet();
     private final java.util.Set<String> comfyUnetWeightDtypes = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    private String lastActiveProfileId = null;
+    private String cachedActiveProfileName = "None";
+    private long lastProfileCacheUpdate = 0;
+    private boolean cachedNeedsSetup = false;
+    private long lastSetupCheckTime = 0;
 
     // Prompt Lab Fields
     private static class DropdownItem {
@@ -567,6 +588,13 @@ public class Main extends JFrame {
             if (blueprintGalleryTab != null) {
                 blueprintGalleryTab.updateTheme(darkMode);
             }
+            if (downloadManagerView != null) {
+                SwingUtilities.updateComponentTreeUI(downloadManagerView);
+            }
+            if (promptLabView != null) {
+                SwingUtilities.updateComponentTreeUI(promptLabView);
+                promptLabView.updateTheme(darkMode);
+            }
             
             FlatLaf.updateUI();
             SwingUtilities.updateComponentTreeUI(this);
@@ -805,7 +833,7 @@ public class Main extends JFrame {
             mainTabs.addTab("🖼️ Image Lab", promptLabPanel);
         }
         if (configService.isVideoArchitectEnabled() && videoArchitectWrapper != null) {
-            mainTabs.addTab("🎬 Video Architect", videoArchitectWrapper);
+            mainTabs.addTab("🎬 Video Architect (Beta)", videoArchitectWrapper);
         }
         if (settingsPanel != null) {
             mainTabs.addTab("⚙️ Settings", settingsPanel);
@@ -835,6 +863,9 @@ public class Main extends JFrame {
                     } else {
                         btnSuggestSubject.setToolTipText("Download local Gemma model to unlock suggestions.");
                     }
+                }
+                if (activeAiModelLabel != null) {
+                    activeAiModelLabel.setText(hasGemma ? "Active AI: Local Gemma" : "Active AI: None / Cloud");
                 }
             });
         });
@@ -1009,16 +1040,21 @@ public class Main extends JFrame {
                 quickActionBtn.setText("▶ Start");
             }
             
-            // Sync active profile name
+            // Sync active profile name (cached to avoid disk I/O on EDT every second)
             String activeIdVal = configService.getActiveProfile();
-            List<de.tki.comfymodels.domain.LaunchProfile> profilesVal = profileManager.loadProfiles();
-            de.tki.comfymodels.domain.LaunchProfile activeProfileVal = profilesVal.stream()
-                .filter(p -> p.id().equals(activeIdVal))
-                .findFirst()
-                .orElse(null);
-            if (activeProfileVal == null && !profilesVal.isEmpty()) activeProfileVal = profilesVal.get(0);
-            String pName = (activeProfileVal != null) ? activeProfileVal.name() : "None";
-            activeProfileLabel.setText("👤 Profile: " + pName);
+            long now = System.currentTimeMillis();
+            if (!java.util.Objects.equals(activeIdVal, lastActiveProfileId) || (now - lastProfileCacheUpdate > 10000)) {
+                lastActiveProfileId = activeIdVal;
+                lastProfileCacheUpdate = now;
+                List<de.tki.comfymodels.domain.LaunchProfile> profilesVal = profileManager.loadProfiles();
+                de.tki.comfymodels.domain.LaunchProfile activeProfileVal = profilesVal.stream()
+                    .filter(p -> p.id().equals(activeIdVal))
+                    .findFirst()
+                    .orElse(null);
+                if (activeProfileVal == null && !profilesVal.isEmpty()) activeProfileVal = profilesVal.get(0);
+                cachedActiveProfileName = (activeProfileVal != null) ? activeProfileVal.name() : "None";
+            }
+            activeProfileLabel.setText("👤 Profile: " + cachedActiveProfileName);
         });
         headerTimer.start();
         
@@ -1051,7 +1087,7 @@ public class Main extends JFrame {
         } else {
             JPanel fallback = new JPanel(new GridBagLayout());
             fallback.setOpaque(false);
-            JLabel label = new JLabel("🎬 Video Architect is disabled or initializing...");
+            JLabel label = new JLabel("🎬 Video Architect (Beta) is disabled or initializing...");
             label.setFont(new Font("SansSerif", Font.BOLD, 14));
             label.setForeground(configService.isDarkMode() ? Color.LIGHT_GRAY : Color.DARK_GRAY);
             fallback.add(label);
@@ -1171,727 +1207,230 @@ public class Main extends JFrame {
             "  }\n" +
             "}";
     private JPanel createPromptLabPanel() {
-        JPanel panel = new JPanel();
-        panel.setOpaque(false);
-        panel.setLayout(new BorderLayout(15, 15));
-        panel.setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
-
-        // LEFT: Image Lab controls (Blueprint selection + Generic execution parameters)
-        de.tki.comfymodels.ui.CardPanel leftPanel = new de.tki.comfymodels.ui.CardPanel();
-        leftPanel.setLayout(new BoxLayout(leftPanel, BoxLayout.Y_AXIS));
-
-        // Header Title
-        JLabel titleLabel = new JLabel("🖼️ Image Lab");
-        titleLabel.putClientProperty("FlatLaf.styleClass", "h2");
-        titleLabel.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
-        leftPanel.add(titleLabel);
-        leftPanel.add(Box.createVerticalStrut(15));
-
-        // Blueprint / Workflow Selection
-        JLabel lblBlueprint = new JLabel("Blueprint / Workflow");
-        lblBlueprint.putClientProperty("FlatLaf.styleClass", "h4");
-        lblBlueprint.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
-        leftPanel.add(lblBlueprint);
-        leftPanel.add(Box.createVerticalStrut(5));
-
-        JPanel modelRow = new JPanel(new BorderLayout(5, 0));
-        modelRow.setOpaque(false);
-        modelRow.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
-        modelRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 35));
-
-        promptModelCombo = new JComboBox<>(new String[]{"v1-5-pruned-emaonly.safetensors"});
-        promptModelCombo.setEditable(false);
-        promptModelCombo.setFont(new Font("SansSerif", Font.PLAIN, 14));
-        modelRow.add(promptModelCombo, BorderLayout.CENTER);
-
-        JButton btnRefreshModels = new JButton("🔄");
-        btnRefreshModels.setToolTipText("Refresh models list from ComfyUI");
-        btnRefreshModels.addActionListener(e -> refreshPromptLabModels());
-        modelRow.add(btnRefreshModels, BorderLayout.EAST);
-
-        leftPanel.add(modelRow);
-        leftPanel.add(Box.createVerticalStrut(6));
-
-        promptPresetLabel = new JLabel("Detected Preset: Stable Diffusion 1.5 (SD 1.5)") {
-            @Override
-            public void updateUI() {
-                super.updateUI();
-                Color c = UIManager.getColor("PromptLab.presetForeground");
-                if (c != null) setForeground(c);
-            }
-        };
-        promptPresetLabel.setFont(new Font("SansSerif", Font.ITALIC | Font.BOLD, 12));
-        Color pc = UIManager.getColor("PromptLab.presetForeground");
-        if (pc != null) promptPresetLabel.setForeground(pc);
-        promptPresetLabel.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
-        leftPanel.add(promptPresetLabel);
-        leftPanel.add(Box.createVerticalStrut(18));
-
-        // Prompt Group Header & Positive/Negative Prompts
-        JLabel lblPromptGroup = new JLabel("Prompt");
-        lblPromptGroup.putClientProperty("FlatLaf.styleClass", "h4");
-        lblPromptGroup.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
-        leftPanel.add(lblPromptGroup);
-        leftPanel.add(Box.createVerticalStrut(6));
-
-        Font promptSubLabelFont = new Font("SansSerif", Font.PLAIN, 12);
-
-        JLabel lblSubject = new JLabel("Positive Prompt");
-        lblSubject.setFont(promptSubLabelFont);
-        lblSubject.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
-        leftPanel.add(lblSubject);
-        leftPanel.add(Box.createVerticalStrut(4));
-
-        JPanel subjectRow = new JPanel(new BorderLayout(8, 0));
-        subjectRow.setOpaque(false);
-        subjectRow.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
-        subjectRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 38));
-
-        promptSubjectField = new JTextField("cybernetic tiger, detailed, 8k");
-        promptSubjectField.setFont(new Font("SansSerif", Font.PLAIN, 14));
-        subjectRow.add(promptSubjectField, BorderLayout.CENTER);
-
-        btnSuggestSubject = new JButton("✨ Suggest");
-        btnSuggestSubject.setFont(new Font("SansSerif", Font.BOLD, 12));
-        btnSuggestSubject.putClientProperty("Button.background", de.tki.comfymodels.ui.ThemeManager.getAccentColor());
-        btnSuggestSubject.putClientProperty("Button.foreground", Color.WHITE);
-        btnSuggestSubject.setToolTipText("Suggest creative completions for this prompt using local Gemma AI.");
-        btnSuggestSubject.addActionListener(e -> suggestSubjectCompletions());
-        subjectRow.add(btnSuggestSubject, BorderLayout.EAST);
-
-        leftPanel.add(subjectRow);
-        leftPanel.add(Box.createVerticalStrut(5));
-
-        // Hidden suggestions container
-        promptSubjectSuggestionsWrapper = new JPanel(new BorderLayout(5, 5));
-        promptSubjectSuggestionsWrapper.setOpaque(false);
-        promptSubjectSuggestionsWrapper.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
-        promptSubjectSuggestionsWrapper.setVisible(false);
-        promptSubjectSuggestionsWrapper.setBorder(BorderFactory.createEmptyBorder(5, 0, 10, 0));
-
-        JPanel headerPanel = new JPanel(new BorderLayout());
-        headerPanel.setOpaque(false);
-        JLabel sugTitle = new JLabel("AI Suggestions:");
-        sugTitle.setFont(new Font("SansSerif", Font.BOLD, 11));
-        sugTitle.setForeground(Color.GRAY);
-        headerPanel.add(sugTitle, BorderLayout.CENTER);
-
-        JButton btnCloseSug = new JButton("✕");
-        btnCloseSug.setFont(new Font("SansSerif", Font.PLAIN, 10));
-        btnCloseSug.addActionListener(e -> {
-            promptSubjectSuggestionsWrapper.setVisible(false);
-            if (promptLabLeftPanel != null) {
-                promptLabLeftPanel.revalidate();
-                promptLabLeftPanel.repaint();
-            }
-        });
-        headerPanel.add(btnCloseSug, BorderLayout.EAST);
-        promptSubjectSuggestionsWrapper.add(headerPanel, BorderLayout.NORTH);
-
-        promptSubjectSuggestionsPanel = new JPanel();
-        promptSubjectSuggestionsPanel.setLayout(new javax.swing.BoxLayout(promptSubjectSuggestionsPanel, javax.swing.BoxLayout.Y_AXIS));
-        promptSubjectSuggestionsPanel.setOpaque(false);
-
-        JScrollPane sugScrollPane = new JScrollPane(promptSubjectSuggestionsPanel);
-        sugScrollPane.setOpaque(false);
-        sugScrollPane.getViewport().setOpaque(false);
-        sugScrollPane.setBorder(BorderFactory.createEmptyBorder(2, 2, 2, 2));
-        sugScrollPane.setPreferredSize(new Dimension(0, 120));
-        sugScrollPane.setMaximumSize(new Dimension(Integer.MAX_VALUE, 120));
-        sugScrollPane.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
-        sugScrollPane.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED);
-
-        promptSubjectSuggestionsWrapper.add(sugScrollPane, BorderLayout.CENTER);
-        promptSubjectSuggestionsWrapper.setMaximumSize(new Dimension(Integer.MAX_VALUE, 155));
-        leftPanel.add(promptSubjectSuggestionsWrapper);
-
-        promptLabLeftPanel = leftPanel;
-
-        // Negative Prompt Field
-        leftPanel.add(Box.createVerticalStrut(8));
-        JLabel lblNegative = new JLabel("Negative Prompt");
-        lblNegative.setFont(promptSubLabelFont);
-        lblNegative.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
-        leftPanel.add(lblNegative);
-        leftPanel.add(Box.createVerticalStrut(4));
-
-        promptNegativeField = new JTextField("blurry, low quality, distortion, bad anatomy");
-        promptNegativeField.setFont(new Font("SansSerif", Font.PLAIN, 12));
-        promptNegativeField.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
-        promptNegativeField.setMaximumSize(new Dimension(Integer.MAX_VALUE, 32));
-        leftPanel.add(promptNegativeField);
-        leftPanel.add(Box.createVerticalStrut(10));
-
-        // Image Input Field (Hidden by default, shown for img2img/inpaint)
-        promptImageInputPanel = new JPanel();
-        promptImageInputPanel.setLayout(new BoxLayout(promptImageInputPanel, BoxLayout.Y_AXIS));
-        promptImageInputPanel.setOpaque(false);
-        promptImageInputPanel.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
-        promptImageInputPanel.setVisible(false); // Initially hidden
-        
-        JLabel lblInputImage = new JLabel("Input Image (Required)");
-        lblInputImage.setFont(promptSubLabelFont);
-        lblInputImage.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
-        promptImageInputPanel.add(lblInputImage);
-        promptImageInputPanel.add(Box.createVerticalStrut(4));
-
-        JPanel imageFileRow = new JPanel(new BorderLayout(8, 0));
-        imageFileRow.setOpaque(false);
-        imageFileRow.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
-        imageFileRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 32));
-
-        promptImageFileField = new JTextField();
-        promptImageFileField.setEditable(false);
-        promptImageFileField.setFont(new Font("SansSerif", Font.PLAIN, 12));
-        imageFileRow.add(promptImageFileField, BorderLayout.CENTER);
-
-        JButton btnBrowseImage = new JButton("Browse...");
-        btnBrowseImage.addActionListener(e -> {
-            JFileChooser chooser = new JFileChooser();
-            chooser.setDialogTitle("Select Input Image");
-            chooser.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("Images", "jpg", "png", "jpeg", "webp"));
-            if (chooser.showOpenDialog(Main.this) == JFileChooser.APPROVE_OPTION) {
-                selectedInputImage = chooser.getSelectedFile();
-                promptImageFileField.setText(selectedInputImage.getAbsolutePath());
-            }
-        });
-        imageFileRow.add(btnBrowseImage, BorderLayout.EAST);
-        
-        promptImageInputPanel.add(imageFileRow);
-        
-        leftPanel.add(promptImageInputPanel);
-        leftPanel.add(Box.createVerticalStrut(15));
-
-        // Dummy objects for backward compatibility with unused fields
-        promptAssembleArea = new JTextArea();
-        promptEnvCombo = new JComboBox<>();
-        chkPhotorealistic = new JCheckBox();
-        chkOil = new JCheckBox();
-        chkEngine = new JCheckBox();
-        chkAnime = new JCheckBox();
-        chkFantasy = new JCheckBox();
-        chkSketch = new JCheckBox();
-
-        // Image Dimensions & Batch Size
-        JLabel lblDimensions = new JLabel("Output Dimensions & Batching");
-        lblDimensions.putClientProperty("FlatLaf.styleClass", "h4");
-        lblDimensions.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
-        leftPanel.add(lblDimensions);
-        leftPanel.add(Box.createVerticalStrut(5));
-
-        JPanel sizeRow = new JPanel(new GridLayout(1, 3, 8, 0));
-        sizeRow.setOpaque(false);
-        sizeRow.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
-        sizeRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 50));
-
-        JPanel widthPanel = new JPanel(new BorderLayout(0, 2));
-        widthPanel.setOpaque(false);
-        JLabel lblWidth = new JLabel("Width");
-        lblWidth.setFont(new Font("SansSerif", Font.PLAIN, 11));
-        promptWidthSpinner = new JSpinner(new SpinnerNumberModel(512, 64, 4096, 64));
-        widthPanel.add(lblWidth, BorderLayout.NORTH);
-        widthPanel.add(promptWidthSpinner, BorderLayout.CENTER);
-
-        JPanel heightPanel = new JPanel(new BorderLayout(0, 2));
-        heightPanel.setOpaque(false);
-        JLabel lblHeight = new JLabel("Height");
-        lblHeight.setFont(new Font("SansSerif", Font.PLAIN, 11));
-        promptHeightSpinner = new JSpinner(new SpinnerNumberModel(512, 64, 4096, 64));
-        heightPanel.add(lblHeight, BorderLayout.NORTH);
-        heightPanel.add(promptHeightSpinner, BorderLayout.CENTER);
-
-        JPanel batchPanel = new JPanel(new BorderLayout(0, 2));
-        batchPanel.setOpaque(false);
-        JLabel lblBatch = new JLabel("Batch Size");
-        lblBatch.setFont(new Font("SansSerif", Font.PLAIN, 11));
-        promptBatchSizeSpinner = new JSpinner(new SpinnerNumberModel(1, 1, 16, 1));
-        batchPanel.add(lblBatch, BorderLayout.NORTH);
-        batchPanel.add(promptBatchSizeSpinner, BorderLayout.CENTER);
-
-        sizeRow.add(widthPanel);
-        sizeRow.add(heightPanel);
-        sizeRow.add(batchPanel);
-        leftPanel.add(sizeRow);
-        leftPanel.add(Box.createVerticalStrut(15));
-
-        // Sampler Parameters (Steps, CFG, Denoise, Sampler & Scheduler)
-        JLabel lblSampler = new JLabel("Generation & Sampling Parameters");
-        lblSampler.putClientProperty("FlatLaf.styleClass", "h4");
-        lblSampler.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
-        leftPanel.add(lblSampler);
-        leftPanel.add(Box.createVerticalStrut(5));
-
-        JPanel samplerRow1 = new JPanel(new GridLayout(1, 3, 8, 0));
-        samplerRow1.setOpaque(false);
-        samplerRow1.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
-        samplerRow1.setMaximumSize(new Dimension(Integer.MAX_VALUE, 50));
-
-        JPanel stepsPanel = new JPanel(new BorderLayout(0, 2));
-        stepsPanel.setOpaque(false);
-        JLabel lblSteps = new JLabel("Steps");
-        lblSteps.setFont(new Font("SansSerif", Font.PLAIN, 11));
-        promptStepsSpinner = new JSpinner(new SpinnerNumberModel(20, 1, 100, 1));
-        stepsPanel.add(lblSteps, BorderLayout.NORTH);
-        stepsPanel.add(promptStepsSpinner, BorderLayout.CENTER);
-
-        JPanel cfgPanel = new JPanel(new BorderLayout(0, 2));
-        cfgPanel.setOpaque(false);
-        JLabel lblCfg = new JLabel("CFG Scale");
-        lblCfg.setFont(new Font("SansSerif", Font.PLAIN, 11));
-        promptCfgSpinner = new JSpinner(new SpinnerNumberModel(8.0, 0.0, 30.0, 0.5));
-        cfgPanel.add(lblCfg, BorderLayout.NORTH);
-        cfgPanel.add(promptCfgSpinner, BorderLayout.CENTER);
-
-        JPanel denoisePanel = new JPanel(new BorderLayout(0, 2));
-        denoisePanel.setOpaque(false);
-        JLabel lblDenoise = new JLabel("Denoise");
-        lblDenoise.setFont(new Font("SansSerif", Font.PLAIN, 11));
-        promptDenoiseSpinner = new JSpinner(new SpinnerNumberModel(1.0, 0.0, 1.0, 0.05));
-        denoisePanel.add(lblDenoise, BorderLayout.NORTH);
-        denoisePanel.add(promptDenoiseSpinner, BorderLayout.CENTER);
-
-        samplerRow1.add(stepsPanel);
-        samplerRow1.add(cfgPanel);
-        samplerRow1.add(denoisePanel);
-        leftPanel.add(samplerRow1);
-        leftPanel.add(Box.createVerticalStrut(8));
-
-        JPanel samplerRow2 = new JPanel(new GridLayout(1, 2, 8, 0));
-        samplerRow2.setOpaque(false);
-        samplerRow2.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
-        samplerRow2.setMaximumSize(new Dimension(Integer.MAX_VALUE, 50));
-
-        JPanel samplerNamePanel = new JPanel(new BorderLayout(0, 2));
-        samplerNamePanel.setOpaque(false);
-        JLabel lblSamplerName = new JLabel("Sampler Name");
-        lblSamplerName.setFont(new Font("SansSerif", Font.PLAIN, 11));
-        promptSamplerCombo = new JComboBox<>(new String[]{
-            "Auto", "euler", "euler_ancestral", "heun", "heunpp2", "dpmpp_2m", 
-            "dpmpp_sde", "dpmpp_2m_sde", "dpmpp_3m_sde", "ddim", "uni_pc", "lcm", "res_multistep"
-        });
-        samplerNamePanel.add(lblSamplerName, BorderLayout.NORTH);
-        samplerNamePanel.add(promptSamplerCombo, BorderLayout.CENTER);
-
-        JPanel schedulerPanel = new JPanel(new BorderLayout(0, 2));
-        schedulerPanel.setOpaque(false);
-        JLabel lblScheduler = new JLabel("Scheduler");
-        lblScheduler.setFont(new Font("SansSerif", Font.PLAIN, 11));
-        promptSchedulerCombo = new JComboBox<>(new String[]{
-            "Auto", "normal", "karras", "exponential", "sgm_uniform", "simple", "ddim_uniform", "beta"
-        });
-        schedulerPanel.add(lblScheduler, BorderLayout.NORTH);
-        schedulerPanel.add(promptSchedulerCombo, BorderLayout.CENTER);
-
-        samplerRow2.add(samplerNamePanel);
-        samplerRow2.add(schedulerPanel);
-        leftPanel.add(samplerRow2);
-        leftPanel.add(Box.createVerticalGlue());
-
-        // Event Listeners
-        promptSubjectField.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
-            public void insertUpdate(javax.swing.event.DocumentEvent e) { updatePromptLabJson(); }
-            public void removeUpdate(javax.swing.event.DocumentEvent e) { updatePromptLabJson(); }
-            public void changedUpdate(javax.swing.event.DocumentEvent e) { updatePromptLabJson(); }
-        });
-
-        promptNegativeField.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
-            public void insertUpdate(javax.swing.event.DocumentEvent e) { updatePromptLabJson(); }
-            public void removeUpdate(javax.swing.event.DocumentEvent e) { updatePromptLabJson(); }
-            public void changedUpdate(javax.swing.event.DocumentEvent e) { updatePromptLabJson(); }
-        });
-
-        promptModelCombo.addActionListener(e -> {
-            String selected = (String) promptModelCombo.getSelectedItem();
-            if (selected != null) {
-                onPromptBlueprintSelected(selected);
-            }
-        });
-
-        promptWidthSpinner.addChangeListener(e -> updatePromptLabJson());
-        promptHeightSpinner.addChangeListener(e -> updatePromptLabJson());
-        promptBatchSizeSpinner.addChangeListener(e -> updatePromptLabJson());
-        promptStepsSpinner.addChangeListener(e -> updatePromptLabJson());
-        promptCfgSpinner.addChangeListener(e -> updatePromptLabJson());
-        promptDenoiseSpinner.addChangeListener(e -> updatePromptLabJson());
-        promptSamplerCombo.addActionListener(e -> updatePromptLabJson());
-        promptSchedulerCombo.addActionListener(e -> updatePromptLabJson());
-        promptCfgSpinner.addChangeListener(e -> updatePromptLabJson());
-        
-        refreshPromptLabModels();
-
-        // RIGHT: ComfyUI integration / API payload view
-        de.tki.comfymodels.ui.CardPanel rightPanel = new de.tki.comfymodels.ui.CardPanel();
-        rightPanel.setLayout(new BorderLayout(10, 10));
-
-        // Top controls of right panel
-        JPanel rightTopPanel = new JPanel(new BorderLayout());
-        rightTopPanel.setOpaque(false);
-        rightTopPanel.setBorder(BorderFactory.createEmptyBorder(0, 0, 8, 0));
-
-        JLabel apiHeader = new JLabel("ComfyUI API Integration (workflow_api.json)");
-        apiHeader.putClientProperty("FlatLaf.styleClass", "h3");
-        rightTopPanel.add(apiHeader, BorderLayout.CENTER);
-
-        rightPanel.add(rightTopPanel, BorderLayout.NORTH);
-
-        // Center JSON/Image area with tabbed pane
-        promptLabRightTabbedPane = new JTabbedPane();
-        promptLabRightTabbedPane.putClientProperty("JTabbedPane.tabType", "card");
-        promptLabRightTabbedPane.setOpaque(false);
-
-        // TAB A: Image Preview
-        JPanel imagePreviewTabPanel = new JPanel(new BorderLayout(10, 10));
-        imagePreviewTabPanel.setOpaque(false);
-
-        promptImagePreviewLabel = new JLabel("Your generated image will appear here", SwingConstants.CENTER);
-        promptImagePreviewLabel.setFont(new Font("SansSerif", Font.ITALIC, 14));
-        promptImagePreviewLabel.setForeground(Color.GRAY);
-        promptImagePreviewLabel.putClientProperty("FlatLaf.style", "background: $TextField.background");
-        promptImagePreviewLabel.setOpaque(true);
-        
-        promptImagePreviewLabel.addComponentListener(new java.awt.event.ComponentAdapter() {
-            @Override
-            public void componentResized(java.awt.event.ComponentEvent e) {
-                if (currentPreviewImage != null) {
-                    scaleAndSetImage(currentPreviewImage);
-                }
-            }
-        });
-
-        JScrollPane previewScroll = new JScrollPane(promptImagePreviewLabel);
-        previewScroll.setOpaque(false);
-        previewScroll.getViewport().setOpaque(false);
-        previewScroll.setBorder(BorderFactory.createEmptyBorder());
-        imagePreviewTabPanel.add(previewScroll, BorderLayout.CENTER);
-
-        // Progress bar inside preview panel bottom
-        promptLabProgressBar = new JProgressBar();
-        promptLabProgressBar.setStringPainted(true);
-        promptLabProgressBar.setVisible(false);
-        promptLabProgressBar.setPreferredSize(new Dimension(0, 25));
-        imagePreviewTabPanel.add(promptLabProgressBar, BorderLayout.SOUTH);
-
-        promptLabRightTabbedPane.addTab("🖼️ Image Preview", imagePreviewTabPanel);
-
-        // TAB B: JSON Workflow
-        promptJsonArea = new JTextArea(DEFAULT_PROMPT_JSON);
-        promptJsonArea.setFont(new Font("Monospaced", Font.PLAIN, 12));
-        JScrollPane jsonScroll = new JScrollPane(promptJsonArea);
-        jsonScroll.setOpaque(false);
-        jsonScroll.getViewport().setOpaque(false);
-        jsonScroll.setBorder(BorderFactory.createEmptyBorder());
-        promptLabRightTabbedPane.addTab("📝 JSON Workflow", jsonScroll);
-
-        rightPanel.add(promptLabRightTabbedPane, BorderLayout.CENTER);
-
-        // Bottom panel for console/status and send action
-        JPanel rightBottomPanel = new JPanel(new BorderLayout(5, 5));
-        rightBottomPanel.setOpaque(false);
-
-        promptLabConsole = new JTextArea(4, 20);
-        promptLabConsole.setBackground(UIManager.getColor("TextArea.background"));
-        promptLabConsole.setForeground(UIManager.getColor("TextArea.foreground"));
-        promptLabConsole.setFont(new Font("Monospaced", Font.PLAIN, 12));
-        promptLabConsole.setEditable(false);
-        promptLabConsole.setText("System: Prompt Lab ready.\n");
-        JScrollPane consoleScroll = new JScrollPane(promptLabConsole);
-        consoleScroll.setOpaque(false);
-        consoleScroll.getViewport().setOpaque(false);
-        consoleScroll.setBorder(BorderFactory.createEmptyBorder());
-        rightBottomPanel.add(consoleScroll, BorderLayout.CENTER);
-
-        btnSendToComfy = new JButton("🚀 Send to ComfyUI");
-        btnSendToComfy.setFont(new Font("SansSerif", Font.BOLD, 14));
-        btnSendToComfy.putClientProperty("Button.background", new Color(255, 204, 0));
-        btnSendToComfy.putClientProperty("Button.foreground", Color.BLACK);
-        btnSendToComfy.setPreferredSize(new Dimension(0, 45));
-        btnSendToComfy.addActionListener(e -> sendPromptToComfyUI());
-        
-        rightBottomPanel.add(btnSendToComfy, BorderLayout.SOUTH);
-        rightPanel.add(rightBottomPanel, BorderLayout.SOUTH);
-
-        // Split panel
-        JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, leftPanel, rightPanel);
-        splitPane.setDividerLocation(360);
-        splitPane.setResizeWeight(0.3);
-
-        panel.add(splitPane, BorderLayout.CENTER);
-
-        // Load persisted session inputs
-        loadPromptLabSession();
-
-        // Run initial update to align values
-        updatePromptLabJson();
-
-        return panel;
+        if (promptLabView != null && promptLabController != null) {
+            promptLabController.setView(promptLabView);
+            promptLabController.setBlueprintGalleryTab(blueprintGalleryTab);
+            promptLabController.setSendPromptHandler(this::sendPromptToComfyUI);
+            promptLabController.setSuggestSubjectHandler(this::suggestSubjectCompletions);
+            syncPromptLabViewFields();
+            promptLabController.loadPromptLabSession();
+            promptLabController.updatePromptLabJson();
+            return promptLabView;
+        }
+        return new JPanel();
+    }
+
+    private void syncPromptLabViewFields() {
+        if (promptLabView == null) return;
+        this.promptModelCombo = promptLabView.getPromptModelCombo();
+        this.promptPresetLabel = promptLabView.getPromptPresetLabel();
+        this.promptSubjectField = promptLabView.getPromptSubjectField();
+        this.btnSuggestSubject = promptLabView.getBtnSuggestSubject();
+        this.promptSubjectSuggestionsWrapper = promptLabView.getPromptSubjectSuggestionsWrapper();
+        this.promptSubjectSuggestionsPanel = promptLabView.getPromptSubjectSuggestionsPanel();
+        this.promptLabLeftPanel = promptLabView.getPromptLabLeftPanel();
+        this.promptNegativeField = promptLabView.getPromptNegativeField();
+        this.promptImageInputPanel = promptLabView.getPromptImageInputPanel();
+        this.promptImageFileField = promptLabView.getPromptImageFileField();
+        this.promptWidthSpinner = promptLabView.getPromptWidthSpinner();
+        this.promptHeightSpinner = promptLabView.getPromptHeightSpinner();
+        this.promptBatchSizeSpinner = promptLabView.getPromptBatchSizeSpinner();
+        this.promptStepsSpinner = promptLabView.getPromptStepsSpinner();
+        this.promptCfgSpinner = promptLabView.getPromptCfgSpinner();
+        this.promptDenoiseSpinner = promptLabView.getPromptDenoiseSpinner();
+        this.promptSamplerCombo = promptLabView.getPromptSamplerCombo();
+        this.promptSchedulerCombo = promptLabView.getPromptSchedulerCombo();
+        this.promptLabRightTabbedPane = promptLabView.getPromptLabRightTabbedPane();
+        this.promptImagePreviewLabel = promptLabView.getPromptImagePreviewLabel();
+        this.promptLabProgressBar = promptLabView.getPromptLabProgressBar();
+        this.promptJsonArea = promptLabView.getPromptJsonArea();
+        this.promptLabConsole = promptLabView.getPromptLabConsole();
+        this.btnSendToComfy = promptLabView.getBtnSendToComfy();
+        this.promptAssembleArea = promptLabView.getPromptAssembleArea();
+        this.chkAnime = promptLabView.getChkAnime();
+        this.chkFantasy = promptLabView.getChkFantasy();
     }
 
     private void applyModelPreset(String modelNameRaw) {
-        if (modelNameRaw == null || modelNameRaw.isEmpty()) return;
-        
-        String modelName = getActualModelForPromptLab(modelNameRaw);
-        if (modelName == null) return;
-        
-        if (comfyTemplateService != null) {
-            de.tki.comfymodels.domain.ComfyTemplate template = comfyTemplateService.determineTemplateForModel(modelName);
-            if (template != null) {
-                // Pre-cache the original GUI JSON so sendPromptToComfyUI can send it
-                // unmodified to the browser for app.graphToPrompt() conversion.
-                currentBlueprintGuiJson = template.getContent();
-                promptJsonArea.setText(currentBlueprintGuiJson);
-            }
-        }
-
-        
-        String lower = modelName.toLowerCase();
-        if (lower.contains("flux1-schnell") || lower.contains("flux_schnell") || lower.contains("schnell")) {
-            promptPresetLabel.setText("Detected Preset: FLUX.1 Schnell (Fast 4-Step)");
-            promptWidthSpinner.setValue(1024);
-            promptHeightSpinner.setValue(1024);
-            promptStepsSpinner.setValue(4);
-            promptCfgSpinner.setValue(1.0);
-        } else if (lower.contains("flux")) {
-            promptPresetLabel.setText("Detected Preset: FLUX.1 (High Quality)");
-            promptWidthSpinner.setValue(1024);
-            promptHeightSpinner.setValue(1024);
-            promptStepsSpinner.setValue(20);
-            promptCfgSpinner.setValue(1.0);
-        } else if (lower.contains("xl") || lower.contains("juggernaut") || lower.contains("pony")) {
-            promptPresetLabel.setText("Detected Preset: Stable Diffusion XL (SDXL)");
-            promptWidthSpinner.setValue(1024);
-            promptHeightSpinner.setValue(1024);
-            promptStepsSpinner.setValue(30);
-            promptCfgSpinner.setValue(6.0);
-        } else if (lower.contains("longcat") || lower.contains("lumina")) {
-            promptPresetLabel.setText("Detected Preset: Lumina2 / LongCat (1024x1024)");
-            promptWidthSpinner.setValue(1024);
-            promptHeightSpinner.setValue(1024);
-            promptStepsSpinner.setValue(20);
-            promptCfgSpinner.setValue(4.0);
-        } else if (lower.contains("ltx")) {
-            promptPresetLabel.setText("Detected Preset: LTX-Video / Image Transformer");
-            promptWidthSpinner.setValue(768);
-            promptHeightSpinner.setValue(512);
-            promptStepsSpinner.setValue(20);
-            promptCfgSpinner.setValue(3.0);
-        } else if (lower.contains("hunyuan")) {
-            promptPresetLabel.setText("Detected Preset: Hunyuan 3D / Video");
-            promptWidthSpinner.setValue(1024);
-            promptHeightSpinner.setValue(1024);
-            promptStepsSpinner.setValue(30);
-            promptCfgSpinner.setValue(5.0);
-        } else if (lower.contains("turbo")) {
-            promptPresetLabel.setText("Detected Preset: SD Turbo / fast inference");
-            promptWidthSpinner.setValue(512);
-            promptHeightSpinner.setValue(512);
-            promptStepsSpinner.setValue(8);
-            promptCfgSpinner.setValue(1.5);
-        } else {
-            promptPresetLabel.setText("Detected Preset: Stable Diffusion 1.5 (SD 1.5)");
-            promptWidthSpinner.setValue(512);
-            promptHeightSpinner.setValue(512);
-            promptStepsSpinner.setValue(20);
-            promptCfgSpinner.setValue(7.0);
-        }
+        if (promptLabController != null) promptLabController.applyModelPreset(modelNameRaw);
     }
 
     private String findExactUnetName(String selectedModel) {
-        if (selectedModel == null) return "";
-        for (String unet : comfyUnetModels) {
-            if (modelsMatch(selectedModel, unet)) {
-                return unet;
-            }
-        }
-        String clean = selectedModel.replace("\\", "/");
-        if (clean.startsWith("diffusion_models/")) {
-            clean = clean.substring(17);
-        }
-        return clean;
+        return promptLabController != null ? promptLabController.findExactUnetName(selectedModel) : "";
     }
 
     private String findExactCheckpointName(String selectedModel) {
-        if (selectedModel == null) return "";
-        for (String ckpt : comfyCheckpoints) {
-            if (modelsMatch(selectedModel, ckpt)) {
-                return ckpt;
-            }
-        }
-        String clean = selectedModel.replace("\\", "/");
-        if (clean.startsWith("checkpoints/")) {
-            clean = clean.substring(12);
-        }
-        return clean;
+        return promptLabController != null ? promptLabController.findExactCheckpointName(selectedModel) : "";
     }
 
     private String resolveClipType(String clipModel, String selectedModel) {
-        if (clipModel == null) return "stable_diffusion";
-        String lower = clipModel.toLowerCase();
-        String candidate = "stable_diffusion";
-        
-        if (lower.contains("qwen_3_4b") || lower.contains("lumina2") || lower.contains("lumina-2")) {
-            candidate = "lumina2";
-        } else if (lower.contains("wan") || lower.contains("qwen_2.5_vl")) {
-            candidate = "wan";
-        } else if (lower.contains("flux")) {
-            candidate = "flux";
-        } else if (lower.contains("gemma")) {
-            candidate = "lumina2";
+        if (promptLabController != null) {
+            return promptLabController.resolveClipType(clipModel, selectedModel);
+        }
+        String lower = clipModel != null ? clipModel.toLowerCase() : "";
+        if (lower.contains("gemma") || lower.contains("qwen_3_4b") || lower.contains("lumina2") || lower.contains("lumina-2")) {
+            return "lumina2";
+        } else if (lower.contains("wan") || lower.contains("qwen_2.5_vl") || lower.contains("umt5")) {
+            return "wan";
+        } else if (lower.contains("t5xxl") || lower.contains("t5-xxl") || lower.contains("t5_xxl") || lower.contains("t5_fp8") || lower.contains("t5_fp16")) {
+            if (selectedModel != null && (selectedModel.toLowerCase().contains("sd3") || selectedModel.toLowerCase().contains("stable_diffusion_3"))) {
+                return "sd3";
+            }
+            return "flux";
+        } else if (lower.contains("mistral") || lower.contains("flux2") || lower.contains("klein")) {
+            return "flux2";
         } else if (lower.contains("sd3") || lower.contains("stable_diffusion_3")) {
-            candidate = "sd3";
+            return "sd3";
+        } else if (lower.contains("clip_l") || lower.contains("clip_g") || lower.contains("vi-clip") || lower.contains("sd15") || lower.contains("sdxl")) {
+            return "stable_diffusion";
         } else if (lower.contains("mochi")) {
-            candidate = "mochi";
-        } else if (lower.contains("ltxv")) {
-            candidate = "ltxv";
+            return "mochi";
+        } else if (lower.contains("ltxv") || lower.contains("ltx")) {
+            return "ltxv";
         } else if (lower.contains("cosmos")) {
-            candidate = "cosmos";
+            return "cosmos";
         }
         
-        // Contextual overrides based on the selected model
+        String candidate = "stable_diffusion";
         if (selectedModel != null) {
-            if (modelArchitectureService != null) {
-                de.tki.comfymodels.service.IModelArchitectureService.ModelDefaults defaults = modelArchitectureService.getDefaultsForModel(selectedModel);
-                if (defaults != null && defaults.clipType != null) {
-                    candidate = defaults.clipType;
-                }
-            } else {
-                String selLower = selectedModel.toLowerCase();
-                if (selLower.contains("flux") || selLower.contains("schnell")) {
-                    if ("stable_diffusion".equals(candidate)) {
-                        candidate = "flux";
-                    }
-                } else if (selLower.contains("sd3") || selLower.contains("stable_diffusion_3")) {
-                    if ("stable_diffusion".equals(candidate)) {
-                        candidate = "sd3";
-                    }
-                } else if (selLower.contains("longcat") || selLower.contains("lumina") || selLower.contains("acestep") || selLower.contains("z_image")) {
-                    candidate = "longcat_image";
-                }
+            String selLower = selectedModel.toLowerCase();
+            if (selLower.contains("flux-2-klein") || selLower.contains("flux2-klein") || selLower.contains("klein")) {
+                candidate = "flux2";
+            } else if (selLower.contains("flux") || selLower.contains("schnell")) {
+                candidate = "flux";
+            } else if (selLower.contains("sd3") || selLower.contains("stable_diffusion_3")) {
+                candidate = "sd3";
+            } else if (selLower.contains("longcat") || selLower.contains("lumina") || selLower.contains("acestep") || selLower.contains("z_image") || selLower.contains("z-image")) {
+                candidate = "lumina2";
+            } else if (selLower.contains("wan")) {
+                candidate = "wan";
             }
         }
-        
         if (comfyClipTypes.contains(candidate)) {
             return candidate;
         }
-        if (comfyClipTypes.contains("stable_diffusion")) {
+        if (comfyClipTypes.contains("stable_diffusion") && candidate.equals("stable_diffusion")) {
             return "stable_diffusion";
         }
-        if (!comfyClipTypes.isEmpty()) {
+        if (!comfyClipTypes.isEmpty() && !comfyClipTypes.contains(candidate) && !candidate.equals("flux") && !candidate.equals("lumina2") && !candidate.equals("wan") && !candidate.equals("sd3") && !candidate.equals("flux2")) {
             return comfyClipTypes.iterator().next();
         }
         return candidate;
     }
 
     private boolean modelsMatch(String modelA, String modelB) {
+        if (promptLabController != null) {
+            return promptLabController.modelsMatch(modelA, modelB);
+        }
         if (modelA == null || modelB == null) return false;
         String a = modelA.replace("\\", "/").toLowerCase();
         String b = modelB.replace("\\", "/").toLowerCase();
-        
         if (a.startsWith("checkpoints/")) a = a.substring(12);
         if (a.startsWith("diffusion_models/")) a = a.substring(17);
         if (a.startsWith("unet/")) a = a.substring(5);
-        
         if (b.startsWith("checkpoints/")) b = b.substring(12);
         if (b.startsWith("diffusion_models/")) b = b.substring(17);
         if (b.startsWith("unet/")) b = b.substring(5);
-        
         for (String ext : new String[]{".safetensors", ".ckpt", ".pt", ".bin"}) {
             if (a.endsWith(ext)) a = a.substring(0, a.length() - ext.length());
             if (b.endsWith(ext)) b = b.substring(0, b.length() - ext.length());
         }
-        
         return a.equals(b);
     }
 
     private boolean isDiffusionModel(String modelName) {
+        if (promptLabController != null) {
+            return promptLabController.isDiffusionModel(modelName);
+        }
         if (modelName == null) return false;
-        String clean = modelName.replace("\\", "/");
-        if (clean.startsWith("diffusion_models/")) {
-            clean = clean.substring(17);
-        }
-        for (String unet : comfyUnetModels) {
-            if (modelsMatch(modelName, unet)) {
-                return true;
-            }
-        }
         String lower = modelName.toLowerCase();
-        return lower.contains("diffusion_models") || 
-               lower.contains("z_image_turbo") || 
-               lower.contains("acestep") || 
-               lower.contains("flux-2-klein") || 
-               lower.contains("longcat") || 
-               lower.contains("lumina") || 
-               lower.contains("wan2.1") || 
-               lower.contains("wan2.2");
+        return lower.contains("diffusion_models") || lower.contains("z_image") || lower.contains("z-image") || lower.contains("acestep") || lower.contains("flux") || lower.contains("lumina") || lower.contains("wan");
     }
 
     private String resolveClipForModel(String modelName) {
+        if (promptLabController != null) {
+            return promptLabController.resolveClipForModel(modelName);
+        }
+        if (modelName == null) return "qwen_3_4b.safetensors";
         String lower = modelName.toLowerCase();
-        String expected = "qwen_3_4b.safetensors";
-        if (lower.contains("z_image_turbo") || lower.contains("acestep") || lower.contains("longcat") || lower.contains("lumina")) {
-            expected = "qwen_3_4b.safetensors";
-        } else if (lower.contains("wan")) {
-            expected = "qwen/qwen_2.5_vl_7b_fp8_scaled.safetensors";
-        } else if (lower.contains("flux") || lower.contains("schnell")) {
-            expected = "t5xxl_fp8_e4m3fn.safetensors";
+        if (lower.contains("z_image") || lower.contains("z-image") || lower.contains("acestep") || lower.contains("longcat") || lower.contains("lumina")) {
             for (String clip : comfyClips) {
                 String cLower = clip.toLowerCase();
-                if (cLower.contains("t5xxl") || cLower.contains("t5-xxl")) {
+                if (cLower.contains("gemma4") || cLower.contains("gemma-4") || cLower.contains("gemma_4") ||
+                    cLower.contains("gemma2") || cLower.contains("gemma-2") || cLower.contains("gemma_2") ||
+                    cLower.contains("gemma")) {
                     return clip;
                 }
             }
             for (String clip : comfyClips) {
-                if (clip.toLowerCase().contains("flux")) {
+                String cLower = clip.toLowerCase();
+                if (cLower.contains("qwen_3_4b") || cLower.contains("qwen-3-4b") || cLower.contains("qwen_3.4b") || cLower.contains("qwen3")) {
                     return clip;
                 }
             }
-        }
-        
-        String expectedClean = expected.replace("\\", "/");
-        for (String clip : comfyClips) {
-            String clipClean = clip.replace("\\", "/");
-            if (clipClean.equalsIgnoreCase(expectedClean) || clipClean.endsWith("/" + expectedClean)) {
-                return clip;
-            }
-        }
-        String expectedName = expectedClean.contains("/") ? expectedClean.substring(expectedClean.lastIndexOf('/') + 1) : expectedClean;
-        for (String clip : comfyClips) {
-            String clipClean = clip.replace("\\", "/");
-            if (clipClean.equalsIgnoreCase(expectedName) || clipClean.endsWith("/" + expectedName)) {
-                return clip;
-            }
-        }
-        if (expectedName.contains("qwen")) {
+            return "gemma4_e2b_it_bf16.safetensors";
+        } else if (lower.contains("wan")) {
             for (String clip : comfyClips) {
-                if (clip.toLowerCase().contains("qwen")) {
+                String cLower = clip.toLowerCase();
+                if (cLower.contains("qwen_2.5_vl") || cLower.contains("umt5")) {
                     return clip;
                 }
             }
+            return "qwen/qwen_2.5_vl_7b_fp8_scaled.safetensors";
+        } else if (lower.contains("flux-2-klein") || lower.contains("flux2-klein") || lower.contains("klein")) {
+            for (String clip : comfyClips) {
+                String cLower = clip.toLowerCase();
+                if (cLower.contains("mistral") || cLower.contains("flux2") || cLower.contains("klein")) {
+                    return clip;
+                }
+            }
+            return "mistral_3_small_flux2_bf16.safetensors";
+        } else if (lower.contains("flux") || lower.contains("schnell") || lower.contains("dev")) {
+            for (String clip : comfyClips) {
+                String cLower = clip.toLowerCase();
+                if (cLower.contains("t5xxl") || cLower.contains("t5-xxl") || cLower.contains("t5_xxl") ||
+                    cLower.contains("t5_fp8") || cLower.contains("t5_fp16") || cLower.contains("t5xxl_fp8")) {
+                    return clip;
+                }
+            }
+            for (String clip : comfyClips) {
+                String cLower = clip.toLowerCase();
+                if (cLower.contains("t5") && !cLower.contains("umt5") && !cLower.contains("gemma") && !cLower.contains("qwen")) {
+                    return clip;
+                }
+            }
+            return "t5xxl_fp8_e4m3fn.safetensors";
+        } else if (lower.contains("sd3") || lower.contains("stable_diffusion_3")) {
+            for (String clip : comfyClips) {
+                String cLower = clip.toLowerCase();
+                if (cLower.contains("t5xxl") || cLower.contains("t5-xxl") || cLower.contains("clip_g") || cLower.contains("sd3")) {
+                    return clip;
+                }
+            }
+            return "t5xxl_fp8_e4m3fn.safetensors";
         }
-        
-        // Strict fallback logic: only return a clip from comfyClips if its resolved type matches the expected type
-        String expectedType = resolveClipType(expected, modelName);
         for (String clip : comfyClips) {
-            if (resolveClipType(clip, modelName).equals(expectedType)) {
+            String cLower = clip.toLowerCase();
+            if (cLower.contains("clip_l") || cLower.contains("sd15") || cLower.contains("sdxl")) {
                 return clip;
             }
         }
-        return expected;
+        return "clip_l.safetensors";
     }
 
     private String resolveVaeForModel(String modelName) {
+        if (promptLabController != null) {
+            return promptLabController.resolveVaeForModel(modelName);
+        }
+        if (modelName == null) return "ae.safetensors";
         String expected = "FLUX1/ae.safetensors";
-        if (modelArchitectureService != null) {
-            de.tki.comfymodels.service.IModelArchitectureService.ModelDefaults defaults = modelArchitectureService.getDefaultsForModel(modelName);
-            if (defaults != null && defaults.vaeName != null) {
-                expected = defaults.vaeName;
-            }
-        } else {
-            String lower = modelName.toLowerCase();
-            if (lower.contains("z_image_turbo") || lower.contains("acestep") || lower.contains("longcat") || lower.contains("lumina")) {
-                expected = "ae.safetensors";
-            } else if (lower.contains("wan")) {
-                expected = "wan_2.1_vae.safetensors";
-            }
+        String lower = modelName.toLowerCase();
+        if (lower.contains("z_image") || lower.contains("z-image") || lower.contains("acestep") || lower.contains("longcat") || lower.contains("lumina")) {
+            expected = "ae.safetensors";
+        } else if (lower.contains("wan")) {
+            expected = "wan_2.1_vae.safetensors";
+        } else if (lower.contains("flux")) {
+            expected = "FLUX1/ae.safetensors";
         }
         
         String expectedClean = expected.replace("\\", "/");
@@ -1917,388 +1456,27 @@ public class Main extends JFrame {
                 }
             }
         }
-        // Only fall back to first VAE if it matches compatibility
-        if (!comfyVaes.isEmpty()) {
-            String candidate = comfyVaes.iterator().next();
-            String cLower = candidate.toLowerCase();
-            if (expectedName.contains("wan") && cLower.contains("wan")) {
-                return candidate;
-            }
-            if (isExpectedAeOrFlux && (cLower.contains("flux") || cLower.replace("vae", "").contains("ae"))) {
-                return candidate;
-            }
-        }
         return expected;
     }
 
-    /**
-     * @deprecated No-op since the generic architecture refactor.
-     *
-     * <p>Java no longer manipulates model loaders, {@code class_type} fields, or graph wiring.
-     * The blueprint's own workflow JSON — as produced by ComfyUI's {@code app.graphToPrompt()} —
-     * is authoritative. All loader-level decisions remain inside the workflow JSON itself.
-     *
-     * <p>Only generic parameters (prompt text, dimensions, sampler steps / CFG, seed) are
-     * injected by {@link de.tki.comfymodels.service.PromptBlueprintApiService#injectLabInputs}.
-     */
-    @SuppressWarnings("unused")
-    private void adaptWorkflowJsonForModel(JSONObject promptObj, String selectedModelRaw) {
-        // Intentionally empty — no model/loader mutation. See PromptBlueprintApiService.
-    }
-
-
     private String getActualModelForPromptLab(String comboSelection) {
-        if (comboSelection == null) return null;
-        if (blueprintGalleryTab != null) {
-            for (de.tki.comfymodels.ui.BlueprintGalleryTab.BlueprintEntry e : blueprintGalleryTab.getAvailableBlueprints()) {
-                if (e.name.equals(comboSelection)) {
-                    if (!e.requiredModels.isEmpty()) {
-                        return e.requiredModels.get(0).getName();
-                    }
-                }
-            }
-        }
-        return comboSelection;
+        return promptLabController != null ? promptLabController.getActualModelForPromptLab(comboSelection) : comboSelection;
     }
 
     private String getBlueprintNameForModel(String modelName) {
-        if (modelName == null) return null;
-        if (blueprintGalleryTab != null) {
-            for (de.tki.comfymodels.ui.BlueprintGalleryTab.BlueprintEntry e : blueprintGalleryTab.getAvailableBlueprints()) {
-                if (!e.requiredModels.isEmpty() && e.requiredModels.get(0).getName().equals(modelName)) {
-                    return e.name;
-                }
-            }
-        }
-        return modelName;
+        return promptLabController != null ? promptLabController.getBlueprintNameForModel(modelName) : modelName;
     }
 
     private void updatePromptLabJson() {
-        if (promptSubjectField == null || promptEnvCombo == null || promptAssembleArea == null || promptJsonArea == null) {
-            return;
-        }
-
-        // ── Assemble prompt text ────────────────────────────────────────────
-        String subject = promptSubjectField.getText().trim();
-        String negative = (promptNegativeField != null) ? promptNegativeField.getText().trim() : "";
-
-        promptAssembleArea.setText(subject);
-
-        // ── Fast generic injection into the current API JSON ─────────────────
-        try {
-            String currentJsonStr = promptJsonArea.getText();
-            if (currentJsonStr == null || currentJsonStr.isBlank()) return;
-
-            JSONObject mainObj = new JSONObject(currentJsonStr);
-            if (!mainObj.has("prompt")) return;
-
-            JSONObject promptObj = mainObj.getJSONObject("prompt");
-
-            int width  = (promptWidthSpinner  != null) ? (Integer) promptWidthSpinner.getValue()  : 512;
-            int height = (promptHeightSpinner != null) ? (Integer) promptHeightSpinner.getValue() : 512;
-            int batch  = (promptBatchSizeSpinner != null) ? (Integer) promptBatchSizeSpinner.getValue() : 1;
-            int steps  = (promptStepsSpinner  != null) ? (Integer) promptStepsSpinner.getValue()   : 20;
-            double cfg = (promptCfgSpinner    != null) ? ((Number) promptCfgSpinner.getValue()).doubleValue() : 7.0;
-            double denoise = (promptDenoiseSpinner != null) ? ((Number) promptDenoiseSpinner.getValue()).doubleValue() : 1.0;
-            String samplerName = (promptSamplerCombo != null && promptSamplerCombo.getSelectedItem() != null) ? (String) promptSamplerCombo.getSelectedItem() : "Auto";
-            String scheduler   = (promptSchedulerCombo != null && promptSchedulerCombo.getSelectedItem() != null) ? (String) promptSchedulerCombo.getSelectedItem() : "Auto";
-
-            String inputImage = (promptImageFileField != null) ? promptImageFileField.getText() : null;
-            de.tki.comfymodels.service.PromptBlueprintApiService.PromptLabInputs previewInputs =
-                new de.tki.comfymodels.service.PromptBlueprintApiService.PromptLabInputs(
-                    subject, negative, width, height, steps, cfg, 0L, samplerName, scheduler, denoise, batch, inputImage
-                );
-            promptBlueprintApiService.injectLabInputs(promptObj, previewInputs);
-
-            promptJsonArea.setText(mainObj.toString(2));
-        } catch (Exception ex) {
-            // Ignore JSON parse errors from manually-edited content
-        }
-        savePromptLabSession();
+        if (promptLabController != null) promptLabController.updatePromptLabJson();
     }
 
-
     private void updateComfyModelSets(JSONObject info) {
-        comfyCheckpoints.clear();
-        comfyUnetModels.clear();
-        comfyClips.clear();
-        comfyVaes.clear();
-        comfyClipTypes.clear();
-        comfyUnetWeightDtypes.clear();
-
-        if (info.has("CheckpointLoaderSimple")) {
-            JSONObject nodeInfo = info.getJSONObject("CheckpointLoaderSimple");
-            if (nodeInfo.has("input")) {
-                JSONObject input = nodeInfo.getJSONObject("input");
-                if (input.has("required")) {
-                    JSONObject required = input.getJSONObject("required");
-                    if (required.has("ckpt_name")) {
-                        Object val = required.get("ckpt_name");
-                        if (val instanceof org.json.JSONArray) {
-                            org.json.JSONArray outerArray = (org.json.JSONArray) val;
-                            if (outerArray.length() > 0) {
-                                Object firstElement = outerArray.get(0);
-                                if (firstElement instanceof org.json.JSONArray) {
-                                    org.json.JSONArray options = (org.json.JSONArray) firstElement;
-                                    for (int i = 0; i < options.length(); i++) {
-                                        comfyCheckpoints.add(options.getString(i));
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        if (info.has("UNETLoader")) {
-            JSONObject nodeInfo = info.getJSONObject("UNETLoader");
-            if (nodeInfo.has("input")) {
-                JSONObject input = nodeInfo.getJSONObject("input");
-                if (input.has("required")) {
-                    JSONObject required = input.getJSONObject("required");
-                    if (required.has("unet_name")) {
-                        Object val = required.get("unet_name");
-                        if (val instanceof org.json.JSONArray) {
-                            org.json.JSONArray outerArray = (org.json.JSONArray) val;
-                            if (outerArray.length() > 0) {
-                                Object firstElement = outerArray.get(0);
-                                if (firstElement instanceof org.json.JSONArray) {
-                                    org.json.JSONArray options = (org.json.JSONArray) firstElement;
-                                    for (int i = 0; i < options.length(); i++) {
-                                        comfyUnetModels.add(options.getString(i));
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    if (required.has("weight_dtype")) {
-                        Object val = required.get("weight_dtype");
-                        if (val instanceof org.json.JSONArray) {
-                            org.json.JSONArray outerArray = (org.json.JSONArray) val;
-                            if (outerArray.length() > 0) {
-                                Object firstElement = outerArray.get(0);
-                                if (firstElement instanceof org.json.JSONArray) {
-                                    org.json.JSONArray options = (org.json.JSONArray) firstElement;
-                                    for (int i = 0; i < options.length(); i++) {
-                                        comfyUnetWeightDtypes.add(options.getString(i));
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        if (info.has("CLIPLoader")) {
-            JSONObject nodeInfo = info.getJSONObject("CLIPLoader");
-            if (nodeInfo.has("input")) {
-                JSONObject input = nodeInfo.getJSONObject("input");
-                if (input.has("required")) {
-                    JSONObject required = input.getJSONObject("required");
-                    if (required.has("clip_name")) {
-                        Object val = required.get("clip_name");
-                        if (val instanceof org.json.JSONArray) {
-                            org.json.JSONArray outerArray = (org.json.JSONArray) val;
-                            if (outerArray.length() > 0) {
-                                Object firstElement = outerArray.get(0);
-                                if (firstElement instanceof org.json.JSONArray) {
-                                    org.json.JSONArray options = (org.json.JSONArray) firstElement;
-                                    for (int i = 0; i < options.length(); i++) {
-                                        comfyClips.add(options.getString(i));
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    if (required.has("type")) {
-                        Object val = required.get("type");
-                        if (val instanceof org.json.JSONArray) {
-                            org.json.JSONArray outerArray = (org.json.JSONArray) val;
-                            if (outerArray.length() > 0) {
-                                Object firstElement = outerArray.get(0);
-                                if (firstElement instanceof org.json.JSONArray) {
-                                    org.json.JSONArray options = (org.json.JSONArray) firstElement;
-                                    for (int i = 0; i < options.length(); i++) {
-                                        comfyClipTypes.add(options.getString(i));
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        if (info.has("VAELoader")) {
-            JSONObject nodeInfo = info.getJSONObject("VAELoader");
-            if (nodeInfo.has("input")) {
-                JSONObject input = nodeInfo.getJSONObject("input");
-                if (input.has("required")) {
-                    JSONObject required = input.getJSONObject("required");
-                    if (required.has("vae_name")) {
-                        Object val = required.get("vae_name");
-                        if (val instanceof org.json.JSONArray) {
-                            org.json.JSONArray outerArray = (org.json.JSONArray) val;
-                            if (outerArray.length() > 0) {
-                                Object firstElement = outerArray.get(0);
-                                if (firstElement instanceof org.json.JSONArray) {
-                                    org.json.JSONArray options = (org.json.JSONArray) firstElement;
-                                    for (int i = 0; i < options.length(); i++) {
-                                        comfyVaes.add(options.getString(i));
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        if (promptLabController != null) promptLabController.updateComfyModelSets(info);
     }
 
     private void onPromptBlueprintSelected(String selectedName) {
-
-        if (selectedName == null || selectedName.isEmpty()) return;
-
-        de.tki.comfymodels.ui.BlueprintGalleryTab.BlueprintEntry matchedEntry = null;
-        if (blueprintGalleryTab != null) {
-            for (de.tki.comfymodels.ui.BlueprintGalleryTab.BlueprintEntry e : blueprintGalleryTab.getAvailableBlueprints()) {
-                if (e.name.equalsIgnoreCase(selectedName) || e.filename.equalsIgnoreCase(selectedName)) {
-                    matchedEntry = e;
-                    break;
-                }
-            }
-            if (matchedEntry == null) {
-                for (de.tki.comfymodels.ui.BlueprintGalleryTab.BlueprintEntry e : blueprintGalleryTab.getAvailableBlueprints()) {
-                    if (isBlueprintNameMatch(e.name, selectedName) || isBlueprintNameMatch(e.filename, selectedName)) {
-                        matchedEntry = e;
-                        break;
-                    }
-                }
-            }
-        }
-
-        if (matchedEntry != null) {
-            if (promptPresetLabel != null) {
-                promptPresetLabel.setText("Selected Blueprint: " + matchedEntry.name + " (" + matchedEntry.category + ")");
-            }
-
-            // Adjust default dimension & sampler spinners based on blueprint type
-            String nameLower = matchedEntry.name.toLowerCase();
-            String catLower = matchedEntry.category.toLowerCase();
-            if (nameLower.contains("z-image") || nameLower.contains("turbo") || nameLower.contains("schnell") || nameLower.contains("lightning") || nameLower.contains("hyper")) {
-                if (promptWidthSpinner != null) promptWidthSpinner.setValue(1024);
-                if (promptHeightSpinner != null) promptHeightSpinner.setValue(1024);
-                if (promptStepsSpinner != null) promptStepsSpinner.setValue(8);
-                if (promptCfgSpinner != null) promptCfgSpinner.setValue(1.0);
-            } else if (nameLower.contains("flux") || catLower.contains("flux")) {
-                if (promptWidthSpinner != null) promptWidthSpinner.setValue(1024);
-                if (promptHeightSpinner != null) promptHeightSpinner.setValue(1024);
-                if (promptStepsSpinner != null) promptStepsSpinner.setValue(20);
-                if (promptCfgSpinner != null) promptCfgSpinner.setValue(1.0);
-            } else if (nameLower.contains("sdxl") || catLower.contains("sdxl")) {
-                if (promptWidthSpinner != null) promptWidthSpinner.setValue(1024);
-                if (promptHeightSpinner != null) promptHeightSpinner.setValue(1024);
-                if (promptStepsSpinner != null) promptStepsSpinner.setValue(25);
-                if (promptCfgSpinner != null) promptCfgSpinner.setValue(7.0);
-            } else if (nameLower.contains("wan") || nameLower.contains("video") || catLower.contains("video")) {
-                if (promptWidthSpinner != null) promptWidthSpinner.setValue(832);
-                if (promptHeightSpinner != null) promptHeightSpinner.setValue(480);
-                if (promptStepsSpinner != null) promptStepsSpinner.setValue(20);
-                if (promptCfgSpinner != null) promptCfgSpinner.setValue(6.0);
-            } else {
-                if (promptWidthSpinner != null) promptWidthSpinner.setValue(512);
-                if (promptHeightSpinner != null) promptHeightSpinner.setValue(512);
-                if (promptStepsSpinner != null) promptStepsSpinner.setValue(20);
-                if (promptCfgSpinner != null) promptCfgSpinner.setValue(7.0);
-            }
-
-            if (promptImageInputPanel != null) {
-                boolean needsImage = isImageEditBlueprint(matchedEntry);
-                promptImageInputPanel.setVisible(needsImage);
-                if (!needsImage) {
-                    promptImageFileField.setText("");
-                    selectedInputImage = null;
-                }
-                if (promptLabLeftPanel != null) {
-                    promptLabLeftPanel.revalidate();
-                    promptLabLeftPanel.repaint();
-                }
-            }
-
-            // Load GUI workflow JSON async
-            de.tki.comfymodels.ui.BlueprintGalleryTab.BlueprintEntry targetEntry = matchedEntry;
-            backgroundExecutor.execute(() -> {
-                try {
-                    String jsonContent = null;
-                    if (targetEntry.filePath != null) {
-                        File localFile = new File(targetEntry.filePath);
-                        if (localFile.exists()) {
-                            jsonContent = Files.readString(localFile.toPath(), java.nio.charset.StandardCharsets.UTF_8).trim();
-                        }
-                    }
-                    if (jsonContent == null && targetEntry.registryWorkflow != null && workflowDownloader != null) {
-                        try {
-                            File downloaded = workflowDownloader.downloadWorkflowAsync(targetEntry.registryWorkflow).get();
-                            if (downloaded != null && downloaded.exists()) {
-                                jsonContent = Files.readString(downloaded.toPath(), java.nio.charset.StandardCharsets.UTF_8).trim();
-                            }
-                        } catch (Exception dlEx) {
-                            logger.warn("Failed to download workflow for blueprint " + targetEntry.name + ": " + dlEx.getMessage());
-                        }
-                    }
-                    if (jsonContent == null) {
-                        File dir = new File("workflows");
-                        if (dir.exists() && dir.isDirectory()) {
-                            File[] files = dir.listFiles((d, n) -> n.toLowerCase().endsWith(".json"));
-                            if (files != null) {
-                                for (File f : files) {
-                                    if (isBlueprintNameMatch(targetEntry.name, f.getName().replace(".json", ""))) {
-                                        jsonContent = Files.readString(f.toPath(), java.nio.charset.StandardCharsets.UTF_8).trim();
-                                        logger.info("Loaded fallback workflow from local workflows directory: " + f.getName());
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    if (jsonContent == null && comfyTemplateService != null) {
-                        de.tki.comfymodels.domain.ComfyTemplate template = comfyTemplateService.determineTemplateForModel(targetEntry.name);
-                        if (template != null) {
-                            jsonContent = template.getContent();
-                        }
-                    }
-
-                    if (jsonContent != null) {
-                        final String finalJson = jsonContent;
-                        SwingUtilities.invokeLater(() -> {
-                            currentBlueprintGuiJson = finalJson;
-                            if (promptJsonArea != null) {
-                                promptJsonArea.setText(currentBlueprintGuiJson);
-                            }
-                            populateInputFieldsFromBlueprint(finalJson);
-                            updatePromptLabJson();
-                        });
-                    }
-                } catch (Exception ex) {
-                    logger.error("Failed loading workflow JSON for blueprint " + targetEntry.name, ex);
-                }
-            });
-        } else {
-            // Fallback for raw model selection
-            if (comfyTemplateService != null) {
-                de.tki.comfymodels.domain.ComfyTemplate template = comfyTemplateService.determineTemplateForModel(selectedName);
-                if (template != null) {
-                    currentBlueprintGuiJson = template.getContent();
-                    if (promptJsonArea != null) promptJsonArea.setText(currentBlueprintGuiJson);
-                    populateInputFieldsFromBlueprint(currentBlueprintGuiJson);
-                }
-            }
-            applyModelPreset(selectedName);
-            updatePromptLabJson();
-        }
+        if (promptLabController != null) promptLabController.onPromptBlueprintSelected(selectedName);
     }
 
     private boolean isBlueprintNameMatch(String name1, String name2) {
@@ -2668,101 +1846,8 @@ public class Main extends JFrame {
     }
 
     private void refreshPromptLabModels() {
-        backgroundExecutor.execute(() -> {
-            java.util.List<String> itemsToAdd = new java.util.ArrayList<>();
-            
-            // 1. Primary Source: Ready Text-to-Image Blueprints from Blueprint Gallery (excluding Cloud-Only)
-            if (blueprintGalleryTab != null) {
-                java.util.List<de.tki.comfymodels.ui.BlueprintGalleryTab.BlueprintEntry> readyBlueprints = blueprintGalleryTab.getAvailableBlueprints();
-                for (de.tki.comfymodels.ui.BlueprintGalleryTab.BlueprintEntry e : readyBlueprints) {
-                    if (isSupportedPromptLabBlueprint(e)) {
-                        if (e.name != null && !e.name.isBlank() && !itemsToAdd.contains(e.name)) {
-                            itemsToAdd.add(e.name);
-                        }
-                    }
-                }
-            }
-
-            // 2. Generic Discovery: Query local ComfyUI API / scan local models if no ready gallery blueprints found
-            if (itemsToAdd.isEmpty()) {
-                String comfyUrl = configService.getComfyUIUrl();
-                java.util.Set<String> apiModels = new java.util.TreeSet<>();
-                try {
-                    java.net.http.HttpClient client = java.net.http.HttpClient.newBuilder()
-                            .connectTimeout(java.time.Duration.ofSeconds(5))
-                            .build();
-                    java.net.http.HttpRequest request = java.net.http.HttpRequest.newBuilder()
-                            .uri(java.net.URI.create(comfyUrl + "/object_info"))
-                            .timeout(java.time.Duration.ofSeconds(5))
-                            .GET()
-                            .build();
-                    java.net.http.HttpResponse<String> response = client.send(request, java.net.http.HttpResponse.BodyHandlers.ofString());
-                    if (response.statusCode() == 200) {
-                        JSONObject info = new JSONObject(response.body());
-                        updateComfyModelSets(info);
-                        for (String ckpt : comfyCheckpoints) apiModels.add(ckpt.replace("\\", "/"));
-                        for (String unet : comfyUnetModels) apiModels.add(unet.replace("\\", "/"));
-                    }
-                } catch (Exception ignored) {}
-
-                for (String m : apiModels) {
-                    String mLower = m.toLowerCase();
-                    if (!isVideoModel(m) && !mLower.contains("cloud") && !itemsToAdd.contains(m)) {
-                        itemsToAdd.add(m);
-                    }
-                }
-
-                if (itemsToAdd.isEmpty()) {
-                    String comfyPath = configService.getComfyUIPath();
-                    if (comfyPath != null && !comfyPath.isEmpty()) {
-                        java.io.File comfyModels = new java.io.File(comfyPath, "models");
-                        if (comfyModels.exists() && comfyModels.isDirectory()) {
-                            java.io.File checkpointsDir = new java.io.File(comfyModels, "checkpoints");
-                            if (checkpointsDir.exists()) scanModelsRecursively(checkpointsDir, "", itemsToAdd);
-                            java.io.File unetDir = new java.io.File(comfyModels, "unet");
-                            if (unetDir.exists()) scanModelsRecursively(unetDir, "", itemsToAdd);
-                        }
-                    }
-                }
-            }
-
-            // Exclude cloud-only keywords
-            itemsToAdd.removeIf(item -> {
-                String lower = item.toLowerCase();
-                return lower.contains("cloud") || lower.contains("replicate") || lower.contains("fal.ai") || lower.contains("dall-e") || lower.contains("openai");
-            });
-
-            SwingUtilities.invokeLater(() -> {
-                if (promptModelCombo != null) {
-                    String selected = (String) promptModelCombo.getSelectedItem();
-                    promptModelCombo.removeAllItems();
-
-                    if (itemsToAdd.isEmpty()) {
-                        promptModelCombo.addItem("No ready offline blueprints available");
-                        promptModelCombo.setEnabled(false);
-                    } else {
-                        promptModelCombo.setEnabled(true);
-                        for (String name : itemsToAdd) {
-                            promptModelCombo.addItem(name);
-                        }
-
-                        if (selected != null && itemsToAdd.contains(selected)) {
-                            promptModelCombo.setSelectedItem(selected);
-                        } else {
-                            promptModelCombo.setSelectedIndex(0);
-                        }
-                    }
-
-                    String currentSelection = (String) promptModelCombo.getSelectedItem();
-                    if (currentSelection != null && !currentSelection.startsWith("No ready")) {
-                        onPromptBlueprintSelected(currentSelection);
-                    }
-                    promptLabConsole.append("🔄 Prompt Lab: Ready Offline Blueprints loaded (" + itemsToAdd.size() + " ready offline workflows available).\n");
-                }
-            });
-        });
+        if (promptLabController != null) promptLabController.refreshPromptLabModels();
     }
-
 
     private void scanModelsRecursively(java.io.File dir, String prefix, java.util.List<String> list) {
         java.io.File[] files = dir.listFiles();
@@ -2811,26 +1896,27 @@ public class Main extends JFrame {
         final String samplerNameVal  = (promptSamplerCombo != null && promptSamplerCombo.getSelectedItem() != null) ? (String) promptSamplerCombo.getSelectedItem() : "Auto";
         final String schedulerVal    = (promptSchedulerCombo != null && promptSchedulerCombo.getSelectedItem() != null) ? (String) promptSchedulerCombo.getSelectedItem() : "Auto";
 
+        if (promptImageInputPanel != null && promptImageInputPanel.isVisible()) {
+            if (selectedInputImage == null || !selectedInputImage.exists()) {
+                JOptionPane.showMessageDialog(this, 
+                    "This workflow requires an input image.\nPlease select an image before generating.",
+                    "Missing Input Image", JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+        }
+
         btnSendToComfy.setEnabled(false);
         btnSendToComfy.setText("⏳ Generating...");
         promptLabConsole.append("🚀 Starting generation pipeline...\n");
 
         backgroundExecutor.execute(() -> {
             try {
-                java.net.http.HttpClient client = java.net.http.HttpClient.newBuilder()
-                        .connectTimeout(java.time.Duration.ofSeconds(5))
-                        .build();
-
                 // ── Step 1: Ensure ComfyUI is online ──────────────────────────────
-                java.net.http.HttpRequest infoRequest = java.net.http.HttpRequest.newBuilder()
-                        .uri(java.net.URI.create(comfyUrl + "/object_info"))
-                        .GET().build();
-
                 java.net.http.HttpResponse<String> infoResponse = null;
                 boolean connected = false;
                 try {
-                    infoResponse = client.send(infoRequest, java.net.http.HttpResponse.BodyHandlers.ofString());
-                    connected = infoResponse.statusCode() == 200;
+                    infoResponse = comfyApiClient.fetchObjectInfoRaw(comfyUrl);
+                    connected = infoResponse != null && infoResponse.statusCode() == 200;
                 } catch (Exception ignored) {}
 
                 if (!connected) {
@@ -2853,8 +1939,8 @@ public class Main extends JFrame {
                                     "⏳ Waiting for ComfyUI to start (attempt " + att + "/45)...\n"));
                             try {
                                 Thread.sleep(1000);
-                                infoResponse = client.send(infoRequest, java.net.http.HttpResponse.BodyHandlers.ofString());
-                                if (infoResponse.statusCode() == 200) {
+                                infoResponse = comfyApiClient.fetchObjectInfoRaw(comfyUrl);
+                                if (infoResponse != null && infoResponse.statusCode() == 200) {
                                     connected = true;
                                     SwingUtilities.invokeLater(() -> promptLabConsole.append("🟢 ComfyUI is online!\n"));
                                 }
@@ -2881,7 +1967,7 @@ public class Main extends JFrame {
 
                 // ── Step 3: Get the GUI workflow JSON for the selected blueprint ──
                 // We use currentBlueprintGuiJson if pre-loaded; otherwise fall back to promptJsonArea content
-                String guiJsonStr = currentBlueprintGuiJson;
+                String guiJsonStr = promptLabController != null ? promptLabController.getCurrentBlueprintGuiJson() : currentBlueprintGuiJson;
                 if (guiJsonStr == null || guiJsonStr.isBlank()) {
                     // If no blueprint was pre-loaded, check if promptJsonArea already holds API JSON
                     guiJsonStr = (promptJsonArea != null) ? promptJsonArea.getText().trim() : null;
@@ -2912,88 +1998,100 @@ public class Main extends JFrame {
                     convertedApiJson = apiWorkflowCache.get(guiJson.hashCode());
                     SwingUtilities.invokeLater(() -> promptLabConsole.append("⚡ Using cached API workflow (skipping browser conversion).\n"));
                 } else if (isGuiFormat) {
-                    // ── Step 4a: Convert GUI → API via browser (app.graphToPrompt()) ──
+                    // ── Step 4a: Convert GUI → API via browser or Java fallback ──
                     SwingUtilities.invokeLater(() -> promptLabConsole.append(
                             "🔄 Sending blueprint to browser for conversion (app.graphToPrompt())...\n"));
 
                     java.util.concurrent.CompletableFuture<String> conversionFuture = new java.util.concurrent.CompletableFuture<>();
                     restBridge.setWorkflowReadyConsumer(conversionFuture::complete);
 
-                    // POST the GUI JSON to the ComfyUI bridge endpoint
-                    JSONObject convRequest = new JSONObject();
-                    convRequest.put("workflow", parsedJson.has("nodes") ? parsedJson : parsedJson.optJSONObject("workflow"));
-                    convRequest.put("callbackUrl", "http://127.0.0.1:12345/api/workflow-ready");
-
-                    java.net.http.HttpRequest convHttpReq = java.net.http.HttpRequest.newBuilder()
-                            .uri(java.net.URI.create(comfyUrl + "/cmfc/convert-workflow"))
-                            .header("Content-Type", "application/json")
-                            .POST(java.net.http.HttpRequest.BodyPublishers.ofString(convRequest.toString()))
-                            .build();
-
-                    java.net.http.HttpResponse<String> convResponse = client.send(
-                            convHttpReq, java.net.http.HttpResponse.BodyHandlers.ofString());
-
-                    if (convResponse.statusCode() != 200) {
-                        restBridge.setWorkflowReadyConsumer(null);
-                        SwingUtilities.invokeLater(() -> {
-                            btnSendToComfy.setEnabled(true);
-                            btnSendToComfy.setText("🚀 Generate");
-                            JOptionPane.showMessageDialog(this,
-                                    "Bridge conversion failed (HTTP " + convResponse.statusCode() + ").\n"
-                                    + "Make sure ComfyUI is running and the Bridge extension is installed.",
-                                    "Conversion Failed", JOptionPane.ERROR_MESSAGE);
-                        });
-                        return;
+                    java.net.http.HttpResponse<String> convResponse = null;
+                    try {
+                        convResponse = comfyApiClient.convertWorkflow(
+                                comfyUrl, parsedJson, "http://127.0.0.1:12345/api/workflow-ready");
+                    } catch (Exception ex) {
+                        logger.warn("Bridge conversion request error: " + ex.getMessage());
                     }
 
-                    // Wait for browser conversion, auto-opening browser if tab isn't already active
-                    String resultJson = null;
-                    try {
-                        resultJson = conversionFuture.get(2500, java.util.concurrent.TimeUnit.MILLISECONDS);
-                    } catch (java.util.concurrent.TimeoutException te) {
+                    if (convResponse == null || convResponse.statusCode() != 200) {
+                        restBridge.setWorkflowReadyConsumer(null);
                         SwingUtilities.invokeLater(() -> promptLabConsole.append(
-                                "🌐 Opening ComfyUI in your browser (http://127.0.0.1:8188) to process conversion...\n"));
+                                "⚙️ Bridge conversion unavailable. Converting workflow locally in Java...\n"));
                         try {
-                            if (java.awt.Desktop.isDesktopSupported() && java.awt.Desktop.getDesktop().isSupported(java.awt.Desktop.Action.BROWSE)) {
-                                java.awt.Desktop.getDesktop().browse(new java.net.URI(comfyUrl));
-                            }
-                        } catch (Exception ignored) {}
-
-                        try {
-                            Thread.sleep(1500);
-                            client.send(convHttpReq, java.net.http.HttpResponse.BodyHandlers.ofString());
-                        } catch (Exception ignored) {}
-
-                        try {
-                            resultJson = conversionFuture.get(30, java.util.concurrent.TimeUnit.SECONDS);
-                        } catch (java.util.concurrent.TimeoutException te2) {
-                            restBridge.setWorkflowReadyConsumer(null);
+                            JSONObject flattened = de.tki.comfymodels.service.impl.ComfyPipelineService.flattenWorkflow(parsedJson);
+                            JSONObject apiJson = de.tki.comfymodels.service.impl.ComfyPipelineService.convertUiToApi(flattened);
+                            convertedApiJson = apiJson.toString();
+                        } catch (Exception convEx) {
                             SwingUtilities.invokeLater(() -> {
                                 btnSendToComfy.setEnabled(true);
                                 btnSendToComfy.setText("🚀 Generate");
                                 JOptionPane.showMessageDialog(this,
-                                        "Timeout waiting for browser to convert the workflow.\n"
-                                        + "Please make sure ComfyUI is loaded in your browser with the Bridge extension installed.",
-                                        "Timeout", JOptionPane.ERROR_MESSAGE);
+                                        "Workflow conversion failed: " + convEx.getMessage(),
+                                        "Conversion Failed", JOptionPane.ERROR_MESSAGE);
                             });
                             return;
                         }
+                    } else {
+                        // Wait for browser conversion, auto-opening browser if tab isn't already active
+                        String resultJson = null;
+                        try {
+                            resultJson = conversionFuture.get(2500, java.util.concurrent.TimeUnit.MILLISECONDS);
+                        } catch (java.util.concurrent.TimeoutException te) {
+                            SwingUtilities.invokeLater(() -> promptLabConsole.append(
+                                    "🌐 Opening ComfyUI in your browser (http://127.0.0.1:8188) to process conversion...\n"));
+                            try {
+                                if (java.awt.Desktop.isDesktopSupported() && java.awt.Desktop.getDesktop().isSupported(java.awt.Desktop.Action.BROWSE)) {
+                                    java.awt.Desktop.getDesktop().browse(new java.net.URI(comfyUrl));
+                                }
+                            } catch (Exception ignored) {}
+
+                            try {
+                                Thread.sleep(1500);
+                                comfyApiClient.convertWorkflow(comfyUrl, parsedJson, "http://127.0.0.1:12345/api/workflow-ready");
+                            } catch (Exception ignored) {}
+
+                            try {
+                                resultJson = conversionFuture.get(10, java.util.concurrent.TimeUnit.SECONDS);
+                            } catch (java.util.concurrent.TimeoutException te2) {
+                                restBridge.setWorkflowReadyConsumer(null);
+                                SwingUtilities.invokeLater(() -> promptLabConsole.append(
+                                        "⚙️ Browser conversion timed out. Converting workflow locally in Java...\n"));
+                                try {
+                                    JSONObject flattened = de.tki.comfymodels.service.impl.ComfyPipelineService.flattenWorkflow(parsedJson);
+                                    JSONObject apiJson = de.tki.comfymodels.service.impl.ComfyPipelineService.convertUiToApi(flattened);
+                                    resultJson = apiJson.toString();
+                                } catch (Exception convEx) {
+                                    SwingUtilities.invokeLater(() -> {
+                                        btnSendToComfy.setEnabled(true);
+                                        btnSendToComfy.setText("🚀 Generate");
+                                        JOptionPane.showMessageDialog(this,
+                                                "Workflow conversion failed: " + convEx.getMessage(),
+                                                "Conversion Failed", JOptionPane.ERROR_MESSAGE);
+                                    });
+                                    return;
+                                }
+                            }
+                        }
+
+                        convertedApiJson = resultJson;
                     }
 
-                    convertedApiJson = resultJson;
-
                     // Check for browser-side conversion errors
-                    JSONObject receivedObj = new JSONObject(convertedApiJson);
-                    if (receivedObj.has("error")) {
-                        final String errMsg = receivedObj.getString("error");
-                        SwingUtilities.invokeLater(() -> {
-                            btnSendToComfy.setEnabled(true);
-                            btnSendToComfy.setText("🚀 Generate");
-                            promptLabConsole.append("❌ Browser conversion error: " + errMsg + "\n\n");
-                            JOptionPane.showMessageDialog(this,
-                                    "Workflow conversion failed:\n" + errMsg, "Conversion Error", JOptionPane.ERROR_MESSAGE);
-                        });
-                        return;
+                    if (convertedApiJson != null) {
+                        try {
+                            JSONObject receivedObj = new JSONObject(convertedApiJson);
+                            if (receivedObj.has("error")) {
+                                final String errMsg = receivedObj.getString("error");
+                                SwingUtilities.invokeLater(() -> {
+                                    btnSendToComfy.setEnabled(true);
+                                    btnSendToComfy.setText("🚀 Generate");
+                                    promptLabConsole.append("❌ Conversion error: " + errMsg + "\n\n");
+                                    JOptionPane.showMessageDialog(this,
+                                            "Workflow conversion failed:\n" + errMsg, "Conversion Error", JOptionPane.ERROR_MESSAGE);
+                                });
+                                return;
+                            }
+                        } catch (Exception ignored) {}
                     }
 
                     if (convertedApiJson != null && !convertedApiJson.isBlank()) {
@@ -3015,32 +2113,9 @@ public class Main extends JFrame {
                 String inputImageFile = null;
                 if (selectedInputImage != null && selectedInputImage.exists()) {
                     try {
-                        String boundary = "---" + System.currentTimeMillis() + "---";
-                        String mimeType = selectedInputImage.getName().endsWith(".wav") ? "audio/wav" : (selectedInputImage.getName().endsWith(".mp3") ? "audio/mpeg" : "image/png");
-                        
-                        byte[] header = ("--" + boundary + "\r\n" +
-                                "Content-Disposition: form-data; name=\"image\"; filename=\"" + selectedInputImage.getName() + "\"\r\n" +
-                                "Content-Type: " + mimeType + "\r\n\r\n").getBytes(java.nio.charset.StandardCharsets.UTF_8);
-                        byte[] footer = ("\r\n--" + boundary + "--\r\n").getBytes(java.nio.charset.StandardCharsets.UTF_8);
-                        byte[] fileBytes = java.nio.file.Files.readAllBytes(selectedInputImage.toPath());
-                        
-                        java.util.List<byte[]> body = java.util.List.of(header, fileBytes, footer);
-                        
-                        java.net.http.HttpRequest uploadReq = java.net.http.HttpRequest.newBuilder()
-                                .uri(java.net.URI.create(comfyUrl + "/upload/image"))
-                                .header("Content-Type", "multipart/form-data; boundary=" + boundary)
-                                .POST(java.net.http.HttpRequest.BodyPublishers.ofByteArrays(body))
-                                .build();
-                                
-                        java.net.http.HttpResponse<String> uploadRes = client.send(uploadReq, java.net.http.HttpResponse.BodyHandlers.ofString());
-                        if (uploadRes.statusCode() == 200) {
-                            JSONObject resObj = new JSONObject(uploadRes.body());
-                            inputImageFile = resObj.getString("name");
-                            final String finalImageName = inputImageFile;
-                            SwingUtilities.invokeLater(() -> promptLabConsole.append("🖼️ Uploaded input image to ComfyUI: " + finalImageName + "\n"));
-                        } else {
-                            throw new java.io.IOException("Upload failed. Status: " + uploadRes.statusCode() + " Body: " + uploadRes.body());
-                        }
+                        inputImageFile = comfyApiClient.uploadInputImage(comfyUrl, selectedInputImage);
+                        final String finalImageName = inputImageFile;
+                        SwingUtilities.invokeLater(() -> promptLabConsole.append("🖼️ Uploaded input image to ComfyUI: " + finalImageName + "\n"));
                     } catch (Exception ex) {
                         logger.error("Failed to upload image to ComfyUI", ex);
                         SwingUtilities.invokeLater(() -> promptLabConsole.append("⚠️ Failed to upload input image: " + ex.getMessage() + "\n"));
@@ -3056,7 +2131,15 @@ public class Main extends JFrame {
                 promptBlueprintApiService.injectLabInputs(promptObj, labInputs);
 
                 // ── Step 7: Sanitize model file paths (slash / backslash) ────────
-                sanitizeModelInputsInPrompt(promptObj, null);
+                JSONObject objectInfo = null;
+                try {
+                    // Force a refresh of ComfyUI's model list so our query returns the most up-to-date models
+                    comfyApiClient.refreshModels(comfyUrl, true);
+                    objectInfo = comfyApiClient.getObjectInfo(comfyUrl);
+                } catch (Exception ignored) {
+                    logger.warn("Failed to fetch object_info for generic model resolution", ignored);
+                }
+                sanitizeModelInputsInPrompt(promptObj, objectInfo);
 
                 // ── Step 8: POST to ComfyUI /prompt ──────────────────────────────
                 final String finalPayload = mainObj.toString(2);
@@ -3065,14 +2148,7 @@ public class Main extends JFrame {
                     promptLabConsole.append("📤 Sending prompt to ComfyUI...\n");
                 });
 
-                java.net.http.HttpRequest promptReq = java.net.http.HttpRequest.newBuilder()
-                        .uri(java.net.URI.create(comfyUrl + "/prompt"))
-                        .header("Content-Type", "application/json")
-                        .POST(java.net.http.HttpRequest.BodyPublishers.ofString(finalPayload))
-                        .build();
-
-                java.net.http.HttpResponse<String> response = client.send(
-                        promptReq, java.net.http.HttpResponse.BodyHandlers.ofString());
+                java.net.http.HttpResponse<String> response = comfyApiClient.postPrompt(comfyUrl, finalPayload);
 
                 SwingUtilities.invokeLater(() -> {
                     btnSendToComfy.setEnabled(true);
@@ -3132,20 +2208,22 @@ public class Main extends JFrame {
         String ctLower = classType != null ? classType.toLowerCase() : "";
 
         if (ikLower.contains("vae") || ctLower.contains("vae")) {
-            candidateLists.add(comfyVaes);
+            if (promptLabController != null) candidateLists.add(promptLabController.getComfyVaes());
         } else if (ikLower.contains("unet") || ctLower.contains("unet")) {
-            candidateLists.add(comfyUnetModels);
+            if (promptLabController != null) candidateLists.add(promptLabController.getComfyUnetModels());
         } else if (ikLower.contains("clip") || ctLower.contains("clip")) {
-            candidateLists.add(comfyClips);
+            if (promptLabController != null) candidateLists.add(promptLabController.getComfyClips());
         } else if (ikLower.contains("ckpt") || ctLower.contains("checkpoint")) {
-            candidateLists.add(comfyCheckpoints);
+            if (promptLabController != null) candidateLists.add(promptLabController.getComfyCheckpoints());
+        } else {
+            // Fallback candidates for generic model keys
+            if (promptLabController != null) {
+                candidateLists.add(promptLabController.getComfyCheckpoints());
+                candidateLists.add(promptLabController.getComfyUnetModels());
+                candidateLists.add(promptLabController.getComfyClips());
+                candidateLists.add(promptLabController.getComfyVaes());
+            }
         }
-
-        // Fallback candidates
-        candidateLists.add(comfyVaes);
-        candidateLists.add(comfyCheckpoints);
-        candidateLists.add(comfyUnetModels);
-        candidateLists.add(comfyClips);
 
         for (java.util.Set<String> options : candidateLists) {
             if (options == null || options.isEmpty()) continue;
@@ -3165,7 +2243,7 @@ public class Main extends JFrame {
                 if (optFileName.equals(targetFileName)) {
                     return opt;
                 }
-            }
+                    }
 
             // 3. Try suffix match
             for (String opt : options) {
@@ -3174,11 +2252,102 @@ public class Main extends JFrame {
                     return opt;
                 }
             }
+
+            // 4. Try generic fuzzy match (ignore extensions, check if one contains the other)
+            String targetNoExt = targetFileName.contains(".") ? targetFileName.substring(0, targetFileName.lastIndexOf('.')) : targetFileName;
+            for (String opt : options) {
+                String optClean = opt.replaceAll("[/\\\\]+", "/").toLowerCase();
+                String optFileName = optClean.contains("/") ? optClean.substring(optClean.lastIndexOf('/') + 1) : optClean;
+                String optNoExt = optFileName.contains(".") ? optFileName.substring(0, optFileName.lastIndexOf('.')) : optFileName;
+                
+                // Exclude very short strings from fuzzy matching to avoid false positives (like "ae")
+                if (targetNoExt.length() > 3 && optNoExt.length() > 3) {
+                    if (optNoExt.contains(targetNoExt) || targetNoExt.contains(optNoExt)) {
+                        return opt;
+                    }
+                }
+            }
+            
+            // 5. Absolute fallback
+            if (!options.isEmpty()) {
+                return options.iterator().next();
+            }
+        }
+
+        return null;
+    }
+
+    private String findModelInObjectInfo(String classType, String inputKey, String targetValue, JSONObject objectInfo) {
+        if (targetValue == null || targetValue.isBlank() || classType == null || objectInfo == null) return null;
+        if (!objectInfo.has(classType)) return null;
+        
+        JSONObject nodeInfo = objectInfo.getJSONObject(classType);
+        JSONObject input = nodeInfo.optJSONObject("input");
+        if (input == null) return null;
+        
+        JSONObject required = input.optJSONObject("required");
+        JSONObject optional = input.optJSONObject("optional");
+        
+        Object valObj = null;
+        if (required != null && required.has(inputKey)) valObj = required.get(inputKey);
+        else if (optional != null && optional.has(inputKey)) valObj = optional.get(inputKey);
+        
+        if (valObj instanceof org.json.JSONArray outerArray && outerArray.length() > 0) {
+            Object firstElement = outerArray.get(0);
+            org.json.JSONArray options = null;
+            if (firstElement instanceof org.json.JSONArray) {
+                options = (org.json.JSONArray) firstElement;
+            } else if (firstElement instanceof String firstStr && firstStr.equalsIgnoreCase("COMBO") && outerArray.length() > 1 && outerArray.get(1) instanceof org.json.JSONObject configObj) {
+                options = configObj.optJSONArray("options");
+            } else if (firstElement instanceof String && !"COMBO".equalsIgnoreCase((String) firstElement)) {
+                options = outerArray;
+            }
+            
+            if (options != null) {
+                java.util.Set<String> optSet = new java.util.HashSet<>();
+                for (int i = 0; i < options.length(); i++) {
+                    if (options.get(i) instanceof String s && !s.equalsIgnoreCase("COMBO")) optSet.add(s);
+                }
+                
+                String targetClean = targetValue.replaceAll("[/\\\\]+", "/").toLowerCase();
+                String targetFileName = targetClean.contains("/") ? targetClean.substring(targetClean.lastIndexOf('/') + 1) : targetClean;
+                String targetNoExt = targetFileName.contains(".") ? targetFileName.substring(0, targetFileName.lastIndexOf('.')) : targetFileName;
+                
+                // 1. Exact match
+                for (String opt : optSet) {
+                    if (opt.replaceAll("[/\\\\]+", "/").toLowerCase().equals(targetClean)) return opt;
+                }
+                // 2. Filename match
+                for (String opt : optSet) {
+                    String optClean = opt.replaceAll("[/\\\\]+", "/").toLowerCase();
+                    String optFileName = optClean.contains("/") ? optClean.substring(optClean.lastIndexOf('/') + 1) : optClean;
+                    if (optFileName.equals(targetFileName)) return opt;
+                }
+                // 3. Suffix match
+                for (String opt : optSet) {
+                    String optClean = opt.replaceAll("[/\\\\]+", "/").toLowerCase();
+                    if (optClean.endsWith("/" + targetFileName)) return opt;
+                }
+                // 4. Fuzzy match
+                for (String opt : optSet) {
+                    String optClean = opt.replaceAll("[/\\\\]+", "/").toLowerCase();
+                    String optFileName = optClean.contains("/") ? optClean.substring(optClean.lastIndexOf('/') + 1) : optClean;
+                    String optNoExt = optFileName.contains(".") ? optFileName.substring(0, optFileName.lastIndexOf('.')) : optFileName;
+                    if (targetNoExt.length() > 3 && optNoExt.length() > 3) {
+                        if (optNoExt.contains(targetNoExt) || targetNoExt.contains(optNoExt)) return opt;
+                    }
+                }
+                
+                // 5. Absolute fallback: if no match found, pick the first available option rather than failing ComfyUI validation.
+                if (!optSet.isEmpty()) {
+                    return optSet.iterator().next();
+                }
+            }
         }
         return null;
     }
 
-    private void sanitizeModelInputsInPrompt(JSONObject promptObj, @SuppressWarnings("unused") String unused) {
+    private void sanitizeModelInputsInPrompt(JSONObject promptObj, JSONObject objectInfo) {
         if (promptObj == null) return;
         for (String key : promptObj.keySet()) {
             JSONObject node = promptObj.optJSONObject(key);
@@ -3186,6 +2355,15 @@ public class Main extends JFrame {
             JSONObject inp = node.optJSONObject("inputs");
             if (inp == null) continue;
             String classType = node.optString("class_type", "");
+
+            // Handle KSamplerSelect node specifically
+            if ("KSamplerSelect".equals(classType)) {
+                String sn = inp.optString("sampler_name", "");
+                if (sn.isBlank() || sn.equalsIgnoreCase("COMBO") || sn.equalsIgnoreCase("Auto")) {
+                    String uiSampler = (promptSamplerCombo != null && promptSamplerCombo.getSelectedItem() != null) ? (String) promptSamplerCombo.getSelectedItem() : "Auto";
+                    inp.put("sampler_name", (!uiSampler.equalsIgnoreCase("Auto") && !uiSampler.equalsIgnoreCase("COMBO")) ? uiSampler : "euler");
+                }
+            }
 
             for (String ik : new java.util.ArrayList<>(inp.keySet())) {
                 Object val = inp.opt(ik);
@@ -3196,20 +2374,46 @@ public class Main extends JFrame {
                         cleaned = "/" + cleaned.replaceAll("^/+", "");
                     }
 
+                    // Prevent placeholder COMBO or Auto from reaching ComfyUI
+                    if (cleaned.equalsIgnoreCase("COMBO") || cleaned.equalsIgnoreCase("Auto")) {
+                        if (ik.equals("sampler_name") || classType.contains("Sampler")) {
+                            String uiSampler = (promptSamplerCombo != null && promptSamplerCombo.getSelectedItem() != null) ? (String) promptSamplerCombo.getSelectedItem() : "Auto";
+                            inp.put(ik, (!uiSampler.equalsIgnoreCase("Auto") && !uiSampler.equalsIgnoreCase("COMBO")) ? uiSampler : "euler");
+                            continue;
+                        } else if (ik.equals("scheduler")) {
+                            String uiScheduler = (promptSchedulerCombo != null && promptSchedulerCombo.getSelectedItem() != null) ? (String) promptSchedulerCombo.getSelectedItem() : "Auto";
+                            inp.put(ik, (!uiScheduler.equalsIgnoreCase("Auto") && !uiScheduler.equalsIgnoreCase("COMBO")) ? uiScheduler : "simple");
+                            continue;
+                        }
+                    }
+
                     boolean isModelKey = ik.endsWith("_name") || ik.endsWith("_path") || ik.equals("model") || ik.equals("vae") || ik.equals("clip") || ik.equals("unet");
                     boolean isModelFile = cleaned.endsWith(".safetensors") || cleaned.endsWith(".ckpt") || cleaned.endsWith(".pt") || cleaned.endsWith(".bin") || cleaned.endsWith(".onnx") || cleaned.endsWith(".sft");
 
                     if (isModelKey || isModelFile) {
-                        String matchedOption = findExactComfyModelOption(classType, ik, cleaned);
+                        String matchedOption = null;
+                        if (objectInfo != null) {
+                            matchedOption = findModelInObjectInfo(classType, ik, cleaned, objectInfo);
+                        }
+                        if (matchedOption == null) {
+                            matchedOption = findExactComfyModelOption(classType, ik, cleaned);
+                        }
                         if (matchedOption != null) {
                             inp.put(ik, matchedOption);
                         } else {
-                            inp.put(ik, cleaned);
+                            if (ik.equals("sampler_name") && cleaned.equalsIgnoreCase("COMBO")) {
+                                inp.put(ik, "euler");
+                            } else if (ik.equals("scheduler") && cleaned.equalsIgnoreCase("COMBO")) {
+                                inp.put(ik, "normal");
+                            } else {
+                                inp.put(ik, cleaned);
+                            }
                         }
                     }
                 }
             }
         }
+        de.tki.comfymodels.service.PromptBlueprintApiService.sanitizeAllSeedsInPrompt(promptObj);
     }
 
 
@@ -3350,9 +2554,6 @@ public class Main extends JFrame {
         backgroundExecutor.execute(() -> {
             boolean done = false;
             int pollAttempts = 0;
-            java.net.http.HttpClient client = java.net.http.HttpClient.newBuilder()
-                    .connectTimeout(java.time.Duration.ofSeconds(3))
-                    .build();
 
             while (!done && pollAttempts < 180) { // Timeout after 3 minutes
                 try {
@@ -3360,91 +2561,33 @@ public class Main extends JFrame {
                     pollAttempts++;
 
                     // 1. Check history
-                    java.net.http.HttpRequest histReq = java.net.http.HttpRequest.newBuilder()
-                            .uri(java.net.URI.create(comfyUrl + "/history/" + promptId))
-                            .GET()
-                            .build();
-                    java.net.http.HttpResponse<String> histResp = client.send(histReq, java.net.http.HttpResponse.BodyHandlers.ofString());
-                    
-                    if (histResp.statusCode() == 200) {
-                        JSONObject histObj = new JSONObject(histResp.body());
-                        if (histObj.has(promptId)) {
-                            JSONObject promptHistory = histObj.getJSONObject(promptId);
-                            JSONObject outputs = promptHistory.optJSONObject("outputs");
-                            if (outputs != null) {
-                                String filename = null;
-                                String subfolder = "";
-                                String type = "output";
+                    de.tki.comfymodels.service.impl.ComfyApiClient.ImageOutput imgOutput = comfyApiClient.fetchPromptHistoryImage(comfyUrl, promptId);
+                    if (imgOutput != null) {
+                        final String finalFilename = imgOutput.filename();
+                        final String finalSubfolder = imgOutput.subfolder();
+                        final String finalType = imgOutput.type();
 
-                                for (String nodeKey : outputs.keySet()) {
-                                    JSONObject nodeOutputs = outputs.getJSONObject(nodeKey);
-                                    if (nodeOutputs.has("images")) {
-                                        JSONArray images = nodeOutputs.getJSONArray("images");
-                                        if (images.length() > 0) {
-                                            JSONObject img = images.getJSONObject(0);
-                                            filename = img.optString("filename");
-                                            subfolder = img.optString("subfolder", "");
-                                            type = img.optString("type", "output");
-                                            break;
-                                        }
-                                    }
-                                }
-
-                                if (filename != null) {
-                                    final String finalFilename = filename;
-                                    final String finalSubfolder = subfolder;
-                                    final String finalType = type;
-                                    
-                                    SwingUtilities.invokeLater(() -> {
-                                        loadAndDisplayImage(finalFilename, finalSubfolder, finalType);
-                                        if (promptLabProgressBar != null) promptLabProgressBar.setVisible(false);
-                                        promptLabConsole.append("Image generated and loaded successfully!\n\n");
-                                    });
-                                    done = true;
-                                    break;
-                                }
-                            }
-                        }
+                        SwingUtilities.invokeLater(() -> {
+                            loadAndDisplayImage(finalFilename, finalSubfolder, finalType);
+                            if (promptLabProgressBar != null) promptLabProgressBar.setVisible(false);
+                            promptLabConsole.append("Image generated and loaded successfully!\n\n");
+                        });
+                        done = true;
+                        break;
                     }
 
                     // 2. Check queue position
                     if (!done) {
-                        java.net.http.HttpRequest qReq = java.net.http.HttpRequest.newBuilder()
-                                .uri(java.net.URI.create(comfyUrl + "/queue"))
-                                .GET()
-                                .build();
-                        java.net.http.HttpResponse<String> qResp = client.send(qReq, java.net.http.HttpResponse.BodyHandlers.ofString());
-                        if (qResp.statusCode() == 200) {
-                            JSONObject qObj = new JSONObject(qResp.body());
-                            JSONArray pending = qObj.optJSONArray("queue_pending");
-                            JSONArray running = qObj.optJSONArray("queue_running");
-                            
-                            boolean found = false;
-                            if (running != null) {
-                                for (int i = 0; i < running.length(); i++) {
-                                    JSONArray item = running.getJSONArray(i);
-                                    if (item.length() > 1 && promptId.equals(item.getString(1))) {
-                                        SwingUtilities.invokeLater(() -> {
-                                            if (promptLabProgressBar != null) promptLabProgressBar.setString("Generating...");
-                                        });
-                                        found = true;
-                                        break;
-                                    }
-                                }
-                            }
-                            if (!found && pending != null) {
-                                for (int i = 0; i < pending.length(); i++) {
-                                    JSONArray item = pending.getJSONArray(i);
-                                    if (item.length() > 1 && promptId.equals(item.getString(1))) {
-                                        final int pos = i + 1;
-                                        SwingUtilities.invokeLater(() -> {
-                                            if (promptLabProgressBar != null) promptLabProgressBar.setString("Queued (Position: " + pos + ")");
-                                        });
-                                        found = true;
-                                        break;
-                                    }
-                                }
-                            }
+                        de.tki.comfymodels.service.impl.ComfyApiClient.QueueInfo qInfo = comfyApiClient.fetchQueueStatus(comfyUrl, promptId);
+                        if (qInfo.state() == de.tki.comfymodels.service.impl.ComfyApiClient.QueueState.RUNNING) {
+                            SwingUtilities.invokeLater(() -> {
+                                if (promptLabProgressBar != null) promptLabProgressBar.setString("Generating...");
+                            });
+                        } else if (qInfo.state() == de.tki.comfymodels.service.impl.ComfyApiClient.QueueState.PENDING) {
+                            final int pos = qInfo.position();
+                            SwingUtilities.invokeLater(() -> {
+                                if (promptLabProgressBar != null) promptLabProgressBar.setString("Queued (Position: " + pos + ")");
+                            });
                         }
                     }
 
@@ -3487,113 +2630,17 @@ public class Main extends JFrame {
 
     private void scaleAndSetImage(Image img) {
         currentPreviewImage = img;
-        if (img == null || promptImagePreviewLabel == null) return;
-        
-        int labelWidth = promptImagePreviewLabel.getWidth();
-        int labelHeight = promptImagePreviewLabel.getHeight();
-        
-        if (labelWidth < 50) labelWidth = 500;
-        if (labelHeight < 50) labelHeight = 500;
-        
-        int imgWidth = img.getWidth(null);
-        int imgHeight = img.getHeight(null);
-        
-        if (imgWidth <= 0 || imgHeight <= 0) return;
-        
-        double ratioX = (double) labelWidth / imgWidth;
-        double ratioY = (double) labelHeight / imgHeight;
-        double ratio = Math.min(ratioX, ratioY);
-        
-        int targetWidth = (int) (imgWidth * ratio);
-        int targetHeight = (int) (imgHeight * ratio);
-        
-        targetWidth = Math.max(10, targetWidth);
-        targetHeight = Math.max(10, targetHeight);
-        
-        Image scaled = img.getScaledInstance(targetWidth, targetHeight, Image.SCALE_SMOOTH);
-        promptImagePreviewLabel.setIcon(new ImageIcon(scaled));
-        promptImagePreviewLabel.setText("");
+        if (promptLabView != null) {
+            promptLabView.scaleAndSetImage(img);
+        }
     }
 
     private void savePromptLabSession() {
-        if (configService == null) return;
-        try {
-            JSONObject session = new JSONObject();
-            if (promptEnvCombo != null) {
-                session.put("environment_index", promptEnvCombo.getSelectedIndex());
-            }
-            session.put("photorealistic", chkPhotorealistic.isSelected());
-            session.put("oil_painting", chkOil.isSelected());
-            session.put("unreal_engine", chkEngine.isSelected());
-            session.put("anime", chkAnime.isSelected());
-            session.put("dark_fantasy", chkFantasy.isSelected());
-            session.put("watercolor", chkSketch.isSelected());
-            if (promptModelCombo != null && promptModelCombo.getSelectedItem() != null) {
-                session.put("model", promptModelCombo.getSelectedItem());
-            }
-            if (promptWidthSpinner != null) {
-                session.put("width", promptWidthSpinner.getValue());
-            }
-            if (promptHeightSpinner != null) {
-                session.put("height", promptHeightSpinner.getValue());
-            }
-            if (promptStepsSpinner != null) {
-                session.put("steps", promptStepsSpinner.getValue());
-            }
-            if (promptCfgSpinner != null) {
-                session.put("cfg", promptCfgSpinner.getValue());
-            }
-            configService.savePromptLabSession(session);
-        } catch (Exception e) {
-            logger.error("Failed to save Prompt Lab session: " + e.getMessage());
-        }
+        if (promptLabController != null) promptLabController.savePromptLabSession();
     }
 
     private void loadPromptLabSession() {
-        if (configService == null) return;
-        try {
-            JSONObject session = configService.getPromptLabSession();
-            if (session == null) return;
-            
-            if (session.has("environment_index") && promptEnvCombo != null) {
-                int idx = session.getInt("environment_index");
-                if (idx >= 0 && idx < promptEnvCombo.getItemCount()) {
-                    promptEnvCombo.setSelectedIndex(idx);
-                }
-            }
-            if (session.has("photorealistic")) chkPhotorealistic.setSelected(session.getBoolean("photorealistic"));
-            if (session.has("oil_painting")) chkOil.setSelected(session.getBoolean("oil_painting"));
-            if (session.has("unreal_engine")) chkEngine.setSelected(session.getBoolean("unreal_engine"));
-            if (session.has("anime")) chkAnime.setSelected(session.getBoolean("anime"));
-            if (session.has("dark_fantasy")) chkFantasy.setSelected(session.getBoolean("dark_fantasy"));
-            if (session.has("watercolor")) chkSketch.setSelected(session.getBoolean("watercolor"));
-            
-            if (session.has("model") && promptModelCombo != null) {
-                String model = session.getString("model");
-                boolean found = false;
-                for (int i = 0; i < promptModelCombo.getItemCount(); i++) {
-                    if (model.equals(promptModelCombo.getItemAt(i))) {
-                        promptModelCombo.setSelectedIndex(i);
-                        found = true;
-                        break;
-                    }
-                }
-                if (!found && promptModelCombo.getItemCount() > 0) {
-                    promptModelCombo.setSelectedIndex(0);
-                }
-            }
-            if (session.has("width") && promptWidthSpinner != null) promptWidthSpinner.setValue(session.getInt("width"));
-            if (session.has("height") && promptHeightSpinner != null) promptHeightSpinner.setValue(session.getInt("height"));
-            if (session.has("steps") && promptStepsSpinner != null) promptStepsSpinner.setValue(session.getInt("steps"));
-            if (session.has("cfg") && promptCfgSpinner != null) {
-                Object cfgVal = session.get("cfg");
-                if (cfgVal instanceof Number) {
-                    promptCfgSpinner.setValue(((Number) cfgVal).doubleValue());
-                }
-            }
-        } catch (Exception e) {
-            logger.error("Failed to load Prompt Lab session: " + e.getMessage());
-        }
+        if (promptLabController != null) promptLabController.loadPromptLabSession();
     }
 
     private JPanel createDashboardPanel(JTabbedPane tabs) {
@@ -3886,8 +2933,12 @@ public class Main extends JFrame {
                 stopBtn.setEnabled(false);
                 browserBtn.setEnabled(false);
             }
-            boolean needsSetup = configService.getComfyUIPath().isEmpty() || !new File(configService.getComfyUIPath(), "main.py").exists();
-            bootstrapBtn.putClientProperty("FlatLaf.style", needsSetup ? "background: #646400; foreground: #fff" : "");
+            long now = System.currentTimeMillis();
+            if (now - lastSetupCheckTime > 10000) {
+                lastSetupCheckTime = now;
+                cachedNeedsSetup = configService.getComfyUIPath().isEmpty() || !new File(configService.getComfyUIPath(), "main.py").exists();
+            }
+            bootstrapBtn.putClientProperty("FlatLaf.style", cachedNeedsSetup ? "background: #646400; foreground: #fff" : "");
         });
         statusTimer.start();
 
@@ -4328,7 +3379,7 @@ public class Main extends JFrame {
 
     private void showDownloadSettingsDialog() {
         de.tki.comfymodels.ui.StandardDialog dialog = new de.tki.comfymodels.ui.StandardDialog(this, "Download Settings");
-        dialog.setSize(600, 380);
+        dialog.setSize(600, 480);
         dialog.setLocationRelativeTo(this);
 
         JPanel panel = dialog.createContentPanel();
@@ -4365,6 +3416,22 @@ public class Main extends JFrame {
         panel.add(segmentSpinner, gbc);
 
         gbc.gridy++;
+        gbc.insets = new Insets(0, 0, 5, 0);
+        panel.add(new JLabel("Hugging Face Access Token (hf_... for gated models like LTX-2.5, Flux):"), gbc);
+
+        gbc.gridy++;
+        gbc.insets = new Insets(0, 0, 5, 0);
+        JTextField hfTokenField = new JTextField(configService.getHfToken());
+        panel.add(hfTokenField, gbc);
+
+        gbc.gridy++;
+        gbc.insets = new Insets(0, 0, 15, 0);
+        JLabel hfHint = new JLabel("<html><i>Requires accepting terms on huggingface.co/Lightricks/LTX-2.5 prior to download.</i></html>");
+        hfHint.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        hfHint.setForeground(Color.GRAY);
+        panel.add(hfHint, gbc);
+
+        gbc.gridy++;
         gbc.weighty = 1.0;
         JPanel spacer = new JPanel();
         spacer.setOpaque(false);
@@ -4387,6 +3454,7 @@ public class Main extends JFrame {
                 configService.setMaxParallelDownloads(threads);
                 configService.setDownloadSpeedLimit(speedLimit);
                 configService.setSegmentsPerFile(segments);
+                configService.setHfToken(hfTokenField.getText().trim());
 
                 statusLabel.setText("Download settings updated.");
                 dialog.dispose();
@@ -4570,84 +3638,9 @@ public class Main extends JFrame {
     }
 
     private void startDownloadQueue() {
-        int rowCount = tableModel.getRowCount();
-        if (rowCount == 0) return;
-        boolean[] selected = new boolean[rowCount];
-        
-        for (int i = 0; i < rowCount; i++) {
-            selected[i] = (Boolean) tableModel.getValueAt(i, 0);
-            String url = (String) tableModel.getValueAt(i, 6);
-            if (url != null && !url.equals("MISSING")) modelsToDownload.get(i).setUrl(url);
+        if (downloadManagerController != null) {
+            downloadManagerController.startDownloadQueue();
         }
-
-        isDownloading = true;
-        updateDownloadButtonsState();
-
-        // Process archive restores FIRST as they are part of the visual queue
-        backgroundExecutor.execute(() -> {
-            for (int i = 0; i < rowCount; i++) {
-                if (selected[i]) {
-                    String currentStatus = (String) tableModel.getValueAt(i, 7);
-                    if ("📦 Archived".equals(currentStatus)) {
-                        final int idx = i;
-                        ModelInfo info = modelsToDownload.get(idx);
-                        String folder = info.getSave_path() != null ? info.getSave_path() : (info.getType() != null ? info.getType() : de.tki.comfymodels.domain.ModelFolder.CHECKPOINTS.getDefaultFolderName());
-                        String normalizedFolder = archiveService.normalizeFolder(folder);
-                        
-                        SwingUtilities.invokeLater(() -> tableModel.setValueAt("📦 Restoring...", idx, 7));
-                        
-                        long totalSize = info.getByteSize();
-                        long[] currentBytes = {0};
-                        long[] lastUpdate = {0};
-
-                        boolean success = archiveService.restoreFromArchiveWithProgress(normalizedFolder, info.getName(), (delta) -> {
-                            currentBytes[0] += delta;
-                            long now = System.currentTimeMillis();
-                            if (totalSize > 0 && (now - lastUpdate[0] > 200)) {
-                                lastUpdate[0] = now;
-                                int percent = (int) Math.min(100, (currentBytes[0] * 100) / totalSize);
-                                SwingUtilities.invokeLater(() -> tableModel.setValueAt("📦 Restoring (" + percent + "%)...", idx, 7));
-                            }
-                        });
-                        
-                        SwingUtilities.invokeLater(() -> {
-                            if (success) {
-                                tableModel.setValueAt("✅ Already exists", idx, 7);
-                                tableModel.setValueAt(false, idx, 0); // Unselect after restoration
-                            } else {
-                                tableModel.setValueAt("❌ Restore Failed - Downloading...", idx, 7);
-                                // Stay selected for download fallback
-                            }
-                        });
-                    }
-                }
-            }
-            
-            // After restores, start the actual download manager for the remaining models
-            SwingUtilities.invokeLater(() -> {
-                // Update selected array (some might have been unselected by restore)
-                for (int i = 0; i < rowCount; i++) {
-                    selected[i] = (Boolean) tableModel.getValueAt(i, 0);
-                }
-
-                downloadManager.startQueue(modelsToDownload, selected, configService.getModelsPath(),
-                    (idx, status) -> SwingUtilities.invokeLater(() -> {
-                        String current = (String) tableModel.getValueAt(idx, 7);
-                        if (status.startsWith("Skipped") && current != null && (current.equals("✅ Already exists") || current.equals("✅ Finished"))) {
-                            return; // Don't overwrite success with skip
-                        }
-                        tableModel.setValueAt(status, idx, 7);
-                    }),
-                    () -> SwingUtilities.invokeLater(() -> {
-                        isDownloading = false;
-                        updateDownloadButtonsState();
-                        statusLabel.setText("Queue finished.");
-                        
-                        triggerPostOperationActions();
-                    })
-                );
-            });
-        });
     }
 
     private void showInstallationDialog() {
@@ -4875,246 +3868,21 @@ public class Main extends JFrame {
     }
 
     private void loadFile(File file) {
-        try {
-            currentFileName = file.getName();
-            jsonInputArea.setText(workflowService.extractWorkflow(file));
-            analyzeJsonContent();
-        } catch (IOException ex) { JOptionPane.showMessageDialog(this, "Error: " + ex.getMessage()); }
+        if (downloadManagerController != null) {
+            downloadManagerController.loadFile(file);
+        }
     }
 
     public void importWorkflow(File file) {
-        loadFile(file);
-        if (mainTabs != null && downloadManagerPanel != null) {
-            int index = mainTabs.indexOfComponent(downloadManagerPanel);
-            if (index != -1) {
-                mainTabs.setSelectedIndex(index);
-            }
+        if (downloadManagerController != null) {
+            downloadManagerController.importWorkflow(file, mainTabs, downloadManagerPanel);
         }
     }
 
     private void analyzeJsonContent() {
-        String text = jsonInputArea.getText();
-        if (text == null || text.isEmpty()) return;
-        if (workflowGraphPanel != null) {
-            workflowGraphPanel.setWorkflowJson(text);
+        if (downloadManagerController != null) {
+            downloadManagerController.analyzeJsonContent();
         }
-        modelsToDownload = analyzer.analyze(text, currentFileName);
-        tableModel.setRowCount(0);
-        String base = configService.getModelsPath();
-        String archive = configService.getArchivePath();
-        
-        for (int i = 0; i < modelsToDownload.size(); i++) {
-            ModelInfo info = modelsToDownload.get(i);
-            String type = info.getType() != null ? info.getType() : de.tki.comfymodels.domain.ModelFolder.CHECKPOINTS.getDefaultFolderName();
-            String folder = info.getSave_path() != null ? info.getSave_path() : type;
-            
-            String normalizedFolder = archiveService.normalizeFolder(folder);
-
-            // 1. Primary path check (Standard Models Path)
-            Path local = "root".equals(normalizedFolder) ? Paths.get(base, info.getName()) : Paths.get(base, normalizedFolder, info.getName());
-            boolean exists = Files.exists(local) && Files.isRegularFile(local);
-
-            // 2. Primary archive check (Standard Archive Path)
-            boolean inArchive = false;
-            Path archivedPath = null;
-            if (archive != null && !archive.trim().isEmpty()) {
-                archivedPath = "root".equals(normalizedFolder) ? Paths.get(archive, info.getName()) : Paths.get(archive, normalizedFolder, info.getName());
-                inArchive = Files.exists(archivedPath) && Files.isRegularFile(archivedPath);
-            }
-            
-            boolean sizeMismatch = false;
-
-            // 3. Robust existence and archive cross-check (Safety Guard)
-            if (archive != null && !archive.isEmpty()) {
-                try {
-                    Path absArchive = Paths.get(archive).toAbsolutePath().normalize();
-                    
-                    // If 'local' is actually inside the archive, it's NOT a local active model
-                    if (exists && local.toAbsolutePath().normalize().startsWith(absArchive)) {
-                        exists = false;
-                        inArchive = true;
-                    }
-                    
-                    // If we found it in the primary archive location, verify size if known
-                    if (inArchive && info.getByteSize() > 0) {
-                        if (Files.size(archivedPath) != info.getByteSize()) {
-                            inArchive = false; // Size mismatch in archive doesn't count as "found"
-                        }
-                    }
-                } catch (Exception ignored) {}
-            }
-
-            // 4. Fallback: Recursive search in ARCHIVE if not found at primary archive location
-            if (!inArchive && archive != null && !archive.isEmpty()) {
-                java.util.Optional<Path> foundInArchive = localScanner.findModelWithPrefSize(Paths.get(archive), info.getName(), info.getByteSize());
-                if (foundInArchive.isPresent()) {
-                    archivedPath = foundInArchive.get();
-                    inArchive = true;
-                }
-            }
-
-            // 5. Fallback: Recursive search in LOCAL MODELS if not found OR size mismatch at primary location
-            if ((!exists || sizeMismatch) && base != null && !base.isEmpty()) {
-                java.util.Optional<Path> foundLocally = localScanner.findModelWithPrefSizeAndType(Paths.get(base), info.getName(), info.getByteSize(), type);
-                if (foundLocally.isPresent()) {
-                    Path potentialLocal = foundLocally.get();
-                    try {
-                        long potSize = Files.size(potentialLocal);
-                        if (info.getByteSize() <= 0 || potSize == info.getByteSize()) {
-                            local = potentialLocal;
-                            exists = true;
-                            sizeMismatch = false;
-                            
-                            Path root = Paths.get(base).toAbsolutePath().normalize();
-                            Path absPotential = potentialLocal.toAbsolutePath().normalize();
-                            
-                            if (absPotential.startsWith(root)) {
-                                Path rel = root.relativize(absPotential);
-                                normalizedFolder = (rel.getParent() != null) ? rel.getParent().toString().replace("\\", "/") : "root";
-                            } else {
-                                normalizedFolder = "extra/" + potentialLocal.getParent().getFileName();
-                            }
-                            info.setSave_path(normalizedFolder);
-                        }
-                    } catch (Exception ignored) {}
-                }
-            }
-
-            // Resolve local file size if current size is Unknown
-            if ("Unknown".equalsIgnoreCase(info.getSize()) || info.getSize() == null || info.getSize().isBlank()) {
-                Path fileToMeasure = null;
-                if (exists && local != null) {
-                    fileToMeasure = local;
-                } else if (inArchive && archivedPath != null) {
-                    fileToMeasure = archivedPath;
-                }
-                if (fileToMeasure != null && Files.exists(fileToMeasure)) {
-                    try {
-                        long bytes = Files.size(fileToMeasure);
-                        if (bytes > 0) {
-                            info.setByteSize(bytes);
-                            info.setSize(searchService.formatSize(bytes));
-                        }
-                    } catch (Exception ignored) {}
-                }
-            }
-
-            // 6. Final Status Determination
-            String status;
-            if (exists) {
-                status = "✅ Already exists";
-            } else if (inArchive) {
-                status = "📦 Archived";
-            } else if (sizeMismatch) {
-                status = "🔄 Size Mismatch";
-            } else if (info.getUrl().equals("MISSING")) {
-                status = "Idle";
-            } else {
-                status = "✅ Known Good";
-            }
-            
-            // Select for download/restore if NOT exists locally
-            boolean isSelected = !exists;
-            tableModel.addRow(new Object[]{isSelected, info.getType(), info.getName(), info.getSize(), info.getPopularity(), "models/" + normalizedFolder, info.getUrl(), status});
-        }
-        
-        updateDownloadButtonsState();
-        
-        // NEW: Automatically fetch missing sizes for remote models in background
-        fetchMissingRemoteSizes();
-    }
-
-    private void fetchMissingRemoteSizes() {
-        if (modelsToDownload == null) return;
-        backgroundExecutor.execute(() -> {
-            for (int i = 0; i < modelsToDownload.size(); i++) {
-                final int idx = i;
-                ModelInfo info = modelsToDownload.get(idx);
-                
-                String status = (idx < tableModel.getRowCount()) ? (String) tableModel.getValueAt(idx, 7) : "";
-                boolean needsCheck = "Unknown".equals(info.getSize()) || "🔄 Size Mismatch".equals(status);
-
-                if (!info.getUrl().equals("MISSING") && needsCheck) {
-                    long size = searchService.getRemoteSize(info.getUrl());
-                    if (size > 0) {
-                        info.setByteSize(size);
-                        String formatted = searchService.formatSize(size);
-                        info.setSize(formatted);
-                        SwingUtilities.invokeLater(() -> {
-                            if (idx < tableModel.getRowCount()) {
-                                tableModel.setValueAt(formatted, idx, 3);
-                                
-                                // Re-verify status with new remote size info
-                                String currentStatus = (String) tableModel.getValueAt(idx, 7);
-                                if (currentStatus.contains("Already exists") || "🔄 Size Mismatch".equals(currentStatus) || "📦 Archived".equals(currentStatus)) {
-                                    String type = info.getType() != null ? info.getType() : de.tki.comfymodels.domain.ModelFolder.CHECKPOINTS.getDefaultFolderName();
-                                    String folder = info.getSave_path() != null ? info.getSave_path() : type;
-                                    String base = configService.getModelsPath();
-                                    String archive = configService.getArchivePath();
-                                    
-                                    // 1. Re-check local
-                                    Path local = Paths.get(base, archiveService.normalizeFolder(folder), info.getName());
-                                    if (!Files.exists(local)) {
-                                        local = Paths.get(base, type, info.getName());
-                                    }
-                                    
-                                    // If still not found at "standard" locations, try recursive local
-                                    if (!Files.exists(local)) {
-                                        java.util.Optional<Path> recursiveLocal = localScanner.findModelWithPrefSize(Paths.get(base), info.getName(), size);
-                                        if (recursiveLocal.isPresent()) local = recursiveLocal.get();
-                                    }
-
-                                    boolean localExists = Files.exists(local);
-                                    boolean localSizeMatch = false;
-                                    if (localExists) {
-                                        try {
-                                            localSizeMatch = (Files.size(local) == size);
-                                        } catch (IOException ignored) {}
-                                    }
-
-                                    // 2. Re-check archive
-                                    boolean inArchive = false;
-                                    if (archive != null && !archive.isEmpty()) {
-                                        Path archived = Paths.get(archive, archiveService.normalizeFolder(folder), info.getName());
-                                        try {
-                                            if (Files.exists(archived) && Files.size(archived) == size) {
-                                                inArchive = true;
-                                            } else {
-                                                inArchive = localScanner.findModelWithPrefSize(Paths.get(archive), info.getName(), size).isPresent();
-                                            }
-                                        } catch (IOException ignored) {}
-                                    }
-
-                                    String newStatus;
-                                    boolean shouldSelect = false;
-
-                                    if (localSizeMatch) {
-                                        newStatus = "✅ Already exists";
-                                        shouldSelect = false;
-                                    } else if (localExists) {
-                                        newStatus = "🔄 Size Mismatch";
-                                        shouldSelect = true;
-                                    } else if (inArchive) {
-                                        newStatus = "📦 Archived";
-                                        shouldSelect = true;
-                                    } else {
-                                        newStatus = "✅ Known Good";
-                                        shouldSelect = true;
-                                    }
-
-                                    final String finalStatus = newStatus;
-                                    final boolean finalSelect = shouldSelect;
-                                    SwingUtilities.invokeLater(() -> {
-                                        tableModel.setValueAt(finalStatus, idx, 7);
-                                        tableModel.setValueAt(finalSelect, idx, 0);
-                                    });
-                                }
-                            }
-                        });
-                    }
-                }
-            }
-        });
     }
 
     private void searchMissingOnline() {
@@ -5122,384 +3890,21 @@ public class Main extends JFrame {
     }
 
     private void searchMissingOnline(boolean manual) {
-        if (modelsToDownload == null) return;
-        statusLabel.setText("Searching...");
-        boolean[] selected = new boolean[tableModel.getRowCount()];
-        for (int i = 0; i < selected.length; i++) selected[i] = (Boolean) tableModel.getValueAt(i, 0);
-        searchService.searchOnline(modelsToDownload, selected, jsonInputArea.getText(), currentFileName, manual,
-            (idx, status) -> SwingUtilities.invokeLater(() -> {
-                String current = (String) tableModel.getValueAt(idx, 7);
-                // Protection: Don't overwrite successful detection (local or archive) with search progress/failure
-                if (current != null && (current.contains("✅") || current.contains("📦"))) {
-                    if (status.contains("No trusted match") || status.startsWith("🔍") || status.startsWith("✨")) {
-                        return; 
-                    }
-                }
-                tableModel.setValueAt(status, idx, 7);
-            }),
-            (idx, info) -> SwingUtilities.invokeLater(() -> {
-                tableModel.setValueAt(info.getSize(), idx, 3);
-                tableModel.setValueAt(info.getUrl(), idx, 6);
-                
-                String base = configService.getModelsPath();
-                String archive = configService.getArchivePath();
-                long size = info.getByteSize();
-
-                // Re-verify local existence with potential new size info
-                boolean exists = false;
-                boolean inArchive = false;
-                
-                if (base != null && !base.isEmpty()) {
-                    java.util.Optional<Path> foundLocally = localScanner.findModelWithPrefSize(Paths.get(base), info.getName(), size);
-                    if (foundLocally.isPresent()) {
-                        exists = true;
-                        // Update target path display
-                        try {
-                            Path rel = Paths.get(base).relativize(foundLocally.get());
-                            tableModel.setValueAt("models/" + rel.getParent().toString().replace("\\", "/"), idx, 5);
-                        } catch (Exception ignored) {}
-                    }
-                }
-
-                if (!exists && archive != null && !archive.isEmpty()) {
-                    inArchive = localScanner.findModelWithPrefSize(Paths.get(archive), info.getName(), size).isPresent();
-                }
-
-                String newStatus;
-                if (exists) {
-                    newStatus = "✅ Already exists";
-                } else if (inArchive) {
-                    newStatus = "📦 Archived";
-                } else {
-                    newStatus = "✅ Known Good";
-                }
-
-
-                tableModel.setValueAt(newStatus, idx, 7);
-                tableModel.setValueAt(!exists, idx, 0); // Keep selected for download/restore if NOT local
-            }),
-            () -> SwingUtilities.invokeLater(() -> statusLabel.setText("Search finished."))
-        );
+        if (downloadManagerController != null) {
+            downloadManagerController.searchMissingOnline(manual);
+        }
     }
 
     private void verifyLocalModels(boolean checkDuplicates) {
-        String baseDir = configService.getModelsPath();
-        if (baseDir == null || baseDir.isEmpty()) {
-            JOptionPane.showMessageDialog(this, "Please set a models directory first.");
-            return;
+        if (downloadManagerController != null) {
+            downloadManagerController.verifyLocalModels(checkDuplicates);
         }
-
-        File root = new File(baseDir);
-        if (!root.exists() || !root.isDirectory()) {
-            JOptionPane.showMessageDialog(this, "Invalid models directory.");
-            return;
-        }
-
-        String taskName = checkDuplicates ? "Verifying models & checking for duplicates" : "Verifying models (Fast Check)";
-        statusLabel.setText(taskName + "... please wait.");
-        backgroundExecutor.execute(() -> {
-            try {
-                List<IModelValidator.ValidationResult> errors = new ArrayList<>();
-                Map<String, List<Path>> hashToPaths = new HashMap<>();
-
-                List<Path> allFiles = Files.walk(root.toPath())
-                        .filter(Files::isRegularFile)
-                        .filter(p -> {
-                            String relPath = root.toPath().relativize(p).toString().toLowerCase();
-                            return !relPath.contains(".venv") && !relPath.contains("archive");
-                        })
-                        .filter(p -> {
-                            String n = p.getFileName().toString().toLowerCase();
-                            return n.endsWith(".safetensors") || n.endsWith(".sft") || n.endsWith(".ckpt") || n.endsWith(".pth") || n.endsWith(".pt") || n.endsWith(".bin") || n.endsWith(".onnx");
-                        })
-                        .collect(Collectors.toList());
-
-                int total = allFiles.size();
-                for (int i = 0; i < total; i++) {
-                    Path p = allFiles.get(i);
-                    final int current = i + 1;
-                    SwingUtilities.invokeLater(() -> statusLabel.setText("Checking (" + current + "/" + total + "): " + p.getFileName()));
-
-                    IModelValidator.ValidationResult res = modelValidator.validateFile(p.toFile());
-                    if (!res.ok) {
-                        errors.add(res);
-                    } else if (checkDuplicates) {
-                        String hash = hashRegistry.getOrCalculateHash(p.toFile());
-                        if (hash != null) {
-                            hashToPaths.computeIfAbsent(hash, k -> new ArrayList<>()).add(p);
-                        }
-                    }
-                }
-
-                Map<String, List<Path>> duplicates = checkDuplicates ? hashToPaths.entrySet().stream()
-                        .filter(e -> e.getValue().size() > 1)
-                        .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue)) : new HashMap<>();
-
-                SwingUtilities.invokeLater(() -> {
-                    statusLabel.setText("Scan finished. Found " + errors.size() + " issues and " + duplicates.size() + " duplicate sets.");
-
-                    if (errors.isEmpty() && duplicates.isEmpty()) {
-                        JOptionPane.showMessageDialog(this, "All " + total + " models verified successfully!", "Verification Complete", JOptionPane.INFORMATION_MESSAGE);
-                        return;
-                    }
-
-                    if (!errors.isEmpty()) {
-                        StringBuilder sb = new StringBuilder("The following " + errors.size() + " files appear to be corrupted or invalid:\n\n");
-                        for (IModelValidator.ValidationResult err : errors) {
-                            sb.append("- ").append(new File(err.filePath).getName())
-                              .append(" (").append(err.message).append(")\n")
-                              .append("  Path: ").append(err.filePath).append("\n\n");
-                        }
-
-                        JTextArea textArea = new JTextArea(sb.toString());
-                        textArea.setEditable(false);
-                        JScrollPane scrollPane = new JScrollPane(textArea);
-                        scrollPane.setPreferredSize(new Dimension(800, 500));
-
-                        Object[] options = {"OK", "Delete All Corrupted Files"};
-                        int choice = JOptionPane.showOptionDialog(this, scrollPane, "Verification Results - Issues Found", 
-                                JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE, null, options, options[0]);
-
-                        if (choice == 1) { // Delete All Corrupted Files
-                            int confirm = JOptionPane.showConfirmDialog(this, 
-                                "Are you sure you want to delete these " + errors.size() + " files?\nThis action cannot be undone.",
-                                "Confirm Deletion", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);   
-
-                            if (confirm == JOptionPane.YES_OPTION) {
-                                int deletedCount = 0;
-                                for (IModelValidator.ValidationResult err : errors) {
-                                    File f = new File(err.filePath);
-                                    if (f.exists() && f.delete()) {
-                                        deletedCount++;
-                                    }
-                                }
-                                JOptionPane.showMessageDialog(this, "Deleted " + deletedCount + " files.");    
-                                statusLabel.setText("Cleanup finished. Deleted " + deletedCount + " files.");  
-                            }
-                        }
-                    }
-                    
-                    if (!duplicates.isEmpty()) {
-                        showDuplicatesDialog(duplicates);
-                    }
-                });
-            } catch (IOException e) {
-                SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(this, "Error during verification: " + e.getMessage()));
-            }
-        });
-    }
-
-    private void showDuplicatesDialog(Map<String, List<Path>> duplicates) {
-        StringBuilder sb = new StringBuilder("Storage Optimizer - Duplicate Models Found:\n\n");
-        sb.append("The following files have identical content (SHA-256 match).\n");
-        sb.append("You might want to delete redundant copies to save space.\n\n");
-
-        for (Map.Entry<String, List<Path>> entry : duplicates.entrySet()) {
-            sb.append("SHA-256: ").append(entry.getKey()).append("\n");
-            for (Path p : entry.getValue()) {
-                sb.append("  -> ").append(p.toAbsolutePath()).append("\n");
-            }
-            sb.append("\n");
-        }
-
-        JTextArea textArea = new JTextArea(sb.toString());
-        textArea.setEditable(false);
-        JScrollPane scrollPane = new JScrollPane(textArea);
-        scrollPane.setPreferredSize(new Dimension(900, 600));
-        JOptionPane.showMessageDialog(this, scrollPane, "Duplicates Found", JOptionPane.INFORMATION_MESSAGE);
     }
 
     private void showArchiveDialog() {
-        JDialog dialog = new JDialog(this, "Archive Manager", true);
-        dialog.setLayout(new BorderLayout());
-        dialog.setSize(1000, 700);
-        dialog.setLocationRelativeTo(this);
-
-        JTabbedPane tabs = new JTabbedPane();
-        
-        // --- TAB 1: ARCHIVE (Models -> Archive) ---
-        JPanel archivePanel = new JPanel(new BorderLayout(10, 10));
-        archivePanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
-        
-        Map<String, List<ModelInfo>> groupedToArchive = archiveService.getModelsGroupedByFolder();
-        String[] columns = {"Select", "Folder", "Name", "Size"};
-        DefaultTableModel archiveTableModel = new DefaultTableModel(columns, 0) {
-            @Override public Class<?> getColumnClass(int c) { return c == 0 ? Boolean.class : String.class; }
-            @Override public boolean isCellEditable(int r, int c) { return c == 0; }
-        };
-
-        for (Map.Entry<String, List<ModelInfo>> entry : groupedToArchive.entrySet()) {
-            for (ModelInfo model : entry.getValue()) {
-                archiveTableModel.addRow(new Object[]{false, entry.getKey(), model.getName(), model.getSize()});
-            }
+        if (downloadManagerController != null) {
+            downloadManagerController.showArchiveDialog();
         }
-
-        Map<String, List<ModelInfo>> groupedToRestore = archiveService.getArchivedModelsGroupedByFolder();
-        DefaultTableModel restoreTableModel = new DefaultTableModel(columns, 0) {
-            @Override public Class<?> getColumnClass(int c) { return c == 0 ? Boolean.class : String.class; }
-            @Override public boolean isCellEditable(int r, int c) { return c == 0; }
-        };
-
-        for (Map.Entry<String, List<ModelInfo>> entry : groupedToRestore.entrySet()) {
-            for (ModelInfo model : entry.getValue()) {
-                restoreTableModel.addRow(new Object[]{false, entry.getKey(), model.getName(), model.getSize()});
-            }
-        }
-
-        JTable archiveTable = new JTable(archiveTableModel);
-        archiveTable.setRowHeight(25);
-        archiveTable.getColumnModel().getColumn(0).setMaxWidth(50);
-        
-        // Enable sorting with custom comparator for human-readable sizes
-        javax.swing.table.TableRowSorter<DefaultTableModel> archiveSorter = new javax.swing.table.TableRowSorter<>(archiveTableModel);
-        archiveSorter.setComparator(3, (s1, s2) -> Long.compare(parseSizeToBytes((String)s1), parseSizeToBytes((String)s2)));
-        archiveSorter.setSortable(0, false); // Disable sorting for checkbox column to allow "Select All"
-        archiveTable.setRowSorter(archiveSorter);
-
-        // Add "Select All" functionality to header
-        archiveTable.getTableHeader().addMouseListener(new MouseAdapter() {
-            @Override
-            public void mouseClicked(MouseEvent e) {
-                int viewIdx = archiveTable.columnAtPoint(e.getPoint());
-                if (viewIdx == -1) return;
-                int modelIdx = archiveTable.convertColumnIndexToModel(viewIdx);
-                if (modelIdx == 0) {
-                    boolean allSelected = true;
-                    for (int i = 0; i < archiveTableModel.getRowCount(); i++) {
-                        if (!(Boolean) archiveTableModel.getValueAt(i, 0)) {
-                            allSelected = false;
-                            break;
-                        }
-                    }
-                    boolean newValue = !allSelected;
-                    for (int i = 0; i < archiveTableModel.getRowCount(); i++) {
-                        archiveTableModel.setValueAt(newValue, i, 0);
-                    }
-                }
-            }
-        });
-
-        JScrollPane archiveScroll = new JScrollPane(archiveTable);
-        archivePanel.add(archiveScroll, BorderLayout.CENTER);
-
-        JPanel archiveBottom = new JPanel(new BorderLayout());
-        JLabel archiveCountLabel = new JLabel("Selected: 0 models");
-        archiveTableModel.addTableModelListener(e -> {
-            int selected = 0;
-            for (int i = 0; i < archiveTableModel.getRowCount(); i++) {
-                if ((Boolean) archiveTableModel.getValueAt(i, 0)) selected++;
-            }
-            archiveCountLabel.setText("Selected: " + selected + " models");
-        });
-        
-        JButton archiveNowBtn = new JButton("📦 Move to Archive");
-        archiveNowBtn.putClientProperty("JButton.buttonType", "accent");
-        archiveNowBtn.addActionListener(e -> {
-            List<Integer> selectedRows = new ArrayList<>();
-            for (int i = 0; i < archiveTableModel.getRowCount(); i++) if ((Boolean) archiveTableModel.getValueAt(i, 0)) selectedRows.add(i);
-            if (selectedRows.isEmpty()) return;
-            
-            showModalProgressDialog("Archive", "Archiving", selectedRows, archiveTableModel, restoreTableModel, (folder, name, update) -> {
-                try {
-                    archiveService.moveToArchiveWithProgress(folder, name, update);
-                    return true;
-                } catch (IOException ex) {
-                    SwingUtilities.invokeLater(() -> {
-                        JOptionPane.showMessageDialog(dialog, 
-                            "Failed to archive '" + name + "':\n" + ex.getMessage(), 
-                            "Archive Error", JOptionPane.ERROR_MESSAGE);
-                    });
-                    return false;
-                }
-            });
-        });
-
-        JPanel archiveActionPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
-        archiveActionPanel.add(archiveNowBtn);
-        archiveBottom.add(archiveCountLabel, BorderLayout.WEST);
-        archiveBottom.add(archiveActionPanel, BorderLayout.EAST);
-        archivePanel.add(archiveBottom, BorderLayout.SOUTH);
-
-        // --- TAB 2: RESTORE (Archive -> Models) ---
-        JPanel restorePanel = new JPanel(new BorderLayout(10, 10));
-        restorePanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
-        
-        JTable restoreTable = new JTable(restoreTableModel);
-        restoreTable.setRowHeight(25);
-        restoreTable.getColumnModel().getColumn(0).setMaxWidth(50);
-        
-        // Enable sorting with custom comparator for human-readable sizes
-        javax.swing.table.TableRowSorter<DefaultTableModel> restoreSorter = new javax.swing.table.TableRowSorter<>(restoreTableModel);
-        restoreSorter.setComparator(3, (s1, s2) -> Long.compare(parseSizeToBytes((String)s1), parseSizeToBytes((String)s2)));
-        restoreSorter.setSortable(0, false); // Disable sorting for checkbox column to allow "Select All"
-        restoreTable.setRowSorter(restoreSorter);
-
-        // Add "Select All" functionality to header
-        restoreTable.getTableHeader().addMouseListener(new MouseAdapter() {
-            @Override
-            public void mouseClicked(MouseEvent e) {
-                int viewIdx = restoreTable.columnAtPoint(e.getPoint());
-                if (viewIdx == -1) return;
-                int modelIdx = restoreTable.convertColumnIndexToModel(viewIdx);
-                if (modelIdx == 0) {
-                    boolean allSelected = true;
-                    for (int i = 0; i < restoreTableModel.getRowCount(); i++) {
-                        if (!(Boolean) restoreTableModel.getValueAt(i, 0)) {
-                            allSelected = false;
-                            break;
-                        }
-                    }
-                    boolean newValue = !allSelected;
-                    for (int i = 0; i < restoreTableModel.getRowCount(); i++) {
-                        restoreTableModel.setValueAt(newValue, i, 0);
-                    }
-                }
-            }
-        });
-
-        JScrollPane restoreScroll = new JScrollPane(restoreTable);
-        restorePanel.add(restoreScroll, BorderLayout.CENTER);
-
-        JPanel restoreBottom = new JPanel(new BorderLayout());
-        JLabel restoreCountLabel = new JLabel("Selected: 0 models");
-        restoreTableModel.addTableModelListener(e -> {
-            int selected = 0;
-            for (int i = 0; i < restoreTableModel.getRowCount(); i++) {
-                if ((Boolean) restoreTableModel.getValueAt(i, 0)) selected++;
-            }
-            restoreCountLabel.setText("Selected: " + selected + " models");
-        });
-
-        JButton restoreNowBtn = new JButton("🚀 Restore from Archive");
-        restoreNowBtn.putClientProperty("JButton.buttonType", "accent");
-        restoreNowBtn.addActionListener(e -> {
-            List<Integer> selectedRows = new ArrayList<>();
-            for (int i = 0; i < restoreTableModel.getRowCount(); i++) if ((Boolean) restoreTableModel.getValueAt(i, 0)) selectedRows.add(i);
-            if (selectedRows.isEmpty()) return;
-            
-            showModalProgressDialog("Restore", "Restoring", selectedRows, restoreTableModel, archiveTableModel, (folder, name, update) -> {
-                return archiveService.restoreFromArchiveWithProgress(folder, name, update);
-            });
-        });
-
-        JPanel restoreActionPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
-        restoreActionPanel.add(restoreNowBtn);
-        restoreBottom.add(restoreCountLabel, BorderLayout.WEST);
-        restoreBottom.add(restoreActionPanel, BorderLayout.EAST);
-        restorePanel.add(restoreBottom, BorderLayout.SOUTH);
-
-        tabs.addTab("📦 Archive Models", archivePanel);
-        tabs.addTab("🚀 Restore Models", restorePanel);
-        
-        dialog.add(tabs, BorderLayout.CENTER);
-        
-        JPanel dialogButtons = new JPanel(new FlowLayout(FlowLayout.RIGHT));
-        JButton closeBtn = new JButton("Close");
-        closeBtn.addActionListener(e -> dialog.dispose());
-        dialogButtons.add(closeBtn);
-        dialog.add(dialogButtons, BorderLayout.SOUTH);
-        
-        dialog.setVisible(true);
     }
 
     private static class ArchiveWorkItem {
@@ -5509,285 +3914,86 @@ public class Main extends JFrame {
     }
 
     private JPanel createManagerPanel(JTabbedPane tabs) {
-        JPanel managerPanel = new JPanel();
-        managerPanel.setOpaque(false); // Relies on APP_BG_COLOR from root
-        managerPanel.setLayout(new BorderLayout(10, 10));
-        managerPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
-
-        de.tki.comfymodels.ui.CardPanel toolbarCard = new de.tki.comfymodels.ui.CardPanel();
-        toolbarCard.setLayout(new BorderLayout());
-        toolbarCard.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
-
-        JPanel toolbar = new JPanel(new FlowLayout(FlowLayout.LEFT, 12, 0));
-        toolbar.setOpaque(false);
-
-        JButton verifyBtn = new JButton("🔍 Quick Check");
-        verifyBtn.putClientProperty("JButton.buttonType", "roundRect");
-        verifyBtn.addActionListener(e -> verifyLocalModels(false));
-        
-        JButton optimizeBtn = new JButton("👯 Storage Optimizer");
-        optimizeBtn.putClientProperty("JButton.buttonType", "roundRect");
-        optimizeBtn.addActionListener(e -> {
-            int confirm = JOptionPane.showConfirmDialog(this, 
-                "The storage optimizer calculates SHA-256 hashes for all local models.\n" +
-                "This is EXTREMELY slow and resource-intensive for large libraries.\n\n" +
-                "Do you want to continue?", "Performance Warning", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
-            if (confirm == JOptionPane.YES_OPTION) {
-                verifyLocalModels(true);
+        if (downloadManagerView != null) {
+            // Give the controller a reference to the view for UI access,
+            // but DON'T call setView() – that would also set the controller
+            // as the listener, which the anonymous listener below needs to be.
+            if (downloadManagerController != null) {
+                downloadManagerController.setViewReference(downloadManagerView);
             }
-        });
-
-        JButton archiveBtn = new JButton("📦 Archive...");
-        archiveBtn.putClientProperty("JButton.buttonType", "roundRect");
-        archiveBtn.addActionListener(e -> showArchiveDialog());
-
-        JButton diagnosticBtn = new JButton("🩺 Diagnostics");
-        diagnosticBtn.putClientProperty("JButton.buttonType", "roundRect");
-        diagnosticBtn.addActionListener(e -> {
-            if (modelsToDownload == null || modelsToDownload.isEmpty()) {
-                JOptionPane.showMessageDialog(this, "Please load a workflow first to perform diagnostics.");
-                return;
-            }
-            List<String> missing = diagnosticService.getMissingModels(modelsToDownload);
-            if (missing.isEmpty()) {
-                JOptionPane.showMessageDialog(this, "✅ All workflow models are visible to ComfyUI!", "Diagnostics Successful", JOptionPane.INFORMATION_MESSAGE);
-            } else {
-                String list = String.join("\n- ", missing);
-                Object[] options = {"Switch to Overview (Restart)", "Ignore"};
-                int choice = JOptionPane.showOptionDialog(this, 
-                    "❌ ComfyUI still reports these models as missing:\n- " + list + "\n\n" +
-                    "A restart is required for ComfyUI to recognize new models.", 
-                    "Diagnostics Failed", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE, null, options, options[0]);
-                
-                if (choice == 0) tabs.setSelectedIndex(0);
-            }
-        });
-
-        JLabel toolsLabel = new JLabel("Storage Tools: ");
-        toolsLabel.setFont(new Font("SansSerif", Font.BOLD, 12));
-        toolbar.add(toolsLabel);
-        toolbar.add(verifyBtn);
-        toolbar.add(optimizeBtn);
-        toolbar.add(archiveBtn);
-        
-        JSeparator sep = new JSeparator(JSeparator.VERTICAL);
-        sep.setPreferredSize(new Dimension(2, 20));
-        toolbar.add(sep);
-        
-        toolbar.add(diagnosticBtn);
-        toolbarCard.add(toolbar, BorderLayout.CENTER);
-
-        JSplitPane splitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
-        de.tki.comfymodels.ui.CardPanel jsonPanel = new de.tki.comfymodels.ui.CardPanel();
-        jsonPanel.setLayout(new BorderLayout());
-        
-        JLabel jsonTitle = new JLabel("Workflow (Drag & Drop JSON/PNG)");
-        jsonTitle.setFont(new Font("SansSerif", Font.BOLD, 14));
-        jsonTitle.setForeground(de.tki.comfymodels.ui.ThemeManager.getTextColor());
-        jsonPanel.add(jsonTitle, BorderLayout.NORTH);
-        
-        jsonInputArea = new JTextArea();
-        setupDragAndDrop(jsonInputArea);
-        JScrollPane jsonScroll = new JScrollPane(jsonInputArea);
-        jsonScroll.setOpaque(false);
-        jsonScroll.getViewport().setOpaque(false);
-        
-        JPanel jsonButtons = new JPanel(new FlowLayout(FlowLayout.RIGHT));
-        jsonButtons.setOpaque(false);
-        JButton loadJsonBtn = new JButton("Load Workflow...");
-        loadJsonBtn.addActionListener(e -> {
-            FileDialog fd = new FileDialog(this, "Select Workflow", FileDialog.LOAD);
-            fd.setVisible(true);
-            if (fd.getFile() != null) loadFile(new File(fd.getDirectory(), fd.getFile()));
-        });
-
-        JButton importModelListBtn = new JButton("Import Model List...");
-        importModelListBtn.addActionListener(e -> {
-            FileDialog fd = new FileDialog(this, "Select Model List JSON", FileDialog.LOAD);
-            fd.setVisible(true);
-            if (fd.getFile() != null) {
-                try {
-                    modelListService.importJson(new File(fd.getDirectory(), fd.getFile()));
-                    JOptionPane.showMessageDialog(this, "Model list successfully imported! (" + modelListService.getModels().size() + " models)");
-                    analyzeJsonContent();
-                } catch (Exception ex) {
-                    JOptionPane.showMessageDialog(this, "Error: " + ex.getMessage());
-                }
-            }
-        });
-
-        JButton analyzeBtn = new JButton("Deep Search");
-        analyzeBtn.putClientProperty("JButton.buttonType", "accent");
-        analyzeBtn.addActionListener(e -> { analyzeJsonContent(); searchMissingOnline(true); });
-        jsonButtons.add(loadJsonBtn);
-        jsonButtons.add(importModelListBtn);
-        jsonButtons.add(analyzeBtn);
-        jsonPanel.add(jsonScroll, BorderLayout.CENTER);
-        jsonPanel.add(jsonButtons, BorderLayout.SOUTH);
-
-        String[] columnNames = {"Select", "Type", "Name", "Size", "AI Source", "Target Path", "URL", "Status"}; 
-        tableModel = new DefaultTableModel(columnNames, 0) {
-            @Override public Class<?> getColumnClass(int c) { return c == 0 ? Boolean.class : String.class; }   
-            @Override public boolean isCellEditable(int r, int c) { 
-                if (c == 0) {
-                    String status = (String) getValueAt(r, 7);
-                    return status != null && !status.contains("Already exists");
-                }
-                return false; 
-            }
-        };
-        tableModel.addTableModelListener(e -> {
-            if (e.getType() == TableModelEvent.UPDATE && e.getColumn() == 0) {
-                updateDownloadManagerSelection();
-            }
-            updateDownloadButtonsState();
-        });
-        JTable modelTable = new JTable(tableModel);
-        modelTable.putClientProperty("terminateEditOnFocusLost", Boolean.TRUE);
-
-        // Configure table column model with preferred column widths representing percentages
-        modelTable.setAutoResizeMode(JTable.AUTO_RESIZE_SUBSEQUENT_COLUMNS);
-        javax.swing.table.TableColumnModel colModel = modelTable.getColumnModel();
-        
-        // 0: Select (3% / min 40px)
-        javax.swing.table.TableColumn col0 = colModel.getColumn(0);
-        col0.setPreferredWidth(40);
-        col0.setMinWidth(40);
-        col0.setMaxWidth(60);
-        
-        // 1: Type (10%)
-        colModel.getColumn(1).setPreferredWidth(115);
-        
-        // 2: Name (15%)
-        colModel.getColumn(2).setPreferredWidth(172);
-        
-        // 3: Size (5%)
-        colModel.getColumn(3).setPreferredWidth(58);
-        
-        // 4: AI Source (10%)
-        colModel.getColumn(4).setPreferredWidth(115);
-        
-        // 5: Target Path (10%)
-        colModel.getColumn(5).setPreferredWidth(115);
-        
-        // 6: URL (25%)
-        colModel.getColumn(6).setPreferredWidth(288);
-        
-        // 7: Status (22%)
-        colModel.getColumn(7).setPreferredWidth(253);
-
-        JPopupMenu modelTablePopup = new JPopupMenu();
-        JMenuItem searchCivitaiItem = new JMenuItem("Search on Civitai & select version...");
-        modelTablePopup.add(searchCivitaiItem);
-
-        modelTable.addMouseListener(new MouseAdapter() {
-            @Override
-            public void mousePressed(MouseEvent e) {
-                showPopup(e);
-            }
-            @Override
-            public void mouseReleased(MouseEvent e) {
-                showPopup(e);
-            }
-            private void showPopup(MouseEvent e) {
-                if (e.isPopupTrigger()) {
-                    int row = modelTable.rowAtPoint(e.getPoint());
-                    if (row >= 0 && row < modelTable.getRowCount()) {
-                        modelTable.setRowSelectionInterval(row, row);
-                        modelTablePopup.show(e.getComponent(), e.getX(), e.getY());
+            downloadManagerView.setListener(new de.tki.comfymodels.ui.DownloadManagerView.DownloadManagerListener() {
+                @Override
+                public void onVerifyLocalModels(boolean deepCheck) { verifyLocalModels(deepCheck); }
+                @Override
+                public void onShowArchiveDialog() { showArchiveDialog(); }
+                @Override
+                public void onRunDiagnostics() {
+                    if (modelsToDownload == null || modelsToDownload.isEmpty()) {
+                        JOptionPane.showMessageDialog(Main.this, "Please load a workflow first to perform diagnostics.");
+                        return;
+                    }
+                    List<String> missing = diagnosticService.getMissingModels(modelsToDownload);
+                    if (missing.isEmpty()) {
+                        JOptionPane.showMessageDialog(Main.this, "✅ All workflow models are visible to ComfyUI!", "Diagnostics Successful", JOptionPane.INFORMATION_MESSAGE);
+                    } else {
+                        String list = String.join("\n- ", missing);
+                        Object[] options = {"Switch to Overview (Restart)", "Ignore"};
+                        int choice = JOptionPane.showOptionDialog(Main.this, 
+                            "❌ ComfyUI still reports these models as missing:\n- " + list + "\n\n" +
+                            "A restart is required for ComfyUI to recognize new models.", 
+                            "Diagnostics Failed", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE, null, options, options[0]);
+                        if (choice == 0) tabs.setSelectedIndex(0);
                     }
                 }
-            }
-        });
+                @Override
+                public void onLoadWorkflowFile(File file) { loadFile(file); }
+                @Override
+                public void onImportModelListFile(File file) {
+                    try {
+                        modelListService.importJson(file);
+                        JOptionPane.showMessageDialog(Main.this, "Model list successfully imported! (" + modelListService.getModels().size() + " models)");
+                        analyzeJsonContent();
+                    } catch (Exception ex) {
+                        JOptionPane.showMessageDialog(Main.this, "Error: " + ex.getMessage());
+                    }
+                }
+                @Override
+                public void onAnalyzeJsonContent() { analyzeJsonContent(); searchMissingOnline(true); }
+                @Override
+                public void onShowCivitaiSearchDialog(int modelRowIndex) { showCivitaiSearchDialog(modelRowIndex); }
+                @Override
+                public void onUpdateDownloadManagerSelection() { updateDownloadManagerSelection(); }
+                @Override
+                public void onUpdateDownloadButtonsState() { updateDownloadButtonsState(); }
+                @Override
+                public void onStartDownloadQueue() { startDownloadQueue(); }
+                @Override
+                public void onTogglePause() {
+                    downloadManager.togglePause();
+                    if (pauseButton != null) pauseButton.setText(downloadManager.isPaused() ? "Resume" : "Pause");
+                    updateDownloadButtonsState();
+                }
+                @Override
+                public void onStopDownloadQueue() { downloadManager.stop(); }
+            });
 
-        searchCivitaiItem.addActionListener(e -> {
-            int selectedRow = modelTable.getSelectedRow();
-            if (selectedRow >= 0) {
-                int modelRow = modelTable.convertRowIndexToModel(selectedRow);
-                showCivitaiSearchDialog(modelRow);
-            }
-        });
-        JScrollPane tableScroll = new JScrollPane(modelTable);
-        tableScroll.setOpaque(false);
-        tableScroll.getViewport().setOpaque(false);
-        tableScroll.setBorder(BorderFactory.createEmptyBorder());
-        
-        JPanel tablePanel = new JPanel(new BorderLayout());
-        tablePanel.putClientProperty("FlatLaf.style", "arc: 16; background: $Card.background; border: 15,15,15,15,$Card.border,1,16");
-        tablePanel.setOpaque(false);
-        tablePanel.setBorder(BorderFactory.createTitledBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5), "Detected Models"));
-        tablePanel.add(tableScroll, BorderLayout.CENTER);
+            syncDownloadManagerViewFields();
+            return downloadManagerView;
+        }
+        return new JPanel();
+    }
 
-        JTabbedPane workflowInputTabs = new JTabbedPane();
-        workflowInputTabs.setFont(new Font("SansSerif", Font.BOLD, 12));
-        workflowInputTabs.putClientProperty("JTabbedPane.tabType", "card");
-        workflowInputTabs.setOpaque(false);
-        
-        workflowInputTabs.addTab("📝 JSON Source", jsonPanel);
-        
-        workflowGraphPanel = new de.tki.comfymodels.ui.WorkflowGraphPanel();
-        workflowGraphPanel.putClientProperty("FlatLaf.style", "arc: 16; background: $Card.background; border: 15,15,15,15,$Card.border,1,16");
-        workflowGraphPanel.setOpaque(false);
-        setupDragAndDrop(workflowGraphPanel);
-        workflowInputTabs.addTab("📊 Visual Graph", workflowGraphPanel);
-        
-        splitPane.setOpaque(false);
-        splitPane.setTopComponent(workflowInputTabs);
-        splitPane.setBottomComponent(tablePanel);
-        splitPane.setDividerLocation(350);
-
-        JPanel bottomPanel = new JPanel(new BorderLayout());
-        bottomPanel.setOpaque(false);
-        statusLabel = new JLabel("Ready");
-        
-        JPanel progressPanel = new JPanel(new GridLayout(2, 1));
-        progressPanel.setOpaque(false);
-        activeAiModelLabel = new JLabel("Active AI: Loading...");
-        activeAiModelLabel.setFont(new Font("SansSerif", Font.ITALIC, 11));
-        activeAiModelLabel.setForeground(Color.GRAY);
-        progressPanel.add(statusLabel);
-        progressPanel.add(activeAiModelLabel);
-        
-        JPanel actionButtons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 5));
-        actionButtons.setOpaque(false);
-        downloadButton = new JButton("Start queue");
-        downloadButton.putClientProperty("JButton.buttonType", "accent");
-        downloadButton.setFont(new Font("SansSerif", Font.BOLD, 13));
-        downloadButton.setEnabled(false);
-        downloadButton.addActionListener(e -> startDownloadQueue());
-        
-        pauseButton = new JButton("Pause");
-        pauseButton.putClientProperty("JButton.buttonType", "roundRect");
-        pauseButton.setFont(new Font("SansSerif", Font.BOLD, 13));
-        pauseButton.setEnabled(false);
-        pauseButton.addActionListener(e -> {
-            downloadManager.togglePause();
-            pauseButton.setText(downloadManager.isPaused() ? "Resume" : "Pause");
-            updateDownloadButtonsState();
-        });
-        
-        stopButton = new JButton("Stop");
-        stopButton.putClientProperty("JButton.buttonType", "roundRect");
-        stopButton.setFont(new Font("SansSerif", Font.BOLD, 13));
-        stopButton.setEnabled(false);
-        stopButton.addActionListener(e -> downloadManager.stop());
-        
-        actionButtons.add(downloadButton);
-        actionButtons.add(pauseButton);
-        actionButtons.add(stopButton);
-        
-        bottomPanel.add(progressPanel, BorderLayout.CENTER);
-        bottomPanel.add(actionButtons, BorderLayout.EAST);
-
-        de.tki.comfymodels.ui.CardPanel mainCard = new de.tki.comfymodels.ui.CardPanel();
-        mainCard.setLayout(new BorderLayout(10, 10));
-        mainCard.add(splitPane, BorderLayout.CENTER);
-        mainCard.add(bottomPanel, BorderLayout.SOUTH);
-
-        managerPanel.add(toolbarCard, BorderLayout.NORTH);
-        managerPanel.add(mainCard, BorderLayout.CENTER);
-        
-        return managerPanel;
+    private void syncDownloadManagerViewFields() {
+        if (downloadManagerView == null) return;
+        this.jsonInputArea = downloadManagerView.getJsonInputArea();
+        this.tableModel = downloadManagerView.getTableModel();
+        this.modelTable = downloadManagerView.getModelTable();
+        this.workflowGraphPanel = downloadManagerView.getWorkflowGraphPanel();
+        this.statusLabel = downloadManagerView.getStatusLabel();
+        this.activeAiModelLabel = downloadManagerView.getActiveAiModelLabel();
+        this.downloadButton = downloadManagerView.getDownloadButton();
+        this.pauseButton = downloadManagerView.getPauseButton();
+        this.stopButton = downloadManagerView.getStopButton();
     }
 
     private JPanel createSettingsPanel() {
@@ -5911,7 +4117,7 @@ public class Main extends JFrame {
             updateTabVisibility();
         });
 
-        videoArchitectCheck = new JCheckBox("Enable Video Architect (Experimental)");
+        videoArchitectCheck = new JCheckBox("Enable Video Architect (Beta)");
         videoArchitectCheck.setFont(checkFont);
         videoArchitectCheck.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
         videoArchitectCheck.addActionListener(e -> {
@@ -6372,136 +4578,16 @@ public class Main extends JFrame {
         }
     }
 
-    private void showModalProgressDialog(String title, String statusPrefix, List<Integer> selectedRows, 
-                                        DefaultTableModel sourceModel, DefaultTableModel targetModel, TaskExecutor executor) {
-        JDialog progressDialog = new JDialog(this, title, true);
-        progressDialog.setLayout(new BorderLayout(10, 10));
-        progressDialog.setSize(500, 180);
-        progressDialog.setLocationRelativeTo(this);
-        progressDialog.setDefaultCloseOperation(JDialog.DO_NOTHING_ON_CLOSE);
-
-        JPanel panel = new JPanel(new BorderLayout(10, 10));
-        panel.setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
-
-        JLabel label = new JLabel(statusPrefix + "...");
-        label.setFont(new Font("SansSerif", Font.BOLD, 12));
-        JProgressBar progressBar = new JProgressBar(0, 100);
-        progressBar.setStringPainted(true);
-        progressBar.setPreferredSize(new Dimension(400, 30));
-
-        panel.add(label, BorderLayout.NORTH);
-        panel.add(progressBar, BorderLayout.CENTER);
-        progressDialog.add(panel, BorderLayout.CENTER);
-
-        // Pre-collect data on EDT
-        List<ArchiveWorkItem> workItems = new ArrayList<>();
-        long totalBytes = 0;
-        for (int row : selectedRows) {
-            String sizeStr = (String) sourceModel.getValueAt(row, 3);
-            workItems.add(new ArchiveWorkItem(row, (String) sourceModel.getValueAt(row, 1), (String) sourceModel.getValueAt(row, 2), sizeStr));
-            totalBytes += parseSizeToBytes(sizeStr);
-        }
-        final long finalTotalBytes = totalBytes > 0 ? totalBytes : 1; 
-
-        backgroundExecutor.execute(() -> {
-            int successCount = 0;
-            List<Object[]> rowsToMove = new ArrayList<>();
-            List<Integer> processedRowIndices = new ArrayList<>();
-            long[] bytesProcessedTotal = {0};
-
-            for (int i = 0; i < workItems.size(); i++) {
-                ArchiveWorkItem item = workItems.get(i);
-                final int fileIndex = i + 1;
-                SwingUtilities.invokeLater(() -> label.setText(statusPrefix + " (" + fileIndex + "/" + workItems.size() + "): " + item.name));
-
-                if (executor.execute(item.folder, item.name, (bytesDelta) -> {
-                    bytesProcessedTotal[0] += bytesDelta;
-                    final long current = bytesProcessedTotal[0];
-                    final int percent = (int) Math.min(100, (current * 100) / finalTotalBytes);
-                    SwingUtilities.invokeLater(() -> {
-                        progressBar.setValue(percent);
-                        progressBar.setString(percent + "% (" + searchService.formatSize(current) + " / " + searchService.formatSize(finalTotalBytes) + ")");
-                    });
-                })) {
-                    successCount++;
-                    processedRowIndices.add(item.index);
-                    rowsToMove.add(new Object[]{false, item.folder, item.name, item.size});
-                }
-            }
-
-            final int finalSuccess = successCount;
-            SwingUtilities.invokeLater(() -> {
-                progressDialog.dispose();
-                processedRowIndices.sort((a, b) -> b.compareTo(a));
-                for (int r : processedRowIndices) sourceModel.removeRow(r);
-                for (Object[] rowData : rowsToMove) targetModel.addRow(rowData);
-                
-                analyzeJsonContent();
-                triggerPostOperationActions();
-                
-                JOptionPane.showMessageDialog(this, finalSuccess + " models successfully " + title.toLowerCase() + "ed.", 
-                    "Operation Complete", JOptionPane.INFORMATION_MESSAGE);
-            });
-        });
-
-        progressDialog.setVisible(true);
-    }
-
-    private long parseSizeToBytes(String sizeStr) {
-        if (sizeStr == null || sizeStr.equals("Unknown") || sizeStr.isEmpty()) return 0;
-        try {
-            String[] parts = sizeStr.trim().split("\\s+");
-            double val = Double.parseDouble(parts[0].replace(",", "."));
-            if (parts.length < 2) return (long) val;
-            String unit = parts[1].toUpperCase();
-            if (unit.contains("GB")) return (long) (val * 1024 * 1024 * 1024);
-            if (unit.contains("MB")) return (long) (val * 1024 * 1024);
-            if (unit.contains("KB")) return (long) (val * 1024);
-            return (long) val;
-        } catch (Exception e) { return 0; }
-    }
-
-    @FunctionalInterface
-    interface TaskExecutor {
-        boolean execute(String folder, String name, java.util.function.LongConsumer progressUpdate);
-    }
-
     private void updateDownloadManagerSelection() {
-        if (downloadManager == null || tableModel == null) return;
-        boolean[] selected = new boolean[tableModel.getRowCount()];
-        for (int i = 0; i < selected.length; i++) selected[i] = (Boolean) tableModel.getValueAt(i, 0);
-        downloadManager.updateSelection(selected);
+        if (downloadManagerController != null) {
+            downloadManagerController.updateDownloadManagerSelection();
+        }
     }
 
     private void updateDownloadButtonsState() {
-        SwingUtilities.invokeLater(() -> {
-            if (downloadButton == null || pauseButton == null || stopButton == null) return;
-            
-            if (isDownloading) {
-                downloadButton.setEnabled(false);
-                pauseButton.setEnabled(true);
-                stopButton.setEnabled(true);
-                pauseButton.setText(downloadManager != null && downloadManager.isPaused() ? "Resume" : "Pause");
-            } else {
-                // Find if there is at least one row selected that is not already completed/installed
-                boolean hasSelectable = false;
-                if (tableModel != null) {
-                    for (int i = 0; i < tableModel.getRowCount(); i++) {
-                        Boolean sel = (Boolean) tableModel.getValueAt(i, 0);
-                        String status = (String) tableModel.getValueAt(i, 7);
-                        if (Boolean.TRUE.equals(sel) && status != null && 
-                            !status.equals("✅ Already exists") && !status.equals("✅ Finished") && !status.startsWith("Skipped")) {
-                            hasSelectable = true;
-                            break;
-                        }
-                    }
-                }
-                downloadButton.setEnabled(hasSelectable);
-                pauseButton.setEnabled(false);
-                stopButton.setEnabled(false);
-                pauseButton.setText("Pause");
-            }
-        });
+        if (downloadManagerController != null) {
+            downloadManagerController.updateDownloadButtonsState();
+        }
     }
 
     public void focusDownloadTabAndSelectModels(List<ModelInfo> missingModels) {
@@ -6990,261 +5076,9 @@ public class Main extends JFrame {
     }
 
     private void showCivitaiSearchDialog(int row) {
-        String initialName = (String) tableModel.getValueAt(row, 2);
-        String cleanedQuery = initialName.replaceAll("(?i)\\.(safetensors|ckpt|sft|pt|bin)$", "").trim();
-
-        JDialog dialog = new JDialog(this, "Civitai Version Selector", true);
-        dialog.setSize(950, 650);
-        dialog.setLocationRelativeTo(this);
-        dialog.setLayout(new BorderLayout(10, 10));
-
-        JPanel leftPanel = new JPanel(new BorderLayout(10, 10));
-        leftPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
-        
-        JPanel searchBar = new JPanel(new BorderLayout(5, 0));
-        JTextField searchField = new JTextField(cleanedQuery);
-        JButton searchBtn = new JButton("Search");
-        searchBtn.putClientProperty("JButton.buttonType", "accent");
-        searchBar.add(searchField, BorderLayout.CENTER);
-        searchBar.add(searchBtn, BorderLayout.EAST);
-        leftPanel.add(searchBar, BorderLayout.NORTH);
-        
-        DefaultListModel<CivitaiModel> modelListModel = new DefaultListModel<>();
-        JList<CivitaiModel> modelList = new JList<>(modelListModel);
-        modelList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
-        JScrollPane listScroll = new JScrollPane(modelList);
-        leftPanel.add(listScroll, BorderLayout.CENTER);
-
-        JPanel rightPanel = new JPanel(new BorderLayout(10, 10));
-        rightPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
-        
-        JPanel versionPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 5));
-        versionPanel.add(new JLabel("Version:"));
-        JComboBox<CivitaiVersion> versionCombo = new JComboBox<>();
-        versionPanel.add(versionCombo);
-        rightPanel.add(versionPanel, BorderLayout.NORTH);
-        
-        JPanel detailsPanel = new JPanel(new BorderLayout(5, 5));
-        JTextArea infoText = new JTextArea();
-        infoText.setEditable(false);
-        infoText.setLineWrap(true);
-        infoText.setWrapStyleWord(true);
-        JScrollPane infoScroll = new JScrollPane(infoText);
-        infoScroll.setPreferredSize(new Dimension(350, 180));
-        detailsPanel.add(infoScroll, BorderLayout.NORTH);
-        
-        JLabel previewLabel = new JLabel("No Preview Image Available", JLabel.CENTER);
-        previewLabel.setBorder(BorderFactory.createLineBorder(Color.GRAY, 1));
-        previewLabel.setPreferredSize(new Dimension(350, 350));
-        detailsPanel.add(previewLabel, BorderLayout.CENTER);
-        
-        rightPanel.add(detailsPanel, BorderLayout.CENTER);
-
-        JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, leftPanel, rightPanel);
-        splitPane.setDividerLocation(420);
-        dialog.add(splitPane, BorderLayout.CENTER);
-
-        JPanel bottomPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 10));
-        JButton cancelBtn = new JButton("Cancel");
-        cancelBtn.addActionListener(e -> dialog.dispose());
-        JButton applyBtn = new JButton("Apply Selected Version");
-        applyBtn.putClientProperty("JButton.buttonType", "accent");
-        
-        bottomPanel.add(cancelBtn);
-        bottomPanel.add(applyBtn);
-        dialog.add(bottomPanel, BorderLayout.SOUTH);
-
-        Runnable doSearch = () -> {
-            String q = searchField.getText().trim();
-            if (q.isEmpty()) return;
-            searchBtn.setEnabled(false);
-            civitaiService.searchModelsRaw(q).thenAccept(root -> {
-                SwingUtilities.invokeLater(() -> {
-                    searchBtn.setEnabled(true);
-                    modelListModel.clear();
-                    if (root != null) {
-                        com.fasterxml.jackson.databind.JsonNode items = root.get("items");
-                        if (items != null && items.isArray()) {
-                            for (com.fasterxml.jackson.databind.JsonNode item : items) {
-                                String name = item.path("name").asText("Unknown");
-                                String type = item.path("type").asText("Unknown");
-                                modelListModel.addElement(new CivitaiModel(name, type, item));
-                            }
-                        }
-                    }
-                    if (modelListModel.isEmpty()) {
-                        modelListModel.addElement(new CivitaiModel("No results found", "", null));
-                    }
-                });
-            }).exceptionally(ex -> {
-                SwingUtilities.invokeLater(() -> {
-                    searchBtn.setEnabled(true);
-                    modelListModel.clear();
-                    modelListModel.addElement(new CivitaiModel("Error: " + ex.getMessage(), "", null));
-                });
-                return null;
-            });
-        };
-
-        searchBtn.addActionListener(e -> doSearch.run());
-        searchField.addActionListener(e -> doSearch.run());
-
-        modelList.addListSelectionListener(e -> {
-            if (e.getValueIsAdjusting()) return;
-            CivitaiModel selectedModel = modelList.getSelectedValue();
-            versionCombo.removeAllItems();
-            infoText.setText("");
-            previewLabel.setIcon(null);
-            previewLabel.setText("No Preview Image Available");
-            
-            if (selectedModel == null || selectedModel.rawNode == null) return;
-            
-            com.fasterxml.jackson.databind.JsonNode versions = selectedModel.rawNode.get("modelVersions");
-            if (versions != null && versions.isArray()) {
-                for (com.fasterxml.jackson.databind.JsonNode v : versions) {
-                    String vName = v.path("name").asText("Unknown");
-                    String downloadUrl = v.path("downloadUrl").asText("");
-                    
-                    long byteSize = 0;
-                    String sizeStr = "Unknown";
-                    com.fasterxml.jackson.databind.JsonNode files = v.get("files");
-                    if (files != null && files.isArray() && files.size() > 0) {
-                        double sizeKb = files.get(0).path("sizeKB").asDouble(0);
-                        byteSize = (long) (sizeKb * 1024);
-                        double sizeMb = sizeKb / 1024.0;
-                        if (sizeMb > 1024) {
-                            sizeStr = String.format("%.2f GB", sizeMb / 1024.0);
-                        } else {
-                            sizeStr = String.format("%.2f MB", sizeMb);
-                        }
-                    }
-                    
-                    String imgUrl = null;
-                    com.fasterxml.jackson.databind.JsonNode images = v.get("images");
-                    if (images != null && images.isArray() && images.size() > 0) {
-                        imgUrl = images.get(0).path("url").asText(null);
-                    }
-                    
-                    List<String> triggers = new ArrayList<>();
-                    com.fasterxml.jackson.databind.JsonNode trainedWords = v.get("trainedWords");
-                    if (trainedWords != null && trainedWords.isArray()) {
-                        for (com.fasterxml.jackson.databind.JsonNode word : trainedWords) {
-                            triggers.add(word.asText());
-                        }
-                    }
-                    
-                    versionCombo.addItem(new CivitaiVersion(vName, downloadUrl, sizeStr, byteSize, imgUrl, triggers, v));
-                }
-            }
-        });
-
-        versionCombo.addActionListener(e -> {
-            CivitaiVersion selectedVersion = (CivitaiVersion) versionCombo.getSelectedItem();
-            infoText.setText("");
-            previewLabel.setIcon(null);
-            previewLabel.setText("Loading Preview...");
-            
-            if (selectedVersion == null) {
-                previewLabel.setText("No Preview Image Available");
-                return;
-            }
-            
-            StringBuilder sb = new StringBuilder();
-            sb.append("File Size: ").append(selectedVersion.size).append("\n");
-            sb.append("Download URL: ").append(selectedVersion.downloadUrl).append("\n\n");
-            
-            if (!selectedVersion.triggerWords.isEmpty()) {
-                sb.append("Trigger Words: ").append(String.join(", ", selectedVersion.triggerWords)).append("\n\n");
-            }
-            
-            String desc = selectedVersion.rawNode.path("description").asText("");
-            if (!desc.isEmpty()) {
-                desc = desc.replaceAll("<[^>]*>", "");
-                sb.append("Description:\n").append(desc);
-            }
-            
-            infoText.setText(sb.toString());
-            infoText.setCaretPosition(0);
-            
-            String imgUrl = selectedVersion.imageUrl;
-            if (imgUrl != null && !imgUrl.isEmpty()) {
-                backgroundExecutor.execute(() -> {
-                    try {
-                        java.net.URL url = new java.net.URL(imgUrl);
-                        BufferedImage img = javax.imageio.ImageIO.read(url);
-                        if (img != null) {
-                            int lblWidth = previewLabel.getWidth();
-                            int lblHeight = previewLabel.getHeight();
-                            if (lblWidth <= 0) lblWidth = 350;
-                            if (lblHeight <= 0) lblHeight = 350;
-                            
-                            double ratio = Math.min((double) lblWidth / img.getWidth(), (double) lblHeight / img.getHeight());
-                            int w = (int) (img.getWidth() * ratio);
-                            int h = (int) (img.getHeight() * ratio);
-                            Image scaled = img.getScaledInstance(w, h, Image.SCALE_SMOOTH);
-                            
-                            SwingUtilities.invokeLater(() -> {
-                                if (versionCombo.getSelectedItem() == selectedVersion) {
-                                    previewLabel.setIcon(new ImageIcon(scaled));
-                                    previewLabel.setText("");
-                                }
-                            });
-                        } else {
-                            SwingUtilities.invokeLater(() -> {
-                                if (versionCombo.getSelectedItem() == selectedVersion) {
-                                    previewLabel.setText("Failed to load image preview");
-                                }
-                            });
-                        }
-                    } catch (Exception ex) {
-                        SwingUtilities.invokeLater(() -> {
-                            if (versionCombo.getSelectedItem() == selectedVersion) {
-                                previewLabel.setText("Preview Image unavailable");
-                            }
-                        });
-                    }
-                });
-            } else {
-                previewLabel.setText("No Preview Image Available");
-            }
-        });
-
-        applyBtn.addActionListener(e -> {
-            CivitaiVersion selectedVersion = (CivitaiVersion) versionCombo.getSelectedItem();
-            CivitaiModel selectedModel = modelList.getSelectedValue();
-            if (selectedVersion == null || selectedModel == null) {
-                JOptionPane.showMessageDialog(dialog, "Please select a model and a version first.", "No Selection", JOptionPane.WARNING_MESSAGE);
-                return;
-            }
-            
-            ModelInfo info = modelsToDownload.get(row);
-            
-            String targetFileName = "";
-            com.fasterxml.jackson.databind.JsonNode files = selectedVersion.rawNode.get("files");
-            if (files != null && files.isArray() && files.size() > 0) {
-                targetFileName = files.get(0).path("name").asText("");
-            }
-            if (targetFileName.isEmpty()) {
-                targetFileName = info.getName();
-            }
-            
-            info.setName(targetFileName);
-            info.setUrl(selectedVersion.downloadUrl);
-            info.setSize(selectedVersion.size);
-            info.setByteSize(selectedVersion.byteSize);
-            
-            tableModel.setValueAt(true, row, 0);
-            tableModel.setValueAt(targetFileName, row, 2);
-            tableModel.setValueAt(selectedVersion.size, row, 3);
-            tableModel.setValueAt(selectedVersion.downloadUrl, row, 6);
-            tableModel.setValueAt("✅ Known Good", row, 7);
-            
-            dialog.dispose();
-            JOptionPane.showMessageDialog(this, "Model version applied! Ready to download.", "Version Applied", JOptionPane.INFORMATION_MESSAGE);
-        });
-
-        SwingUtilities.invokeLater(() -> doSearch.run());
-        dialog.setVisible(true);
+        if (downloadManagerController != null) {
+            downloadManagerController.showCivitaiSearchDialog(row);
+        }
     }
 
     public static void main(String[] args) {

@@ -1,5 +1,6 @@
 @echo off
 setlocal
+cd /d "%~dp0"
 
 echo === Building Companion for ComfyUI ===
 call mvn clean package -DskipTests

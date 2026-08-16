@@ -91,11 +91,27 @@ public class VideoArchitectFeaturesTest {
         Mockito.when(mockLocalGemma.isModelDownloaded()).thenReturn(false);
 
         Gemma4Service gemmaService = new Gemma4Service(mockLocalGemma);
+        assertFalse(gemmaService.isGemmaAvailable());
         
         // Assert that an IllegalStateException is thrown when the local model is not downloaded
         assertThrows(IllegalStateException.class, () -> {
             gemmaService.generateScript("Create a sci-fi video intro");
         });
+    }
+
+    @Test
+    public void testGemma4ServiceSuccessfulScriptGeneration() throws Exception {
+        LocalGemmaService mockLocalGemma = Mockito.mock(LocalGemmaService.class);
+        Mockito.when(mockLocalGemma.isModelDownloaded()).thenReturn(true);
+        Mockito.when(mockLocalGemma.generateCompletion(Mockito.anyString(), Mockito.anyString(), Mockito.anyFloat(), Mockito.anyInt()))
+                .thenReturn("[{\"scene_id\":\"S1\",\"visual_prompt\":\"Neon car\",\"duration_seconds\":5,\"narration_text\":\"Speeding through the night\"}]");
+
+        Gemma4Service gemmaService = new Gemma4Service(mockLocalGemma);
+        assertTrue(gemmaService.isGemmaAvailable());
+
+        String script = gemmaService.generateScript("A neon race");
+        assertNotNull(script);
+        assertTrue(script.contains("Neon car"));
     }
 
     @Test
@@ -462,5 +478,89 @@ try { java.lang.reflect.Field f1 = service.getClass().getDeclaredField("processT
         Mockito.verify(mockLifecycle, Mockito.times(1)).start();
         
         sampleVideo.delete();
+    }
+
+    @Test
+    public void testStoryboardParsingWithMessyLlmResponse() throws Exception {
+        String messyResponse = "Here is the storyboard for your video:\n" +
+                "```json\n" +
+                "[\n" +
+                "  {\n" +
+                "    \"id\": \"S1\",\n" +
+                "    \"description\": \"A sleek sports car racing along a coastal cliff during sunset\",\n" +
+                "    \"duration\": 4,\n" +
+                "    \"voiceover\": \"Speed is not just a number, it is an emotion.\"\n" +
+                "  },\n" +
+                "  {\n" +
+                "    \"scene_id\": \"S2\",\n" +
+                "    \"visual_prompt\": \"Close up of the speedometer hitting 200 km/h\",\n" +
+                "    \"duration_seconds\": 3,\n" +
+                "    \"narration_text\": \"Pushed to the absolute limit.\"\n" +
+                "  }\n" +
+                "]\n" +
+                "```\n" +
+                "I hope this matches your creative vision!";
+
+        ConfigService mockConfig = Mockito.mock(ConfigService.class);
+        ComfyPipelineService mockPipeline = Mockito.mock(ComfyPipelineService.class);
+        Video4jEditorService mockEditor = Mockito.mock(Video4jEditorService.class);
+        Gemma4Service mockGemma = Mockito.mock(Gemma4Service.class);
+        de.tki.comfymodels.service.IComfyLifecycleService mockLifecycle = Mockito.mock(de.tki.comfymodels.service.IComfyLifecycleService.class);
+
+        de.tki.comfymodels.ui.VideoArchitectTab tab = new de.tki.comfymodels.ui.VideoArchitectTab(
+                mockConfig, mockPipeline, mockEditor, mockGemma, mockLifecycle
+        );
+
+        java.lang.reflect.Method parseMethod = de.tki.comfymodels.ui.VideoArchitectTab.class.getDeclaredMethod("parseStoryboardJson", String.class, String.class);
+        parseMethod.setAccessible(true);
+
+        @SuppressWarnings("unchecked")
+        java.util.List<Scene> scenes = (java.util.List<Scene>) parseMethod.invoke(tab, messyResponse, "A sports car racing along a cliff.");
+
+        assertNotNull(scenes);
+        assertEquals(2, scenes.size());
+        assertEquals("S1", scenes.get(0).getSceneId());
+        assertEquals("A sleek sports car racing along a coastal cliff during sunset", scenes.get(0).getPrompt());
+        assertEquals("Speed is not just a number, it is an emotion.", scenes.get(0).getNarrationText());
+        assertEquals(96, scenes.get(0).getEndFrame()); // 4 seconds * 24 fps
+
+        assertEquals("S2", scenes.get(1).getSceneId());
+        assertEquals("Close up of the speedometer hitting 200 km/h", scenes.get(1).getPrompt());
+        assertEquals("Pushed to the absolute limit.", scenes.get(1).getNarrationText());
+        assertEquals(72, scenes.get(1).getEndFrame()); // 3 seconds * 24 fps
+    }
+
+    @Test
+    public void testStoryboardFallbackWhenLlmFails() throws Exception {
+        String script = "A spaceship approaches a distant glowing exoplanet. The crew prepares for atmospheric entry. The thrusters fire as clouds envelop the cockpit.";
+
+        ConfigService mockConfig = Mockito.mock(ConfigService.class);
+        ComfyPipelineService mockPipeline = Mockito.mock(ComfyPipelineService.class);
+        Video4jEditorService mockEditor = Mockito.mock(Video4jEditorService.class);
+        Gemma4Service mockGemma = Mockito.mock(Gemma4Service.class);
+        de.tki.comfymodels.service.IComfyLifecycleService mockLifecycle = Mockito.mock(de.tki.comfymodels.service.IComfyLifecycleService.class);
+
+        de.tki.comfymodels.ui.VideoArchitectTab tab = new de.tki.comfymodels.ui.VideoArchitectTab(
+                mockConfig, mockPipeline, mockEditor, mockGemma, mockLifecycle
+        );
+
+        java.lang.reflect.Method splitFallback = de.tki.comfymodels.ui.VideoArchitectTab.class.getDeclaredMethod("splitScriptFallback", String.class);
+        splitFallback.setAccessible(true);
+
+        @SuppressWarnings("unchecked")
+        java.util.List<Scene> scenes = (java.util.List<Scene>) splitFallback.invoke(tab, script);
+
+        assertNotNull(scenes);
+        assertEquals(3, scenes.size());
+        assertEquals("S1", scenes.get(0).getSceneId());
+        assertTrue(scenes.get(0).getPrompt().contains("A spaceship approaches a distant glowing exoplanet"));
+        assertEquals("A spaceship approaches a distant glowing exoplanet.", scenes.get(0).getNarrationText());
+        assertTrue(scenes.get(0).getEndFrame() > 0);
+
+        assertEquals("S2", scenes.get(1).getSceneId());
+        assertTrue(scenes.get(1).getPrompt().contains("The crew prepares for atmospheric entry"));
+
+        assertEquals("S3", scenes.get(2).getSceneId());
+        assertTrue(scenes.get(2).getPrompt().contains("The thrusters fire as clouds envelop the cockpit"));
     }
 }

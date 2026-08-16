@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.thomaskippster.comfyuicompanion.client.ComfyHttpClient;
 import com.thomaskippster.comfyuicompanion.domain.graph.ComfyWorkflow;
 import com.thomaskippster.comfyuicompanion.service.graph.WorkflowBuilder;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.net.Socket;
@@ -11,6 +12,7 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+@Disabled("End-to-end integration test requiring live ComfyUI instance with specific LTXV model")
 public class ComfyUIEndToEndTest {
 
     @Test

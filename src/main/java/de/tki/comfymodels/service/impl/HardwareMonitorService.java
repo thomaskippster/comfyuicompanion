@@ -84,17 +84,21 @@ public class HardwareMonitorService {
         } catch (Exception ignored) {}
     }
 
+    private int nvidiaFailCount = 0;
+    private long lastNvidiaCheck = 0;
+
     private void queryNvidiaGpu() {
+        long now = System.currentTimeMillis();
+        if (nvidiaFailCount >= 5 && (now - lastNvidiaCheck < 30000)) {
+            queryFallbackGpu();
+            return;
+        }
+        lastNvidiaCheck = now;
+
         try {
-            String os = System.getProperty("os.name").toLowerCase();
-            ProcessBuilder pb;
-            if (os.contains("win")) {
-                pb = new ProcessBuilder("cmd.exe", "/c", "nvidia-smi --query-gpu=name,utilization.gpu,memory.used,memory.total --format=csv,noheader,nounits");
-            } else {
-                pb = new ProcessBuilder("nvidia-smi", "--query-gpu=name,utilization.gpu,memory.used,memory.total", "--format=csv,noheader,nounits");
-            }
+            ProcessBuilder pb = new ProcessBuilder("nvidia-smi", "--query-gpu=name,utilization.gpu,memory.used,memory.total", "--format=csv,noheader,nounits");
             
-            Process p = processTracker.start(pb);
+            Process p = processTracker != null ? processTracker.start(pb) : pb.start();
             try {
                 try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream(), java.nio.charset.StandardCharsets.UTF_8))) {
                     String line = reader.readLine();
@@ -106,6 +110,7 @@ public class HardwareMonitorService {
                             this.vramUsed = Long.parseLong(parts[2].trim()) * 1024L * 1024L; // in MB to Bytes
                             this.vramTotal = Long.parseLong(parts[3].trim()) * 1024L * 1024L;
                             this.hasNvidia = true;
+                            this.nvidiaFailCount = 0;
                             return;
                         }
                     }
@@ -118,6 +123,7 @@ public class HardwareMonitorService {
             }
         } catch (Exception ignored) {}
         this.hasNvidia = false;
+        this.nvidiaFailCount++;
         queryFallbackGpu();
     }
 

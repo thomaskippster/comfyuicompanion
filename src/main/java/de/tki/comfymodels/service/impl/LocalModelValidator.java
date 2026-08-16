@@ -38,6 +38,8 @@ public class LocalModelValidator implements ILocalModelValidator {
 
     // Fast lookup set containing both full filenames and basenames (lowercase, trimmed)
     private final Set<String> localModelNames = ConcurrentHashMap.newKeySet();
+    private final Set<String> activeLocalModelNames = ConcurrentHashMap.newKeySet();
+    private final Set<String> archivedModelNames = ConcurrentHashMap.newKeySet();
 
     private final Map<String, List<ModelInfo>> registryModelsCache = new ConcurrentHashMap<>();
     private final Map<String, Boolean> cloudOnlyCache = new ConcurrentHashMap<>();
@@ -64,8 +66,10 @@ public class LocalModelValidator implements ILocalModelValidator {
 
     private void initializeCache() {
         try {
-            String appDir = System.getProperty("user.home") + File.separator + ".gemini" + File.separator + "antigravity-cli";
-            File dir = new File(appDir);
+            String appDir = (configService != null && configService.getAppDataPath() != null)
+                    ? configService.getAppDataPath()
+                    : (System.getProperty("user.home") + File.separator + ".comfyui-companion");
+            File dir = new File(appDir, "templates/comfyui");
             if (!dir.exists()) dir.mkdirs();
             cacheFile = new File(dir, "registry_models_cache.json");
 
@@ -103,8 +107,40 @@ public class LocalModelValidator implements ILocalModelValidator {
                         }
                     });
                 }
-                logger.info("ℹ️ [LocalModelValidator] Loaded " + registryModelsCache.size() + " cached registry models from disk.");
             }
+
+            // Also preload from blueprint_scan_results.json if present
+            File scanResultsFile = new File(dir, "blueprint_scan_results.json");
+            if (scanResultsFile.exists()) {
+                JsonNode scanRoot = objectMapper.readTree(scanResultsFile);
+                if (scanRoot.isArray()) {
+                    for (JsonNode scanNode : scanRoot) {
+                        String scanName = scanNode.path("name").asText("");
+                        String scanFilename = scanNode.path("filename").asText("");
+                        JsonNode reqNode = scanNode.path("requiredModels");
+                        if (reqNode.isArray() && reqNode.size() > 0) {
+                            List<ModelInfo> list = new ArrayList<>();
+                            reqNode.forEach(mNode -> {
+                                try {
+                                    if (mNode.isObject()) {
+                                        list.add(objectMapper.treeToValue(mNode, ModelInfo.class));
+                                    }
+                                } catch (Exception ignored) {}
+                            });
+                            if (!list.isEmpty()) {
+                                if (!scanName.isEmpty()) registryModelsCache.putIfAbsent(scanName, list);
+                                if (!scanFilename.isEmpty()) {
+                                    registryModelsCache.putIfAbsent(scanFilename, list);
+                                    if (scanFilename.endsWith(".json")) {
+                                        registryModelsCache.putIfAbsent(scanFilename.substring(0, scanFilename.length() - 5), list);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            logger.info("ℹ️ [LocalModelValidator] Loaded " + registryModelsCache.size() + " cached registry models from disk.");
         } catch (Exception e) {
             logger.error("⚠️ [LocalModelValidator] Failed to initialize cache: " + e.getMessage());
         }
@@ -135,11 +171,13 @@ public class LocalModelValidator implements ILocalModelValidator {
     @Override
     public void scanLocalModels() {
         Set<String> tempNames = ConcurrentHashMap.newKeySet();
+        Set<String> tempActive = ConcurrentHashMap.newKeySet();
+        Set<String> tempArchived = ConcurrentHashMap.newKeySet();
         
         if (localModelScanner == null) {
-            addDummyLocalModelsToSet(tempNames);
             localModelNames.clear();
-            localModelNames.addAll(tempNames);
+            activeLocalModelNames.clear();
+            archivedModelNames.clear();
             return;
         }
 
@@ -150,10 +188,12 @@ public class LocalModelValidator implements ILocalModelValidator {
                 String lowerName = name.toLowerCase(Locale.ROOT).trim();
                 tempNames.add(lowerName); // Full name: e.g. "flux1-dev-fp8.safetensors"
                 tempNames.add(baseName(lowerName)); // Base name: e.g. "flux1-dev-fp8"
+                tempActive.add(lowerName);
+                tempActive.add(baseName(lowerName));
             }
         }
 
-        // Scan Archive Directory and add archived models as present/local
+        // Scan Archive Directory and add archived models
         String archivePathStr = configService.getArchivePath();
         if (archivePathStr != null && !archivePathStr.trim().isEmpty()) {
             try {
@@ -171,6 +211,8 @@ public class LocalModelValidator implements ILocalModelValidator {
                                 String lowerName = name.toLowerCase(Locale.ROOT).trim();
                                 tempNames.add(lowerName);
                                 tempNames.add(baseName(lowerName));
+                                tempArchived.add(lowerName);
+                                tempArchived.add(baseName(lowerName));
                             });
                     }
                 }
@@ -179,13 +221,24 @@ public class LocalModelValidator implements ILocalModelValidator {
             }
         }
 
-        // If no local models found, add dummies so that offline/local validation can still be demonstrated
-        if (tempNames.isEmpty()) {
-            addDummyLocalModelsToSet(tempNames);
-        }
-
         localModelNames.clear();
         localModelNames.addAll(tempNames);
+        activeLocalModelNames.clear();
+        activeLocalModelNames.addAll(tempActive);
+        archivedModelNames.clear();
+        archivedModelNames.addAll(tempArchived);
+    }
+
+    public boolean isModelActive(String modelName) {
+        if (modelName == null || modelName.isBlank()) return false;
+        String lower = modelName.toLowerCase(Locale.ROOT).trim();
+        return activeLocalModelNames.contains(lower) || activeLocalModelNames.contains(baseName(lower));
+    }
+
+    public boolean isModelArchived(String modelName) {
+        if (modelName == null || modelName.isBlank()) return false;
+        String lower = modelName.toLowerCase(Locale.ROOT).trim();
+        return archivedModelNames.contains(lower) || archivedModelNames.contains(baseName(lower));
     }
 
     @Override
@@ -298,6 +351,21 @@ public class LocalModelValidator implements ILocalModelValidator {
         return localModelNames;
     }
 
+    @Override
+    public Set<String> getActiveLocalModelNames() {
+        return activeLocalModelNames;
+    }
+
+    @Override
+    public List<ModelInfo> getCachedModelsForWorkflow(String idOrTitle) {
+        if (idOrTitle == null || idOrTitle.isBlank()) return Collections.emptyList();
+        List<ModelInfo> list = registryModelsCache.get(idOrTitle);
+        if (list != null && !list.isEmpty()) return list;
+        list = registryModelsCache.get(idOrTitle.toLowerCase(Locale.ROOT));
+        if (list != null && !list.isEmpty()) return list;
+        return Collections.emptyList();
+    }
+
     private boolean checkModelsPresent(List<String> requiredModels) {
         if (requiredModels == null || requiredModels.isEmpty()) {
             return true;
@@ -305,12 +373,12 @@ public class LocalModelValidator implements ILocalModelValidator {
         for (String reqModel : requiredModels) {
             if (isSupportedModelFile(reqModel)) {
                 String cleanReq = reqModel.toLowerCase(Locale.ROOT).trim();
-                // Check both full match and base name match
-                if (!localModelNames.contains(cleanReq) && !localModelNames.contains(baseName(cleanReq))) {
+                // Check both full match and base name match strictly in active local models
+                if (!activeLocalModelNames.contains(cleanReq) && !activeLocalModelNames.contains(baseName(cleanReq))) {
                     return false;
                 }
             } else {
-                if (!checkHighLevelModelPresent(reqModel)) {
+                if (!isCloudApi(reqModel)) {
                     return false;
                 }
             }
@@ -318,111 +386,12 @@ public class LocalModelValidator implements ILocalModelValidator {
         return true;
     }
 
-    private boolean checkHighLevelModelPresent(String reqModel) {
-        if (reqModel == null || reqModel.isBlank()) return true;
-        String clean = reqModel.toLowerCase(Locale.ROOT).trim();
-        
-        // Skip API-based / closed source models as they don't require local files
-        if (clean.contains("api") || clean.contains("seedance") || clean.contains("elevenlabs") ||
-            clean.contains("openai") || clean.contains("dall-e") || clean.contains("gpt-image") ||
-            clean.contains("luma") || clean.contains("kling") || clean.contains("runway") ||
-            clean.contains("vidu") || clean.contains("minimax") || clean.contains("happyhorse") ||
-            clean.contains("dream") || clean.contains("sonilo") || clean.contains("sustain") ||
-            clean.contains("midjourney") || clean.contains("google") || clean.contains("gemini") ||
-            clean.contains("anthropic") || clean.contains("claude") || clean.contains("openrouter")) {
-            return true;
-        }
-
-        // Fuzzy matching logic for open-source model families:
-        if (clean.contains("flux")) {
-            for (String local : localModelNames) {
-                if (local.contains("flux")) return true;
-            }
-            return false;
-        }
-        if (clean.contains("sdxl")) {
-            for (String local : localModelNames) {
-                if (local.contains("sdxl")) return true;
-            }
-            return false;
-        }
-        if (clean.contains("sd3") || clean.contains("stable diffusion 3")) {
-            for (String local : localModelNames) {
-                if (local.contains("sd3") || local.contains("sd_3")) return true;
-            }
-            return false;
-        }
-        if (clean.contains("sd1.5") || clean.contains("sd 1.5") || clean.contains("sd15")) {
-            for (String local : localModelNames) {
-                if (local.contains("sd15") || local.contains("sd1.5") || local.contains("v1-5")) return true;
-            }
-            return false;
-        }
-        if (clean.contains("wan")) {
-            for (String local : localModelNames) {
-                if (local.contains("wan")) return true;
-            }
-            return false;
-        }
-        if (clean.contains("hunyuan")) {
-            for (String local : localModelNames) {
-                if (local.contains("hunyuan")) return true;
-            }
-            return false;
-        }
-        if (clean.contains("qwen")) {
-            for (String local : localModelNames) {
-                if (local.contains("qwen")) return true;
-            }
-            return false;
-        }
-        if (clean.contains("ltx")) {
-            for (String local : localModelNames) {
-                if (local.contains("ltx")) return true;
-            }
-            return false;
-        }
-        if (clean.equals("vae") || clean.equals("ae") || clean.contains("autoencoder")) {
-            for (String local : localModelNames) {
-                if (local.contains("vae") || local.contains("ae") || local.contains("autoencoder")) return true;
-            }
-            return false;
-        }
-        if (clean.contains("lora")) {
-            for (String local : localModelNames) {
-                if (local.contains("lora")) return true;
-            }
-            return false;
-        }
-        if (clean.contains("clip") || clean.contains("t5") || clean.contains("encoder") || clean.contains("text_encoder")) {
-            for (String local : localModelNames) {
-                if (local.contains("clip") || local.contains("t5") || local.contains("encoder") || local.contains("text_encoder")) return true;
-            }
-            return false;
-        }
-        if (clean.contains("unet") || clean.contains("diffusion")) {
-            for (String local : localModelNames) {
-                if (local.contains("unet") || local.contains("diffusion")) return true;
-            }
-            return false;
-        }
-
-        // General fallback
-        String[] parts = clean.split("[\\s\\-\\.\\_\\/]+");
-        if (parts.length > 0) {
-            String bestPart = "";
-            for (String part : parts) {
-                if (part.length() > bestPart.length() && !part.equals("model") && !part.equals("text") && !part.equals("image") && !part.equals("edit") && !part.equals("generation")) {
-                    bestPart = part;
-                }
-            }
-            if (bestPart.length() >= 3) {
-                for (String local : localModelNames) {
-                    if (local.contains(bestPart)) return true;
-                }
-            }
-        }
-        return false;
+    private boolean isCloudApi(String reqName) {
+        if (reqName == null || reqName.isBlank()) return false;
+        String clean = reqName.toLowerCase(Locale.ROOT).trim();
+        return clean.equals("openai") || clean.equals("dall-e") || clean.equals("dalle") ||
+               clean.equals("elevenlabs") || clean.equals("gemini") || clean.equals("anthropic") ||
+               clean.equals("claude") || clean.equals("openrouter");
     }
 
     private boolean hasActualModelFiles(List<String> models) {
@@ -503,16 +472,5 @@ public class LocalModelValidator implements ILocalModelValidator {
                 || lowerJson.contains("\"cliptextencode\"");
 
         return hasCloudNodes || requiresApiKey || (!hasLocalModelFiles && !hasLocalNodes);
-    }
-
-    /**
-     * Seeds dummy model names for local testing.
-     */
-    private void addDummyLocalModelsToSet(Set<String> set) {
-        set.add("flux1-dev-fp8.safetensors");
-        set.add("flux1-dev-fp8");
-        set.add("ae.safetensors");
-        set.add("ae");
-        // We leave sdxl_lightning_4step.safetensors out to simulate a missing model
     }
 }

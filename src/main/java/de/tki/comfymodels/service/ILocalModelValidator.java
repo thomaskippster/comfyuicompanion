@@ -28,4 +28,32 @@ public interface ILocalModelValidator {
      * @return a set of local model base names
      */
     Set<String> getLocalModelBaseNames();
+
+    /**
+     * Checks if a model exists in active local model directories.
+     */
+    default boolean isModelActive(String modelName) {
+        return false;
+    }
+
+    /**
+     * Checks if a model exists in the archive directory.
+     */
+    default boolean isModelArchived(String modelName) {
+        return false;
+    }
+
+    /**
+     * Returns the set of active local model names and basenames (excluding archive).
+     */
+    default Set<String> getActiveLocalModelNames() {
+        return getLocalModelBaseNames();
+    }
+
+    /**
+     * Returns cached resolved ModelInfo list for a workflow ID or title if available.
+     */
+    default java.util.List<de.tki.comfymodels.domain.ModelInfo> getCachedModelsForWorkflow(String idOrTitle) {
+        return java.util.Collections.emptyList();
+    }
 }

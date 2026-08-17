@@ -159,27 +159,15 @@ public class ModelArchitectureService implements IModelArchitectureService {
 
         ModelArchitecture detected = ModelArchitecture.ARCH_UNKNOWN;
 
-        // 1. Try Gemma detection (only if NOT in the model list)
-        boolean isModelInProvidedList = modelListService != null && modelListService.findByFilename(filename).isPresent();
-        if (!isModelInProvidedList && isAnalyzing && classifier != null) {
-            try {
-                detected = classifier.classifyModel(filename);
-            } catch (Exception e) {
-                logger.error("⚠️ [ModelArchitectureService] Gemma classification failed: " + e.getMessage());
+        // 1. Try rule mapping first (Instant regex matching)
+        for (MappingRule rule : rules) {
+            if (rule.pattern.matcher(filename).matches()) {
+                detected = rule.architecture;
+                break;
             }
         }
 
-        // 2. Try rule mapping
-        if (detected == ModelArchitecture.ARCH_UNKNOWN) {
-            for (MappingRule rule : rules) {
-                if (rule.pattern.matcher(filename).matches()) {
-                    detected = rule.architecture;
-                    break;
-                }
-            }
-        }
-
-        // 3. Heuristic keyword check fallbacks in case config rules don't match
+        // 2. Heuristic keyword check fallbacks in case config rules don't match
         if (detected == ModelArchitecture.ARCH_UNKNOWN) {
             String lower = filename.toLowerCase();
             if (lower.contains("flux") || lower.contains("schnell") || lower.contains("dev")) {
@@ -196,6 +184,18 @@ public class ModelArchitectureService implements IModelArchitectureService {
                 detected = ModelArchitecture.ARCH_LUMINA2;
             } else if (lower.contains("sd15") || lower.contains("1.5") || lower.contains("v1-5")) {
                 detected = ModelArchitecture.ARCH_SD15;
+            }
+        }
+
+        // 3. Fallback to Gemma LLM detection ONLY if still UNKNOWN and not in local model list
+        if (detected == ModelArchitecture.ARCH_UNKNOWN) {
+            boolean isModelInProvidedList = modelListService != null && modelListService.findByFilename(filename).isPresent();
+            if (!isModelInProvidedList && isAnalyzing && classifier != null) {
+                try {
+                    detected = classifier.classifyModel(filename);
+                } catch (Exception e) {
+                    logger.error("⚠️ [ModelArchitectureService] Gemma classification failed: " + e.getMessage());
+                }
             }
         }
 
@@ -370,14 +370,11 @@ public class ModelArchitectureService implements IModelArchitectureService {
 
             notifyListeners(0, "Starting...", false);
             ObjectMapper mapper = new ObjectMapper();
-            List<Map<String, Object>> scanList = new ArrayList<>();
-            
-            for (int i = 0; i < files.length; i++) {
-                File file = files[i];
-                String currentFileName = file.getName();
-                int percent = (int) (((double) (i + 1) / files.length) * 100);
-                notifyListeners(percent, currentFileName, false);
+            List<Map<String, Object>> scanList = new java.util.concurrent.CopyOnWriteArrayList<>();
+            java.util.concurrent.atomic.AtomicInteger processedCount = new java.util.concurrent.atomic.AtomicInteger(0);
 
+            java.util.Arrays.stream(files).parallel().forEach(file -> {
+                String currentFileName = file.getName();
                 try {
                     String baseName = currentFileName;
                     if (baseName.toLowerCase().endsWith(".json")) {
@@ -413,7 +410,7 @@ public class ModelArchitectureService implements IModelArchitectureService {
                         }
                     }
 
-                    // Download missing preview from ComfyUI server
+                    // Download missing preview from ComfyUI server if server is configured
                     if (!hasLocalPreview && comfyUrl != null && !comfyUrl.isEmpty()) {
                         String mediaSubtypeIdx = mediaSubtypes.get(baseName.toLowerCase().trim());
                         List<String> urlsToTry = new ArrayList<>();
@@ -431,11 +428,11 @@ public class ModelArchitectureService implements IModelArchitectureService {
                         for (String urlStr : urlsToTry) {
                             try {
                                 java.net.http.HttpClient downloadClient = java.net.http.HttpClient.newBuilder()
-                                        .connectTimeout(java.time.Duration.ofSeconds(3))
+                                        .connectTimeout(java.time.Duration.ofSeconds(2))
                                         .build();
                                 java.net.http.HttpRequest downloadRequest = java.net.http.HttpRequest.newBuilder()
                                         .uri(java.net.URI.create(urlStr))
-                                        .timeout(java.time.Duration.ofSeconds(10))
+                                        .timeout(java.time.Duration.ofSeconds(5))
                                         .GET().build();
                                 java.net.http.HttpResponse<java.io.InputStream> downloadResponse = downloadClient.send(
                                         downloadRequest, java.net.http.HttpResponse.BodyHandlers.ofInputStream());
@@ -454,7 +451,7 @@ public class ModelArchitectureService implements IModelArchitectureService {
                                          java.io.OutputStream out = new java.io.FileOutputStream(targetPreviewFile)) {
                                         in.transferTo(out);
                                     }
-                                    logger.info("📥 [ArchitectureService] Downloaded and saved preview for " + baseName + " to " + targetPreviewFile.getName());
+                                    logger.info("📥 [ArchitectureService] Downloaded preview for " + baseName + " to " + targetPreviewFile.getName());
                                     previewPath = targetPreviewFile.getAbsolutePath();
                                     mediaSubtype = ext;
                                     if (ext.equals("mp4") || ext.equals("webm") || ext.equals("mov")) {
@@ -466,7 +463,8 @@ public class ModelArchitectureService implements IModelArchitectureService {
                         }
                     }
 
-                    JsonNode root = mapper.readTree(file);
+                    String rawJson = Files.readString(file.toPath());
+                    JsonNode root = mapper.readTree(rawJson);
 
                     // Category and description
                     String category = "";
@@ -484,7 +482,7 @@ public class ModelArchitectureService implements IModelArchitectureService {
                     // analyze required models using getModelAnalyzer()
                     List<ModelInfo> requiredModels;
                     try {
-                        requiredModels = getModelAnalyzer().analyze(Files.readString(file.toPath()), file.getName());
+                        requiredModels = getModelAnalyzer().analyze(rawJson, file.getName());
                     } catch (Exception e) {
                         requiredModels = Collections.emptyList();
                     }
@@ -501,12 +499,16 @@ public class ModelArchitectureService implements IModelArchitectureService {
                     blueprintMap.put("requiredModels", requiredModels);
                     scanList.add(blueprintMap);
 
-                    extractDefaultsFromWorkflow(Files.readString(file.toPath()), file.getName(), mapper);
+                    extractDefaultsFromWorkflow(rawJson, file.getName(), mapper);
 
                 } catch (Exception e) {
                     logger.error("⚠️ [ArchitectureService] Failed to parse blueprint " + file.getName() + ": " + e.getMessage());
+                } finally {
+                    int done = processedCount.incrementAndGet();
+                    int percent = (int) (((double) done / files.length) * 100);
+                    notifyListeners(percent, currentFileName, false);
                 }
-            }
+            });
 
             // Discover and analyze server blueprints/templates from ComfyUI
             discoverServerBlueprints(scanList, mediaSubtypes, comfyUrl, mapper);

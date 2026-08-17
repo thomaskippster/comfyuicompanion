@@ -94,6 +94,12 @@ public class ModelArchitectureService implements IModelArchitectureService {
         loadArchitectureCacheFromFile();
         loadResolvedDefaultsFromFile();
         loadBlueprintScanResultsFromFile();
+        if (blueprintScanResults.isEmpty()) {
+            runBlueprintAnalysis();
+        } else {
+            this.progressCompleted = true;
+            this.progressPercent = 100;
+        }
     }
 
     @Override

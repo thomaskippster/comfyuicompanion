@@ -971,6 +971,57 @@ public class Main extends JFrame {
         JPanel rightHeader = new JPanel(new FlowLayout(FlowLayout.RIGHT, 15, 5));
         rightHeader.setOpaque(false);
         
+        // ── Blueprint Scan Progress Indicator (Header) ──
+        JPanel headerBlueprintProgressPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
+        headerBlueprintProgressPanel.setOpaque(false);
+        headerBlueprintProgressPanel.setVisible(modelArchitectureService != null && !modelArchitectureService.isBlueprintAnalysisCompleted());
+        
+        JLabel headerBlueprintLabel = new JLabel("🔄 Blueprints: 0%") {
+            @Override
+            public void updateUI() {
+                super.updateUI();
+                if (configService != null) {
+                    setForeground(configService.isDarkMode() ? new Color(30, 190, 170) : new Color(0, 102, 204));
+                }
+            }
+        };
+        headerBlueprintLabel.setFont(new Font("SansSerif", Font.BOLD, 12));
+        headerBlueprintLabel.setForeground(configService.isDarkMode() ? new Color(30, 190, 170) : new Color(0, 102, 204));
+        headerBlueprintLabel.setToolTipText("Blueprint scanning in progress...");
+        
+        JProgressBar headerBlueprintBar = new JProgressBar(0, 100) {
+            @Override
+            public void updateUI() {
+                super.updateUI();
+                putClientProperty("FlatLaf.style", "arc: 999; foreground: $SlimStat.barForeground; background: $SlimStat.barBackground;");
+            }
+        };
+        headerBlueprintBar.setPreferredSize(new Dimension(65, 6));
+        headerBlueprintBar.putClientProperty("FlatLaf.style", "arc: 999; foreground: $SlimStat.barForeground; background: $SlimStat.barBackground;");
+        headerBlueprintBar.setValue(modelArchitectureService != null ? modelArchitectureService.getBlueprintProgressPercent() : 0);
+        
+        headerBlueprintProgressPanel.add(headerBlueprintLabel);
+        headerBlueprintProgressPanel.add(headerBlueprintBar);
+        
+        if (modelArchitectureService != null) {
+            modelArchitectureService.addProgressListener((percent, currentFileName, completed) -> {
+                SwingUtilities.invokeLater(() -> {
+                    if (completed || percent >= 100) {
+                        headerBlueprintProgressPanel.setVisible(false);
+                    } else {
+                        headerBlueprintLabel.setText("🔄 Blueprints: " + percent + "%");
+                        headerBlueprintLabel.setToolTipText(currentFileName != null && !currentFileName.isEmpty()
+                            ? "Scanning: " + currentFileName
+                            : "Scanning Blueprints...");
+                        headerBlueprintBar.setValue(percent);
+                        headerBlueprintProgressPanel.setVisible(true);
+                    }
+                    rightHeader.revalidate();
+                    rightHeader.repaint();
+                });
+            });
+        }
+        
         JLabel activeProfileLabel = new JLabel("👤 Profile: Loading...");
         activeProfileLabel.setFont(new Font("SansSerif", Font.PLAIN, 12));
         activeProfileLabel.setForeground(configService.isDarkMode() ? new Color(224, 248, 245) : Color.GRAY);
@@ -1008,6 +1059,7 @@ public class Main extends JFrame {
             }
         });
         
+        rightHeader.add(headerBlueprintProgressPanel);
         rightHeader.add(activeProfileLabel);
         rightHeader.add(globalStatusIndicator);
         rightHeader.add(quickActionBtn);
@@ -1055,6 +1107,26 @@ public class Main extends JFrame {
                 cachedActiveProfileName = (activeProfileVal != null) ? activeProfileVal.name() : "None";
             }
             activeProfileLabel.setText("👤 Profile: " + cachedActiveProfileName);
+
+            // Sync header blueprint scan progress
+            if (modelArchitectureService != null) {
+                if (!modelArchitectureService.isBlueprintAnalysisCompleted() || modelArchitectureService.isAnalyzing()) {
+                    int pct = modelArchitectureService.getBlueprintProgressPercent();
+                    String file = modelArchitectureService.getBlueprintProgressFileName();
+                    headerBlueprintLabel.setText("🔄 Blueprints: " + pct + "%");
+                    headerBlueprintLabel.setToolTipText(file != null && !file.isEmpty() ? "Scanning: " + file : "Scanning Blueprints...");
+                    headerBlueprintBar.setValue(pct);
+                    if (!headerBlueprintProgressPanel.isVisible()) {
+                        headerBlueprintProgressPanel.setVisible(true);
+                        rightHeader.revalidate();
+                        rightHeader.repaint();
+                    }
+                } else if (headerBlueprintProgressPanel.isVisible()) {
+                    headerBlueprintProgressPanel.setVisible(false);
+                    rightHeader.revalidate();
+                    rightHeader.repaint();
+                }
+            }
         });
         headerTimer.start();
         

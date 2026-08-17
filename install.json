@@ -1,14 +1,11 @@
 {
-  "requires": {
-    "bundle": "ai"
-  },
   "run": [
     {
       "method": "shell.run",
       "params": {
         "conda": "env",
-        "message": "conda install -y -c conda-forge openjdk=21 maven",
-        "title": "Installing Java & Maven (Local Environment)"
+        "message": "conda install -y -c conda-forge \"openjdk>=21\" maven",
+        "title": "Installing OpenJDK 21 & Maven"
       }
     },
     {
@@ -22,7 +19,7 @@
     {
       "method": "notify",
       "params": {
-        "html": "Installation complete! The 'Start' button should now be available."
+        "html": "Installation complete! Click 'Start' to launch ComfyUI Companion."
       }
     }
   ]

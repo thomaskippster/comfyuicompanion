@@ -103,24 +103,7 @@ public class LocalTTSService {
         }
     }
 
-    private java.io.InputStream openUrlStreamWithUserAgent(String urlStr) throws IOException {
-        java.net.URL url = new java.net.URL(urlStr);
-        java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();
-        conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
-        conn.setInstanceFollowRedirects(true);
-        int status = conn.getResponseCode();
-        if (status == java.net.HttpURLConnection.HTTP_MOVED_TEMP 
-            || status == java.net.HttpURLConnection.HTTP_MOVED_PERM 
-            || status == 307 
-            || status == 308) {
-            String newUrl = conn.getHeaderField("Location");
-            return openUrlStreamWithUserAgent(newUrl);
-        }
-        if (status != java.net.HttpURLConnection.HTTP_OK) {
-            throw new IOException("HTTP error code: " + status + " for URL: " + urlStr);
-        }
-        return conn.getInputStream();
-    }
+
 
     private boolean generateSpeechViaComfyUI(String provider, String text, String outputPath) {
         try {

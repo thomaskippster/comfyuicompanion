@@ -22,7 +22,7 @@ import java.util.concurrent.ConcurrentHashMap;
 @Component
 public class ProcessTracker {
 
-    private final Set<Process> processes = Collections.newSetFromMap(new ConcurrentHashMap<>());
+    private final Set<Process> processes = ConcurrentHashMap.newKeySet();
 
     /** Register a process so it can be destroyed on shutdown. */
     public void register(Process process) {
@@ -37,6 +37,12 @@ public class ProcessTracker {
             processes.remove(process);
         }
     }
+
+    /** Remove all terminated processes from the registry. */
+    public void cleanupTerminated() {
+        processes.removeIf(p -> !p.isAlive());
+    }
+
 
     /**
      * Start a {@link ProcessBuilder} and register the resulting process in one call.

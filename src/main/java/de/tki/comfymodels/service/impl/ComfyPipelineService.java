@@ -73,83 +73,7 @@ public class ComfyPipelineService {
     @Autowired(required = false)
     private IComfyTemplateService comfyTemplateService;
 
-    // Fallback default API workflow if template is missing or invalid
-    private static final String DEFAULT_API_TEMPLATE = "{\n" +
-            "  \"prompt\": {\n" +
-            "    \"3\": {\n" +
-            "      \"inputs\": {\n" +
-            "        \"seed\": 42,\n" +
-            "        \"steps\": 20,\n" +
-            "        \"cfg\": 8.0,\n" +
-            "        \"sampler_name\": \"euler\",\n" +
-            "        \"scheduler\": \"normal\",\n" +
-            "        \"denoise\": 1.0,\n" +
-            "        \"model\": [\"10\", 0],\n" +
-            "        \"positive\": [\"6\", 0],\n" +
-            "        \"negative\": [\"7\", 0],\n" +
-            "        \"latent_image\": [\"5\", 0]\n" +
-            "      },\n" +
-            "      \"class_type\": \"KSampler\"\n" +
-            "    },\n" +
-            "    \"4\": {\n" +
-            "      \"inputs\": {\n" +
-            "        \"ckpt_name\": \"v1-5-pruned-emaonly.safetensors\"\n" +
-            "      },\n" +
-            "      \"class_type\": \"CheckpointLoaderSimple\"\n" +
-            "    },\n" +
-            "    \"5\": {\n" +
-            "      \"inputs\": {\n" +
-            "        \"width\": 512,\n" +
-            "        \"height\": 512,\n" +
-            "        \"batch_size\": 16\n" +
-            "      },\n" +
-            "      \"class_type\": \"EmptyLatentImage\"\n" +
-            "    },\n" +
-            "    \"6\": {\n" +
-            "      \"inputs\": {\n" +
-            "        \"text\": \"\",\n" +
-            "        \"clip\": [\"4\", 1]\n" +
-            "      },\n" +
-            "      \"class_type\": \"CLIPTextEncode\"\n" +
-            "    },\n" +
-            "    \"7\": {\n" +
-            "      \"inputs\": {\n" +
-            "        \"text\": \"bad hands, text, blurry, worst quality, low quality\",\n" +
-            "        \"clip\": [\"4\", 1]\n" +
-            "      },\n" +
-            "      \"class_type\": \"CLIPTextEncode\"\n" +
-            "    },\n" +
-            "    \"8\": {\n" +
-            "      \"inputs\": {\n" +
-            "        \"samples\": [\"3\", 0],\n" +
-            "        \"vae\": [\"4\", 2]\n" +
-            "      },\n" +
-            "      \"class_type\": \"VAEDecode\"\n" +
-            "    },\n" +
-            "    \"9\": {\n" +
-            "      \"inputs\": {\n" +
-            "        \"frame_rate\": 8,\n" +
-            "        \"loop_count\": 0,\n" +
-            "        \"filename_prefix\": \"VideoArchitect\",\n" +
-            "        \"format\": \"video/h264-mp4\",\n" +
-            "        \"pix_fmt\": \"yuv420p\",\n" +
-            "        \"crf\": 19,\n" +
-            "        \"save_output\": true,\n" +
-            "        \"pingpong\": false,\n" +
-            "        \"images\": [\"8\", 0]\n" +
-            "      },\n" +
-            "      \"class_type\": \"VHS_VideoCombine\"\n" +
-            "    },\n" +
-            "    \"10\": {\n" +
-            "      \"inputs\": {\n" +
-            "        \"model_name\": \"v3_sd15_mm.ckpt\",\n" +
-            "        \"beta_schedule\": \"sqrt_linear (AnimateDiff)\",\n" +
-            "        \"model\": [\"4\", 0]\n" +
-            "      },\n" +
-            "      \"class_type\": \"AnimateDiffLoaderV1\"\n" +
-            "    }\n" +
-            "  }\n" +
-            "}";
+
 
     @Autowired
     public ComfyPipelineService(ConfigService configService) {
@@ -1417,7 +1341,7 @@ public class ComfyPipelineService {
                 logger.error("⚠️ [ComfyPipeline] Failed to parse custom workflow.json: " + e);
             }
         }
-        return DEFAULT_API_TEMPLATE;
+        return "{}";
     }
 
     private void injectPrompt(JSONObject workflowJson, String promptText) {

@@ -184,6 +184,7 @@ public class ComfyProcessController {
                     command.add("--enable-manager");
                 }
                 if (!hasExtraPathsConfig) {
+                    configService.updateExtraModelPathsYaml();
                     java.nio.file.Path extraPathsFile = comfyDir.resolve("extra_model_paths.yaml");
                     if (java.nio.file.Files.exists(extraPathsFile)) {
                         command.add("--extra-model-paths-config");

@@ -55,7 +55,7 @@ public class DownloadManagerController implements DownloadManagerView.DownloadMa
 
     private DownloadManagerView view;
     private List<ModelInfo> modelsToDownload = new ArrayList<>();
-    private boolean isDownloading = false;
+    private volatile boolean isDownloading = false;
     private String currentFileName = "input.json";
     private Runnable postOperationCallback;
 
@@ -276,6 +276,13 @@ public class DownloadManagerController implements DownloadManagerView.DownloadMa
                 }
             }
 
+            // Persist the resolved archive location on the ModelInfo so downstream code
+            // (startDownloadQueue, fetchMissingRemoteSizes) does not have to re-derive it
+            // from the mutable status string alone.
+            if (inArchive && archivedPath != null) {
+                info.setArchivedPath(archivedPath.toAbsolutePath().toString());
+            }
+
             if ((!exists || sizeMismatch) && base != null && !base.isEmpty()) {
                 Optional<Path> foundLocally = localScanner.findModelWithPrefSizeAndType(Paths.get(base), info.getName(), info.getByteSize(), type);
                 if (foundLocally.isPresent()) {
@@ -361,9 +368,17 @@ public class DownloadManagerController implements DownloadManagerView.DownloadMa
             for (int i = 0; i < rowCount; i++) {
                 if (selected[i]) {
                     String currentStatus = (String) tableModel.getValueAt(i, 7);
-                    if ("📦 Archived".equals(currentStatus)) {
+                    ModelInfo info = modelsToDownload.get(i);
+
+                    // Treat a model as archived if the ModelInfo has a recorded archivedPath
+                    // OR if the table status still shows the archived badge. Relying solely on
+                    // the status string is fragile because background tasks (fetchMissingRemoteSizes)
+                    // may overwrite it before the user clicks "Start queue".
+                    boolean isArchived = (info.getArchivedPath() != null)
+                            || "📦 Archived".equals(currentStatus);
+
+                    if (isArchived) {
                         final int idx = i;
-                        ModelInfo info = modelsToDownload.get(idx);
                         String folder = info.getSave_path() != null ? info.getSave_path() : (info.getType() != null ? info.getType() : de.tki.comfymodels.domain.ModelFolder.CHECKPOINTS.getDefaultFolderName());
                         String normalizedFolder = archiveService.normalizeFolder(folder);
                         
@@ -385,6 +400,7 @@ public class DownloadManagerController implements DownloadManagerView.DownloadMa
                         
                         SwingUtilities.invokeLater(() -> {
                             if (success) {
+                                info.setArchivedPath(null); // no longer in archive
                                 tableModel.setValueAt("✅ Already exists", idx, 7);
                                 tableModel.setValueAt(false, idx, 0);
                             } else {
@@ -506,7 +522,16 @@ public class DownloadManagerController implements DownloadManagerView.DownloadMa
                 }
 
                 if (!exists && archive != null && !archive.isEmpty()) {
-                    inArchive = localScanner.findModelWithPrefSize(Paths.get(archive), info.getName(), size).isPresent();
+                    Optional<Path> foundInArchive = localScanner.findModelWithPrefSize(Paths.get(archive), info.getName(), size);
+                    if (foundInArchive.isPresent()) {
+                        inArchive = true;
+                        info.setArchivedPath(foundInArchive.get().toAbsolutePath().toString());
+                    }
+                }
+
+                // Also treat as archived if it was confirmed during the initial analysis pass
+                if (!exists && !inArchive && info.getArchivedPath() != null) {
+                    inArchive = true;
                 }
 
                 String newStatus;
@@ -521,6 +546,7 @@ public class DownloadManagerController implements DownloadManagerView.DownloadMa
                 tableModel.setValueAt(newStatus, idx, 7);
                 tableModel.setValueAt(!exists, idx, 0);
             }),
+
             () -> SwingUtilities.invokeLater(() -> {
                 if (view != null && view.getStatusLabel() != null) {
                     view.getStatusLabel().setText("Search finished.");
@@ -599,6 +625,12 @@ public class DownloadManagerController implements DownloadManagerView.DownloadMa
                                     } else if (inArchive) {
                                         newStatus = "📦 Archived";
                                         shouldSelect = true;
+                                    } else if (info.getArchivedPath() != null) {
+                                        // archivedPath was recorded during analysis — keep the
+                                        // badge even if the live size-based check above could
+                                        // not re-confirm it (e.g. byteSize was 0 initially).
+                                        newStatus = "📦 Archived";
+                                        shouldSelect = true;
                                     } else {
                                         newStatus = "✅ Known Good";
                                         shouldSelect = true;
@@ -659,17 +691,20 @@ public class DownloadManagerController implements DownloadManagerView.DownloadMa
                 List<IModelValidator.ValidationResult> errors = new ArrayList<>();
                 Map<String, List<Path>> hashToPaths = new HashMap<>();
 
-                List<Path> allFiles = Files.walk(root.toPath())
-                        .filter(Files::isRegularFile)
-                        .filter(p -> {
-                            String relPath = root.toPath().relativize(p).toString().toLowerCase();
-                            return !relPath.contains(".venv") && !relPath.contains("archive");
-                        })
-                        .filter(p -> {
-                            String n = p.getFileName().toString().toLowerCase();
-                            return n.endsWith(".safetensors") || n.endsWith(".sft") || n.endsWith(".ckpt") || n.endsWith(".pth") || n.endsWith(".pt") || n.endsWith(".bin") || n.endsWith(".onnx");
-                        })
-                        .collect(Collectors.toList());
+                List<Path> allFiles;
+                try (java.util.stream.Stream<Path> pathStream = Files.walk(root.toPath())) {
+                    allFiles = pathStream
+                            .filter(Files::isRegularFile)
+                            .filter(p -> {
+                                String relPath = root.toPath().relativize(p).toString().toLowerCase();
+                                return !relPath.contains(".venv") && !relPath.contains("archive");
+                            })
+                            .filter(p -> {
+                                String n = p.getFileName().toString().toLowerCase();
+                                return n.endsWith(".safetensors") || n.endsWith(".sft") || n.endsWith(".ckpt") || n.endsWith(".pth") || n.endsWith(".pt") || n.endsWith(".bin") || n.endsWith(".onnx");
+                            })
+                            .collect(Collectors.toList());
+                }
 
                 int total = allFiles.size();
                 for (int i = 0; i < total; i++) {

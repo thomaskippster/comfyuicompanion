@@ -223,8 +223,9 @@ public class ConfigService implements IConfigService {
         }
 
         // 2. DISCOVER MODELS DIR
+        String currentExtraPath = settings.optString("extra_comfyui_path", "");
         String currentModelsPath = settings.optString("models_path", "");
-        if (currentModelsPath.isEmpty() || currentModelsPath.equals(PathResolver.MODELS_DIR)) {
+        if (currentExtraPath.isEmpty() && (currentModelsPath.isEmpty() || currentModelsPath.equals(PathResolver.MODELS_DIR))) {
             // Check for Pinokio data structure: sibling of ComfyUI's main installation folder
             // e.g. ComfyUI (binary) -> comfyuidata/models (data)
             File comfyFolder = new File(root);
@@ -234,14 +235,14 @@ public class ConfigService implements IConfigService {
                     File dataModels = new File(parent, "comfyuidata/models");
                     if (dataModels.exists() && dataModels.isDirectory()) {
                         logger.info("✨ [Config] Found models via Pinokio Data Path: " + dataModels.getAbsolutePath());
-                        setModelsPath(dataModels.getAbsolutePath());
+                        setExtraComfyUIPath(dataModels.getParentFile().getAbsolutePath());
                         break;
                     }
                     // Try case-insensitive variant or simplified name
                     File altData = new File(parent, "data/models");
                     if (altData.exists() && altData.isDirectory()) {
                         logger.info("✨ [Config] Found models via Data Path: " + altData.getAbsolutePath());
-                        setModelsPath(altData.getAbsolutePath());
+                        setExtraComfyUIPath(altData.getParentFile().getAbsolutePath());
                         break;
                     }
                 }
@@ -410,6 +411,7 @@ public class ConfigService implements IConfigService {
                 autoDiscoverPaths();
                 pathResolver.setComfyUIRoot(getComfyUIPath());
                 ensureExtraComfyUIDirectories();
+                updateExtraModelPathsYaml();
             } catch (Exception e) {
                 logger.error("Failed to unlock vault: {}", e.getMessage(), e);
                 throw new Exception("Wrong password or corrupted vault!");
@@ -474,6 +476,7 @@ public class ConfigService implements IConfigService {
             autoDiscoverPaths();
             pathResolver.setComfyUIRoot(getComfyUIPath());
             ensureExtraComfyUIDirectories();
+            updateExtraModelPathsYaml();
         }
     }
 
@@ -505,6 +508,7 @@ public class ConfigService implements IConfigService {
     public synchronized boolean isFastHashEnabled() { return settings.optBoolean("fast_hash", false); }
     public synchronized void setFastHashEnabled(boolean enabled) { settings.put("fast_hash", enabled); save(); }
 
+    @Override
     public synchronized String getExtraComfyUIPath() {
         String path = settings.optString("extra_comfyui_path", "");
         if (path.isEmpty()) {
@@ -516,26 +520,61 @@ public class ConfigService implements IConfigService {
         return path;
     }
 
+    @Override
+    public synchronized void setExtraComfyUIPath(String path) {
+        settings.put("extra_comfyui_path", path != null ? path.trim() : "");
+        ensureExtraComfyUIDirectories();
+        updateExtraModelPathsYaml();
+        save();
+    }
+
+    @Override
     public synchronized String getModelsPath() { 
+        String extraPath = getExtraComfyUIPath();
+        if (extraPath != null && !extraPath.isEmpty()) {
+            Path p = Paths.get(extraPath);
+            if (p.getFileName() != null && p.getFileName().toString().equalsIgnoreCase("models")) {
+                return p.toAbsolutePath().toString();
+            }
+            return p.resolve("models").toAbsolutePath().toString();
+        }
         String customPath = settings.optString("models_path", "");
         if (!customPath.isEmpty()) {
-            return customPath;
-        }
-        String extraPath = getExtraComfyUIPath();
-        if (!extraPath.isEmpty()) {
-            return Paths.get(extraPath).resolve("models").toAbsolutePath().toString();
+            Path p = Paths.get(customPath);
+            if (p.getFileName() != null && p.getFileName().toString().equalsIgnoreCase("models")) {
+                return p.toAbsolutePath().toString();
+            }
+            return p.resolve("models").toAbsolutePath().toString();
         }
         String comfyRoot = getComfyUIPath();
-        if (!comfyRoot.isEmpty()) {
+        if (comfyRoot != null && !comfyRoot.isEmpty()) {
             return Paths.get(comfyRoot).resolve("models").toAbsolutePath().toString();
         }
         return "";
     }
     
+    @Override
     public synchronized void setModelsPath(String path) { 
-        settings.put("models_path", path); 
+        if (path != null && !path.trim().isEmpty()) {
+            String trimmed = path.trim();
+            Path p = Paths.get(trimmed);
+            if (p.getFileName() != null && p.getFileName().toString().equalsIgnoreCase("models")) {
+                Path parent = p.getParent();
+                if (parent != null) {
+                    settings.put("extra_comfyui_path", parent.toAbsolutePath().toString());
+                } else {
+                    settings.put("extra_comfyui_path", trimmed);
+                }
+            } else {
+                settings.put("extra_comfyui_path", trimmed);
+            }
+            settings.put("models_path", trimmed);
+        } else {
+            settings.remove("models_path");
+        }
         ensureExtraComfyUIDirectories();
         updateExtraModelPathsYaml(); 
+        save();
     }
 
     public synchronized String getResolvedInputDetailDir() {

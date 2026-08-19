@@ -44,6 +44,9 @@ public interface IConfigService {
     String getComfyUIPath();
     void setComfyUIPath(String path);
     
+    String getExtraComfyUIPath();
+    void setExtraComfyUIPath(String path);
+    
     String getModelsPath();
     void setModelsPath(String path);
     

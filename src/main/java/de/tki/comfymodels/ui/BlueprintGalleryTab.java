@@ -78,12 +78,14 @@ public class BlueprintGalleryTab extends JPanel {
 
     // ── ui ────────────────────────────────────────────────────────────────────
     private JPanel galleryWrapper;   // holds the GridLayout gallery
+    private JPanel northPanel;
     private JLabel lblSummary;
     private JLabel lblStatus;
     private JTextField txtSearch;
     private JComboBox<String> cbCategory;
-    private JCheckBox chkReadyOnly;
-    private JCheckBox chkHideCloud;
+    private ThemedCheckBox chkReadyOnly;
+    private ThemedCheckBox chkHideCloud;
+    private JButton btnRefresh;
     private JLabel lblTitle;
     private JScrollPane scroll;
 
@@ -91,18 +93,18 @@ public class BlueprintGalleryTab extends JPanel {
             .connectTimeout(Duration.ofSeconds(3))
             .followRedirects(HttpClient.Redirect.ALWAYS)
             .build();
-    private static final ExecutorService imageLoadExecutor = Executors.newFixedThreadPool(4, r -> {
+    private static final ExecutorService imageLoadExecutor = Executors.newFixedThreadPool(2, r -> {
         Thread t = new Thread(r, "BlueprintPreviewLoader");
         t.setDaemon(true);
+        t.setPriority(Thread.MIN_PRIORITY);
         return t;
     });
 
     // ── data ──────────────────────────────────────────────────────────────────
     private final List<BlueprintEntry> allEntries = new CopyOnWriteArrayList<>();
     private final java.util.concurrent.atomic.AtomicBoolean isRefreshing = new java.util.concurrent.atomic.AtomicBoolean(false);
-    private final javax.swing.Timer filterDebounceTimer = new javax.swing.Timer(300, e -> {
+    private final javax.swing.Timer filterDebounceTimer = new javax.swing.Timer(250, e -> {
         applyFilter();
-        updateSummary();
     });
     private final List<JPanel> categoryGridPanels = new CopyOnWriteArrayList<>();
     private final Map<String, Image> previewCache = new ConcurrentHashMap<>();
@@ -113,6 +115,14 @@ public class BlueprintGalleryTab extends JPanel {
     private boolean hasSetInitialDefaultCategory = false;
     private final Set<String> failedPaths = ConcurrentHashMap.newKeySet();
     private final Set<String> failedUrls = ConcurrentHashMap.newKeySet();
+
+    public void requestFilterUpdate() {
+        if (SwingUtilities.isEventDispatchThread()) {
+            filterDebounceTimer.restart();
+        } else {
+            SwingUtilities.invokeLater(filterDebounceTimer::restart);
+        }
+    }
     private Runnable onDataLoadedCallback;
 
     public void setOnDataLoadedCallback(Runnable callback) {
@@ -241,16 +251,16 @@ public class BlueprintGalleryTab extends JPanel {
         txtSearch.putClientProperty("JTextField.placeholderText", "Search blueprints…");
         txtSearch.setFont(new Font("SansSerif", Font.PLAIN, 12));
         txtSearch.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
-            public void insertUpdate(javax.swing.event.DocumentEvent e)  { SwingUtilities.invokeLater(() -> applyFilter()); }
-            public void removeUpdate(javax.swing.event.DocumentEvent e)  { SwingUtilities.invokeLater(() -> applyFilter()); }
-            public void changedUpdate(javax.swing.event.DocumentEvent e) { SwingUtilities.invokeLater(() -> applyFilter()); }
+            public void insertUpdate(javax.swing.event.DocumentEvent e)  { requestFilterUpdate(); }
+            public void removeUpdate(javax.swing.event.DocumentEvent e)  { requestFilterUpdate(); }
+            public void changedUpdate(javax.swing.event.DocumentEvent e) { requestFilterUpdate(); }
         });
 
         cbCategory = new JComboBox<>(new String[]{"All Categories"});
         cbCategory.setFont(new Font("SansSerif", Font.PLAIN, 12));
-        cbCategory.addActionListener(e -> applyFilter());
+        cbCategory.addActionListener(e -> requestFilterUpdate());
 
-        JButton btnRefresh = new JButton("🔄  Refresh");
+        btnRefresh = new JButton("🔄  Refresh");
         btnRefresh.setFont(new Font("SansSerif", Font.PLAIN, 12));
         btnRefresh.putClientProperty("Button.arc", 999);
         btnRefresh.addActionListener(e -> refreshAllData(true));
@@ -268,30 +278,13 @@ public class BlueprintGalleryTab extends JPanel {
         JPanel filterControls = new JPanel(new FlowLayout(FlowLayout.RIGHT, 16, 0));
         filterControls.setOpaque(false);
 
-        chkReadyOnly = new JCheckBox("Ready only (no missing models)");
-        chkReadyOnly.setFont(new Font("SansSerif", Font.BOLD, 11));
-        chkReadyOnly.setForeground(textPrimary);
-        chkReadyOnly.setOpaque(false);
-        chkReadyOnly.setFocusPainted(false);
-        chkReadyOnly.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-        chkReadyOnly.addActionListener(e -> {
-            chkReadyOnly.revalidate();
-            chkReadyOnly.repaint();
-            applyFilter();
-        });
+        boolean initDark = configService != null ? configService.isDarkMode() : true;
+        chkReadyOnly = new ThemedCheckBox("Ready only (no missing models)", initDark);
+        chkReadyOnly.addActionListener(e -> requestFilterUpdate());
 
-        chkHideCloud = new JCheckBox("Hide cloud-only workflows");
-        chkHideCloud.setFont(new Font("SansSerif", Font.BOLD, 11));
-        chkHideCloud.setForeground(textPrimary);
-        chkHideCloud.setOpaque(false);
-        chkHideCloud.setFocusPainted(false);
+        chkHideCloud = new ThemedCheckBox("Hide cloud-only workflows", initDark);
         chkHideCloud.setSelected(true);
-        chkHideCloud.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-        chkHideCloud.addActionListener(e -> {
-            chkHideCloud.revalidate();
-            chkHideCloud.repaint();
-            applyFilter();
-        });
+        chkHideCloud.addActionListener(e -> requestFilterUpdate());
 
         filterControls.add(chkReadyOnly);
         filterControls.add(chkHideCloud);
@@ -306,15 +299,17 @@ public class BlueprintGalleryTab extends JPanel {
         lblStatus.setForeground(textSecondary);
         lblStatus.setBorder(new EmptyBorder(0, 22, 8, 22));
 
-        JPanel northPanel = new JPanel(new BorderLayout());
-        northPanel.setOpaque(false);
+        northPanel = new JPanel(new BorderLayout());
+        northPanel.setOpaque(true);
+        northPanel.setBackground(bgPage);
         northPanel.add(topBar,    BorderLayout.NORTH);
         northPanel.add(lblStatus, BorderLayout.SOUTH);
         add(northPanel, BorderLayout.NORTH);
 
         // ── GALLERY AREA ─────────────────────────────────────────────────────
         galleryWrapper = new ScrollablePanel(null);
-        galleryWrapper.setOpaque(false);
+        galleryWrapper.setOpaque(true);
+        galleryWrapper.setBackground(bgPage);
         galleryWrapper.setBorder(new EmptyBorder(10, 16, 20, 16));
         galleryWrapper.setLayout(new BoxLayout(galleryWrapper, BoxLayout.Y_AXIS));
 
@@ -332,7 +327,7 @@ public class BlueprintGalleryTab extends JPanel {
         scroll.setBackground(bgPage);
         scroll.getViewport().setOpaque(true);
         scroll.getViewport().setBackground(bgPage);
-        scroll.getViewport().setScrollMode(JViewport.SIMPLE_SCROLL_MODE);
+        scroll.getViewport().setScrollMode(JViewport.BLIT_SCROLL_MODE);
         scroll.setBorder(null);
         scroll.getVerticalScrollBar().setUnitIncrement(20);
         add(scroll, BorderLayout.CENTER);
@@ -370,47 +365,64 @@ public class BlueprintGalleryTab extends JPanel {
             isRefreshing.set(true);
         }
         hasScanned = true;
-        lblStatus.setText("⏳  Fetching workflows and checking local models…");
-        previewCache.clear();
-        scaledPreviewCache.clear();
-        loadingPaths.clear();
-        failedPaths.clear();
 
-        // Clear gallery and show a modern loading indicator/progress bar in the background
-        galleryWrapper.removeAll();
-        JPanel loadingPanel = new JPanel(new GridBagLayout());
-        loadingPanel.setOpaque(false);
-        loadingPanel.setPreferredSize(new Dimension(800, 400));
-        
-        JProgressBar spinner = new JProgressBar();
-        spinner.setIndeterminate(true);
-        spinner.setPreferredSize(new Dimension(240, 6));
-        spinner.putClientProperty("FlatLaf.style", "arc: 999; foreground: $SlimStat.barForeground; background: $SlimStat.barBackground;");
-        
-        JLabel loadingLabel = new JLabel("Loading Blueprint Gallery...");
-        loadingLabel.setFont(new Font("SansSerif", Font.BOLD, 14));
-        loadingLabel.setForeground(textSecondary);
-        loadingLabel.setAlignmentX(java.awt.Component.CENTER_ALIGNMENT);
-        
-        JPanel inner = new JPanel();
-        inner.setLayout(new BoxLayout(inner, BoxLayout.Y_AXIS));
-        inner.setOpaque(false);
-        inner.add(loadingLabel);
-        inner.add(Box.createVerticalStrut(12));
-        inner.add(spinner);
-        
-        loadingPanel.add(inner);
-        galleryWrapper.add(loadingPanel);
-        galleryWrapper.revalidate();
-        galleryWrapper.repaint();
+        Runnable setupUiState = () -> {
+            lblStatus.setText("⏳  Fetching workflows and checking local models in background…");
+            if (btnRefresh != null) {
+                btnRefresh.setEnabled(false);
+                btnRefresh.setText("🔄  Refreshing…");
+            }
+            if (allEntries.isEmpty()) {
+                previewCache.clear();
+                scaledPreviewCache.clear();
+                loadingPaths.clear();
+                failedPaths.clear();
 
-        new Thread(() -> {
+                // Clear gallery and show a modern loading indicator/progress bar in the background
+                galleryWrapper.removeAll();
+                JPanel loadingPanel = new JPanel(new GridBagLayout());
+                loadingPanel.setOpaque(false);
+                loadingPanel.setPreferredSize(new Dimension(800, 400));
+                
+                JProgressBar spinner = new JProgressBar();
+                spinner.setIndeterminate(true);
+                spinner.setPreferredSize(new Dimension(240, 6));
+                spinner.putClientProperty("FlatLaf.style", "arc: 999; foreground: $SlimStat.barForeground; background: $SlimStat.barBackground;");
+                
+                JLabel loadingLabel = new JLabel("Loading Blueprint Gallery...");
+                loadingLabel.setFont(new Font("SansSerif", Font.BOLD, 14));
+                loadingLabel.setForeground(textSecondary);
+                loadingLabel.setAlignmentX(java.awt.Component.CENTER_ALIGNMENT);
+                
+                JPanel inner = new JPanel();
+                inner.setLayout(new BoxLayout(inner, BoxLayout.Y_AXIS));
+                inner.setOpaque(false);
+                inner.add(loadingLabel);
+                inner.add(Box.createVerticalStrut(12));
+                inner.add(spinner);
+                
+                loadingPanel.add(inner);
+                galleryWrapper.add(loadingPanel);
+                galleryWrapper.revalidate();
+                galleryWrapper.repaint();
+            }
+        };
+
+        if (SwingUtilities.isEventDispatchThread()) {
+            setupUiState.run();
+        } else {
+            SwingUtilities.invokeLater(setupUiState);
+        }
+
+        Thread refreshThread = new Thread(() -> {
             try {
-                // 1. Scan local models
-                localModelValidator.scanLocalModels();
+                // 1. Scan local models in background
+                if (localModelValidator != null) {
+                    localModelValidator.scanLocalModels();
+                }
 
-                // 2. Fetch cloud workflows from Comfy.org API
-                List<ComfyRegistryWorkflow> workflows = registryClient.fetchWorkflowsAsync().get();
+                // 2. Fetch cloud workflows from Comfy.org API in background
+                List<ComfyRegistryWorkflow> workflows = registryClient != null ? registryClient.fetchWorkflowsAsync().get() : Collections.emptyList();
 
                 // 3. Map to internal entries with indexed fast lookup
                 List<Map<String, Object>> scanResults = Collections.emptyList();
@@ -480,15 +492,13 @@ public class BlueprintGalleryTab extends JPanel {
                         entry.status = new BlueprintStatus(0, 0, new ArrayList<>()); // Temporary unknown status
                         if (localModelValidator != null) {
                             localModelValidator.validateWorkflowModelsAsync(wf).thenAccept(v -> {
-                                SwingUtilities.invokeLater(() -> {
-                                    entry.requiredModels.clear();
-                                    if (wf.getRequiredModelInfos() != null) {
-                                        entry.requiredModels.addAll(wf.getRequiredModelInfos());
-                                    }
-                                    entry.status = computeStatusInternal(entry);
-                                    // Trigger a re-render of this specific card or the whole gallery
-                                    applyFilter();
-                                });
+                                entry.requiredModels.clear();
+                                if (wf.getRequiredModelInfos() != null) {
+                                    entry.requiredModels.addAll(wf.getRequiredModelInfos());
+                                }
+                                entry.status = computeStatusInternal(entry);
+                                // Debounced update so we don't flood the EDT
+                                requestFilterUpdate();
                             });
                         }
                     }
@@ -501,6 +511,10 @@ public class BlueprintGalleryTab extends JPanel {
 
                 SwingUtilities.invokeLater(() -> {
                     updateCategoryComboBox();
+                    if (btnRefresh != null) {
+                        btnRefresh.setEnabled(true);
+                        btnRefresh.setText("🔄  Refresh");
+                    }
                     applyFilter();
                     updateSummary();
                     lblStatus.setText(" ");
@@ -519,30 +533,115 @@ public class BlueprintGalleryTab extends JPanel {
                 logger.error("❌ [BlueprintGallery] Refresh failed: " + e.getMessage(), e);
                 SwingUtilities.invokeLater(() -> {
                     lblStatus.setText("❌ Failed to fetch registry data: " + e.getMessage());
+                    if (btnRefresh != null) {
+                        btnRefresh.setEnabled(true);
+                        btnRefresh.setText("🔄  Refresh");
+                    }
                 });
             } finally {
                 isRefreshing.set(false);
             }
-        }, "BlueprintGalleryRefresh").start();
+        }, "BlueprintGalleryRefresh");
+        refreshThread.setDaemon(true);
+        refreshThread.setPriority(Thread.MIN_PRIORITY);
+        refreshThread.start();
     }
 
     private void updateStatusAsync() {
-        new Thread(() -> {
+        if (!isRefreshing.compareAndSet(false, true)) {
+            return;
+        }
+        Thread t = new Thread(() -> {
             try {
-                localModelValidator.scanLocalModels();
+                if (localModelValidator != null) {
+                    localModelValidator.scanLocalModels();
+                }
                 for (BlueprintEntry entry : allEntries) {
                     entry.status = computeStatusInternal(entry);
                 }
-                SwingUtilities.invokeLater(() -> {
-                    applyFilter();
-                });
+                requestFilterUpdate();
             } catch (Exception e) {
                 logger.error("❌ [BlueprintGallery] Status update failed: " + e.getMessage());
+            } finally {
+                isRefreshing.set(false);
             }
-        }, "BlueprintGalleryStatusUpdate").start();
+        }, "BlueprintGalleryStatusUpdate");
+        t.setDaemon(true);
+        t.setPriority(Thread.MIN_PRIORITY);
+        t.start();
     }
 
     // ── GALLERY RENDERING ─────────────────────────────────────────────────────
+
+    public static boolean isVideoBlueprint(BlueprintEntry entry) {
+        if (entry == null) return false;
+        if (entry.registryWorkflow != null && entry.registryWorkflow.isVideoPreview()) {
+            return true;
+        }
+        String cat = entry.category != null ? entry.category.toLowerCase(Locale.ROOT) : "";
+        String name = entry.name != null ? entry.name.toLowerCase(Locale.ROOT) : "";
+        String desc = entry.description != null ? entry.description.toLowerCase(Locale.ROOT) : "";
+        
+        if (cat.contains("video") || cat.contains("animate") || cat.contains("motion")
+                || cat.contains("i2v") || cat.contains("t2v") || cat.contains("v2v")
+                || cat.contains("interpolat") || cat.contains("frame")) {
+            return true;
+        }
+        if (name.contains("text to video") || name.contains("image to video") || name.contains("video to video")
+                || name.contains("video") || name.contains("animatediff") || name.contains("cogvideo")
+                || name.contains("wan 2") || name.contains("hunyuanvideo") || name.contains("ltx-video")
+                || desc.contains("generates video") || desc.contains("text-to-video") || desc.contains("image-to-video")) {
+            return true;
+        }
+        return false;
+    }
+
+    public static int getBlueprintMediaRank(BlueprintEntry entry) {
+        if (entry == null) return 2;
+        if (isVideoBlueprint(entry)) {
+            return 1; // Video blueprints come after Image blueprints
+        }
+        String cat = entry.category != null ? entry.category.toLowerCase(Locale.ROOT) : "";
+        if (cat.contains("audio") || cat.contains("sound") || cat.contains("music") || cat.contains("voice")) {
+            return 2;
+        }
+        if (cat.contains("3d") || cat.contains("mesh")) {
+            return 2;
+        }
+        // Image blueprints (Text to Image, Image Edit, Inpaint, ControlNet, Upscaling, Depth, Pose, etc.)
+        return 0; // Image blueprints come first!
+    }
+
+    public static int getCategoryOrderScore(String categoryName) {
+        if (categoryName == null || categoryName.trim().isEmpty()) return 500;
+        String cat = categoryName.toLowerCase(Locale.ROOT).trim();
+
+        // 1. IMAGE Categories (0 - 99): Image blueprints come first!
+        if (cat.contains("text to image") || cat.contains("txt2img") || cat.contains("text-to-image")) return 10;
+        if (cat.contains("image edit") || cat.contains("image to image") || cat.contains("img2img")) return 20;
+        if (cat.contains("inpaint") || cat.contains("outpaint")) return 30;
+        if (cat.contains("controlnet")) return 40;
+        if (cat.contains("pose") || cat.contains("depth")) return 50;
+        if (cat.contains("upscal")) return 60;
+        if (cat.contains("segmentation")) return 70;
+        if (cat.contains("caption")) return 80;
+        if (cat.contains("background") || cat.contains("style")) return 85;
+        if (cat.contains("image") || cat.contains("face") || cat.contains("photo") || cat.contains("art")) return 90;
+
+        // 2. VIDEO Categories (100 - 199): Video blueprints come after image blueprints!
+        if (cat.contains("text to video") || cat.contains("t2v") || cat.contains("text-to-video")) return 110;
+        if (cat.contains("image to video") || cat.contains("i2v") || cat.contains("image-to-video")) return 120;
+        if (cat.contains("video to video") || cat.contains("v2v") || cat.contains("video-to-video")) return 130;
+        if (cat.contains("video") || cat.contains("animate") || cat.contains("motion")
+                || cat.contains("interpolat") || cat.contains("frame")) return 140;
+
+        // 3. 3D, Audio, Other (200 - 300)
+        if (cat.contains("3d") || cat.contains("mesh")) return 210;
+        if (cat.contains("audio") || cat.contains("sound") || cat.contains("music") || cat.contains("voice")) return 220;
+        if (cat.contains("use case") || cat.contains("star")) return 230;
+
+        return 300;
+    }
 
     private void updateCategoryComboBox() {
         if (cbCategory == null) return;
@@ -558,13 +657,23 @@ public class BlueprintGalleryTab extends JPanel {
         cbCategory.removeAllItems();
         cbCategory.addItem("All Categories");
 
-        Set<String> categories = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        Set<String> categories = new HashSet<>();
         for (BlueprintEntry entry : allEntries) {
             String cat = entry.category != null && !entry.category.isEmpty() ? entry.category : "General";
             categories.add(cat);
         }
 
-        for (String cat : categories) {
+        List<String> sortedCategories = new ArrayList<>(categories);
+        sortedCategories.sort((c1, c2) -> {
+            int o1 = getCategoryOrderScore(c1);
+            int o2 = getCategoryOrderScore(c2);
+            if (o1 != o2) {
+                return Integer.compare(o1, o2);
+            }
+            return c1.compareToIgnoreCase(c2);
+        });
+
+        for (String cat : sortedCategories) {
             cbCategory.addItem(cat);
         }
 
@@ -618,14 +727,41 @@ public class BlueprintGalleryTab extends JPanel {
             visible.add(e);
         }
 
-        // Sort implementation: Runnable workflows first, then by popularity/popularScore
+        // Sort implementation:
+        // 1) Image blueprints first, then Video blueprints, then other media
+        // 2) Category order score (Text to Image -> Image Edit -> ControlNet... -> Text to Video -> Image to Video...)
+        // 3) Runnable workflows first
+        // 4) Popularity / popularScore descending
+        // 5) Name alphabetically
         visible.sort((e1, e2) -> {
+            int rank1 = getBlueprintMediaRank(e1);
+            int rank2 = getBlueprintMediaRank(e2);
+            if (rank1 != rank2) {
+                return Integer.compare(rank1, rank2);
+            }
+
+            int catOrder1 = getCategoryOrderScore(e1.category);
+            int catOrder2 = getCategoryOrderScore(e2.category);
+            if (catOrder1 != catOrder2) {
+                return Integer.compare(catOrder1, catOrder2);
+            }
+
             boolean run1 = computeStatus(e1).missingCount == 0;
             boolean run2 = computeStatus(e2).missingCount == 0;
             if (run1 != run2) {
                 return run1 ? -1 : 1;
             }
-            return Double.compare(e2.registryWorkflow.getPopularScore(), e1.registryWorkflow.getPopularScore());
+
+            double pop1 = e1.registryWorkflow != null ? e1.registryWorkflow.getPopularScore() : 0.0;
+            double pop2 = e2.registryWorkflow != null ? e2.registryWorkflow.getPopularScore() : 0.0;
+            int popCmp = Double.compare(pop2, pop1);
+            if (popCmp != 0) {
+                return popCmp;
+            }
+
+            String n1 = e1.name != null ? e1.name : "";
+            String n2 = e2.name != null ? e2.name : "";
+            return n1.compareToIgnoreCase(n2);
         });
 
         if (visible.isEmpty()) {
@@ -635,8 +771,16 @@ public class BlueprintGalleryTab extends JPanel {
             empty.setBorder(new EmptyBorder(10, 4, 10, 4));
             galleryWrapper.add(empty);
         } else {
-            // Group by category (preserving original order via LinkedHashMap)
-            Map<String, List<BlueprintEntry>> grouped = new LinkedHashMap<>();
+            // Group by category with Image categories first, then Video categories, then Other
+            Map<String, List<BlueprintEntry>> grouped = new TreeMap<>((c1, c2) -> {
+                int o1 = getCategoryOrderScore(c1);
+                int o2 = getCategoryOrderScore(c2);
+                if (o1 != o2) {
+                    return Integer.compare(o1, o2);
+                }
+                return c1.compareToIgnoreCase(c2);
+            });
+
             for (BlueprintEntry entry : visible) {
                 String cat = entry.category != null && !entry.category.isEmpty() ? entry.category : "General";
                 grouped.computeIfAbsent(cat, k -> new ArrayList<>()).add(entry);
@@ -685,13 +829,7 @@ public class BlueprintGalleryTab extends JPanel {
         headerPanel.setBorder(new EmptyBorder(12, 4, 6, 4));
         headerPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 40));
 
-        String emoji = "⚙️";
-        String lower = categoryName.toLowerCase();
-        if (lower.contains("image")) emoji = "🖼️";
-        else if (lower.contains("video")) emoji = "🎬";
-        else if (lower.contains("audio") || lower.contains("sound")) emoji = "🎵";
-        else if (lower.contains("3d") || lower.contains("mesh")) emoji = "🎲";
-        else if (lower.contains("use cases") || lower.contains("star")) emoji = "⭐";
+        String emoji = categoryIcon(categoryName);
 
         JLabel lblHeader = new JLabel(emoji + "  " + categoryName);
         lblHeader.setFont(new Font("SansSerif", Font.BOLD, 15));
@@ -815,8 +953,8 @@ public class BlueprintGalleryTab extends JPanel {
         String reqText;
         Color reqColor;
         if (totalReqs == 0) {
-            reqText  = "No model requirements";
-            reqColor = textDim;
+            reqText  = "✔  No external models needed";
+            reqColor = GREEN_READY;
         } else if (status.missingCount == 0) {
             reqText  = "✔  All " + totalReqs + " model(s) ready";
             reqColor = GREEN_READY;
@@ -914,12 +1052,12 @@ public class BlueprintGalleryTab extends JPanel {
                 // Status badge
                 String badgeText;
                 Color badgeColor;
-                if (status.missingCount == 0 && !entry.requiredModels.isEmpty()) {
+                if (status.missingCount == 0) {
                     badgeText  = "✅  Ready";
-                    badgeColor = new Color(34, 197, 130, 200);
+                    badgeColor = new Color(34, 197, 130, 220);
                 } else if (status.missingCount > 0) {
                     badgeText  = "⚠  " + status.missingCount + " missing";
-                    badgeColor = new Color(255, 153, 0, 200); // Neon Orange #FF9900
+                    badgeColor = new Color(255, 153, 0, 220); // Neon Orange #FF9900
 
                 } else {
                     badgeText  = null;
@@ -1523,14 +1661,37 @@ public class BlueprintGalleryTab extends JPanel {
             btnSendToComfy.setText("Downloading...");
             workflowDownloader.downloadWorkflowAsync(entry.registryWorkflow)
                 .thenAccept(file -> {
-                    SwingUtilities.invokeLater(() -> btnSendToComfy.setText("Sending..."));
                     try {
+                        if (lifecycleService != null && !lifecycleService.isHealthy()) {
+                            SwingUtilities.invokeLater(() -> btnSendToComfy.setText("Starting ComfyUI..."));
+                            logger.info("🔌 [BlueprintGallery] ComfyUI server is offline. Starting lifecycle service...");
+                            lifecycleService.start();
+                            int maxWait = 90;
+                            boolean healthy = false;
+                            for (int w = 0; w < maxWait; w++) {
+                                if (lifecycleService.isHealthy()) {
+                                    healthy = true;
+                                    break;
+                                }
+                                try {
+                                    Thread.sleep(1000);
+                                } catch (InterruptedException ie) {
+                                    Thread.currentThread().interrupt();
+                                    break;
+                                }
+                            }
+                            if (!healthy) {
+                                throw new Exception("ComfyUI server could not be started or is not reachable at: " + configService.getComfyUIUrl());
+                            }
+                        }
+
+                        SwingUtilities.invokeLater(() -> btnSendToComfy.setText("Sending..."));
                         String fileContent = Files.readString(file.toPath(), java.nio.charset.StandardCharsets.UTF_8).trim();
                         JSONObject json = new JSONObject(fileContent);
                         
                         String comfyUrl = configService.getComfyUIUrl();
                         java.net.http.HttpClient client = java.net.http.HttpClient.newBuilder()
-                                .connectTimeout(java.time.Duration.ofSeconds(5))
+                                .connectTimeout(java.time.Duration.ofSeconds(15))
                                 .build();
                                 
                         java.net.http.HttpRequest request;
@@ -2021,6 +2182,12 @@ public class BlueprintGalleryTab extends JPanel {
         }
         
         setBackground(bgPage);
+        if (northPanel != null) {
+            northPanel.setBackground(bgPage);
+        }
+        if (galleryWrapper != null) {
+            galleryWrapper.setBackground(bgPage);
+        }
         if (scroll != null) {
             scroll.setBackground(bgPage);
             scroll.getViewport().setBackground(bgPage);
@@ -2036,48 +2203,10 @@ public class BlueprintGalleryTab extends JPanel {
             lblStatus.setForeground(textSecondary);
         }
         if (chkReadyOnly != null) {
-            chkReadyOnly.setForeground(textPrimary);
-            if (darkMode) {
-                chkReadyOnly.putClientProperty("FlatLaf.style", 
-                    "icon.borderColor: #485268; " +
-                    "icon.selectedBorderColor: #00D2BE; " +
-                    "icon.checkmarkColor: #FFFFFF; " +
-                    "icon.focusWidth: 2; " +
-                    "icon.selectedBackground: #009688"
-                );
-            } else {
-                chkReadyOnly.putClientProperty("FlatLaf.style", 
-                    "icon.borderColor: #121318; " +
-                    "icon.selectedBorderColor: #009688; " +
-                    "icon.checkmarkColor: #FFFFFF; " +
-                    "icon.focusWidth: 2; " +
-                    "icon.selectedBackground: #009688"
-                );
-            }
-            chkReadyOnly.revalidate();
-            chkReadyOnly.repaint();
+            chkReadyOnly.setDarkMode(darkMode);
         }
         if (chkHideCloud != null) {
-            chkHideCloud.setForeground(textPrimary);
-            if (darkMode) {
-                chkHideCloud.putClientProperty("FlatLaf.style", 
-                    "icon.borderColor: #485268; " +
-                    "icon.selectedBorderColor: #00D2BE; " +
-                    "icon.checkmarkColor: #FFFFFF; " +
-                    "icon.focusWidth: 2; " +
-                    "icon.selectedBackground: #009688"
-                );
-            } else {
-                chkHideCloud.putClientProperty("FlatLaf.style", 
-                    "icon.borderColor: #121318; " +
-                    "icon.selectedBorderColor: #009688; " +
-                    "icon.checkmarkColor: #FFFFFF; " +
-                    "icon.focusWidth: 2; " +
-                    "icon.selectedBackground: #009688"
-                );
-            }
-            chkHideCloud.revalidate();
-            chkHideCloud.repaint();
+            chkHideCloud.setDarkMode(darkMode);
         }
         
         applyFilter();
@@ -2097,7 +2226,141 @@ public class BlueprintGalleryTab extends JPanel {
                 list.add(e);
             }
         }
+        list.sort((e1, e2) -> {
+            int r1 = getBlueprintMediaRank(e1);
+            int r2 = getBlueprintMediaRank(e2);
+            if (r1 != r2) return Integer.compare(r1, r2);
+            int o1 = getCategoryOrderScore(e1.category);
+            int o2 = getCategoryOrderScore(e2.category);
+            if (o1 != o2) return Integer.compare(o1, o2);
+            double pop1 = e1.registryWorkflow != null ? e1.registryWorkflow.getPopularScore() : 0.0;
+            double pop2 = e2.registryWorkflow != null ? e2.registryWorkflow.getPopularScore() : 0.0;
+            int popCmp = Double.compare(pop2, pop1);
+            if (popCmp != 0) return popCmp;
+            String n1 = e1.name != null ? e1.name : "";
+            String n2 = e2.name != null ? e2.name : "";
+            return n1.compareToIgnoreCase(n2);
+        });
         return list;
+    }
+
+    /**
+     * A self-painting checkbox that renders its own box and checkmark using Java2D,
+     * completely bypassing FlatLaf's LAF checkbox icon. This guarantees correct
+     * appearance in both dark and light themes without any putClientProperty hacks.
+     */
+    static class ThemedCheckBox extends JToggleButton {
+        private boolean darkMode;
+
+        // Colors
+        private static final Color DARK_BOX_BG        = new Color(0x1C202B);
+        private static final Color DARK_BOX_BORDER     = new Color(0x8E98B0);
+        private static final Color DARK_HOVER_BG       = new Color(0x262B3A);
+        private static final Color DARK_HOVER_BORDER   = new Color(0x00D2BE);
+        private static final Color DARK_CHECKED_BG     = new Color(0x009688);
+        private static final Color DARK_CHECKED_BORDER = new Color(0x00D2BE);
+
+        private static final Color LIGHT_BOX_BG        = Color.WHITE;
+        private static final Color LIGHT_BOX_BORDER     = new Color(0x6B7280);
+        private static final Color LIGHT_HOVER_BG       = new Color(0xF3F4F6);
+        private static final Color LIGHT_HOVER_BORDER   = new Color(0x009688);
+        private static final Color LIGHT_CHECKED_BG     = new Color(0x009688);
+        private static final Color LIGHT_CHECKED_BORDER = new Color(0x00796B);
+
+        private static final Color CHECK_COLOR = Color.WHITE;
+        private static final int   BOX_SIZE    = 14;
+        private static final int   ARC         = 4;
+        private static final int   GAP         = 6;
+
+        private boolean hovered = false;
+
+        ThemedCheckBox(String text, boolean darkMode) {
+            super(text);
+            this.darkMode = darkMode;
+            setOpaque(false);
+            setContentAreaFilled(false);
+            setBorderPainted(false);
+            setFocusPainted(false);
+            setFont(new Font("SansSerif", Font.BOLD, 11));
+            setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+            applyColors();
+
+            addMouseListener(new MouseAdapter() {
+                @Override public void mouseEntered(MouseEvent e) { hovered = true;  repaint(); }
+                @Override public void mouseExited (MouseEvent e) { hovered = false; repaint(); }
+            });
+        }
+
+        void setDarkMode(boolean dark) {
+            this.darkMode = dark;
+            applyColors();
+            repaint();
+        }
+
+        private void applyColors() {
+            setForeground(darkMode ? new Color(0xE2E8F0) : new Color(0x1F2937));
+        }
+
+        @Override
+        public Dimension getPreferredSize() {
+            FontMetrics fm = getFontMetrics(getFont());
+            int textW = fm.stringWidth(getText());
+            int textH = fm.getAscent() + fm.getDescent();
+            int h = Math.max(BOX_SIZE, textH) + 6;
+            return new Dimension(BOX_SIZE + GAP + textW + 4, h);
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_LCD_HRGB);
+
+            int h  = getHeight();
+            int bY = (h - BOX_SIZE) / 2;
+
+            // ── Box fill ───────────────────────────────────────────────────────
+            Color boxBg;
+            Color boxBorder;
+            if (isSelected()) {
+                boxBg     = darkMode ? DARK_CHECKED_BG     : LIGHT_CHECKED_BG;
+                boxBorder = darkMode ? DARK_CHECKED_BORDER : LIGHT_CHECKED_BORDER;
+            } else if (hovered) {
+                boxBg     = darkMode ? DARK_HOVER_BG     : LIGHT_HOVER_BG;
+                boxBorder = darkMode ? DARK_HOVER_BORDER : LIGHT_HOVER_BORDER;
+            } else {
+                boxBg     = darkMode ? DARK_BOX_BG     : LIGHT_BOX_BG;
+                boxBorder = darkMode ? DARK_BOX_BORDER : LIGHT_BOX_BORDER;
+            }
+
+            RoundRectangle2D box = new RoundRectangle2D.Float(1, bY, BOX_SIZE - 2, BOX_SIZE - 2, ARC, ARC);
+            g2.setColor(boxBg);
+            g2.fill(box);
+            g2.setColor(boxBorder);
+            g2.setStroke(new BasicStroke(1.5f));
+            g2.draw(box);
+
+            // ── Checkmark ──────────────────────────────────────────────────────
+            if (isSelected()) {
+                g2.setColor(CHECK_COLOR);
+                g2.setStroke(new BasicStroke(2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                int x0 = 3, y0 = bY + BOX_SIZE / 2;
+                int x1 = 3 + (BOX_SIZE - 6) / 3, y1 = bY + BOX_SIZE - 4;
+                int x2 = BOX_SIZE - 3, y2 = bY + 4;
+                g2.drawLine(x0, y0, x1, y1);
+                g2.drawLine(x1, y1, x2, y2);
+            }
+
+            // ── Label ──────────────────────────────────────────────────────────
+            g2.setColor(getForeground());
+            g2.setFont(getFont());
+            FontMetrics fm = g2.getFontMetrics();
+            int textX = BOX_SIZE + GAP;
+            int textY = (h - fm.getHeight()) / 2 + fm.getAscent();
+            g2.drawString(getText(), textX, textY);
+
+            g2.dispose();
+        }
     }
 
     public static class BlueprintEntry {

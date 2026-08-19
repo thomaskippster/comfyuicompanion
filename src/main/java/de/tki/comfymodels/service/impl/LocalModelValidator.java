@@ -43,8 +43,13 @@ public class LocalModelValidator implements ILocalModelValidator {
 
     private final Map<String, List<ModelInfo>> registryModelsCache = new ConcurrentHashMap<>();
     private final Map<String, Boolean> cloudOnlyCache = new ConcurrentHashMap<>();
-    private final Semaphore downloadSemaphore = new Semaphore(3);
-    private final ExecutorService downloadExecutor = Executors.newFixedThreadPool(3);
+    private final Semaphore downloadSemaphore = new Semaphore(2);
+    private final ExecutorService downloadExecutor = Executors.newFixedThreadPool(2, r -> {
+        Thread t = new Thread(r, "WorkflowDownloadValidator");
+        t.setDaemon(true);
+        t.setPriority(Thread.MIN_PRIORITY);
+        return t;
+    });
     private File cacheFile;
 
     private static final Set<String> SUPPORTED_EXTENSIONS = Set.of(

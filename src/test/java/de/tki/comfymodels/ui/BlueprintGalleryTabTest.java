@@ -209,4 +209,37 @@ public class BlueprintGalleryTabTest {
             throw new RuntimeException(e);
         }
     }
+
+    @Test
+    public void testImageBlueprintsComeBeforeVideoBlueprints() {
+        ComfyRegistryWorkflow imgWf = new ComfyRegistryWorkflow();
+        imgWf.setTitle("SDXL Base Image");
+        imgWf.setCategory("Text to Image");
+        imgWf.setMediaType("image");
+        imgWf.setPopularScore(100.0);
+
+        ComfyRegistryWorkflow vidWf = new ComfyRegistryWorkflow();
+        vidWf.setTitle("Wan 2.2 Video Generator");
+        vidWf.setCategory("Text to Video");
+        vidWf.setMediaType("video");
+        vidWf.setThumbnailUrl("https://example.com/thumb.mp4");
+        vidWf.setPopularScore(500.0);
+
+        BlueprintGalleryTab.BlueprintEntry imgEntry = new BlueprintGalleryTab.BlueprintEntry(imgWf);
+        BlueprintGalleryTab.BlueprintEntry vidEntry = new BlueprintGalleryTab.BlueprintEntry(vidWf);
+
+        assertThat(BlueprintGalleryTab.isVideoBlueprint(imgEntry)).isFalse();
+        assertThat(BlueprintGalleryTab.isVideoBlueprint(vidEntry)).isTrue();
+
+        assertThat(BlueprintGalleryTab.getBlueprintMediaRank(imgEntry)).isEqualTo(0);
+        assertThat(BlueprintGalleryTab.getBlueprintMediaRank(vidEntry)).isEqualTo(1);
+
+        assertThat(BlueprintGalleryTab.getCategoryOrderScore("Text to Image"))
+                .isLessThan(BlueprintGalleryTab.getCategoryOrderScore("Text to Video"));
+        assertThat(BlueprintGalleryTab.getCategoryOrderScore("Image Edit"))
+                .isLessThan(BlueprintGalleryTab.getCategoryOrderScore("Image to Video"));
+        assertThat(BlueprintGalleryTab.getCategoryOrderScore("Inpainting"))
+                .isLessThan(BlueprintGalleryTab.getCategoryOrderScore("Video"));
+    }
 }
+

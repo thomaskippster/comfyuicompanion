@@ -15,6 +15,7 @@ public class ModelInfo {
     private String reference;
     private String filename;
     private String previewPath;
+    private String archivedPath; // Absolute path of the file in the archive, if found
 
     public ModelInfo() {}
 
@@ -49,6 +50,8 @@ public class ModelInfo {
     public void setFilename(String filename) { this.filename = filename; }
     public String getPreviewPath() { return previewPath; }
     public void setPreviewPath(String previewPath) { this.previewPath = previewPath; }
+    public String getArchivedPath() { return archivedPath; }
+    public void setArchivedPath(String archivedPath) { this.archivedPath = archivedPath; }
 
     @Override
     public boolean equals(Object o) {

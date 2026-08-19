@@ -300,7 +300,10 @@ public class Main extends JFrame {
     public void launch(String[] args) {
         // Initialize ProfileManager with app storage directory
         Path appData = Paths.get(System.getProperty("user.home"), ".comfyui-companion");
-        try { Files.createDirectories(appData); } catch (Exception ignored) {}
+        try { Files.createDirectories(appData); } catch (Exception ex) {
+            System.err.println("FATAL: Cannot create application data directory: " + appData + " - " + ex.getMessage());
+            JOptionPane.showMessageDialog(null, "Cannot create application data directory:\n" + appData + "\n\n" + ex.getMessage(), "Startup Error", JOptionPane.ERROR_MESSAGE);
+        }
         profileManager.init(appData);
 
         if (de.tki.comfymodels.util.PlatformUtils.isMac()) {
@@ -1170,7 +1173,7 @@ public class Main extends JFrame {
         // TAB 6: MODEL MANAGER (Blueprint Gallery)
         this.blueprintGalleryWrapper = new JPanel(new BorderLayout());
         this.blueprintGalleryWrapper.setName("blueprintGalleryWrapper");
-        this.blueprintGalleryWrapper.setOpaque(false);
+        this.blueprintGalleryWrapper.setOpaque(true);
         if (blueprintGalleryTab != null) {
             this.blueprintGalleryWrapper.add(blueprintGalleryTab, BorderLayout.CENTER);
             blueprintGalleryTab.setOnDataLoadedCallback(this::refreshPromptLabModels);
@@ -3414,13 +3417,13 @@ public class Main extends JFrame {
         JButton save = new JButton("Save");
         save.putClientProperty("JButton.buttonType", "accent");
         save.addActionListener(e -> {
-            String oldModelsPath = configService.getExtraComfyUIPath();
+            String oldExtraPath = configService.getExtraComfyUIPath();
             String oldComfyUIPath = configService.getComfyUIPath();
             
-            String newModelsPath = field1.getText().trim();
+            String newExtraPath = field1.getText().trim();
             String newComfyUIPath = field3.getText().trim();
             
-            configService.setModelsPath(newModelsPath);
+            configService.setExtraComfyUIPath(newExtraPath);
             configService.setArchivePath(field2.getText().trim());
             configService.setComfyUIPath(newComfyUIPath);
             configService.setPythonPath(field4.getText().trim());
@@ -3432,7 +3435,7 @@ public class Main extends JFrame {
             analyzeJsonContent();
             dialog.dispose();
             
-            boolean pathsChanged = !newModelsPath.equalsIgnoreCase(oldModelsPath) || !newComfyUIPath.equalsIgnoreCase(oldComfyUIPath);
+            boolean pathsChanged = !newExtraPath.equalsIgnoreCase(oldExtraPath) || !newComfyUIPath.equalsIgnoreCase(oldComfyUIPath);
             if (pathsChanged && lifecycleService != null && lifecycleService.isHealthy()) {
                 backgroundExecutor.execute(() -> {
                     logger.info("🔄 [Lifecycle] Custom paths updated. Restarting ComfyUI server to apply changes...");
@@ -3934,6 +3937,11 @@ public class Main extends JFrame {
     }
 
     private void deleteDirectory(File dir) {
+        if (dir == null || !dir.exists()) return;
+        if (Files.isSymbolicLink(dir.toPath())) {
+            dir.delete();
+            return;
+        }
         File[] files = dir.listFiles();
         if (files != null) for (File f : files) deleteDirectory(f);
         dir.delete();
@@ -3995,30 +4003,17 @@ public class Main extends JFrame {
             }
             downloadManagerView.setListener(new de.tki.comfymodels.ui.DownloadManagerView.DownloadManagerListener() {
                 @Override
-                public void onVerifyLocalModels(boolean deepCheck) { verifyLocalModels(deepCheck); }
+                public void onVerifyLocalModels(boolean deepCheck) { downloadManagerController.onVerifyLocalModels(deepCheck); }
                 @Override
                 public void onShowArchiveDialog() { showArchiveDialog(); }
                 @Override
                 public void onRunDiagnostics() {
-                    if (modelsToDownload == null || modelsToDownload.isEmpty()) {
-                        JOptionPane.showMessageDialog(Main.this, "Please load a workflow first to perform diagnostics.");
-                        return;
-                    }
-                    List<String> missing = diagnosticService.getMissingModels(modelsToDownload);
-                    if (missing.isEmpty()) {
-                        JOptionPane.showMessageDialog(Main.this, "✅ All workflow models are visible to ComfyUI!", "Diagnostics Successful", JOptionPane.INFORMATION_MESSAGE);
-                    } else {
-                        String list = String.join("\n- ", missing);
-                        Object[] options = {"Switch to Overview (Restart)", "Ignore"};
-                        int choice = JOptionPane.showOptionDialog(Main.this, 
-                            "❌ ComfyUI still reports these models as missing:\n- " + list + "\n\n" +
-                            "A restart is required for ComfyUI to recognize new models.", 
-                            "Diagnostics Failed", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE, null, options, options[0]);
-                        if (choice == 0) tabs.setSelectedIndex(0);
+                    if (downloadManagerController != null) {
+                        downloadManagerController.runDiagnostics(tabs);
                     }
                 }
                 @Override
-                public void onLoadWorkflowFile(File file) { loadFile(file); }
+                public void onLoadWorkflowFile(File file) { downloadManagerController.loadFile(file); }
                 @Override
                 public void onImportModelListFile(File file) {
                     try {
@@ -4030,9 +4025,9 @@ public class Main extends JFrame {
                     }
                 }
                 @Override
-                public void onAnalyzeJsonContent() { analyzeJsonContent(); searchMissingOnline(true); }
+                public void onAnalyzeJsonContent() { downloadManagerController.onAnalyzeJsonContent(); }
                 @Override
-                public void onShowCivitaiSearchDialog(int modelRowIndex) { showCivitaiSearchDialog(modelRowIndex); }
+                public void onShowCivitaiSearchDialog(int modelRowIndex) { downloadManagerController.onShowCivitaiSearchDialog(modelRowIndex); }
                 @Override
                 public void onUpdateDownloadManagerSelection() { updateDownloadManagerSelection(); }
                 @Override

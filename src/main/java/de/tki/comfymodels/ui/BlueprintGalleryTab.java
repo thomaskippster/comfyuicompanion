@@ -323,12 +323,10 @@ public class BlueprintGalleryTab extends JPanel {
         scroll = new JScrollPane(galleryWrapper,
                 JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED,
                 JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
-        scroll.setOpaque(true);
-        scroll.setBackground(bgPage);
-        scroll.getViewport().setOpaque(true);
-        scroll.getViewport().setBackground(bgPage);
+        scroll.setOpaque(false);
+        scroll.getViewport().setOpaque(false);
         scroll.getViewport().setScrollMode(JViewport.BLIT_SCROLL_MODE);
-        scroll.setBorder(null);
+        scroll.setBorder(BorderFactory.createEmptyBorder());
         scroll.getVerticalScrollBar().setUnitIncrement(20);
         add(scroll, BorderLayout.CENTER);
     }
@@ -1606,9 +1604,9 @@ public class BlueprintGalleryTab extends JPanel {
 
                 JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED,
                 JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
-        scroll.setBackground(bg);
-        scroll.getViewport().setBackground(bg);
-        scroll.setBorder(null);
+        scroll.setOpaque(false);
+        scroll.getViewport().setOpaque(false);
+        scroll.setBorder(BorderFactory.createEmptyBorder());
         root.add(scroll, BorderLayout.CENTER);
 
         JButton btnClose = new JButton("Close");
@@ -2189,8 +2187,8 @@ public class BlueprintGalleryTab extends JPanel {
             galleryWrapper.setBackground(bgPage);
         }
         if (scroll != null) {
-            scroll.setBackground(bgPage);
-            scroll.getViewport().setBackground(bgPage);
+            scroll.setOpaque(false);
+            scroll.getViewport().setOpaque(false);
         }
 
         if (lblTitle != null) {

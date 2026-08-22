@@ -126,17 +126,17 @@
         <dependency>
             <groupId>org.openjfx</groupId>
             <artifactId>javafx-controls</artifactId>
-            <version>26.0.1</version>
+            <version>21.0.6</version>
         </dependency>
         <dependency>
             <groupId>org.openjfx</groupId>
             <artifactId>javafx-swing</artifactId>
-            <version>26.0.1</version>
+            <version>21.0.6</version>
         </dependency>
         <dependency>
             <groupId>org.openjfx</groupId>
             <artifactId>javafx-web</artifactId>
-            <version>26.0.1</version>
+            <version>21.0.6</version>
         </dependency>
 
         <dependency>

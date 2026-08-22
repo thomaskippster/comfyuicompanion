@@ -30,13 +30,20 @@ public class ComfyTemplateService implements IComfyTemplateService {
 
     private final ConfigService configService;
     private final ModelListService modelListService;
+    private final de.tki.comfymodels.service.IModelArchitectureService modelArchitectureService;
     private final Map<String, ComfyTemplate> templateCache = new ConcurrentHashMap<>();
     private final Map<String, String> modelToTemplateMap = new ConcurrentHashMap<>();
 
     @Autowired
-    public ComfyTemplateService(ConfigService configService, ModelListService modelListService) {
+    public ComfyTemplateService(ConfigService configService, ModelListService modelListService,
+                                @Autowired(required = false) de.tki.comfymodels.service.IModelArchitectureService modelArchitectureService) {
         this.configService = configService;
         this.modelListService = modelListService;
+        this.modelArchitectureService = modelArchitectureService;
+    }
+
+    public ComfyTemplateService(ConfigService configService, ModelListService modelListService) {
+        this(configService, modelListService, null);
     }
 
     @PostConstruct
@@ -157,7 +164,8 @@ public class ComfyTemplateService implements IComfyTemplateService {
     @Override
     public ComfyTemplate determineTemplateForModel(String modelName) {
         if (modelName == null || modelName.isEmpty()) {
-            return getTemplateByFilename("sd15_base_api.json");
+            ComfyTemplate def = getTemplateByFilename("sd15_base_api.json");
+            return def != null ? def : getTemplateByFilename("template_sd15_api.json");
         }
 
         String lowerModelName = modelName.toLowerCase();
@@ -180,38 +188,72 @@ public class ComfyTemplateService implements IComfyTemplateService {
                     String lowerBase = base.toLowerCase();
                     if (lowerBase.contains("flux")) {
                         ComfyTemplate t = getTemplateByFilename("flux_base_api.json");
+                        if (t == null) t = getTemplateByFilename("template_flux_api.json");
                         if (t != null) return t;
                     } else if (lowerBase.contains("xl") || lowerBase.contains("sdxl")) {
                         ComfyTemplate t = getTemplateByFilename("sdxl_base_api.json");
+                        if (t == null) t = getTemplateByFilename("template_sdxl_api.json");
                         if (t != null) return t;
-                    } else if (lowerBase.contains("lumina")) {
+                    } else if (lowerBase.contains("lumina") || lowerBase.contains("z-image") || lowerBase.contains("z_image")) {
                         ComfyTemplate t = getTemplateByFilename("lumina2_base_api.json");
+                        if (t == null) t = getTemplateByFilename("template_lumina2_api.json");
                         if (t != null) return t;
                     } else if (lowerBase.contains("1.5") || lowerBase.contains("sd 1.5")) {
                         ComfyTemplate t = getTemplateByFilename("sd15_base_api.json");
+                        if (t == null) t = getTemplateByFilename("template_sd15_api.json");
                         if (t != null) return t;
                     }
                 }
             }
         }
+
+        // 3. Architecture service detection
+        if (modelArchitectureService != null) {
+            de.tki.comfymodels.domain.ModelArchitecture arch = modelArchitectureService.detectArchitecture(modelName);
+            if (arch != de.tki.comfymodels.domain.ModelArchitecture.ARCH_UNKNOWN) {
+                String archFilename = getTemplateFilenameForArchitecture(arch);
+                ComfyTemplate t = getTemplateByFilename(archFilename);
+                if (t == null) {
+                    if (arch == de.tki.comfymodels.domain.ModelArchitecture.ARCH_FLUX) t = getTemplateByFilename("flux_base_api.json");
+                    else if (arch == de.tki.comfymodels.domain.ModelArchitecture.ARCH_LUMINA2) t = getTemplateByFilename("lumina2_base_api.json");
+                    else if (arch == de.tki.comfymodels.domain.ModelArchitecture.ARCH_SDXL) t = getTemplateByFilename("sdxl_base_api.json");
+                    else if (arch == de.tki.comfymodels.domain.ModelArchitecture.ARCH_SD15) t = getTemplateByFilename("sd15_base_api.json");
+                }
+                if (t != null) return t;
+            }
+        }
         
-        // 3. Naming convention fallbacks (checking keywords in the modelName string)
+        // 4. Naming convention fallbacks (checking keywords in the modelName string)
         if (lowerModelName.contains("flux1-schnell") || lowerModelName.contains("flux_schnell") || lowerModelName.contains("schnell")) {
             ComfyTemplate t = getTemplateByFilename("flux_base_api.json");
+            if (t == null) t = getTemplateByFilename("template_flux_api.json");
             if (t != null) return t;
-        } else if (lowerModelName.contains("flux")) {
+        } else if (lowerModelName.contains("flux") || lowerModelName.contains("dev")) {
             ComfyTemplate t = getTemplateByFilename("flux_base_api.json");
+            if (t == null) t = getTemplateByFilename("template_flux_api.json");
             if (t != null) return t;
-        } else if (lowerModelName.contains("xl") || lowerModelName.contains("sdxl") || lowerModelName.contains("juggernaut") || lowerModelName.contains("pony")) {
+        } else if (lowerModelName.contains("xl") || lowerModelName.contains("sdxl") || lowerModelName.contains("juggernaut") || lowerModelName.contains("pony") || lowerModelName.contains("ernie")) {
             ComfyTemplate t = getTemplateByFilename("sdxl_base_api.json");
+            if (t == null) t = getTemplateByFilename("template_sdxl_api.json");
             if (t != null) return t;
-        } else if (lowerModelName.contains("longcat") || lowerModelName.contains("lumina")) {
+        } else if (lowerModelName.contains("longcat") || lowerModelName.contains("lumina") || lowerModelName.contains("z_image") || lowerModelName.contains("z-image") || lowerModelName.contains("acestep") || lowerModelName.contains("firered") || lowerModelName.contains("qwen")) {
             ComfyTemplate t = getTemplateByFilename("lumina2_base_api.json");
+            if (t == null) t = getTemplateByFilename("template_lumina2_api.json");
+            if (t != null) return t;
+        } else if (lowerModelName.contains("sd3") || lowerModelName.contains("stable_diffusion_3")) {
+            ComfyTemplate t = getTemplateByFilename("template_sd3_api.json");
+            if (t != null) return t;
+        } else if (lowerModelName.contains("wan") || lowerModelName.contains("ltx")) {
+            ComfyTemplate t = getTemplateByFilename("template_wan_api.json");
+            if (t != null) return t;
+        } else if (lowerModelName.contains("hunyuan")) {
+            ComfyTemplate t = getTemplateByFilename("template_hunyuan_api.json");
             if (t != null) return t;
         }
         
-        // 4. Default fallback
-        return getTemplateByFilename("sd15_base_api.json");
+        // 5. Default fallback
+        ComfyTemplate def = getTemplateByFilename("sd15_base_api.json");
+        return def != null ? def : getTemplateByFilename("template_sd15_api.json");
     }
 
     @Override
@@ -229,19 +271,31 @@ public class ComfyTemplateService implements IComfyTemplateService {
                 promptObj = rootObj;
             }
 
-            // 1. Set model in CheckpointLoaderSimple / UNetLoader
+            // 1. Set model in CheckpointLoaderSimple / UNetLoader / CLIPLoader / VAELoader
+            String lowerModel = modelName != null ? modelName.toLowerCase() : "";
             for (String key : promptObj.keySet()) {
                 org.json.JSONObject nodeObj = promptObj.getJSONObject(key);
                 String classType = nodeObj.optString("class_type", "");
+                org.json.JSONObject inputs = nodeObj.optJSONObject("inputs");
+                if (inputs == null) continue;
+
                 if ("CheckpointLoaderSimple".equals(classType)) {
-                    org.json.JSONObject inputs = nodeObj.optJSONObject("inputs");
-                    if (inputs != null) {
-                        inputs.put("ckpt_name", modelName);
-                    }
+                    inputs.put("ckpt_name", modelName);
                 } else if ("UNETLoader".equals(classType) || "UNetLoader".equals(classType)) {
-                    org.json.JSONObject inputs = nodeObj.optJSONObject("inputs");
-                    if (inputs != null) {
-                        inputs.put("unet_name", modelName);
+                    inputs.put("unet_name", modelName);
+                } else if ("CLIPLoader".equals(classType)) {
+                    if (lowerModel.contains("z_image") || lowerModel.contains("acestep") || lowerModel.contains("longcat") || lowerModel.contains("lumina")) {
+                        inputs.put("clip_name", "qwen_3_4b.safetensors");
+                        inputs.put("type", "lumina2");
+                    } else if (lowerModel.contains("wan")) {
+                        inputs.put("clip_name", "qwen/qwen_2.5_vl_7b_fp8_scaled.safetensors");
+                        inputs.put("type", "wan");
+                    }
+                } else if ("VAELoader".equals(classType)) {
+                    if (lowerModel.contains("z_image") || lowerModel.contains("acestep") || lowerModel.contains("longcat") || lowerModel.contains("lumina") || lowerModel.contains("flux")) {
+                        inputs.put("vae_name", "ae.safetensors");
+                    } else if (lowerModel.contains("wan")) {
+                        inputs.put("vae_name", "wan_2.1_vae.safetensors");
                     }
                 }
             }
@@ -344,7 +398,10 @@ public class ComfyTemplateService implements IComfyTemplateService {
                 "    \"v1-5-pruned-emaonly.safetensors\": \"sd15_base_api.json\",\n" +
                 "    \"sd_xl_base_1.0.safetensors\": \"sdxl_base_api.json\",\n" +
                 "    \"flux1-schnell-fp8.safetensors\": \"flux_base_api.json\",\n" +
-                "    \"longcat_image_bf16.safetensors\": \"lumina2_base_api.json\"\n" +
+                "    \"longcat_image_bf16.safetensors\": \"lumina2_base_api.json\",\n" +
+                "    \"z_image_turbo_bf16.safetensors\": \"lumina2_base_api.json\",\n" +
+                "    \"z_image_bf16.safetensors\": \"lumina2_base_api.json\",\n" +
+                "    \"acestep_v1.5_turbo.safetensors\": \"lumina2_base_api.json\"\n" +
                 "  }\n" +
                 "}";
         try {

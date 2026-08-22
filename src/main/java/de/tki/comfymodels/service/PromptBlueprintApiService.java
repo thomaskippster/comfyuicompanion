@@ -6,6 +6,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.Locale;
 import java.util.Set;
 
 /**
@@ -27,11 +28,12 @@ public class PromptBlueprintApiService {
             String samplerName,
             String scheduler,
             double denoise,
-            int    batchSize
+            int    batchSize,
+            String inputImageFile
     ) {
         // Overloaded constructor for backward compatibility
         public PromptLabInputs(String positivePrompt, int width, int height, int steps, double cfg, long seed) {
-            this(positivePrompt, "", width, height, steps, cfg, seed, "Auto", "Auto", 1.0, 1);
+            this(positivePrompt, "", width, height, steps, cfg, seed, "Auto", "Auto", 1.0, 1, null);
         }
     }
 
@@ -65,30 +67,42 @@ public class PromptBlueprintApiService {
             if (inp == null) continue;
             String ct = node.optString("class_type", "");
 
-            // Positive & Negative CLIPTextEncode
-            if ("CLIPTextEncode".equals(ct)) {
-                if (inp.has("text")) {
-                    String tv = inp.optString("text", "").toLowerCase();
+            // Positive & Negative text encoders (CLIPTextEncode, TextEncodeQwenImageEditPlus, etc.)
+            if ("CLIPTextEncode".equals(ct) || ct.contains("TextEncode") || ct.contains("CLIPText")) {
+                String textField = inp.has("prompt") ? "prompt" : "text";
+                if (inp.has(textField) || "TextEncodeQwenImageEditPlus".equals(ct)) {
+                    String tv = inp.optString(textField, "").toLowerCase();
                     boolean isNegByLink = negativeNodeIds.contains(key);
                     boolean isNegByText = tv.contains("bad") || tv.contains("blurry")
                             || tv.contains("low quality") || tv.contains("worst");
 
                     if (isNegByLink || isNegByText) {
                         if (inputs.negativePrompt() != null && !inputs.negativePrompt().isBlank()) {
-                            inp.put("text", inputs.negativePrompt());
+                            inp.put(textField, inputs.negativePrompt());
                         }
                     } else if (inputs.positivePrompt() != null && !inputs.positivePrompt().isBlank()) {
-                        inp.put("text", inputs.positivePrompt());
+                        inp.put(textField, inputs.positivePrompt());
                     }
                 }
             }
 
+            // SaveImage / SaveImageAdvanced filename prefix
+            if ("SaveImageAdvanced".equals(ct) || "SaveImage".equals(ct)) {
+                if (!inp.has("filename_prefix") || inp.optString("filename_prefix").isBlank()) {
+                    inp.put("filename_prefix", "ComfyCompanion");
+                }
+            }
+
             // Latent image dimensions & batch size
-            if ((ct.contains("Empty") || ct.contains("Latent")) && (inp.has("width") || inp.has("height") || inp.has("batch_size"))) {
-                if (inp.has("width")) inp.put("width", inputs.width());
-                if (inp.has("height")) inp.put("height", inputs.height());
-                if (inp.has("batch_size") && inputs.batchSize() > 0) {
-                    inp.put("batch_size", inputs.batchSize());
+            if (ct.contains("Empty") || ct.contains("Latent")) {
+                if (inp.has("width") || "EmptyFlux2LatentImage".equals(ct) || "EmptyLatentImage".equals(ct) || "EmptySD3LatentImage".equals(ct)) {
+                    inp.put("width", inputs.width());
+                }
+                if (inp.has("height") || "EmptyFlux2LatentImage".equals(ct) || "EmptyLatentImage".equals(ct) || "EmptySD3LatentImage".equals(ct)) {
+                    inp.put("height", inputs.height());
+                }
+                if (inp.has("batch_size") || "EmptyFlux2LatentImage".equals(ct) || "EmptyLatentImage".equals(ct) || "EmptySD3LatentImage".equals(ct)) {
+                    inp.put("batch_size", inputs.batchSize() > 0 ? inputs.batchSize() : 1);
                 }
             }
 
@@ -96,35 +110,112 @@ public class PromptBlueprintApiService {
             if ("KSampler".equals(ct) || "KSamplerAdvanced".equals(ct)) {
                 inp.put("steps", inputs.steps());
                 inp.put("cfg",   inputs.cfg());
-                if (inputs.samplerName() != null && !inputs.samplerName().equalsIgnoreCase("Auto")) {
-                    inp.put("sampler_name", inputs.samplerName());
-                }
-                if (inputs.scheduler() != null && !inputs.scheduler().equalsIgnoreCase("Auto")) {
-                    inp.put("scheduler", inputs.scheduler());
-                }
                 if (inputs.denoise() >= 0.0 && inputs.denoise() <= 1.0) {
                     inp.put("denoise", inputs.denoise());
                 }
-            } else if ("BasicScheduler".equals(ct) || "BetaScheduler".equals(ct)) {
+            } else if ("BasicScheduler".equals(ct) || "BetaScheduler".equals(ct) || "Flux2Scheduler".equals(ct) || "SDTurboScheduler".equals(ct)) {
                 inp.put("steps", inputs.steps());
-                if (inputs.scheduler() != null && !inputs.scheduler().equalsIgnoreCase("Auto")) {
-                    inp.put("scheduler", inputs.scheduler());
-                }
-            } else if ("KSamplerSelect".equals(ct)) {
-                if (inputs.samplerName() != null && !inputs.samplerName().equalsIgnoreCase("Auto")) {
-                    inp.put("sampler_name", inputs.samplerName());
-                }
             } else if ("FluxGuidance".equals(ct)) {
                 inp.put("guidance", inputs.cfg());
+            } else if ("CFGGuider".equals(ct)) {
+                if (inputs.cfg() > 0) {
+                    inp.put("cfg", inputs.cfg());
+                }
+            }
+
+            if (inp.has("sampler_name")) {
+                if (inputs.samplerName() != null && !inputs.samplerName().equalsIgnoreCase("Auto") && !inputs.samplerName().equalsIgnoreCase("COMBO")) {
+                    inp.put("sampler_name", inputs.samplerName());
+                } else if (inp.optString("sampler_name").equalsIgnoreCase("COMBO") || inp.optString("sampler_name").equalsIgnoreCase("Auto") || inp.optString("sampler_name").isBlank()) {
+                    inp.put("sampler_name", "euler");
+                }
+            }
+
+            if ("KSamplerSelect".equals(ct)) {
+                if (inputs.samplerName() != null && !inputs.samplerName().equalsIgnoreCase("Auto") && !inputs.samplerName().equalsIgnoreCase("COMBO")) {
+                    inp.put("sampler_name", inputs.samplerName());
+                } else if (!inp.has("sampler_name") || inp.optString("sampler_name").equalsIgnoreCase("COMBO") || inp.optString("sampler_name").equalsIgnoreCase("Auto") || inp.optString("sampler_name").isBlank()) {
+                    inp.put("sampler_name", "euler");
+                }
+            }
+
+            if (inp.has("scheduler")) {
+                if (inputs.scheduler() != null && !inputs.scheduler().equalsIgnoreCase("Auto") && !inputs.scheduler().equalsIgnoreCase("COMBO")) {
+                    inp.put("scheduler", inputs.scheduler());
+                } else if (inp.optString("scheduler").equalsIgnoreCase("COMBO") || inp.optString("scheduler").equalsIgnoreCase("Auto") || inp.optString("scheduler").isBlank()) {
+                    inp.put("scheduler", "normal");
+                }
+            }
+
+            // Image input injection for Image Edit / Img2Img
+            if ("LoadImage".equals(ct)) {
+                if (inputs.inputImageFile() != null && !inputs.inputImageFile().isBlank()) {
+                    inp.put("image", inputs.inputImageFile());
+                }
             }
 
             // Seed in any node that carries a numeric seed field
             for (String ik : new ArrayList<>(inp.keySet())) {
-                String lk = ik.toLowerCase();
+                String lk = ik.toLowerCase(Locale.ROOT);
                 boolean isSeedKey = lk.equals("seed") || lk.equals("noise_seed")
-                        || lk.endsWith("_seed") || lk.startsWith("seed_");
-                if (isSeedKey && inp.get(ik) instanceof Number) {
-                    inp.put(ik, inputs.seed());
+                        || lk.endsWith("_seed") || lk.startsWith("seed_")
+                        || lk.equals("seed_value");
+                if (isSeedKey && (inp.get(ik) instanceof Number || inp.get(ik) instanceof String)) {
+                    long clampedSeed = clampSeedForNode(ct, inputs.seed());
+                    inp.put(ik, clampedSeed);
+                }
+            }
+        }
+        sanitizeAllSeedsInPrompt(promptObj);
+    }
+
+    public static boolean is32BitNode(String classType) {
+        if (classType == null) return false;
+        String lower = classType.toLowerCase(Locale.ROOT);
+        return lower.contains("bytedance") || lower.contains("seedance") || lower.contains("seedream")
+                || lower.contains("cogvideo") || lower.contains("kling") || lower.contains("tencent")
+                || lower.contains("minimax") || lower.contains("kimi") || lower.contains("vidu")
+                || lower.contains("luma") || lower.contains("runway") || lower.contains("animatediff")
+                || lower.contains("svd");
+    }
+
+    public static long clampSeedForNode(String classType, long seed) {
+        if (is32BitNode(classType)) {
+            return Math.abs(seed) % 2147483647L;
+        }
+        return Math.abs(seed);
+    }
+
+    public static void sanitizeAllSeedsInPrompt(JSONObject promptDict) {
+        if (promptDict == null) return;
+        for (String key : promptDict.keySet()) {
+            JSONObject node = promptDict.optJSONObject(key);
+            if (node == null) continue;
+            JSONObject inp = node.optJSONObject("inputs");
+            if (inp == null) continue;
+            String ct = node.optString("class_type", "");
+            boolean is32Bit = is32BitNode(ct);
+
+            for (String ik : new ArrayList<>(inp.keySet())) {
+                String lk = ik.toLowerCase(Locale.ROOT);
+                boolean isSeedKey = lk.equals("seed") || lk.equals("noise_seed")
+                        || lk.endsWith("_seed") || lk.startsWith("seed_")
+                        || lk.equals("seed_value");
+                if (isSeedKey) {
+                    Object val = inp.get(ik);
+                    if (val instanceof Number num) {
+                        long numVal = num.longValue();
+                        if (is32Bit && numVal > 2147483647L) {
+                            inp.put(ik, Math.abs(numVal) % 2147483647L);
+                        }
+                    } else if (val instanceof String s) {
+                        try {
+                            long numVal = Long.parseLong(s.trim());
+                            if (is32Bit && numVal > 2147483647L) {
+                                inp.put(ik, Math.abs(numVal) % 2147483647L);
+                            }
+                        } catch (NumberFormatException ignored) {}
+                    }
                 }
             }
         }

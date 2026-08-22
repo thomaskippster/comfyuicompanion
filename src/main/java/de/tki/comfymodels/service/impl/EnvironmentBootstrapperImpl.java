@@ -276,6 +276,15 @@ public class EnvironmentBootstrapperImpl {
                     }
                 }
 
+                // 4b. Pygit2 für ComfyUI-Manager & Git-Support installieren
+                progressCallback.accept("🚀 Installing pygit2 for Git support in embedded Python...");
+                int pygit2Exit = runPipCommand(pythonExe, comfyDir, progressCallback, "install", "pygit2", "--no-warn-script-location");
+                if (pygit2Exit == 0) {
+                    progressCallback.accept("✅ pygit2 successfully installed.");
+                } else {
+                    progressCallback.accept("⚠️ pip finished with code " + pygit2Exit + " on pygit2.");
+                }
+
                 // 5. Video-Helper-Suite requirements (if present)
                 Path videoHelperReq = comfyDir.resolve("custom_nodes").resolve("ComfyUI-Video-Helper-Suite").resolve("requirements.txt");
                 if (Files.exists(videoHelperReq)) {

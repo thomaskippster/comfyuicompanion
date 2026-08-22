@@ -1,8 +1,10 @@
 package de.tki.comfymodels.service;
 
 import de.tki.comfymodels.Main;
+import de.tki.comfymodels.controller.DownloadManagerController;
 import de.tki.comfymodels.domain.ModelInfo;
 import de.tki.comfymodels.service.impl.*;
+import de.tki.comfymodels.ui.DownloadManagerView;
 import de.tki.comfymodels.util.BackgroundExecutor;
 import org.json.JSONObject;
 import org.junit.jupiter.api.BeforeEach;
@@ -71,20 +73,32 @@ public class ModelStatusLogicIntegrationTest {
             Mockito.mock(HuggingFaceService.class)
         );
 
+        BackgroundExecutor bgExec = new BackgroundExecutor();
+        DownloadManagerView view = new DownloadManagerView();
+        DownloadManagerController dmController = new DownloadManagerController(
+            configService, Mockito.mock(DefaultDownloadManager.class), analyzer,
+            Mockito.mock(ModelSearchService.class), Mockito.mock(ModelValidator.class),
+            Mockito.mock(WorkflowService.class), Mockito.mock(ModelListService.class),
+            archiveService, localScanner, Mockito.mock(ModelHashRegistry.class),
+            Mockito.mock(ComfyDiagnosticService.class), bgExec, Mockito.mock(CivitaiService.class)
+        );
+        dmController.setViewReference(view);
+
         // Inject dependencies via reflection since they are @Autowired in Main
         setField(main, "configService", configService);
         setField(main, "localScanner", localScanner);
         setField(main, "pathResolver", pathResolver);
         setField(main, "archiveService", archiveService);
-        setField(main, "backgroundExecutor", new BackgroundExecutor());
+        setField(main, "backgroundExecutor", bgExec);
         setField(main, "processTracker", new ProcessTracker());
+        setField(main, "downloadManagerView", view);
+        setField(main, "downloadManagerController", dmController);
 
         // Initialize enough UI for analyzeJsonContent to work
-        setField(main, "tableModel", new DefaultTableModel(new String[]{"S", "T", "N", "Sz", "Src", "P", "U", "Status"}, 0));
-        JTextArea area = new JTextArea("dummy workflow");
-        setField(main, "jsonInputArea", area);
-        setField(main, "statusLabel", new JLabel());
-        setField(main, "downloadButton", new JButton());
+        setField(main, "tableModel", view.getTableModel());
+        setField(main, "jsonInputArea", view.getJsonInputArea());
+        setField(main, "statusLabel", view.getStatusLabel());
+        setField(main, "downloadButton", view.getDownloadButton());
     }
 
     private void setField(Object target, String name, Object value) throws Exception {
@@ -125,10 +139,13 @@ public class ModelStatusLogicIntegrationTest {
         Files.writeString(modelsDir.resolve("checkpoints/both_locations.safetensors"), "data");
         Files.writeString(archiveDir.resolve("checkpoints/both_locations.safetensors"), "data");
 
+        // Set input JSON in text area
+        JTextArea area = (JTextArea) getField(main, "jsonInputArea");
+        area.setText("dummy workflow");
+
         // Execute analysis
-        java.lang.reflect.Method method = main.getClass().getDeclaredMethod("analyzeJsonContent");
-        method.setAccessible(true);
-        method.invoke(main);
+        DownloadManagerController dmController = (DownloadManagerController) getField(main, "downloadManagerController");
+        dmController.analyzeJsonContent();
 
         DefaultTableModel model = (DefaultTableModel) getField(main, "tableModel");
 

@@ -1,51 +1,69 @@
+/* ==========================================================================
+   ComfyUI Companion - Video Architect Styling
+   Matches ThemeManager tokens: #0a0b0e (BG), #181b21 (Card), #1ebeaa (Accent)
+   ========================================================================== */
+
 .root {
-    -fx-font-family: "Segoe UI", "Inter", "Roboto", sans-serif;
+    -fx-font-family: "Segoe UI", "Inter", -apple-system, sans-serif;
     -fx-font-size: 13px;
-    -fx-custom-bg-color: #121316;
-    -fx-custom-panel-bg: rgba(18, 19, 22, 0.9);
-    -fx-custom-text-color: #ffffff;
-    -fx-custom-text-muted: #b4becd;
-    -fx-custom-border-color: rgba(255, 255, 255, 0.12);
-    -fx-custom-accent-color: #0078d7;
-    -fx-custom-accent-hover: #008ceb;
-    -fx-custom-accent-pressed: #0064b4;
-    -fx-custom-input-bg: rgba(30, 34, 42, 0.8);
-    -fx-custom-card-bg: rgba(30, 34, 42, 0.7);
-    -fx-custom-card-border: rgba(255, 255, 255, 0.12);
-    -fx-custom-card-selected-bg: rgba(0, 120, 215, 0.15);
-    -fx-custom-card-selected-border: #0078d7;
-    -fx-custom-scroll-track: rgba(18, 19, 22, 0.5);
-    -fx-custom-scroll-thumb: rgba(100, 100, 100, 0.5);
-    -fx-custom-scroll-thumb-hover: rgba(100, 100, 100, 0.8);
+    -fx-custom-bg-color: #0a0b0e;
+    -fx-custom-panel-bg: rgba(24, 27, 33, 0.95);
+    -fx-custom-text-color: #e0f8f5;
+    -fx-custom-text-muted: #8ca3a8;
+    -fx-custom-border-color: #2a2e38;
+    -fx-custom-accent-color: #1ebeaa;
+    -fx-custom-accent-hover: #28ffd0;
+    -fx-custom-accent-pressed: #159c8d;
+    -fx-custom-input-bg: #12151b;
+    -fx-custom-card-bg: #181b21;
+    -fx-custom-card-border: #2a2e38;
+    -fx-custom-card-selected-bg: rgba(30, 190, 170, 0.14);
+    -fx-custom-card-selected-border: #1ebeaa;
+    -fx-custom-scroll-track: #0e1014;
+    -fx-custom-scroll-thumb: #2a2e38;
+    -fx-custom-scroll-thumb-hover: #1ebeaa;
+    
+    -fx-control-inner-background: #12151b;
+    -fx-text-inner-color: #e0f8f5;
+    -fx-highlight-fill: #1ebeaa;
+    -fx-highlight-text-fill: #0a0b0e;
+    -fx-prompt-text-fill: #8ca3a8;
     
     -fx-background-color: -fx-custom-bg-color;
 }
 
 .root.light-theme {
-    -fx-custom-bg-color: #f0f2f5;
-    -fx-custom-panel-bg: rgba(255, 255, 255, 0.85);
-    -fx-custom-text-color: #1a1f2c;
-    -fx-custom-text-muted: #5c7080;
-    -fx-custom-border-color: rgba(0, 0, 0, 0.1);
-    -fx-custom-accent-color: #008b8b;
-    -fx-custom-accent-hover: #00a8a8;
-    -fx-custom-accent-pressed: #006666;
-    -fx-custom-input-bg: rgba(255, 255, 255, 0.9);
-    -fx-custom-card-bg: rgba(240, 242, 245, 0.8);
-    -fx-custom-card-border: rgba(0, 0, 0, 0.05);
-    -fx-custom-card-selected-bg: rgba(0, 139, 139, 0.12);
-    -fx-custom-card-selected-border: #008b8b;
-    -fx-custom-scroll-track: rgba(0, 0, 0, 0.05);
-    -fx-custom-scroll-thumb: rgba(0, 0, 0, 0.15);
-    -fx-custom-scroll-thumb-hover: rgba(0, 139, 139, 0.4);
+    -fx-custom-bg-color: #f5f5fa;
+    -fx-custom-panel-bg: rgba(255, 255, 255, 0.95);
+    -fx-custom-text-color: #28282d;
+    -fx-custom-text-muted: #646469;
+    -fx-custom-border-color: rgba(0, 0, 0, 0.12);
+    -fx-custom-accent-color: #0078d7;
+    -fx-custom-accent-hover: #0086f0;
+    -fx-custom-accent-pressed: #005a9e;
+    -fx-custom-input-bg: #ffffff;
+    -fx-custom-card-bg: #ffffff;
+    -fx-custom-card-border: rgba(0, 0, 0, 0.08);
+    -fx-custom-card-selected-bg: rgba(0, 120, 215, 0.10);
+    -fx-custom-card-selected-border: #0078d7;
+    -fx-custom-scroll-track: #e9e9ee;
+    -fx-custom-scroll-thumb: #c8c8ce;
+    -fx-custom-scroll-thumb-hover: #0078d7;
+    
+    -fx-control-inner-background: #ffffff;
+    -fx-text-inner-color: #28282d;
+    -fx-highlight-fill: #0078d7;
+    -fx-highlight-text-fill: #ffffff;
+    -fx-prompt-text-fill: #888890;
 }
 
+/* --- Labels --- */
 .label {
     -fx-text-fill: -fx-custom-text-color;
 }
 
 .label-title {
-    -fx-font-size: 18px;
+    -fx-font-size: 17px;
     -fx-font-weight: bold;
     -fx-text-fill: -fx-custom-text-color;
 }
@@ -55,8 +73,40 @@
     -fx-text-fill: -fx-custom-text-muted;
 }
 
+/* --- Text Inputs --- */
+.text-input {
+    -fx-text-fill: -fx-custom-text-color;
+    -fx-prompt-text-fill: -fx-custom-text-muted;
+    -fx-highlight-fill: -fx-custom-accent-color;
+    -fx-highlight-text-fill: #0a0b0e;
+    -fx-background-color: -fx-custom-input-bg;
+    -fx-background-radius: 8px;
+    -fx-border-color: -fx-custom-border-color;
+    -fx-border-radius: 8px;
+    -fx-font-size: 13px;
+}
+
+.text-field {
+    -fx-background-color: -fx-custom-input-bg;
+    -fx-background-radius: 8px;
+    -fx-border-color: -fx-custom-border-color;
+    -fx-border-radius: 8px;
+    -fx-text-fill: -fx-custom-text-color;
+    -fx-prompt-text-fill: -fx-custom-text-muted;
+    -fx-highlight-fill: -fx-custom-accent-color;
+    -fx-highlight-text-fill: #0a0b0e;
+    -fx-padding: 7px 10px;
+}
+.text-field:focused {
+    -fx-border-color: -fx-custom-accent-color;
+}
+
 .text-area {
     -fx-background-color: transparent;
+    -fx-text-fill: -fx-custom-text-color;
+    -fx-prompt-text-fill: -fx-custom-text-muted;
+    -fx-highlight-fill: -fx-custom-accent-color;
+    -fx-highlight-text-fill: #0a0b0e;
 }
 .text-area .viewport {
     -fx-background-color: transparent;
@@ -66,84 +116,117 @@
     -fx-background-radius: 8px;
     -fx-border-color: -fx-custom-border-color;
     -fx-border-radius: 8px;
-    -fx-text-fill: -fx-custom-text-color;
+    -fx-padding: 8px;
 }
 .text-area:focused .content {
     -fx-border-color: -fx-custom-accent-color;
 }
-
-.text-field {
-    -fx-background-color: -fx-custom-input-bg;
-    -fx-background-radius: 6px;
-    -fx-border-color: -fx-custom-border-color;
-    -fx-border-radius: 6px;
-    -fx-text-fill: -fx-custom-text-color;
-    -fx-padding: 6px;
+.text-area .text {
+    -fx-fill: -fx-custom-text-color;
 }
-.text-field:focused {
-    -fx-border-color: -fx-custom-accent-color;
+.text-area:focused .text {
+    -fx-fill: -fx-custom-text-color;
 }
 
+/* --- Spinners --- */
 .spinner {
     -fx-background-color: transparent;
     -fx-border-color: -fx-custom-border-color;
-    -fx-border-radius: 6px;
-    -fx-background-radius: 6px;
+    -fx-border-radius: 8px;
+    -fx-background-radius: 8px;
 }
 .spinner .editor {
     -fx-background-color: -fx-custom-input-bg;
-    -fx-background-radius: 6px 0 0 6px;
+    -fx-background-radius: 8px 0 0 8px;
     -fx-text-fill: -fx-custom-text-color;
+    -fx-prompt-text-fill: -fx-custom-text-muted;
     -fx-padding: 6px;
 }
 .spinner .increment-arrow-button, .spinner .decrement-arrow-button {
-    -fx-background-color: -fx-custom-card-bg;
+    -fx-background-color: #21252d;
     -fx-border-color: -fx-custom-border-color;
 }
 .spinner .increment-arrow-button:hover, .spinner .decrement-arrow-button:hover {
     -fx-background-color: -fx-custom-accent-color;
 }
 
+/* --- Buttons --- */
 .button {
-    -fx-background-color: -fx-custom-card-bg;
+    -fx-background-color: #21252d;
     -fx-text-fill: -fx-custom-text-color;
     -fx-background-radius: 8px;
     -fx-border-color: -fx-custom-border-color;
     -fx-border-radius: 8px;
-    -fx-padding: 8px 16px;
+    -fx-padding: 7px 14px;
     -fx-cursor: hand;
-    -fx-font-weight: bold;
+    -fx-font-weight: 600;
 }
 .button:hover {
-    -fx-background-color: rgba(255, 255, 255, 0.08);
+    -fx-background-color: #2a2e38;
     -fx-border-color: -fx-custom-accent-color;
+    -fx-text-fill: #ffffff;
 }
 .button:pressed {
-    -fx-background-color: rgba(255, 255, 255, 0.15);
+    -fx-background-color: #181b21;
 }
 
 .button.primary-button {
     -fx-background-color: -fx-custom-accent-color;
-    -fx-text-fill: #ffffff;
+    -fx-text-fill: #0a0b0e;
     -fx-border-color: transparent;
+    -fx-font-weight: bold;
 }
 .button.primary-button:hover {
     -fx-background-color: -fx-custom-accent-hover;
+    -fx-text-fill: #0a0b0e;
 }
 .button.primary-button:pressed {
     -fx-background-color: -fx-custom-accent-pressed;
 }
 
-.split-pane {
-    -fx-background-color: transparent;
+.button.danger-button {
+    -fx-background-color: rgba(239, 68, 68, 0.12);
+    -fx-text-fill: #f87171;
+    -fx-border-color: rgba(239, 68, 68, 0.35);
+    -fx-background-radius: 8px;
+    -fx-border-radius: 8px;
 }
-.split-pane *.split-pane-divider {
-    -fx-background-color: transparent;
-}
-.split-pane *.horizontal-grabber {
-    -fx-background-color: -fx-custom-border-color;
+.button.danger-button:hover {
+    -fx-background-color: rgba(239, 68, 68, 0.28);
+    -fx-text-fill: #ffffff;
 }
 
+/* --- Dialogs --- */
+.dialog-pane {
+    -fx-background-color: -fx-custom-panel-bg;
+    -fx-border-color: -fx-custom-border-color;
+    -fx-border-radius: 12px;
+    -fx-background-radius: 12px;
+    -fx-padding: 10px;
+}
+.dialog-pane > *.header-panel {
+    -fx-background-color: -fx-custom-card-bg;
+    -fx-border-color: -fx-custom-border-color;
+    -fx-border-width: 0 0 1 0;
+    -fx-padding: 12px;
+}
+.dialog-pane > *.header-panel *.label {
+    -fx-font-weight: bold;
+    -fx-font-size: 15px;
+    -fx-text-fill: -fx-custom-text-color;
+}
+.dialog-pane > *.content {
+    -fx-background-color: transparent;
+    -fx-padding: 15px;
+}
+.dialog-pane > *.button-bar {
+    -fx-background-color: -fx-custom-card-bg;
+    -fx-border-color: -fx-custom-border-color;
+    -fx-border-width: 1 0 0 0;
+    -fx-padding: 10px 15px;
+}
+
+/* --- Containers --- */
 .glass-panel {
     -fx-background-color: -fx-custom-panel-bg;
     -fx-background-radius: 12px;
@@ -160,12 +243,26 @@
     -fx-padding: 16px;
 }
 
-/* ListView custom styling */
+/* --- SplitPane --- */
+.split-pane {
+    -fx-background-color: transparent;
+    -fx-padding: 0;
+}
+.split-pane *.split-pane-divider {
+    -fx-background-color: transparent;
+    -fx-padding: 0 4px;
+}
+.split-pane *.horizontal-grabber {
+    -fx-background-color: -fx-custom-border-color;
+}
+
+/* --- ListView & Scene Cards --- */
 .list-view {
     -fx-background-color: transparent;
     -fx-border-color: -fx-custom-border-color;
-    -fx-border-radius: 8px;
-    -fx-padding: 4px;
+    -fx-border-radius: 10px;
+    -fx-background-radius: 10px;
+    -fx-padding: 6px;
 }
 .list-view .viewport {
     -fx-background-color: transparent;
@@ -184,27 +281,51 @@
     -fx-background-color: transparent;
 }
 
-/* Scene Card within ListView */
 .scene-card {
     -fx-background-color: -fx-custom-card-bg;
-    -fx-background-radius: 8px;
+    -fx-background-radius: 10px;
     -fx-border-color: -fx-custom-card-border;
-    -fx-border-radius: 8px;
-    -fx-padding: 10px;
+    -fx-border-radius: 10px;
+    -fx-padding: 10px 14px;
 }
 .list-cell:filled:selected .scene-card {
     -fx-background-color: -fx-custom-card-selected-bg;
     -fx-border-color: -fx-custom-card-selected-border;
 }
 
-/* Custom ScrollBar styling */
+/* --- Progress Bar --- */
+.progress-bar {
+    -fx-indeterminate-bar-length: 60;
+    -fx-indeterminate-bar-animation-time: 2.0;
+}
+.progress-bar .track {
+    -fx-background-color: -fx-custom-input-bg;
+    -fx-background-radius: 8px;
+    -fx-border-color: -fx-custom-border-color;
+    -fx-border-radius: 8px;
+}
+.progress-bar .bar {
+    -fx-background-color: -fx-custom-accent-color;
+    -fx-background-radius: 8px;
+    -fx-padding: 5px;
+}
+
+/* --- ScrollBar --- */
 .scroll-bar:vertical, .scroll-bar:horizontal {
     -fx-background-color: -fx-custom-scroll-track;
+    -fx-background-radius: 6px;
 }
 .scroll-bar .thumb {
     -fx-background-color: -fx-custom-scroll-thumb;
-    -fx-background-radius: 4px;
+    -fx-background-radius: 6px;
 }
 .scroll-bar .thumb:hover {
     -fx-background-color: -fx-custom-scroll-thumb-hover;
+}
+
+/* --- Separator --- */
+.separator *.line {
+    -fx-border-color: -fx-custom-border-color;
+    -fx-border-style: solid;
+    -fx-border-width: 0.5px;
 }

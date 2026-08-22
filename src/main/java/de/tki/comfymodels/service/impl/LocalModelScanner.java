@@ -29,7 +29,7 @@ public class LocalModelScanner {
 
     private final ConfigService configService;
     private final PathResolver pathResolver;
-    private final Map<String, Path> modelCache = new HashMap<>();
+    private final Map<String, Path> modelCache = new java.util.concurrent.ConcurrentHashMap<>();
 
     @Autowired
     public LocalModelScanner(ConfigService configService, PathResolver pathResolver) {
@@ -43,6 +43,7 @@ public class LocalModelScanner {
     public List<ModelInfo> scanLocalModels() {
         List<ModelInfo> foundModels = new ArrayList<>();
         java.util.Set<String> seenPaths = new java.util.HashSet<>();
+        modelCache.clear();
         
         // 1. Scan Standard Models Path
         String modelsPathStr = configService.getModelsPath();
@@ -76,13 +77,34 @@ public class LocalModelScanner {
             for (Path file : files) {
                 String absPath = file.toAbsolutePath().normalize().toString().toLowerCase();
                 if (seenPaths.add(absPath)) {
-                    modelCache.put(file.getFileName().toString().toLowerCase(), file);
+                    String fnLower = file.getFileName().toString().toLowerCase();
+                    modelCache.put(fnLower, file);
+                    int dotIdx = fnLower.lastIndexOf('.');
+                    if (dotIdx > 0) {
+                        modelCache.putIfAbsent(fnLower.substring(0, dotIdx), file);
+                    }
                     foundModels.add(createModelInfo(file, absRoot, forcedType));
                 }
             }
         } catch (IOException e) {
             logger.error("Error scanning directory " + absRoot + ": " + e.getMessage());
         }
+    }
+
+    /**
+     * Fast in-memory lookup from scanned cache.
+     */
+    public Optional<Path> findModelFromCache(String filename) {
+        if (filename == null || filename.isBlank()) return Optional.empty();
+        String lower = filename.toLowerCase().trim();
+        Path p = modelCache.get(lower);
+        if (p != null && Files.exists(p)) return Optional.of(p);
+        int dot = lower.lastIndexOf('.');
+        if (dot > 0) {
+            p = modelCache.get(lower.substring(0, dot));
+            if (p != null && Files.exists(p)) return Optional.of(p);
+        }
+        return Optional.empty();
     }
 
     /**
@@ -100,7 +122,18 @@ public class LocalModelScanner {
     }
 
     public Optional<Path> findModelWithPrefSizeAndType(Path specificRoot, String filename, long preferredSize, String type) {
-        if (filename == null) return Optional.empty();
+        if (filename == null || filename.isBlank()) return Optional.empty();
+
+        // 0. Instant in-memory check if no specific root is requested
+        if (specificRoot == null) {
+            Optional<Path> cached = findModelFromCache(filename);
+            if (cached.isPresent()) {
+                if (preferredSize <= 0) return cached;
+                try {
+                    if (Files.size(cached.get()) == preferredSize) return cached;
+                } catch (Exception ignored) {}
+            }
+        }
 
         // 1. Search in specific root if provided
         if (specificRoot != null) {

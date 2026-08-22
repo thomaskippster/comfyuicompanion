@@ -49,6 +49,7 @@ public class GuiStatusTransitionTest {
 
     @Mock private HardwareMonitorService hardwareMonitorService;
     @Mock private UpdaterService updaterService;
+    @Mock private LocalAIService localAIService;
 
     @BeforeEach
     public void setUp() throws InterruptedException, InvocationTargetException {
@@ -86,8 +87,19 @@ public class GuiStatusTransitionTest {
             ReflectionTestUtils.setField(mainFrame, "versionService", versionService);
 
             ReflectionTestUtils.setField(mainFrame, "hardwareMonitorService", hardwareMonitorService);
-            ReflectionTestUtils.setField(mainFrame, "updaterService", updaterService);
-            ReflectionTestUtils.setField(mainFrame, "backgroundExecutor", new de.tki.comfymodels.util.BackgroundExecutor());
+            when(localAIService.isLocalGemmaDownloaded()).thenReturn(true);
+            ReflectionTestUtils.setField(mainFrame, "localAIService", localAIService);
+            de.tki.comfymodels.util.BackgroundExecutor bgExec = new de.tki.comfymodels.util.BackgroundExecutor();
+            DownloadManagerView dmView = new DownloadManagerView();
+            de.tki.comfymodels.controller.DownloadManagerController dmController = new de.tki.comfymodels.controller.DownloadManagerController(
+                configService, downloadManager, analyzer, searchService, modelValidator,
+                workflowService, modelListService, archiveService, localScanner, hashRegistry,
+                diagnosticService, bgExec, civitaiService
+            );
+
+            ReflectionTestUtils.setField(mainFrame, "downloadManagerView", dmView);
+            ReflectionTestUtils.setField(mainFrame, "downloadManagerController", dmController);
+            ReflectionTestUtils.setField(mainFrame, "backgroundExecutor", bgExec);
             ReflectionTestUtils.setField(mainFrame, "processTracker", new de.tki.comfymodels.service.impl.ProcessTracker());
             
             ReflectionTestUtils.invokeMethod(mainFrame, "initUI");
@@ -167,6 +179,10 @@ public class GuiStatusTransitionTest {
         
         when(downloadManager.isPaused()).thenReturn(true);
         ReflectionTestUtils.setField(mainFrame, "isDownloading", true);
+        Object dmController = ReflectionTestUtils.getField(mainFrame, "downloadManagerController");
+        if (dmController != null) {
+            ReflectionTestUtils.setField(dmController, "isDownloading", true);
+        }
         
         SwingUtilities.invokeAndWait(() -> {
             JButton pauseButton = (JButton) ReflectionTestUtils.getField(mainFrame, "pauseButton");

@@ -153,13 +153,43 @@ public class LocalGemmaService {
 
                 logger.info("Loading Gemma model from: " + modelFile.getAbsolutePath());
                 
-                ModelParameters modelParams = new ModelParameters()
-                    .setModel(modelFile.getAbsolutePath())
-                    .setCtxSize(2048)
-                    .setGpuLayers(0); // Run on CPU to prevent VRAM conflict with ComfyUI
+                // Attempt GPU acceleration first (offload all layers to GPU via CUDA / Vulkan / Metal)
+                boolean gpuLoaded = false;
+                try {
+                    int gpuLayers = 99; // 99 layers offloads all transformer layers to GPU
+                    logger.info("Attempting to load Gemma model with GPU acceleration (gpuLayers=" + gpuLayers + ")...");
+                    
+                    ModelParameters modelParams = new ModelParameters()
+                        .setModel(modelFile.getAbsolutePath())
+                        .setCtxSize(2048)
+                        .setGpuLayers(gpuLayers);
+                    
+                    model = new LlamaModel(modelParams);
+                    gpuLoaded = true;
+                    logger.info("✅ Gemma model loaded successfully with GPU acceleration.");
+                } catch (Throwable t) {
+                    logger.warn("⚠️ GPU acceleration could not be initialized (" + t.getMessage() + "). Falling back to CPU...");
+                    if (model != null) {
+                        try { model.close(); } catch (Exception ignored) {}
+                        model = null;
+                    }
+                }
                 
-                model = new LlamaModel(modelParams);
-                logger.info("Gemma model loaded successfully into RAM.");
+                // Fallback to CPU execution if GPU loading was not successful
+                if (!gpuLoaded || model == null) {
+                    try {
+                        ModelParameters modelParams = new ModelParameters()
+                            .setModel(modelFile.getAbsolutePath())
+                            .setCtxSize(2048)
+                            .setGpuLayers(0); // CPU fallback
+                        
+                        model = new LlamaModel(modelParams);
+                        logger.info("✅ Gemma model loaded successfully into RAM (CPU mode).");
+                    } catch (Throwable t) {
+                        logger.error("❌ Failed to load Gemma model on CPU: " + t.getMessage(), t);
+                        throw new IOException("Failed to load Gemma model: " + t.getMessage(), t);
+                    }
+                }
             }
             startUnloadTimer();
         }

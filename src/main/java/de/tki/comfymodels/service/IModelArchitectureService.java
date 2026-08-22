@@ -13,6 +13,7 @@ public interface IModelArchitectureService {
     int getBlueprintProgressPercent();
     String getBlueprintProgressFileName();
     boolean isBlueprintAnalysisCompleted();
+    boolean isAnalyzing();
     void runBlueprintAnalysis();
     java.util.List<java.util.Map<String, Object>> getBlueprintScanResults();
 

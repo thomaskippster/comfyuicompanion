@@ -1,47 +1,110 @@
 # Companion for ComfyUI Bridge
 import server
 import folder_paths
-import os
 import asyncio
-import importlib
 from aiohttp import web
 
 print("\033[95m[CMFC] UI Extension Bridge active\033[0m")
 
-@server.PromptServer.instance.routes.post("/cmfc/refresh-models")
-async def refresh_models(request):
-    data = await request.json() if request.has_body else {}
-    force_reload = data.get("force_reload", False)
-    
-    print(f"\033[92m🔥 [CMFC] Refresh signal received (Force Reload: {force_reload})\033[0m")
-    
-    # Wait for OS
-    await asyncio.sleep(1)
-    
-    try:
-        # Invalidate
-        if hasattr(folder_paths, "invalidate_all_cached_folders"):
-            folder_paths.invalidate_all_cached_folders()
-            
-        if hasattr(folder_paths, "filename_list_cache"):
-            folder_paths.filename_list_cache.clear()
-            
-        if hasattr(folder_paths, "cache_helper"):
-            folder_paths.cache_helper.clear()
 
-        # Object Info Reset
-        server.PromptServer.instance.object_info = None
-        
-    except Exception as e:
-        print(f"[CMFC] Error: {e}")
-    
-    # One-way broadcast to frontend
-    server.PromptServer.instance.send_sync("cmfc-refresh-ui", {
-        "status": "ok", 
-        "force_reload": force_reload
-    })
-    
-    return web.json_response({"status": "ok"})
+def _route_registered(method, path):
+    """Return True if the given (method, path) is already exposed by PromptServer."""
+    for route in server.PromptServer.instance.routes:
+        if route.method == method and route.path == path:
+            return True
+    return False
+
+
+if not _route_registered("POST", "/cmfc/refresh-models"):
+    @server.PromptServer.instance.routes.post("/cmfc/refresh-models")
+    async def refresh_models(request):
+        data = await request.json() if request.has_body else {}
+        force_reload = bool(data.get("force_reload", False))
+
+        print(f"\033[92m[CMFC] Refresh signal received (force_reload={force_reload})\033[0m")
+
+        # Give the client a moment to settle before invalidating caches.
+        await asyncio.sleep(1)
+
+        try:
+            if hasattr(folder_paths, "invalidate_all_cached_folders"):
+                folder_paths.invalidate_all_cached_folders()
+
+            if hasattr(folder_paths, "filename_list_cache"):
+                folder_paths.filename_list_cache.clear()
+
+            if hasattr(folder_paths, "cache_helper"):
+                folder_paths.cache_helper.clear()
+
+            # Force ComfyUI to rebuild the node metadata.
+            server.PromptServer.instance.object_info = None
+        except Exception as e:
+            print(f"[CMFC] Error: {e}")
+
+        server.PromptServer.instance.send_sync("cmfc-refresh-ui", {
+            "status": "ok",
+            "force_reload": force_reload,
+        })
+
+        return web.json_response({"status": "ok"})
+else:
+    print("[CMFC] Route /cmfc/refresh-models already registered, skipping.")
+
+
+if not _route_registered("POST", "/cmfc/load-workflow"):
+    @server.PromptServer.instance.routes.post("/cmfc/load-workflow")
+    async def load_workflow(request):
+        data = await request.json() if request.has_body else {}
+        workflow = data.get("workflow")
+        if not workflow:
+            return web.json_response(
+                {"status": "error", "message": "No workflow data"},
+                status=400,
+            )
+
+        server.PromptServer.instance.send_sync("cmfc-load-workflow", {
+            "workflow": workflow,
+        })
+        return web.json_response({"status": "ok"})
+else:
+    print("[CMFC] Route /cmfc/load-workflow already registered, skipping.")
+
+
+if not _route_registered("POST", "/cmfc/convert-workflow"):
+    @server.PromptServer.instance.routes.post("/cmfc/convert-workflow")
+    async def convert_workflow(request):
+        """
+        Accepts a GUI-format workflow JSON from the Java companion app and relays
+        it to the browser via WebSocket. The JS bridge will call app.graphToPrompt()
+        and POST the resulting API JSON back to http://127.0.0.1:12345/api/workflow-ready.
+        """
+        try:
+            data = await request.json()
+        except Exception:
+            return web.json_response(
+                {"status": "error", "message": "Invalid JSON body"},
+                status=400,
+            )
+
+        workflow = data.get("workflow")
+        callback_url = data.get("callbackUrl", "http://127.0.0.1:12345/api/workflow-ready")
+
+        if not workflow:
+            return web.json_response(
+                {"status": "error", "message": "No 'workflow' field in request"},
+                status=400,
+            )
+
+        print("[CMFC] Relaying GUI workflow to browser for app.graphToPrompt() conversion")
+        server.PromptServer.instance.send_sync("cmfc-convert-workflow", {
+            "workflow": workflow,
+            "callbackUrl": callback_url,
+        })
+
+        return web.json_response({"status": "ok", "message": "Conversion request sent to browser"})
+else:
+    print("[CMFC] Route /cmfc/convert-workflow already registered, skipping.")
+
 
 WEB_DIRECTORY = "web"
 NODE_CLASS_MAPPINGS = {}

@@ -67,6 +67,15 @@ public class ComfyTemplateServiceTest {
 
         ComfyTemplate t4 = templateService.determineTemplateForModel("longcat_image_bf16.safetensors");
         assertEquals("lumina2_base_api.json", t4.getFilename());
+
+        ComfyTemplate t5 = templateService.determineTemplateForModel("z_image_turbo_bf16.safetensors");
+        assertEquals("lumina2_base_api.json", t5.getFilename());
+
+        ComfyTemplate t6 = templateService.determineTemplateForModel("acestep_v1.5_turbo.safetensors");
+        assertEquals("lumina2_base_api.json", t6.getFilename());
+
+        ComfyTemplate t7 = templateService.determineTemplateForModel("wan2.1_i2v_720p.safetensors");
+        assertEquals("template_wan_api.json", t7.getFilename());
     }
 
     @Test

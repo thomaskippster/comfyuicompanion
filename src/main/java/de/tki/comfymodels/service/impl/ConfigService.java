@@ -1,0 +1,1144 @@
+package de.tki.comfymodels.service.impl;
+
+import de.tki.comfymodels.service.IConfigService;
+import de.tki.comfymodels.util.ConfigConstants;
+import org.json.JSONObject;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import org.yaml.snakeyaml.Yaml;
+
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.List;
+import java.util.Map;
+
+@Service
+public class ConfigService implements IConfigService {
+    private static final Logger logger = LoggerFactory.getLogger(ConfigService.class);
+    
+    private final String CONFIG_FILE = ConfigConstants.SETTINGS_FILE;
+    private final String VAULT_FILE = ConfigConstants.VAULT_FILE;
+    private JSONObject settings = new JSONObject();
+    private JSONObject persistentSettings = new JSONObject(); // Plain settings (not in vault)
+    private String masterPassword = null;
+    private boolean vaultFresh = false;
+
+    private final EncryptionUtils encryptionUtils;
+    private final PathResolver pathResolver;
+
+    @Autowired
+    public ConfigService(EncryptionUtils encryptionUtils, PathResolver pathResolver) {
+        this.encryptionUtils = encryptionUtils;
+        this.pathResolver = pathResolver;
+        loadPersistentSettings();
+    }
+
+    private void loadPersistentSettings() {
+        File file = getFileInAppData(CONFIG_FILE);
+        if (file.exists()) {
+            try {
+                String content = Files.readString(file.toPath(), StandardCharsets.UTF_8);
+                persistentSettings = new JSONObject(content);
+            } catch (Exception e) {
+                logger.error("Error loading persistent settings: {}", e.getMessage(), e);
+            }
+        }
+    }
+
+    private void savePersistentSettings() {
+        try {
+            Files.writeString(getFileInAppData(CONFIG_FILE).toPath(), persistentSettings.toString(4), StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            logger.error("Error saving persistent settings: {}", e.getMessage(), e);
+        }
+    }
+
+    @jakarta.annotation.PostConstruct
+    public void init() {
+        // Initialization deferred until vault is unlocked.
+    }
+
+    public boolean isTestEnvironment() {
+        String override = System.getProperty("comfyuicompanion.appdata");
+        if (override != null && !override.isEmpty()) {
+            return true;
+        }
+        String command = System.getProperty("sun.java.command", "");
+        return command.contains("surefire") || command.contains("junit") || command.contains("testng");
+    }
+
+    public void loadExtraModelPaths() {
+        pathResolver.clearExtraModelPaths();
+        String comfyRoot = getComfyUIPath();
+        if (comfyRoot == null || comfyRoot.trim().isEmpty()) return;
+
+        Path extraPathsFile = Paths.get(comfyRoot).resolve("extra_model_paths.yaml");
+        if (!Files.exists(extraPathsFile) && !isTestEnvironment()) {
+            // Check AppData common location as provided in user hint
+            String userHome = System.getProperty("user.home");
+            extraPathsFile = Paths.get(userHome, "AppData/Roaming/ComfyUI/extra_models_config.yaml");
+        }
+
+        if (Files.exists(extraPathsFile)) {
+            logger.info("📄 [Config] Loading extra model paths from: " + extraPathsFile.toAbsolutePath());
+            try (InputStream is = new FileInputStream(extraPathsFile.toFile())) {
+                Yaml yaml = new Yaml();
+                Map<String, Object> data = yaml.load(is);
+                if (data != null) {
+                    for (Map.Entry<String, Object> entry : data.entrySet()) {
+                        if (entry.getValue() instanceof Map) {
+                            @SuppressWarnings("unchecked")
+                            Map<String, Object> section = (Map<String, Object>) entry.getValue();
+                            String basePathStr = (String) section.get("base_path");
+                            if (basePathStr == null) continue;
+                            
+                            // base_path can be relative to the YAML file
+                            Path yamlDir = extraPathsFile.getParent();
+                            Path basePath = Paths.get(basePathStr);
+                            if (!basePath.isAbsolute()) {
+                                basePath = yamlDir.resolve(basePath).toAbsolutePath().normalize();
+                            }
+                            
+                            logger.info("📂 [Config] Section '" + entry.getKey() + "' base_path: " + basePath);
+
+                            for (Map.Entry<String, Object> config : section.entrySet()) {
+                                if (config.getKey().equals("base_path")) continue;
+                                
+                                String type = config.getKey();
+                                Object value = config.getValue();
+                                
+                                if (value instanceof String) {
+                                    String[] folders = ((String) value).split("\\R");
+                                    for (String folder : folders) {
+                                        String trimmed = folder.trim();
+                                        if (!trimmed.isEmpty()) {
+                                            Path fullPath = basePath.resolve(trimmed).toAbsolutePath().normalize();
+                                            if (!Files.exists(fullPath)) {
+                                                logger.warn("   ⚠️ [Config] Warning: Path does not exist (will be created on demand): " + fullPath);
+                                            }
+                                            pathResolver.addExtraModelPath(type, fullPath);
+                                            logger.info("   -> Mapping [" + type + "] to: " + fullPath);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                logger.error("Error parsing extra_model_paths.yaml: {}", e.getMessage(), e);
+            }
+        }
+    }
+
+    public void autoDiscoverPaths() {
+        String root = settings.optString("comfyui_path", "");
+        String userHome = System.getProperty("user.home");
+        String currentDir = System.getProperty("user.dir");
+
+        logger.info("🔍 [Config] Starting auto-discovery. Stored Root: " + root);
+
+        // 1. VALIDATE AND DISCOVER COMFYUI ROOT
+        boolean rootValid = !root.isEmpty() && new File(root, "main.py").exists();
+        
+        if (!rootValid && !root.isEmpty()) {
+            logger.info("⚠️ [Config] main.py not found in current root. Checking subdirectories...");
+            // Check for nested Pinokio structure: resources/ComfyUI
+            File nested = new File(root, "resources/ComfyUI");
+            if (new File(nested, "main.py").exists()) {
+                root = nested.getAbsolutePath();
+                rootValid = true;
+                logger.info("✨ [Config] Found main.py in nested Pinokio path: " + root);
+                setComfyUIPath(root);
+            } else {
+                // Current root is definitively wrong, reset it to allow re-discovery
+                logger.info("🚫 [Config] Current root is invalid. Resetting for re-discovery.");
+                root = "";
+            }
+        }
+
+        if (root.isEmpty()) {
+            // Priority 1: Environment Variables
+            String[] envVars = {"COMFYUI_PATH", "COMFYUI_HOME", "PINOKIO_BIN"};
+            for (String var : envVars) {
+                String val = System.getenv(var);
+                if (val != null && !val.isEmpty()) {
+                    File f = new File(val);
+                    if (new File(f, "main.py").exists()) {
+                        root = f.getAbsolutePath();
+                        logger.info("✨ [Config] Found Root via Env Var " + var + ": " + root);
+                        break;
+                    }
+                }
+            }
+
+            // Priority 2: Check if we are running INSIDE a ComfyUI directory
+            if (root.isEmpty()) {
+                File possibleRoot = findMainPyNearby(new File(currentDir));
+                if (possibleRoot != null) {
+                    root = possibleRoot.getAbsolutePath();
+                    logger.info("✨ [Config] Found Root via Nearby Search: " + root);
+                }
+            }
+            
+            // Priority 3: Check common Pinokio/Home locations
+            if (root.isEmpty()) {
+                java.util.List<String> patterns = new java.util.ArrayList<>();
+                if (de.tki.comfymodels.util.PlatformUtils.isWindows()) {
+                    patterns.add(userHome + "\\ComfyUI");
+                    patterns.add(userHome + "\\AppData\\Roaming\\pinokio\\bin\\ComfyUI");
+                } else {
+                    patterns.add(userHome + "/ComfyUI");
+                    patterns.add(userHome + "/pinokio/bin/ComfyUI");
+                    patterns.add(userHome + "/.local/share/pinokio/bin/ComfyUI");
+                }
+                for (String p : patterns) {
+                    File f = new File(p);
+                    if (new File(f, "main.py").exists()) {
+                        root = f.getAbsolutePath();
+                        logger.info("✨ [Config] Found Root via Pattern: " + root);
+                        break;
+                    } else {
+                        // Try nested resources/ComfyUI for patterns too
+                        File nested = new File(f, "resources/ComfyUI");
+                        if (new File(nested, "main.py").exists()) {
+                            root = nested.getAbsolutePath();
+                            logger.info("✨ [Config] Found Root via Nested Pattern: " + root);
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (!root.isEmpty()) {
+                setComfyUIPath(root);
+            }
+        }
+
+        // 2. DISCOVER MODELS DIR
+        String currentExtraPath = settings.optString("extra_comfyui_path", "");
+        String currentModelsPath = settings.optString("models_path", "");
+        if (currentExtraPath.isEmpty() && (currentModelsPath.isEmpty() || currentModelsPath.equals(PathResolver.MODELS_DIR))) {
+            // Check for Pinokio data structure: sibling of ComfyUI's main installation folder
+            // e.g. ComfyUI (binary) -> comfyuidata/models (data)
+            File comfyFolder = new File(root);
+            while (comfyFolder != null) {
+                File parent = comfyFolder.getParentFile();
+                if (parent != null) {
+                    File dataModels = new File(parent, "comfyuidata/models");
+                    if (dataModels.exists() && dataModels.isDirectory()) {
+                        logger.info("✨ [Config] Found models via Pinokio Data Path: " + dataModels.getAbsolutePath());
+                        setExtraComfyUIPath(dataModels.getParentFile().getAbsolutePath());
+                        break;
+                    }
+                    // Try case-insensitive variant or simplified name
+                    File altData = new File(parent, "data/models");
+                    if (altData.exists() && altData.isDirectory()) {
+                        logger.info("✨ [Config] Found models via Data Path: " + altData.getAbsolutePath());
+                        setExtraComfyUIPath(altData.getParentFile().getAbsolutePath());
+                        break;
+                    }
+                }
+                comfyFolder = comfyFolder.getParentFile();
+                if (comfyFolder != null && comfyFolder.getName().equalsIgnoreCase("AI")) break; // Don't go too high
+            }
+        }
+
+        // 3. DISCOVER WORKING DIR
+        if ((getComfyWorkingDir().isEmpty() || !rootValid) && !root.isEmpty()) {
+            setComfyWorkingDir(root);
+            logger.info("📁 [Config] Set Working Dir: " + root);
+        }
+
+        // 3. DISCOVER PYTHON & CONSTRUCT COMMAND
+        // Always re-validate command if root changed or command is empty
+        String python = getPythonPath();
+        if (!isPythonValid(python)) {
+            python = discoverPython(root);
+            if (isPythonValid(python) && !python.equals("python") && !python.equals("python3")) {
+                setPythonPath(python);
+            }
+        }
+
+        if ((getComfyLaunchCommand().isEmpty() || !rootValid) && !root.isEmpty()) {
+            File mainPy = new File(root, "main.py");
+            
+            if (mainPy.exists()) {
+                int port = 8188;
+                try {
+                    String url = getComfyUIUrl();
+                    int colonIndex = url.lastIndexOf(":");
+                    if (colonIndex != -1) {
+                        port = Integer.parseInt(url.substring(colonIndex + 1));
+                    }
+                } catch (Exception ignored) {}
+                String cmd = String.format("\"%s\" \"%s\" --listen 127.0.0.1 --port %d --enable-manager --extra-model-paths-config \"%s\"", 
+                    python, mainPy.getAbsolutePath(), port, new File(root, "extra_model_paths.yaml").getAbsolutePath());
+                setComfyLaunchCommand(cmd);
+                logger.info("🚀 [Config] Generated Launch Command: " + cmd);
+            } else {
+                logger.error("Could not find main.py in {}", root);
+            }
+        } else if (!getComfyLaunchCommand().isEmpty()) {
+            logger.info("✅ [Config] Launch command already present and likely valid: " + getComfyLaunchCommand());
+        }
+
+        // 4. RELOAD EXTRA PATHS
+        loadExtraModelPaths();
+    }
+
+    private boolean isPythonValid(String python) {
+        if (python == null || python.isEmpty()) return false;
+        if (python.equalsIgnoreCase("python") || python.equalsIgnoreCase("python3")) return true;
+        return new File(python).exists();
+    }
+
+    private File findMainPyNearby(File start) {
+        File current = start;
+        while (current != null) {
+            if (new File(current, "main.py").exists()) return current;
+            if (current.getName().equalsIgnoreCase("custom_nodes")) {
+                File parent = current.getParentFile();
+                if (parent != null && new File(parent, "main.py").exists()) return parent;
+            }
+            current = current.getParentFile();
+        }
+        return null;
+    }
+
+    public String discoverPython(String comfyRoot) {
+        logger.info("🐍 [Config] Searching for Python in/near: " + comfyRoot);
+        if (comfyRoot == null || comfyRoot.trim().isEmpty()) {
+            return isWindows() ? "python" : "python3";
+        }
+        File comfyRootFile = new File(comfyRoot);
+        File parent1 = comfyRootFile.getParentFile();
+        File parent2 = parent1 != null ? parent1.getParentFile() : null;
+
+        File[] venvLocations = {
+            new File(comfyRootFile, ".venv"),
+            parent1 != null ? new File(parent1, ".venv") : null,
+            parent2 != null ? new File(parent2, ".venv") : null
+        };
+
+        for (File venv : venvLocations) {
+            if (venv != null && venv.exists()) {
+                logger.info("📂 [Config] Found venv at: " + venv.getAbsolutePath());
+                boolean isWin = isWindows();
+                File bin = new File(venv, isWin ? "Scripts/python.exe" : "bin/python3");
+                if (bin.exists()) return bin.getAbsolutePath();
+                bin = new File(venv, isWin ? "Scripts/python" : "bin/python");
+                if (bin.exists()) return bin.getAbsolutePath();
+            }
+        }
+        
+        // Priority 2: Check for python_embeded (Portable ComfyUI style)
+        File portablePython = new File(new File(comfyRoot).getParentFile(), "python_embeded/python.exe");
+        if (portablePython.exists()) {
+            logger.info("📂 [Config] Found portable python at: " + portablePython.getAbsolutePath());
+            return portablePython.getAbsolutePath();
+        }
+
+        logger.info("⚠️ [Config] No venv found, falling back to system python.");
+        return isWindows() ? "python" : "python3";
+    }
+
+    private boolean isWindows() {
+        return System.getProperty("os.name").toLowerCase().contains("win");
+    }
+
+    /**
+     * Use the current working directory for application data, or override via system property for tests.
+     */
+    public String getAppDataPath() {
+        String override = System.getProperty("comfyuicompanion.appdata");
+        if (override != null && !override.isEmpty()) {
+            return override;
+        }
+        // Schutz: Falls Tests direkt in der IDE (ohne maven argLine) ausgeführt werden,
+        // verhindern wir, dass sie die echten Nutzerdaten überschreiben.
+        String command = System.getProperty("sun.java.command", "");
+        if (command.contains("surefire") || command.contains("junit") || command.contains("testng")) {
+            return new java.io.File(System.getProperty("java.io.tmpdir"), "comfy_test_appdata_safe").getAbsolutePath();
+        }
+        return System.getProperty("user.dir");
+    }
+
+    public File getFileInAppData(String filename) {
+        File appDataDir = new File(getAppDataPath());
+        if (!appDataDir.exists()) {
+            appDataDir.mkdirs();
+        }
+        return new File(appDataDir, filename);
+    }
+
+    public void unlock(String password) throws Exception {
+        File vault = getFileInAppData(VAULT_FILE);
+        logger.info("Attempting to unlock vault at: {}", vault.getAbsolutePath());
+        
+        if (vault.exists()) {
+            String encrypted = Files.readString(vault.toPath(), StandardCharsets.UTF_8);
+            try {
+                String decrypted = encryptionUtils.decrypt(encrypted, password);
+                JSONObject decryptedJson = new JSONObject(decrypted);
+                this.settings = decryptedJson;
+                this.masterPassword = password;
+                logger.info("Vault unlocked successfully. Keys found: {}", settings.keySet());
+                
+                // Clean up side-effects (port migration and api token generation)
+                boolean needsSave = false;
+                String url = settings.optString("comfyui_url", "");
+                if (url.contains(":8000")) {
+                    settings.put("comfyui_url", url.replace(":8000", ":8188"));
+                    needsSave = true;
+                }
+                String token = settings.optString("api_token", "");
+                if (token.isEmpty()) {
+                    settings.put("api_token", java.util.UUID.randomUUID().toString());
+                    needsSave = true;
+                }
+                if (needsSave) {
+                    save();
+                }
+
+                autoDiscoverPaths();
+                pathResolver.setComfyUIRoot(getComfyUIPath());
+                ensureExtraComfyUIDirectories();
+                updateExtraModelPathsYaml();
+                loadExtraModelPaths();
+            } catch (Exception e) {
+                logger.error("Failed to unlock vault: {}", e.getMessage(), e);
+                throw new Exception("Wrong password or corrupted vault!");
+            }
+        } else {
+            this.masterPassword = password;
+            File oldFile = getFileInAppData(CONFIG_FILE);
+            boolean migrated = false;
+            if (oldFile.exists()) {
+                try {
+                    String content = Files.readString(oldFile.toPath(), StandardCharsets.UTF_8);
+                    JSONObject oldJson = new JSONObject(content);
+                    
+                    JSONObject legacyVaultSettings = new JSONObject();
+                    String[] vaultKeys = {
+                        "gemini_api_key", "hf_token", "models_path", "archive_path",
+                        "background_mode", "shutdown_after_download", "comfyui_path",
+                        "python_path", "comfy_launch_command", "comfy_working_dir",
+                        "restart_after_download", "comfyui_url", "api_token"
+                    };
+                    
+                    for (String key : vaultKeys) {
+                        if (oldJson.has(key)) {
+                            legacyVaultSettings.put(key, oldJson.get(key));
+                            oldJson.remove(key);
+                        }
+                    }
+                    
+                    if (!legacyVaultSettings.keySet().isEmpty()) {
+                        this.settings = legacyVaultSettings;
+                        save();
+                        if (oldJson.keySet().isEmpty()) {
+                            oldFile.delete();
+                        } else {
+                            Files.writeString(oldFile.toPath(), oldJson.toString(4), StandardCharsets.UTF_8);
+                        }
+                        logger.info("Migrated old settings to encrypted vault.");
+                        migrated = true;
+                    }
+                } catch (Exception e) {
+                    logger.error("Failed to migrate old settings: " + e.getMessage());
+                }
+            }
+            
+            if (!migrated) {
+                logger.info("No vault found, initialized new empty vault at: " + vault.getAbsolutePath());
+                this.vaultFresh = true;
+                save();
+            }
+
+            // Clean up side-effects (api token generation)
+            boolean needsSave = false;
+            String token = settings.optString("api_token", "");
+            if (token.isEmpty()) {
+                settings.put("api_token", java.util.UUID.randomUUID().toString());
+                needsSave = true;
+            }
+            if (needsSave) {
+                save();
+            }
+
+            autoDiscoverPaths();
+            pathResolver.setComfyUIRoot(getComfyUIPath());
+            ensureExtraComfyUIDirectories();
+            updateExtraModelPathsYaml();
+            loadExtraModelPaths();
+        }
+    }
+
+    public boolean isVaultFresh() {
+        return vaultFresh;
+    }
+
+    public synchronized void save() {
+        if (masterPassword == null) {
+            logger.error("Cannot save: Vault not unlocked.");
+            return;
+        }
+        try {
+            String encrypted = encryptionUtils.encrypt(settings.toString(), masterPassword);
+            Files.writeString(getFileInAppData(VAULT_FILE).toPath(), encrypted, StandardCharsets.UTF_8);
+            logger.info("Vault saved successfully to: {}", getFileInAppData(VAULT_FILE).getAbsolutePath());
+        } catch (Exception e) {
+            logger.error("Error saving vault: {}", e.getMessage(), e);
+        }
+    }
+
+
+    public synchronized String getHfToken() { return settings.optString("hf_token", ""); }
+    public synchronized void setHfToken(String token) { settings.put("hf_token", token); save(); }
+
+    public synchronized String getCivitaiApiKey() { return settings.optString("civitai_api_key", ""); }
+    public synchronized void setCivitaiApiKey(String key) { settings.put("civitai_api_key", key); save(); }
+
+    public synchronized boolean isFastHashEnabled() { return settings.optBoolean("fast_hash", false); }
+    public synchronized void setFastHashEnabled(boolean enabled) { settings.put("fast_hash", enabled); save(); }
+
+    @Override
+    public synchronized String getExtraComfyUIPath() {
+        String path = settings.optString("extra_comfyui_path", "");
+        if (path.isEmpty()) {
+            if (isTestEnvironment()) {
+                return "";
+            }
+            return "C:\\AI\\comfyuidata";
+        }
+        return path;
+    }
+
+    @Override
+    public synchronized void setExtraComfyUIPath(String path) {
+        settings.put("extra_comfyui_path", path != null ? path.trim() : "");
+        ensureExtraComfyUIDirectories();
+        updateExtraModelPathsYaml();
+        loadExtraModelPaths();
+        save();
+    }
+
+    @Override
+    public synchronized String getModelsPath() { 
+        String extraPath = getExtraComfyUIPath();
+        if (extraPath != null && !extraPath.isEmpty()) {
+            Path p = Paths.get(extraPath);
+            if (p.getFileName() != null && p.getFileName().toString().equalsIgnoreCase("models")) {
+                return p.toAbsolutePath().toString();
+            }
+            return p.resolve("models").toAbsolutePath().toString();
+        }
+        String customPath = settings.optString("models_path", "");
+        if (!customPath.isEmpty()) {
+            Path p = Paths.get(customPath);
+            if (p.getFileName() != null && p.getFileName().toString().equalsIgnoreCase("models")) {
+                return p.toAbsolutePath().toString();
+            }
+            return p.resolve("models").toAbsolutePath().toString();
+        }
+        String comfyRoot = getComfyUIPath();
+        if (comfyRoot != null && !comfyRoot.isEmpty()) {
+            return Paths.get(comfyRoot).resolve("models").toAbsolutePath().toString();
+        }
+        return "";
+    }
+    
+    @Override
+    public synchronized void setModelsPath(String path) { 
+        if (path != null && !path.trim().isEmpty()) {
+            String trimmed = path.trim();
+            Path p = Paths.get(trimmed);
+            if (p.getFileName() != null && p.getFileName().toString().equalsIgnoreCase("models")) {
+                Path parent = p.getParent();
+                if (parent != null) {
+                    settings.put("extra_comfyui_path", parent.toAbsolutePath().toString());
+                } else {
+                    settings.put("extra_comfyui_path", trimmed);
+                }
+            } else {
+                settings.put("extra_comfyui_path", trimmed);
+            }
+            settings.put("models_path", trimmed);
+        } else {
+            settings.remove("models_path");
+        }
+        ensureExtraComfyUIDirectories();
+        updateExtraModelPathsYaml(); 
+        loadExtraModelPaths();
+        save();
+    }
+
+    public synchronized String getResolvedInputDetailDir() {
+        String extraPath = getExtraComfyUIPath();
+        return Paths.get(extraPath).resolve("input").toAbsolutePath().toString();
+    }
+
+    public synchronized void ensureExtraComfyUIDirectories() {
+        try {
+            String extraPath = getExtraComfyUIPath();
+            if (extraPath != null && !extraPath.isEmpty()) {
+                Path base = Paths.get(extraPath);
+                Path models = base.resolve("models");
+                Path input = base.resolve("input");
+                Path output = base.resolve("output");
+                
+                if (!Files.exists(models)) Files.createDirectories(models);
+                if (!Files.exists(input)) Files.createDirectories(input);
+                if (!Files.exists(output)) Files.createDirectories(output);
+            }
+        } catch (Exception e) {
+            logger.warn("Failed to create extra ComfyUI directories: {}", e.getMessage(), e);
+        }
+    }
+
+    public synchronized String getArchivePath() { 
+        String path = settings.optString("archive_path", "");
+        if (path.isEmpty()) {
+            String userHome = System.getProperty("user.home");
+            if (de.tki.comfymodels.util.PlatformUtils.isWindows()) {
+                return userHome + "\\ComfyUI-Archive";
+            } else {
+                return userHome + "/ComfyUI-Archive";
+            }
+        }
+        Path modelsPath = Paths.get(getModelsPath());
+        return pathResolver.resolveArchivePath(modelsPath, path).toString();
+    }
+    public synchronized void setArchivePath(String path) { settings.put("archive_path", path); save(); }
+
+    public synchronized String getResolvedOutputDir() {
+        // Option 1: Use the extra ComfyUI path's "output" subfolder if resolved
+        String extraPath = getExtraComfyUIPath();
+        if (extraPath != null && !extraPath.isEmpty()) {
+            return Paths.get(extraPath).resolve("output").toAbsolutePath().toString();
+        }
+
+        // Candidate 1: Check if specified in CLI launch command via --output-directory
+        String launchCmd = getComfyLaunchCommand();
+        if (launchCmd != null && !launchCmd.isEmpty()) {
+            try {
+                java.util.List<String> parsedCmd = de.tki.comfymodels.util.PlatformUtils.parseCommandLine(launchCmd);
+                for (int i = 0; i < parsedCmd.size() - 1; i++) {
+                    if (parsedCmd.get(i).equals("--output-directory")) {
+                        Path p = Paths.get(parsedCmd.get(i + 1));
+                        if (Files.exists(p) && Files.isDirectory(p)) {
+                            return p.toAbsolutePath().toString();
+                        }
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
+
+        // Candidate 2: Sibling of the configured models directory (e.g. if models is comfyuidata/models, output could be comfyuidata/output)
+        String modelsPathStr = getModelsPath();
+        if (modelsPathStr != null && !modelsPathStr.isEmpty()) {
+            try {
+                Path modelsPath = Paths.get(modelsPathStr);
+                if (modelsPath.getParent() != null) {
+                    Path siblingOutput = modelsPath.getParent().resolve("output");
+                    if (Files.exists(siblingOutput) && Files.isDirectory(siblingOutput)) {
+                        return siblingOutput.toAbsolutePath().toString();
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
+
+        // Candidate 3: Read extra_model_paths.yaml for standard "comfyui" section base_path
+        String comfyRoot = getComfyUIPath();
+        if (comfyRoot != null && !comfyRoot.isEmpty()) {
+            try {
+                Path extraPathsFile = Paths.get(comfyRoot).resolve("extra_model_paths.yaml");
+                if (!Files.exists(extraPathsFile)) {
+                    String userHome = System.getProperty("user.home");
+                    extraPathsFile = Paths.get(userHome, "AppData/Roaming/ComfyUI/extra_models_config.yaml");
+                }
+                if (Files.exists(extraPathsFile)) {
+                    try (InputStream is = new FileInputStream(extraPathsFile.toFile())) {
+                        Yaml yaml = new Yaml();
+                        Map<String, Object> data = yaml.load(is);
+                        if (data != null && data.get("comfyui") instanceof Map) {
+                            @SuppressWarnings("unchecked")
+                            Map<String, Object> comfySec = (Map<String, Object>) data.get("comfyui");
+                            String basePathStr = (String) comfySec.get("base_path");
+                            if (basePathStr != null) {
+                                Path basePath = Paths.get(basePathStr);
+                                if (!basePath.isAbsolute()) {
+                                    basePath = extraPathsFile.getParent().resolve(basePath).toAbsolutePath().normalize();
+                                }
+                                Path yamlOutput = basePath.resolve("output");
+                                if (Files.exists(yamlOutput) && Files.isDirectory(yamlOutput)) {
+                                    return yamlOutput.toAbsolutePath().toString();
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
+
+        // Candidate 4: Default ComfyUI/output folder
+        if (comfyRoot != null && !comfyRoot.isEmpty()) {
+            return Paths.get(comfyRoot).resolve("output").toAbsolutePath().toString();
+        }
+        
+        return Paths.get("output").toAbsolutePath().toString();
+    }
+
+    public synchronized boolean isBackgroundModeEnabled() { return settings.optBoolean("background_mode", false); }
+    public synchronized void setBackgroundModeEnabled(boolean enabled) { settings.put("background_mode", enabled); save(); }
+
+    public synchronized boolean isShutdownAfterDownloadEnabled() { return settings.optBoolean("shutdown_after_download", false); }
+    public synchronized void setShutdownAfterDownloadEnabled(boolean enabled) { settings.put("shutdown_after_download", enabled); save(); }
+
+    public synchronized boolean isDarkMode() { return persistentSettings.optBoolean("dark_mode", true); }
+    public synchronized void setDarkMode(boolean enabled) { 
+        persistentSettings.put("dark_mode", enabled); 
+        savePersistentSettings();
+    }
+
+    public synchronized boolean isPromptLabEnabled() { return persistentSettings.optBoolean("enable_prompt_lab", false); }
+    public synchronized void setPromptLabEnabled(boolean enabled) {
+        persistentSettings.put("enable_prompt_lab", enabled);
+        savePersistentSettings();
+    }
+
+    public synchronized boolean isVideoArchitectEnabled() { return persistentSettings.optBoolean("enable_video_architect", false); }
+    public synchronized void setVideoArchitectEnabled(boolean enabled) {
+        persistentSettings.put("enable_video_architect", enabled);
+        savePersistentSettings();
+    }
+
+    public synchronized boolean isBlueprintGalleryEnabled() { return persistentSettings.optBoolean("enable_blueprint_gallery", false); }
+    public synchronized void setBlueprintGalleryEnabled(boolean enabled) {
+        persistentSettings.put("enable_blueprint_gallery", enabled);
+        savePersistentSettings();
+    }
+
+    public synchronized void savePromptLabSession(JSONObject data) {
+        persistentSettings.put("prompt_lab_session", data);
+        savePersistentSettings();
+    }
+
+    public synchronized JSONObject getPromptLabSession() {
+        return persistentSettings.optJSONObject("prompt_lab_session");
+    }
+
+    public synchronized void savePendingDownloads(String json) {
+        try {
+            Files.writeString(getFileInAppData("pending_downloads.json").toPath(), json, StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            logger.error("Error saving pending downloads: {}", e.getMessage(), e);
+        }
+    }
+
+    public synchronized String loadPendingDownloads() {
+        try {
+            File file = getFileInAppData("pending_downloads.json");
+            if (file.exists()) {
+                return Files.readString(file.toPath(), StandardCharsets.UTF_8);
+            }
+        } catch (Exception e) {
+            logger.error("Error loading pending downloads: {}", e.getMessage(), e);
+        }
+        return null;
+    }
+
+    public synchronized String getComfyUIPath() {
+        String path = settings.optString("comfyui_path", "");
+        if (path.isEmpty()) {
+            if (isTestEnvironment()) {
+                return "";
+            }
+            String userHome = System.getProperty("user.home");
+            java.io.File companionPath = new java.io.File(userHome, ".comfyui-companion/ComfyUI");
+            if (companionPath.exists() && companionPath.isDirectory()) {
+                return companionPath.getAbsolutePath();
+            }
+            if (de.tki.comfymodels.util.PlatformUtils.isWindows()) {
+                return userHome + "\\ComfyUI";
+            } else {
+                return userHome + "/ComfyUI";
+            }
+        }
+        return path;
+    }
+    public synchronized void setComfyUIPath(String path) { 
+        settings.put("comfyui_path", path); 
+        pathResolver.setComfyUIRoot(path);
+        save(); 
+        updateExtraModelPathsYaml();
+        loadExtraModelPaths();
+    }
+
+    public synchronized String getPythonPath() {
+        String path = settings.optString("python_path", "");
+        if (path.isEmpty()) {
+            return discoverPython(getComfyUIPath());
+        }
+        return path;
+    }
+    public synchronized void setPythonPath(String path) { settings.put("python_path", path); save(); }
+
+    public synchronized String getComfyLaunchCommand() { return settings.optString("comfy_launch_command", ""); }
+    public synchronized void setComfyLaunchCommand(String cmd) { settings.put("comfy_launch_command", cmd); save(); }
+
+    public synchronized String getActiveProfile() { return settings.optString("active_profile", ""); }
+    public synchronized void setActiveProfile(String profileId) { settings.put("active_profile", profileId); save(); }
+
+    public synchronized String getComfyWorkingDir() { return settings.optString("comfy_working_dir", ""); }
+    public synchronized void setComfyWorkingDir(String dir) { settings.put("comfy_working_dir", dir); save(); }
+
+    public synchronized boolean isRestartAfterDownloadEnabled() { return settings.optBoolean("restart_after_download", false); }
+    public synchronized void setRestartAfterDownloadEnabled(boolean enabled) { settings.put("restart_after_download", enabled); save(); }
+
+    public synchronized String getComfyUIUrl() {
+        String url = settings.optString("comfyui_url", ConfigConstants.DEFAULT_COMFYUI_URL);
+        return url.endsWith("/") ? url.substring(0, url.length() - 1) : url;
+    }
+    public synchronized void setComfyUIUrl(String url) { 
+        if (url != null && !url.isEmpty()) {
+            String sanitized = url.endsWith("/") ? url.substring(0, url.length() - 1) : url;
+            settings.put("comfyui_url", sanitized); 
+            save(); 
+        }
+    }
+
+    public synchronized String getApiToken() {
+        return settings.optString("api_token", "");
+    }
+
+    public boolean isUnlocked() {
+        return masterPassword != null;
+    }
+
+    public boolean hasVault() {
+        return getFileInAppData(VAULT_FILE).exists();
+    }
+
+    public synchronized int getMaxParallelDownloads() { return settings.optInt("max_parallel_downloads", 3); }
+    public synchronized void setMaxParallelDownloads(int threads) { settings.put("max_parallel_downloads", Math.max(1, Math.min(10, threads))); save(); }
+
+    public synchronized int getDownloadSpeedLimit() { return settings.optInt("download_speed_limit", 0); }
+    public synchronized void setDownloadSpeedLimit(int kbps) { settings.put("download_speed_limit", Math.max(0, kbps)); save(); }
+
+    public synchronized int getSegmentsPerFile() { return settings.optInt("segments_per_file", 4); }
+    public synchronized void setSegmentsPerFile(int segments) { settings.put("segments_per_file", Math.max(1, Math.min(8, segments))); save(); }
+
+    public synchronized boolean isUseOllama() { return settings.optBoolean("use_ollama", false); }
+    public synchronized void setUseOllama(boolean enabled) { settings.put("use_ollama", enabled); save(); }
+
+    public synchronized boolean isHideComfyUI() { return settings.optBoolean("hide_comfyui", true); }
+    public synchronized void setHideComfyUI(boolean enabled) { settings.put("hide_comfyui", enabled); save(); }
+
+    public synchronized String getOllamaUrl() { return settings.optString("ollama_url", "http://localhost:11434"); }
+    public synchronized void setOllamaUrl(String url) { settings.put("ollama_url", url); save(); }
+
+    public synchronized String getOllamaModel() { return settings.optString("ollama_model", "llama3"); }
+    public synchronized void setOllamaModel(String model) { settings.put("ollama_model", model); save(); }
+
+    public synchronized boolean isUseSymlinksOnRestore() { return settings.optBoolean("use_symlinks_on_restore", false); }
+    public synchronized void setUseSymlinksOnRestore(boolean enabled) { settings.put("use_symlinks_on_restore", enabled); save(); }
+
+    public synchronized String getXttsUrl() { return settings.optString("xtts_url", "http://localhost:8020/api/tts"); }
+    public synchronized void setXttsUrl(String url) { settings.put("xtts_url", url); save(); }
+
+    public synchronized String getPiperPath() {
+        String defaultPath = System.getProperty("os.name").toLowerCase().contains("win") 
+            ? "./tools/tts/piper.exe" 
+            : "./tools/tts/piper";
+        String configuredPath = settings.optString("piper_path", defaultPath);
+        File binFile = new File(configuredPath);
+        if (binFile.exists()) {
+            return configuredPath;
+        }
+        File fallbackBin = new File(System.getProperty("user.dir"), configuredPath);
+        if (fallbackBin.exists()) {
+            return fallbackBin.getAbsolutePath();
+        }
+        String found = findExecutablePath("piper");
+        if (found != null) {
+            return found;
+        }
+        return configuredPath;
+    }
+    public synchronized void setPiperPath(String path) { settings.put("piper_path", path); save(); }
+
+    public synchronized String getSpeakerImagePath() { return settings.optString("speaker_image", ""); }
+    public synchronized void setSpeakerImagePath(String path) { settings.put("speaker_image", path); save(); }
+
+    public synchronized String getPiperModelPath() {
+        return settings.optString("piper_model_path", "./tools/tts/en_model.onnx");
+    }
+    public synchronized void setPiperModelPath(String path) { settings.put("piper_model_path", path); save(); }
+
+    public synchronized String getTtsProvider() { return settings.optString("tts_provider", "ComfyUI Qwen-TTS"); }
+    public synchronized void setTtsProvider(String provider) { settings.put("tts_provider", provider); save(); }
+
+    /** Hugging Face repo id for the Qwen-TTS model (default: Qwen2-Audio-7B-Instruct). */
+    public synchronized String getQwenTtsModelRepo() {
+        return settings.optString("qwen_tts_model_repo", "Qwen/Qwen2-Audio-7B-Instruct");
+    }
+    public synchronized void setQwenTtsModelRepo(String repo) { settings.put("qwen_tts_model_repo", repo); save(); }
+
+    /** Absolute path where the Qwen-TTS model snapshot is stored on disk. */
+    public synchronized String getQwenTtsModelPath() {
+        return settings.optString("qwen_tts_model_path",
+            System.getProperty("user.home") + "/.cache/huggingface/hub");
+    }
+    public synchronized void setQwenTtsModelPath(String path) { settings.put("qwen_tts_model_path", path); save(); }
+
+    /**
+     * When true (default), the application auto-picks the best Qwen-TTS model
+     * for the detected VRAM on startup and overrides {@code qwen_tts_model_repo}.
+     * Set to false to pin a specific model.
+     */
+    public synchronized boolean isQwenTtsModelAuto() {
+        return settings.optBoolean("qwen_tts_model_auto", true);
+    }
+    public synchronized void setQwenTtsModelAuto(boolean auto) {
+        settings.put("qwen_tts_model_auto", auto);
+        save();
+    }
+
+    /** Voice preset name passed to the Qwen-TTS custom node (e.g. "Chelsie", "Ethan", "Serena"). */
+    public synchronized String getQwenTtsVoice() {
+        return settings.optString("qwen_tts_voice", "Chelsie");
+    }
+    public synchronized void setQwenTtsVoice(String voice) { settings.put("qwen_tts_voice", voice); save(); }
+
+    public synchronized String getElevenLabsApiKey() { return ""; }
+    public synchronized void setElevenLabsApiKey(String apiKey) { settings.remove("elevenlabs_api_key"); save(); }
+
+    public synchronized String getElevenLabsVoiceId() { return settings.optString("elevenlabs_voice_id", "21m00Tcm4TlvDq8ikWAM"); }
+    public synchronized void setElevenLabsVoiceId(String voiceId) { settings.put("elevenlabs_voice_id", voiceId); save(); }
+
+    public synchronized String getFfmpegPath() {
+        String found = findExecutablePath("ffmpeg");
+        return found != null ? found : "ffmpeg";
+    }
+
+    private synchronized String findExecutablePath(String name) {
+        // 1. Konfigurierter Pfad in den App-Settings (falls vorhanden)
+        String configured = settings.optString(name + "_path", "");
+        if (!configured.isEmpty()) {
+            File f = new File(configured);
+            if (f.exists() && f.isFile() && f.canExecute()) {
+                return f.getAbsolutePath();
+            }
+        }
+
+        // 2. Relativer Pfad zum Ausführungsverzeichnis der .jar / .class (nicht user.dir)
+        File baseDir = null;
+        try {
+            java.net.URL location = ConfigService.class.getProtectionDomain().getCodeSource().getLocation();
+            if (location != null) {
+                File codeSourceFile = new File(location.toURI());
+                File parent = codeSourceFile.getParentFile();
+                while (parent != null) {
+                    if (new File(parent, "tools").exists() || new File(parent, "pom.xml").exists()) {
+                        baseDir = parent;
+                        break;
+                    }
+                    parent = parent.getParentFile();
+                }
+                if (baseDir == null) {
+                    baseDir = codeSourceFile.getParentFile();
+                }
+            }
+        } catch (Exception ignored) {}
+        if (baseDir == null) {
+            try {
+                baseDir = Paths.get("").toAbsolutePath().toFile();
+            } catch (Exception ignored) {}
+        }
+        if (baseDir == null) {
+            baseDir = new File(System.getProperty("user.dir"));
+        }
+
+        String baseDirPath = baseDir.getAbsolutePath();
+        String[] localDirs = {
+            baseDirPath + "/tools/bin",
+            baseDirPath + "/tools/ffmpeg",
+            baseDirPath + "/tools/tts",
+            baseDirPath + "/tools"
+        };
+        for (String dir : localDirs) {
+            File dirFile = new File(dir);
+            if (dirFile.exists() && dirFile.isDirectory()) {
+                File f = new File(dirFile, name);
+                if (f.exists() && f.isFile() && f.canExecute()) return f.getAbsolutePath();
+                File fExe = new File(dirFile, name + ".exe");
+                if (fExe.exists() && fExe.isFile() && fExe.canExecute()) return fExe.getAbsolutePath();
+            }
+        }
+
+        // 3. Fallback auf den globalen System-PATH
+        String pathEnv = System.getenv("PATH");
+        if (pathEnv != null) {
+            String[] dirs = pathEnv.split(File.pathSeparator);
+            for (String dir : dirs) {
+                File f = new File(dir, name);
+                if (f.exists() && f.isFile() && f.canExecute()) return f.getAbsolutePath();
+                File fExe = new File(dir, name + ".exe");
+                if (fExe.exists() && fExe.isFile() && fExe.canExecute()) return fExe.getAbsolutePath();
+            }
+        }
+
+        // 4. Fallback auf Conda/Pinokio falls im PATH nicht gefunden
+        // Near Python (Conda env)
+        String pythonPath = getPythonPath();
+        if (pythonPath != null && !pythonPath.isEmpty()) {
+            File pythonFile = new File(pythonPath);
+            if (pythonFile.exists()) {
+                File envDir = pythonFile.getParentFile();
+                if (envDir != null) {
+                    File libBin = new File(envDir, "Library/bin");
+                    File fLib = new File(libBin, name + ".exe");
+                    if (fLib.exists() && fLib.canExecute()) return fLib.getAbsolutePath();
+                    File fLibNo = new File(libBin, name);
+                    if (fLibNo.exists() && fLibNo.canExecute()) return fLibNo.getAbsolutePath();
+                    
+                    File scripts = new File(envDir, "Scripts");
+                    File fScripts = new File(scripts, name + ".exe");
+                    if (fScripts.exists() && fScripts.canExecute()) return fScripts.getAbsolutePath();
+                    File fScriptsNoExe = new File(scripts, name);
+                    if (fScriptsNoExe.exists() && fScriptsNoExe.canExecute()) return fScriptsNoExe.getAbsolutePath();
+                    
+                    File fSame = new File(envDir, name + ".exe");
+                    if (fSame.exists() && fSame.canExecute()) return fSame.getAbsolutePath();
+                    File fSameNoExe = new File(envDir, name);
+                    if (fSameNoExe.exists() && fSameNoExe.canExecute()) return fSameNoExe.getAbsolutePath();
+                }
+            }
+        }
+
+        // Pinokio bin locations
+        String userHome = System.getProperty("user.home");
+        String[] pinokioBins = {
+            userHome + "/AppData/Roaming/pinokio/bin",
+            userHome + "/.local/share/pinokio/bin",
+            userHome + "/pinokio/bin"
+        };
+        for (String pBin : pinokioBins) {
+            File pBinDir = new File(pBin);
+            if (pBinDir.exists() && pBinDir.isDirectory()) {
+                File f = new File(pBinDir, name);
+                if (f.exists() && f.canExecute()) return f.getAbsolutePath();
+                File fExe = new File(pBinDir, name + ".exe");
+                if (fExe.exists() && fExe.canExecute()) return fExe.getAbsolutePath();
+            }
+        }
+
+        return null;
+    }
+
+    public void resetVault() {
+        File vault = getFileInAppData(VAULT_FILE);
+        if (vault.exists()) {
+            vault.delete();
+        }
+        this.settings = new JSONObject();
+        this.masterPassword = null;
+        this.vaultFresh = true;
+        logger.info("Vault has been reset.");
+    }
+
+    public void updateExtraModelPathsYaml() {
+        String comfyRoot = getComfyUIPath();
+        String modelsPath = getModelsPath();
+        if (modelsPath == null || modelsPath.isEmpty()) return;
+        
+        // Normalize backslashes to forward slashes to prevent escape sequence parsing issues in YAML
+        modelsPath = modelsPath.replace("\\", "/");
+
+        List<Path> targetYamlFiles = new java.util.ArrayList<>();
+        if (comfyRoot != null && !comfyRoot.isEmpty()) {
+            File comfyDir = new File(comfyRoot);
+            if (comfyDir.exists() && comfyDir.isDirectory()) {
+                targetYamlFiles.add(Paths.get(comfyRoot).resolve("extra_model_paths.yaml"));
+            }
+        }
+
+        // Also check AppData location for ComfyUI Desktop configuration file
+        String userHome = System.getProperty("user.home");
+        if (userHome != null) {
+            Path appDataDir = Paths.get(userHome, "AppData", "Roaming", "ComfyUI");
+            if (Files.exists(appDataDir) && Files.isDirectory(appDataDir)) {
+                targetYamlFiles.add(appDataDir.resolve("extra_models_config.yaml"));
+            }
+        }
+
+        if (targetYamlFiles.isEmpty()) return;
+
+        for (Path yamlPath : targetYamlFiles) {
+            Map<String, Object> data = null;
+            try {
+                Yaml yaml = new Yaml();
+                if (Files.exists(yamlPath)) {
+                    try (InputStream is = new FileInputStream(yamlPath.toFile())) {
+                        data = yaml.load(is);
+                    } catch (Exception ex) {
+                        logger.warn("Failed to load existing YAML at {}: {}", yamlPath, ex.getMessage(), ex);
+                    }
+                }
+                
+                if (data == null) {
+                    data = new java.util.LinkedHashMap<>();
+                }
+
+                Map<String, Object> companionSection = new java.util.LinkedHashMap<>();
+                companionSection.put("base_path", modelsPath);
+                companionSection.put("checkpoints", "checkpoints");
+                companionSection.put("configs", "configs");
+                companionSection.put("vae", "vae");
+                companionSection.put("loras", "loras\nlycoris");
+                companionSection.put("upscale_models", "upscale_models\nrealesrgan");
+                companionSection.put("controlnet", "controlnet");
+                companionSection.put("clip", "clip\ntext_encoders");
+                companionSection.put("clip_vision", "clip_vision");
+                companionSection.put("style_models", "style_models");
+                companionSection.put("hypernetworks", "hypernetworks");
+                companionSection.put("embeddings", "embeddings");
+                companionSection.put("diffusers", "diffusers");
+                companionSection.put("gligen", "gligen");
+                companionSection.put("unet", "unet\ndiffusion_models");
+                companionSection.put("audio_encoders", "audio_encoders");
+                
+                // Add remaining model folders
+                companionSection.put("vae_approx", "vae_approx");
+                companionSection.put("photomaker", "photomaker");
+                companionSection.put("ipadapter", "ipadapter");
+                companionSection.put("onnx", "onnx");
+                companionSection.put("llm", "llm");
+                companionSection.put("model_patches", "model_patches");
+                companionSection.put("latent_upscale_models", "latent_upscale_models");
+
+                data.put("comfyui_companion", companionSection);
+
+                org.yaml.snakeyaml.DumperOptions options = new org.yaml.snakeyaml.DumperOptions();
+                options.setDefaultFlowStyle(org.yaml.snakeyaml.DumperOptions.FlowStyle.BLOCK);
+                options.setPrettyFlow(true);
+                Yaml yamlDump = new Yaml(options);
+
+                String yamlContent = yamlDump.dump(data);
+                Files.writeString(yamlPath, yamlContent, StandardCharsets.UTF_8);
+                logger.info("📄 [Config] Successfully updated YAML at: " + yamlPath.toAbsolutePath());
+            } catch (Exception e) {
+                logger.error("Failed to update YAML at {}: {}", yamlPath, e.getMessage(), e);
+            }
+        }
+    }
+}

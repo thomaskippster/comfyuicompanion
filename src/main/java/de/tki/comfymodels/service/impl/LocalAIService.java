@@ -80,19 +80,6 @@ public class LocalAIService {
     }
 
     private Prediction predict(String input, boolean isUrl) {
-        if (gemmaEnabled && !javax.swing.SwingUtilities.isEventDispatchThread() && localGemmaService != null && localGemmaService.isModelDownloaded()) {
-            try {
-                String prompt = "Identify the creator or architecture. Respond ONLY with the creator name (e.g. 'black-forest-labs', 'stabilityai', 'PonyDiffusion', etc.). If you cannot determine it, respond 'community'.\nInput: " + input;
-                String resText = localGemmaService.generateCompletion("You are a model metadata analyzer for ComfyUI. Respond with ONLY the single creator name or 'community', no formatting, no sentences.", prompt, 0.2f, 15);
-                resText = resText.replaceAll("[\"'\\.`\\*\\n\\r]", "").trim();
-                if (!resText.isEmpty() && !resText.equalsIgnoreCase("community")) {
-                    return new Prediction(resText, 0.95);
-                }
-            } catch (Exception e) {
-                logger.error("Local Gemma prediction failed: " + e.getMessage());
-            }
-        }
-
         String name = input.toLowerCase();
         if (!isUrl) {
             if (name.contains("mistral") && name.contains("flux2")) return new Prediction("black-forest-labs", 0.95);
@@ -121,6 +108,26 @@ public class LocalAIService {
         double maxScore = 0.0;
         for (Map.Entry<String, Double> entry : similarityScores.entrySet()) {
             if (entry.getValue() > maxScore) { maxScore = entry.getValue(); bestProvider = entry.getKey(); }
+        }
+
+        if (maxScore > 0.5 && !bestProvider.equals("community")) {
+            double confidence = Math.min(0.99, maxScore / 3.5);
+            if (isUrl && maxScore > 1.5) confidence = Math.max(confidence, 0.8);
+            return new Prediction(bestProvider, confidence);
+        }
+
+        // Fallback to local Gemma if TF-IDF heuristics yielded no confident result
+        if (gemmaEnabled && !javax.swing.SwingUtilities.isEventDispatchThread() && localGemmaService != null && localGemmaService.isModelDownloaded()) {
+            try {
+                String prompt = "Identify the creator or architecture. Respond ONLY with the creator name (e.g. 'black-forest-labs', 'stabilityai', 'PonyDiffusion', etc.). If you cannot determine it, respond 'community'.\nInput: " + input;
+                String resText = localGemmaService.generateCompletion("You are a model metadata analyzer for ComfyUI. Respond with ONLY the single creator name or 'community', no formatting, no sentences.", prompt, 0.2f, 15);
+                resText = resText.replaceAll("[\"'\\.`\\*\\n\\r]", "").trim();
+                if (!resText.isEmpty() && !resText.equalsIgnoreCase("community")) {
+                    return new Prediction(resText, 0.95);
+                }
+            } catch (Exception e) {
+                logger.error("Local Gemma prediction failed: " + e.getMessage());
+            }
         }
 
         double confidence = Math.min(0.99, maxScore / 3.5);

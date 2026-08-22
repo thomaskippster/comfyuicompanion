@@ -28,8 +28,13 @@ public class Video4jEditorService {
 
     @Autowired(required = false)
     private ProcessTracker processTracker;
+
     public Video4jEditorService(ConfigService configService) {
         this.configService = configService;
+    }
+
+    private Process startProcess(ProcessBuilder pb) throws IOException {
+        return processTracker != null ? processTracker.start(pb) : pb.start();
     }
 
     @PostConstruct
@@ -46,7 +51,7 @@ public class Video4jEditorService {
         
         if (isGlobal) {
             try {
-                Process p = processTracker.start(new ProcessBuilder("ffmpeg", "-version"));
+                Process p = startProcess(new ProcessBuilder("ffmpeg", "-version"));
                 p.destroy();
                 available = true;
             } catch (Exception e) {
@@ -78,7 +83,7 @@ public class Video4jEditorService {
                 destVideo.getAbsolutePath()
             );
             pb.redirectErrorStream(true);
-            Process process = processTracker.start(pb);
+            Process process = startProcess(pb);
             
             try (java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(process.getInputStream(), java.nio.charset.StandardCharsets.UTF_8))) {
                 String line;
@@ -218,7 +223,7 @@ public class Video4jEditorService {
                 String ffmpegPathStr = configService.getFfmpegPath();
                 ProcessBuilder probePb = new ProcessBuilder(ffmpegPathStr, "-i", videoPath);
                 probePb.redirectErrorStream(true);
-                Process probeProcess = processTracker.start(probePb);
+                Process probeProcess = startProcess(probePb);
                 try (java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(probeProcess.getInputStream()))) {
                     String line;
                     java.util.regex.Pattern fpsPattern = java.util.regex.Pattern.compile("([0-9.]+)\\s+fps");
@@ -294,7 +299,7 @@ public class Video4jEditorService {
 
             ProcessBuilder pb = new ProcessBuilder(command);
             pb.redirectErrorStream(true);
-            Process process = processTracker.start(pb);
+            Process process = startProcess(pb);
 
             try (java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(process.getInputStream(), java.nio.charset.StandardCharsets.UTF_8))) {
                 String line;
@@ -420,7 +425,7 @@ public class Video4jEditorService {
             logger.info("   -> Merge cmd: " + String.join(" ", mergeCmd));
             ProcessBuilder mergePb = new ProcessBuilder(mergeCmd);
             mergePb.redirectErrorStream(true);
-            Process mergeProcess = processTracker.start(mergePb);
+            Process mergeProcess = startProcess(mergePb);
             try (java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(mergeProcess.getInputStream(), java.nio.charset.StandardCharsets.UTF_8))) {
                 String line;
                 while ((line = r.readLine()) != null) {
@@ -469,7 +474,7 @@ public class Video4jEditorService {
             logger.info("🎬 [Video4jEditorService] Running concat: " + String.join(" ", concatCmd));
             ProcessBuilder pb = new ProcessBuilder(concatCmd);
             pb.redirectErrorStream(true);
-            Process process = processTracker.start(pb);
+            Process process = startProcess(pb);
             
             try (java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.InputStreamReader(process.getInputStream()))) {
                 String line;
@@ -523,7 +528,7 @@ public class Video4jEditorService {
             String ffmpegPathStr = configService.getFfmpegPath();
             ProcessBuilder pb = new ProcessBuilder(ffmpegPathStr, "-i", mediaFile.getAbsolutePath());
             pb.redirectErrorStream(true);
-            Process p = processTracker.start(pb);
+            Process p = startProcess(pb);
             double duration = 0.0;
             try (java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(p.getInputStream()))) {
                 String line;
@@ -575,7 +580,7 @@ public class Video4jEditorService {
         logger.info("🎵 [Video4jEditorService] Generating silence WAV fallback for Scene " + scene.getSceneId() + " (Duration: " + duration + "s) to: " + dest.getAbsolutePath());
         ProcessBuilder pb = new ProcessBuilder(buildDummyWavCommand(configService.getFfmpegPath(), duration, dest));
         pb.redirectErrorStream(true);
-        Process process = processTracker.start(pb);
+        Process process = startProcess(pb);
         
         try (java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(process.getInputStream(), java.nio.charset.StandardCharsets.UTF_8))) {
             while (r.readLine() != null) {}
@@ -597,11 +602,11 @@ public class Video4jEditorService {
         try {
             String os = System.getProperty("os.name").toLowerCase();
             if (os.contains("win")) {
-                processTracker.start(new ProcessBuilder("explorer.exe", "/select," + targetFile.getAbsolutePath()));
+                startProcess(new ProcessBuilder("explorer.exe", "/select," + targetFile.getAbsolutePath()));
             } else if (os.contains("mac")) {
-                processTracker.start(new ProcessBuilder("open", "-R", targetFile.getAbsolutePath()));
+                startProcess(new ProcessBuilder("open", "-R", targetFile.getAbsolutePath()));
             } else {
-                processTracker.start(new ProcessBuilder("xdg-open", targetFile.getParentFile().getAbsolutePath()));
+                startProcess(new ProcessBuilder("xdg-open", targetFile.getParentFile().getAbsolutePath()));
             }
         } catch (Exception e) {
             logger.error("⚠️ Could not open system folder: " + e.getMessage());
@@ -678,7 +683,7 @@ public class Video4jEditorService {
         logger.info("[Video4jEditorService] Running xfade: " + String.join(" ", args));
         ProcessBuilder pb = new ProcessBuilder(args);
         pb.redirectErrorStream(true);
-        Process p = processTracker.start(pb);
+        Process p = startProcess(pb);
         try (java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(p.getInputStream(), java.nio.charset.StandardCharsets.UTF_8))) {
             String line;
             while ((line = r.readLine()) != null) {

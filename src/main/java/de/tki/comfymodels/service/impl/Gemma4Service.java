@@ -13,23 +13,39 @@ public class Gemma4Service {
         this.localGemmaService = localGemmaService;
     }
 
+    public boolean isGemmaAvailable() {
+        return localGemmaService != null && localGemmaService.isModelDownloaded();
+    }
+
+    public void downloadGemmaModel(java.util.function.BiConsumer<Double, String> progressListener, Runnable onFinished, java.util.function.BiConsumer<String, Exception> onError) {
+        if (localGemmaService != null) {
+            localGemmaService.downloadModel(progressListener, onFinished, onError);
+        } else if (onError != null) {
+            onError.accept("LocalGemmaService is unavailable.", new IllegalStateException("Service null"));
+        }
+    }
+
+    public LocalGemmaService getLocalGemmaService() {
+        return localGemmaService;
+    }
+
     public String generateScript(String idea) throws Exception {
         if (localGemmaService == null || !localGemmaService.isModelDownloaded()) {
             throw new IllegalStateException("Local Gemma model is not downloaded. " +
-                    "Please navigate to the Prompt Lab tab and click 'Download local Gemma' to download the model first.");
+                    "Please download the Gemma-3-4B model first to unlock AI storyboard deconstruction.");
         }
 
-        String systemPrompt = "You are a professional video scriptwriter and director. " +
-                "You MUST generate a JSON array of objects representing the timeline scenes. " +
-                "Each object MUST contain exactly these fields and nothing else:\n" +
-                "1. 'scene_id': unique identifier (e.g. S1, S2, S3)\n" +
-                "2. 'visual_prompt': a detailed, descriptive prompt containing characters, lighting, camera angle, style, and visual action (perfect for ComfyUI generation). IMPORTANT: Do NOT include any text, typography, letters, words, subtitles, captions, or overlays in this visual description. The scene should be purely visual.\n" +
-                "3. 'duration_seconds': integer duration (e.g., 3, 5, 8)\n" +
-                "4. 'narration_text': the voiceover or narrative description for this scene\n\n" +
-                "Return ONLY the raw JSON array. Do not wrap it in markdown code block formatting (like ```json).";
+        String systemPrompt = "You are an expert Hollywood director, storyboard architect, and AI video prompt engineer.\n" +
+                "Deconstruct the user's master video idea into sequential, cinematic visual scenes.\n" +
+                "For EACH scene, you MUST generate an object in a JSON array with exactly these keys:\n" +
+                "1. 'scene_id': sequential identifier ('S1', 'S2', 'S3', ...)\n" +
+                "2. 'visual_prompt': a detailed, highly descriptive prompt capturing character actions, environment, cinematic camera angles, dynamic lighting, mood, and photorealistic textures for video generation (do not include any text, typography, letters, words, subtitles, captions, or overlays).\n" +
+                "3. 'duration_seconds': integer duration in seconds (typically between 3 and 8 seconds).\n" +
+                "4. 'narration_text': compelling voiceover or narration text matching the scene's visual flow.\n\n" +
+                "Return ONLY the raw JSON array starting with '[' and ending with ']'. Do not wrap it in markdown code fences or explanatory text.";
 
-        String userPrompt = "Video Idea: " + idea;
+        String userPrompt = "Master Video Script / Idea:\n" + idea;
 
-        return localGemmaService.generateCompletion(systemPrompt, userPrompt, 0.5f, 2048);
+        return localGemmaService.generateCompletion(systemPrompt, userPrompt, 0.3f, 2048);
     }
 }

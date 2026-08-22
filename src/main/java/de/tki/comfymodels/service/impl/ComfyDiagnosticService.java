@@ -44,31 +44,44 @@ public class ComfyDiagnosticService {
 
             JSONObject info = new JSONObject(response.body());
             
-            // Typical node names for models
-            String[] nodesToCheck = {"CheckpointLoaderSimple", "LoraLoader", "CheckpointLoader"};
-            
-            for (String node : nodesToCheck) {
+            String targetClean = modelName.replaceAll("[/\\\\]+", "/").toLowerCase();
+            String targetFileName = targetClean.contains("/") ? targetClean.substring(targetClean.lastIndexOf('/') + 1) : targetClean;
+
+            // Iterate over all nodes in object_info for a truly generic check
+            for (String node : info.keySet()) {
                 if (info.has(node)) {
                     JSONObject nodeInfo = info.getJSONObject(node);
                     if (nodeInfo.has("input")) {
                         JSONObject input = nodeInfo.getJSONObject("input");
-                        if (input.has("required")) {
-                            JSONObject required = input.getJSONObject("required");
-                            for (String key : required.keySet()) {
-                                Object val = required.get(key);
-                                if (val instanceof org.json.JSONArray) {
-                                    org.json.JSONArray outerArray = (org.json.JSONArray) val;
-                                    if (outerArray.length() > 0) {
-                                        Object firstElement = outerArray.get(0);
-                                        if (firstElement instanceof org.json.JSONArray) {
-                                            org.json.JSONArray options = (org.json.JSONArray) firstElement;
-                                            for (int i = 0; i < options.length(); i++) {
-                                                if (options.get(i) instanceof String && options.getString(i).equals(modelName)) return true;
+                        
+                        // Check both required and optional inputs
+                        String[] inputTypes = {"required", "optional"};
+                        for (String inputType : inputTypes) {
+                            if (input.has(inputType)) {
+                                JSONObject requiredOrOptional = input.getJSONObject(inputType);
+                                for (String key : requiredOrOptional.keySet()) {
+                                    Object val = requiredOrOptional.get(key);
+                                    if (val instanceof org.json.JSONArray outerArray) {
+                                        if (outerArray.length() > 0) {
+                                            Object firstElement = outerArray.get(0);
+                                            org.json.JSONArray options = null;
+                                            if (firstElement instanceof org.json.JSONArray) {
+                                                options = (org.json.JSONArray) firstElement;
+                                            } else if (firstElement instanceof String) {
+                                                options = outerArray;
                                             }
-                                        } else if (firstElement instanceof String) {
-                                            // Handle cases where the array itself is the list of options
-                                            for (int i = 0; i < outerArray.length(); i++) {
-                                                if (outerArray.get(i) instanceof String && outerArray.getString(i).equals(modelName)) return true;
+                                            
+                                            if (options != null) {
+                                                for (int i = 0; i < options.length(); i++) {
+                                                    if (options.get(i) instanceof String optStr) {
+                                                        String optClean = optStr.replaceAll("[/\\\\]+", "/").toLowerCase();
+                                                        String optFileName = optClean.contains("/") ? optClean.substring(optClean.lastIndexOf('/') + 1) : optClean;
+                                                        
+                                                        if (optClean.equals(targetClean) || optFileName.equals(targetFileName)) {
+                                                            return true;
+                                                        }
+                                                    }
+                                                }
                                             }
                                         }
                                     }

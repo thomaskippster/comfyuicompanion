@@ -37,10 +37,12 @@ public class ComprehensiveServiceTest {
     @BeforeEach
     public void setup() throws Exception {
         PathResolver pathResolver = new PathResolver();
+        pathResolver.clearExtraModelPaths();
         configService = new ConfigService(new EncryptionUtils(), pathResolver);
         ReflectionTestUtils.setField(configService, "masterPassword", "test-pass");
         configService.setModelsPath(tempDir.resolve("models").toString());
         configService.setArchivePath(tempDir.resolve("archive").toString());
+        pathResolver.clearExtraModelPaths();
 
         analyzer = new ComfyModelAnalyzer();
         workflowService = new WorkflowService();

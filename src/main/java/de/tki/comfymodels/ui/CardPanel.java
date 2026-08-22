@@ -21,6 +21,13 @@ public class CardPanel extends JPanel {
     }
 
     @Override
+    public void updateUI() {
+        super.updateUI();
+        // Repaint when FlatLaf theme changes so we pick up new UIManager colors
+        repaint();
+    }
+
+    @Override
     protected void paintComponent(Graphics g) {
         Graphics2D g2 = (Graphics2D) g.create();
         g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);

@@ -589,6 +589,7 @@ public class Main extends JFrame {
                 videoArchitectTab.updateTheme(darkMode);
             }
             if (blueprintGalleryTab != null) {
+                SwingUtilities.updateComponentTreeUI(blueprintGalleryTab);
                 blueprintGalleryTab.updateTheme(darkMode);
             }
             if (downloadManagerView != null) {

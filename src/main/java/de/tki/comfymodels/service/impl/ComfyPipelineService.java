@@ -5,6 +5,9 @@ import org.slf4j.LoggerFactory;
 
 import de.tki.comfymodels.domain.Scene;
 import de.tki.comfymodels.service.IComfyLifecycleService;
+import de.tki.comfymodels.domain.ComfyTemplate;
+import de.tki.comfymodels.service.IComfyTemplateService;
+import de.tki.comfymodels.service.PromptBlueprintApiService;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -50,6 +53,10 @@ public class ComfyPipelineService {
     @Autowired(required = false)
     private ProcessTracker processTracker;
 
+    private Process startProcess(ProcessBuilder pb) throws IOException {
+        return processTracker != null ? processTracker.start(pb) : pb.start();
+    }
+
     @Autowired
     @org.springframework.context.annotation.Lazy
     private IComfyLifecycleService lifecycleService;
@@ -60,83 +67,13 @@ public class ComfyPipelineService {
     @Autowired(required = false)
     private EnvironmentBootstrapperImpl bootstrapper;
 
-    // Fallback default API workflow if template is missing or invalid
-    private static final String DEFAULT_API_TEMPLATE = "{\n" +
-            "  \"prompt\": {\n" +
-            "    \"3\": {\n" +
-            "      \"inputs\": {\n" +
-            "        \"seed\": 42,\n" +
-            "        \"steps\": 20,\n" +
-            "        \"cfg\": 8.0,\n" +
-            "        \"sampler_name\": \"euler\",\n" +
-            "        \"scheduler\": \"normal\",\n" +
-            "        \"denoise\": 1.0,\n" +
-            "        \"model\": [\"10\", 0],\n" +
-            "        \"positive\": [\"6\", 0],\n" +
-            "        \"negative\": [\"7\", 0],\n" +
-            "        \"latent_image\": [\"5\", 0]\n" +
-            "      },\n" +
-            "      \"class_type\": \"KSampler\"\n" +
-            "    },\n" +
-            "    \"4\": {\n" +
-            "      \"inputs\": {\n" +
-            "        \"ckpt_name\": \"v1-5-pruned-emaonly.safetensors\"\n" +
-            "      },\n" +
-            "      \"class_type\": \"CheckpointLoaderSimple\"\n" +
-            "    },\n" +
-            "    \"5\": {\n" +
-            "      \"inputs\": {\n" +
-            "        \"width\": 512,\n" +
-            "        \"height\": 512,\n" +
-            "        \"batch_size\": 16\n" +
-            "      },\n" +
-            "      \"class_type\": \"EmptyLatentImage\"\n" +
-            "    },\n" +
-            "    \"6\": {\n" +
-            "      \"inputs\": {\n" +
-            "        \"text\": \"\",\n" +
-            "        \"clip\": [\"4\", 1]\n" +
-            "      },\n" +
-            "      \"class_type\": \"CLIPTextEncode\"\n" +
-            "    },\n" +
-            "    \"7\": {\n" +
-            "      \"inputs\": {\n" +
-            "        \"text\": \"bad hands, text, blurry, worst quality, low quality\",\n" +
-            "        \"clip\": [\"4\", 1]\n" +
-            "      },\n" +
-            "      \"class_type\": \"CLIPTextEncode\"\n" +
-            "    },\n" +
-            "    \"8\": {\n" +
-            "      \"inputs\": {\n" +
-            "        \"samples\": [\"3\", 0],\n" +
-            "        \"vae\": [\"4\", 2]\n" +
-            "      },\n" +
-            "      \"class_type\": \"VAEDecode\"\n" +
-            "    },\n" +
-            "    \"9\": {\n" +
-            "      \"inputs\": {\n" +
-            "        \"frame_rate\": 8,\n" +
-            "        \"loop_count\": 0,\n" +
-            "        \"filename_prefix\": \"VideoArchitect\",\n" +
-            "        \"format\": \"video/h264-mp4\",\n" +
-            "        \"pix_fmt\": \"yuv420p\",\n" +
-            "        \"crf\": 19,\n" +
-            "        \"save_output\": true,\n" +
-            "        \"pingpong\": false,\n" +
-            "        \"images\": [\"8\", 0]\n" +
-            "      },\n" +
-            "      \"class_type\": \"VHS_VideoCombine\"\n" +
-            "    },\n" +
-            "    \"10\": {\n" +
-            "      \"inputs\": {\n" +
-            "        \"model_name\": \"v3_sd15_mm.ckpt\",\n" +
-            "        \"beta_schedule\": \"sqrt_linear (AnimateDiff)\",\n" +
-            "        \"model\": [\"4\", 0]\n" +
-            "      },\n" +
-            "      \"class_type\": \"AnimateDiffLoaderV1\"\n" +
-            "    }\n" +
-            "  }\n" +
-            "}";
+    @Autowired(required = false)
+    private PromptBlueprintApiService promptBlueprintApiService;
+
+    @Autowired(required = false)
+    private IComfyTemplateService comfyTemplateService;
+
+
 
     @Autowired
     public ComfyPipelineService(ConfigService configService) {
@@ -185,14 +122,40 @@ public class ComfyPipelineService {
         WIDGET_MAP.put("LTXVSeparateAVLatent", new String[]{});
         WIDGET_MAP.put("LTXVLatentUpsampler", new String[]{});
         WIDGET_MAP.put("CLIPLoader", new String[]{"clip_name", "type", "device"});
+        WIDGET_MAP.put("DualCLIPLoader", new String[]{"clip_name1", "clip_name2", "type", "device"});
         WIDGET_MAP.put("VAELoader", new String[]{"vae_name"});
         WIDGET_MAP.put("UNETLoader", new String[]{"unet_name", "weight_dtype"});
         WIDGET_MAP.put("ModelSamplingSD3", new String[]{"shift"});
+        WIDGET_MAP.put("ModelSamplingAuraFlow", new String[]{"shift"});
+        WIDGET_MAP.put("ModelSamplingFlux", new String[]{"max_shift", "base_shift", "width", "height"});
+        WIDGET_MAP.put("ModelSamplingContinuousEDM", new String[]{"sampling", "sigma_max", "sigma_min"});
+        WIDGET_MAP.put("FluxGuidance", new String[]{"guidance"});
+        WIDGET_MAP.put("CFGNorm", new String[]{"strength", "pre_cfg"});
+        WIDGET_MAP.put("BasicScheduler", new String[]{"scheduler", "steps", "denoise"});
+        WIDGET_MAP.put("EmptyLatentImage", new String[]{"width", "height", "batch_size"});
+        WIDGET_MAP.put("EmptySD3LatentImage", new String[]{"width", "height", "batch_size"});
+        WIDGET_MAP.put("KSampler", new String[]{"seed", "control_after_generate", "steps", "cfg", "sampler_name", "scheduler", "denoise"});
+        WIDGET_MAP.put("SaveImage", new String[]{"filename_prefix"});
+        WIDGET_MAP.put("PreviewImage", new String[]{});
+        WIDGET_MAP.put("ConditioningZeroOut", new String[]{});
+        WIDGET_MAP.put("SaveImageAdvanced", new String[]{"filename_prefix", "format", "format.bit_depth", "format.input_color_space"});
+        WIDGET_MAP.put("PrimitiveBoolean", new String[]{"value"});
+        WIDGET_MAP.put("TextEncodeQwenImageEditPlus", new String[]{"prompt"});
+        WIDGET_MAP.put("ImageScaleToTotalPixels", new String[]{"upscale_method", "megapixels", "resolution_steps"});
+        WIDGET_MAP.put("EmptyFlux2LatentImage", new String[]{"width", "height", "batch_size"});
+        WIDGET_MAP.put("Flux2Scheduler", new String[]{"steps", "width", "height"});
+        WIDGET_MAP.put("SamplerCustomAdvanced", new String[]{});
+        WIDGET_MAP.put("SDTurboScheduler", new String[]{"steps", "denoise"});
+        WIDGET_MAP.put("BetaScheduler", new String[]{"scheduler", "steps", "denoise"});
+        WIDGET_MAP.put("LoraLoader", new String[]{"lora_name", "strength_model", "strength_clip"});
         WIDGET_MAP.put("WanImageToVideo", new String[]{"width", "height", "length", "batch_size"});
         WIDGET_MAP.put("KSamplerAdvanced", new String[]{"add_noise", "noise_seed", "control_after_generate", "steps", "cfg", "sampler_name", "scheduler", "start_at_step", "end_at_step", "return_with_leftover_noise"});
     }
 
     public static JSONObject convertUiToApi(JSONObject uiWorkflow) {
+        if (uiWorkflow != null && uiWorkflow.has("definitions") && uiWorkflow.getJSONObject("definitions").has("subgraphs")) {
+            uiWorkflow = flattenWorkflow(uiWorkflow);
+        }
         JSONObject apiPayload = new JSONObject();
         JSONObject apiPrompt = new JSONObject();
         apiPayload.put("prompt", apiPrompt);
@@ -247,10 +210,14 @@ public class ComfyPipelineService {
                         int linkId = input.getInt("link");
                         Object[] origin = linksMap.get(linkId);
                         if (origin != null) {
-                            JSONArray linkRef = new JSONArray();
-                            linkRef.put(String.valueOf(origin[0]));
-                            linkRef.put(origin[1]);
-                            apiInputs.put(inputName, linkRef);
+                            if (origin[0] instanceof Integer oId && oId == -10) {
+                                // Skip pseudo origin -10
+                            } else {
+                                JSONArray linkRef = new JSONArray();
+                                linkRef.put(String.valueOf(origin[0]));
+                                linkRef.put(origin[1]);
+                                apiInputs.put(inputName, linkRef);
+                            }
                         }
                      }
                  }
@@ -323,14 +290,21 @@ public class ComfyPipelineService {
                         JSONObject required = input.optJSONObject("required");
                         if (required != null) {
                             Object val = required.opt(inputName);
-                            if (val instanceof JSONArray) {
-                                JSONArray outerArray = (JSONArray) val;
-                                if (outerArray.length() > 0) {
-                                    Object firstElement = outerArray.get(0);
-                                    if (firstElement instanceof JSONArray) {
-                                        JSONArray options = (JSONArray) firstElement;
-                                        for (int i = 0; i < options.length(); i++) {
-                                            optionsList.add(options.getString(i));
+                            if (val instanceof JSONArray outerArray && outerArray.length() > 0) {
+                                Object firstElement = outerArray.get(0);
+                                JSONArray options = null;
+                                if (firstElement instanceof JSONArray) {
+                                    options = (JSONArray) firstElement;
+                                } else if (firstElement instanceof String firstStr && firstStr.equalsIgnoreCase("COMBO") && outerArray.length() > 1 && outerArray.get(1) instanceof JSONObject configObj) {
+                                    options = configObj.optJSONArray("options");
+                                } else if (firstElement instanceof String && !"COMBO".equalsIgnoreCase((String) firstElement)) {
+                                    options = outerArray;
+                                }
+                                if (options != null) {
+                                    for (int i = 0; i < options.length(); i++) {
+                                        Object optVal = options.get(i);
+                                        if (optVal instanceof String s && !s.equalsIgnoreCase("COMBO")) {
+                                            optionsList.add(s);
                                         }
                                     }
                                 }
@@ -394,19 +368,29 @@ public class ComfyPipelineService {
         double cfgNoLora = userCfg;
         double cfgLora = 1.0;
 
-        String negativePrompt = "????,??,??,??????,??,??,??,??,??,??,????,????,???,JPEG????,???,???,?????,???????,???????,???,???,???????,????,???????,?????,???,?????,???";
+        String negativePrompt = "色调艳丽, 过曝, 静态, 细节模糊不清, 字幕, 风格, 作品, 画作, 画面, 静止, 整体发灰, 最差质量, 低质量, JPEG压缩残留, 丑陋的, 残缺的, 多余的手指, 变形的手指, 畸形, 水印, low quality, worst quality, deformed, distorted, blurry, static, text, watermark, signature";
 
         workflowJson.put("129:90", makeNode("VAELoader", new JSONObject().put("vae_name", vaeName)));
         workflowJson.put("129:84", makeNode("CLIPLoader", new JSONObject().put("clip_name", clipName).put("type", "wan").put("device", "default")));
         workflowJson.put("129:95", makeNode("UNETLoader", new JSONObject().put("unet_name", highNoiseUnet).put("weight_dtype", "default")));
         workflowJson.put("129:96", makeNode("UNETLoader", new JSONObject().put("unet_name", lowNoiseUnet).put("weight_dtype", "default")));
-        workflowJson.put("129:101", makeNode("LoraLoaderModelOnly", new JSONObject().put("lora_name", highNoiseLora).put("strength_model", 1.0).put("model", link("129:95", 0))));
-        workflowJson.put("129:102", makeNode("LoraLoaderModelOnly", new JSONObject().put("lora_name", lowNoiseLora).put("strength_model", 1.0).put("model", link("129:96", 0))));
-        workflowJson.put("129:131", makeNode("PrimitiveBoolean", new JSONObject().put("value", enableLora)));
-        workflowJson.put("129:116", makeNode("ComfySwitchNode", new JSONObject().put("switch", link("129:131", 0)).put("on_false", link("129:95", 0)).put("on_true", link("129:101", 0))));
-        workflowJson.put("129:117", makeNode("ComfySwitchNode", new JSONObject().put("switch", link("129:131", 0)).put("on_false", link("129:96", 0)).put("on_true", link("129:102", 0))));
-        workflowJson.put("129:104", makeNode("ModelSamplingSD3", new JSONObject().put("shift", 5.0).put("model", link("129:116", 0))));
-        workflowJson.put("129:103", makeNode("ModelSamplingSD3", new JSONObject().put("shift", 5.0).put("model", link("129:117", 0))));
+        boolean hasHighLora = availableLoras.stream().anyMatch(l -> l.toLowerCase().contains("wan") && l.toLowerCase().contains("high"));
+        boolean hasLowLora = availableLoras.stream().anyMatch(l -> l.toLowerCase().contains("wan") && l.toLowerCase().contains("low"));
+        boolean useLora = enableLora && hasHighLora && hasLowLora;
+
+        workflowJson.put("129:131", makeNode("PrimitiveBoolean", new JSONObject().put("value", useLora)));
+        if (useLora) {
+            workflowJson.put("129:101", makeNode("LoraLoaderModelOnly", new JSONObject().put("lora_name", highNoiseLora).put("strength_model", 1.0).put("model", link("129:95", 0))));
+            workflowJson.put("129:102", makeNode("LoraLoaderModelOnly", new JSONObject().put("lora_name", lowNoiseLora).put("strength_model", 1.0).put("model", link("129:96", 0))));
+            workflowJson.put("129:116", makeNode("ComfySwitchNode", new JSONObject().put("switch", link("129:131", 0)).put("on_false", link("129:95", 0)).put("on_true", link("129:101", 0))));
+            workflowJson.put("129:117", makeNode("ComfySwitchNode", new JSONObject().put("switch", link("129:131", 0)).put("on_false", link("129:96", 0)).put("on_true", link("129:102", 0))));
+            workflowJson.put("129:104", makeNode("ModelSamplingSD3", new JSONObject().put("shift", 5.0).put("model", link("129:116", 0))));
+            workflowJson.put("129:103", makeNode("ModelSamplingSD3", new JSONObject().put("shift", 5.0).put("model", link("129:117", 0))));
+        } else {
+            workflowJson.put("129:104", makeNode("ModelSamplingSD3", new JSONObject().put("shift", 5.0).put("model", link("129:95", 0))));
+            workflowJson.put("129:103", makeNode("ModelSamplingSD3", new JSONObject().put("shift", 5.0).put("model", link("129:96", 0))));
+        }
+
         workflowJson.put("129:89", makeNode("CLIPTextEncode", new JSONObject().put("text", negativePrompt).put("clip", link("129:84", 0))));
         workflowJson.put("129:93", makeNode("CLIPTextEncode", new JSONObject().put("text", promptText).put("clip", link("129:84", 0))));
         workflowJson.put("129:161", makeNode("PrimitiveFloat", new JSONObject().put("value", duration)));
@@ -445,6 +429,153 @@ public class ComfyPipelineService {
         workflowJson.put("129:87", makeNode("VAEDecode", new JSONObject().put("samples", link("129:85", 0)).put("vae", link("129:90", 0))));
         workflowJson.put("129:94", makeNode("CreateVideo", new JSONObject().put("fps", link("129:162", 0)).put("images", link("129:87", 0))));
         workflowJson.put("108", makeNode("SaveVideo", new JSONObject().put("filename_prefix", "video/" + filenamePrefix).put("format", "auto").put("codec", "auto").put("video", link("129:94", 0))));
+
+        return workflowJson;
+    }
+
+    public File convertImageToVideo(File imageFile, File audioFile, float durationSeconds, float fps, File outputFile) throws Exception {
+        validateFfmpeg();
+        String ffmpegPath = configService.getFfmpegPath();
+        List<String> cmd = new ArrayList<>();
+        cmd.add(ffmpegPath);
+        cmd.add("-y");
+        cmd.add("-loop");
+        cmd.add("1");
+        cmd.add("-i");
+        cmd.add(imageFile.getAbsolutePath());
+        if (audioFile != null && audioFile.exists()) {
+            cmd.add("-i");
+            cmd.add(audioFile.getAbsolutePath());
+            cmd.add("-c:v");
+            cmd.add("libx264");
+            cmd.add("-tune");
+            cmd.add("stillimage");
+            cmd.add("-c:a");
+            cmd.add("aac");
+            cmd.add("-b:a");
+            cmd.add("192k");
+            cmd.add("-pix_fmt");
+            cmd.add("yuv420p");
+            cmd.add("-shortest");
+            cmd.add("-vf");
+            cmd.add("scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2");
+        } else {
+            cmd.add("-t");
+            cmd.add(String.valueOf(durationSeconds > 0 ? durationSeconds : 5.0f));
+            cmd.add("-c:v");
+            cmd.add("libx264");
+            cmd.add("-tune");
+            cmd.add("stillimage");
+            cmd.add("-pix_fmt");
+            cmd.add("yuv420p");
+            cmd.add("-r");
+            cmd.add(String.valueOf(fps > 0 ? fps : 24.0f));
+            cmd.add("-vf");
+            cmd.add("scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2");
+        }
+        cmd.add(outputFile.getAbsolutePath());
+
+        logger.info("🎬 [ComfyPipeline] Converting image to video via FFmpeg: " + String.join(" ", cmd));
+        ProcessBuilder pb = new ProcessBuilder(cmd);
+        pb.redirectErrorStream(true);
+        Process p = startProcess(pb);
+        try (java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = r.readLine()) != null) {
+                logger.info("   [FFmpeg Img2Vid] " + line);
+            }
+        }
+        int exit = p.waitFor();
+        if (exit != 0 || !outputFile.exists() || outputFile.length() < 100) {
+            throw new IOException("FFmpeg image-to-video conversion failed with exit code " + exit);
+        }
+        return outputFile;
+    }
+
+    private boolean isWanSetupComplete(List<String> unets, List<String> clips, List<String> vaes) {
+        boolean hasWanUnet = !unets.isEmpty() && unets.stream().anyMatch(u -> {
+            String lower = u.toLowerCase();
+            return lower.contains("wan2") || lower.contains("wan_2") || lower.contains("wan-2") || lower.contains("wan.2") || (lower.contains("wan") && (lower.contains("i2v") || lower.contains("t2v") || lower.contains("14b") || lower.contains("1.3b")));
+        });
+        boolean hasWanClip = !clips.isEmpty() && clips.stream().anyMatch(c -> {
+            String lower = c.toLowerCase();
+            return lower.contains("umt5") || lower.contains("wan");
+        });
+        boolean hasWanVae = !vaes.isEmpty() && vaes.stream().anyMatch(v -> {
+            String lower = v.toLowerCase();
+            return lower.contains("wan");
+        });
+        return hasWanUnet && hasWanClip && hasWanVae;
+    }
+
+    private JSONObject generateSceneImageWorkflow(String serverUrl, Scene scene, String speakerImage, long seed, String filenamePrefix,
+                                                  List<String> availableUnets, List<String> availableCheckpoints,
+                                                  List<String> availableClips, List<String> availableVaes) throws Exception {
+        File blueprintFile = null;
+        File[] candidateFiles = new File[]{
+            new File("workflows/z-image-turbo_text_to_image.json"),
+            new File("workflows/z-image_text_to_image.json"),
+            new File("workflows/flux2_klein_9b_text_to_image.json"),
+            new File("workflows/qwen_image_edit_2509.json")
+        };
+
+        for (File bf : candidateFiles) {
+            if (bf.exists()) {
+                String name = bf.getName().toLowerCase();
+                if (name.contains("turbo") && availableUnets.stream().anyMatch(u -> u.toLowerCase().contains("turbo"))) {
+                    blueprintFile = bf;
+                    break;
+                } else if (name.contains("z-image") && availableUnets.stream().anyMatch(u -> u.toLowerCase().contains("z_image"))) {
+                    blueprintFile = bf;
+                    break;
+                } else if (name.contains("flux") && availableUnets.stream().anyMatch(u -> u.toLowerCase().contains("flux"))) {
+                    blueprintFile = bf;
+                    break;
+                }
+            }
+        }
+
+        if (blueprintFile == null) {
+            for (File bf : candidateFiles) {
+                if (bf.exists()) {
+                    blueprintFile = bf;
+                    break;
+                }
+            }
+        }
+
+        JSONObject workflowJson = null;
+        if (blueprintFile != null && blueprintFile.exists()) {
+            String content = Files.readString(blueprintFile.toPath(), StandardCharsets.UTF_8);
+            JSONObject parsed = new JSONObject(content);
+            JSONObject flattened = flattenWorkflow(parsed);
+            JSONObject apiPayload = convertUiToApi(flattened);
+            PromptBlueprintApiService pbService = (this.promptBlueprintApiService != null) ? this.promptBlueprintApiService : new PromptBlueprintApiService();
+            JSONObject mainObj = pbService.extractApiPayload(apiPayload.toString());
+            JSONObject promptObj = mainObj.getJSONObject("prompt");
+
+            PromptBlueprintApiService.PromptLabInputs inputs = new PromptBlueprintApiService.PromptLabInputs(
+                scene.getPrompt(),
+                "blurry, low quality, distortion, bad anatomy, deformed",
+                1024, 1024,
+                (scene.getSteps() > 0 ? scene.getSteps() : 8),
+                (scene.getCfgScale() > 0 ? scene.getCfgScale() : 1.0),
+                seed, "euler", "simple", 1.0, 1, speakerImage
+            );
+
+            pbService.injectLabInputs(promptObj, inputs);
+            workflowJson = mainObj;
+        } else if (!availableCheckpoints.isEmpty() && comfyTemplateService != null) {
+            ComfyTemplate template = comfyTemplateService.determineTemplateForModel(availableCheckpoints.get(0));
+            if (template != null) {
+                workflowJson = new JSONObject(template.getContent());
+                injectPrompt(workflowJson, scene.getPrompt());
+            }
+        }
+
+        if (workflowJson == null) {
+            throw new IOException("No suitable image or video workflow template could be found for available ComfyUI models.");
+        }
 
         return workflowJson;
     }
@@ -591,60 +722,95 @@ public class ComfyPipelineService {
                     }
                 }
 
-                JSONObject workflowJson;
+                List<String> availableUnets = fetchObjectInfoOptions(serverUrl, "UNETLoader", "unet_name");
+                List<String> availableCheckpoints = fetchAvailableCheckpoints(serverUrl);
+                List<String> availableClips = fetchObjectInfoOptions(serverUrl, "CLIPLoader", "clip_name");
+                List<String> availableVaes = fetchObjectInfoOptions(serverUrl, "VAELoader", "vae_name");
+
                 boolean wanNodesAvailable = isNodeClassAvailable(serverUrl, "WanImageToVideo");
-                if (wanNodesAvailable) {
+                boolean hasWanModels = isWanSetupComplete(availableUnets, availableClips, availableVaes);
+
+                JSONObject workflowJson = null;
+                if (wanNodesAvailable && hasWanModels) {
+                    logger.info("🎬 [ComfyPipeline] Generating Wan 2.2 native video workflow...");
                     workflowJson = generateWanWorkflowJson(serverUrl, scene, speakerImage, seed, filenamePrefix);
-                } else if (speakerImage != null && !speakerImage.trim().isEmpty()) {
-                    // Blueprint is image-to-video only; use it when a start image is provided and Wan nodes are missing
+                } else if (speakerImage != null && !speakerImage.trim().isEmpty() && hasWanModels) {
                     JSONObject blueprintJson = loadBlueprintWorkflow("Text to Video (Wan 2.2).json");
                     if (blueprintJson != null) {
-                        logger.info("📄 [ComfyPipeline] Wan nodes unavailable; using Wan 2.2 blueprint workflow with start image.");
+                        logger.info("📄 [ComfyPipeline] Using Wan 2.2 blueprint workflow with start image.");
                         injectPrompt(blueprintJson, scene.getPrompt());
                         injectParamsIntoBlueprint(blueprintJson, seed, filenamePrefix, scene);
                         injectSpeakerImage(blueprintJson, speakerImage);
                         workflowJson = blueprintJson;
-                    } else {
-                        throw new IOException("WanImageToVideo node is not available in ComfyUI and no blueprint workflow was found.");
                     }
-                } else {
-                    throw new IOException("WanImageToVideo node is not available in ComfyUI. Install Wan 2.2 custom nodes/models or provide a Global Start Image.");
+                }
+
+                if (workflowJson == null) {
+                    logger.info("🖼️ [ComfyPipeline] Dedicated video diffusion models not found; generating scene visuals via available image model...");
+                    workflowJson = generateSceneImageWorkflow(serverUrl, scene, speakerImage, seed, filenamePrefix, availableUnets, availableCheckpoints, availableClips, availableVaes);
                 }
 
                 sanitizeWorkflow(workflowJson, serverUrl);
 
                 // 2. Send prompt to ComfyUI
-                String promptId = submitPrompt(serverUrl, workflowJson);
-                logger.info("🚀 [ComfyPipeline] Submitted job. Prompt ID: " + promptId);
+                ComfyOutputRef outputRef = null;
+                boolean isWanAttempt = (wanNodesAvailable && hasWanModels);
 
-                // 3. Poll queue status via /history
-                ComfyOutputRef outputRef = pollHistoryForOutput(serverUrl, promptId);
+                try {
+                    String promptId = submitPrompt(serverUrl, workflowJson);
+                    logger.info("🚀 [ComfyPipeline] Submitted job. Prompt ID: " + promptId);
+                    outputRef = pollHistoryForOutput(serverUrl, promptId);
+                } catch (Exception ex) {
+                    if (isWanAttempt) {
+                        logger.warn("⚠️ [ComfyPipeline] Video model execution failed ({}); falling back to available image diffusion model synthesis...", ex.getMessage());
+                        JSONObject fallbackWorkflow = generateSceneImageWorkflow(serverUrl, scene, speakerImage, seed, filenamePrefix, availableUnets, availableCheckpoints, availableClips, availableVaes);
+                        sanitizeWorkflow(fallbackWorkflow, serverUrl);
+                        String fallbackPromptId = submitPrompt(serverUrl, fallbackWorkflow);
+                        logger.info("🚀 [ComfyPipeline] Submitted fallback job. Prompt ID: " + fallbackPromptId);
+                        outputRef = pollHistoryForOutput(serverUrl, fallbackPromptId);
+                    } else {
+                        throw ex;
+                    }
+                }
+
                 String finishedFilename = outputRef != null ? outputRef.filename : null;
-                logger.info("? [ComfyPipeline] Job finished. Filename: {}" + 
+                logger.info("✅ [ComfyPipeline] Job finished. Filename: {}" + 
                         (outputRef != null && !outputRef.subfolder.isEmpty() ? " (subfolder: " + outputRef.subfolder + ")" : ""),
                         finishedFilename);
 
-                // 4. Find the video file in the ComfyUI output directory
+                // 4. Find the video/image file in the ComfyUI output directory
                 String comfyOutputPath = configService.getResolvedOutputDir();
                 if (comfyOutputPath == null || comfyOutputPath.trim().isEmpty()) {
                     comfyOutputPath = new File("output").getAbsolutePath();
                 }
 
-                File rawVideoFile = resolveOutputFile(comfyOutputPath, outputRef, scene.getSceneId());
+                File rawOutputFile = resolveOutputFile(comfyOutputPath, outputRef, scene.getSceneId());
+                if (rawOutputFile == null && finishedFilename != null && !finishedFilename.trim().isEmpty()) {
+                    rawOutputFile = downloadOutput(serverUrl, outputRef, scene.getSceneId());
+                }
 
                 File finalVideoFile = new File(new File("").getAbsoluteFile(), "scene_" + scene.getSceneId() + "_final.mp4");
 
-                if (rawVideoFile != null && rawVideoFile.exists()) {
-                    // 5. Post-Processing: Audio-Muxing (ProcessBuilder)
+                float duration = 5.0f;
+                if (scene.getEndFrame() > scene.getStartFrame()) {
+                    duration = Math.max(1.0f, (scene.getEndFrame() - scene.getStartFrame()) / 24.0f);
+                }
+                float fps = 24.0f;
+
+                if (rawOutputFile != null && rawOutputFile.exists()) {
+                    boolean isImage = rawOutputFile.getName().toLowerCase().matches(".*\\.(png|jpg|jpeg|webp)$");
                     String audioPath = scene.getAudioPath();
                     File audioFile = (audioPath != null && !audioPath.trim().isEmpty()) ? new File(audioPath) : null;
 
-                    if (audioFile != null && audioFile.exists()) {
+                    if (isImage) {
+                        logger.info("🖼️ [ComfyPipeline] Raw output is an image. Converting to MP4 scene video...");
+                        convertImageToVideo(rawOutputFile, audioFile, duration, fps, finalVideoFile);
+                    } else if (audioFile != null && audioFile.exists()) {
                         String ffmpegPath = configService.getFfmpegPath();
                         List<String> cmd = List.of(
                             ffmpegPath,
                             "-y",
-                            "-i", rawVideoFile.getAbsolutePath(),
+                            "-i", rawOutputFile.getAbsolutePath(),
                             "-i", audioFile.getAbsolutePath(),
                             "-c:v", "copy",
                             "-c:a", "aac",
@@ -655,9 +821,8 @@ public class ComfyPipelineService {
                         logger.info("🎬 [ComfyPipeline] Running FFmpeg audio muxing command: " + String.join(" ", cmd));
                         ProcessBuilder pb = new ProcessBuilder(cmd);
                         pb.redirectOutput(ProcessBuilder.Redirect.DISCARD);
-                        Process process = processTracker.start(pb);
+                        Process process = startProcess(pb);
 
-                        // Read the error stream in a separate thread to prevent buffer deadlocks
                         Thread errorReaderThread = new Thread(() -> {
                             try (java.io.BufferedReader reader = new java.io.BufferedReader(
                                     new java.io.InputStreamReader(process.getErrorStream(), StandardCharsets.UTF_8))) {
@@ -678,41 +843,25 @@ public class ComfyPipelineService {
                             throw new IOException("FFmpeg audio muxing failed with exit code: " + exitCode);
                         }
 
-                        // Cleanup the original toneless file
-                        if (rawVideoFile.exists()) {
-                            logger.info("🧹 [ComfyPipeline] Cleaning up raw video: " + rawVideoFile.getAbsolutePath());
-                            rawVideoFile.delete();
+                        if (rawOutputFile.exists() && !rawOutputFile.getAbsolutePath().equals(finalVideoFile.getAbsolutePath())) {
+                            rawOutputFile.delete();
                         }
                     } else {
                         logger.info("ℹ️ [ComfyPipeline] No audio file found or specified for scene. Copying raw video to final path: " + finalVideoFile.getAbsolutePath());
-                        Files.copy(rawVideoFile.toPath(), finalVideoFile.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-                        if (rawVideoFile.exists()) {
-                            rawVideoFile.delete();
-                        }
+                        Files.copy(rawOutputFile.toPath(), finalVideoFile.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
                     }
 
                     scene.setVideoPath(finalVideoFile.getAbsolutePath());
                     return finalVideoFile;
                 } else {
-                    // Fallback/Mock scenario: download output if a filename was returned but not found locally (e.g. test environment)
-                    if (finishedFilename != null && !finishedFilename.trim().isEmpty()) {
-                        File downloadedFile = downloadOutput(serverUrl, outputRef, scene.getSceneId());
-                        // Move or copy to finalVideoFile to keep name consistent
-                        Files.copy(downloadedFile.toPath(), finalVideoFile.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-                        downloadedFile.delete();
-                        scene.setVideoPath(finalVideoFile.getAbsolutePath());
-                        return finalVideoFile;
-                    } else {
-                        if (strictMode) {
-                            throw new Exception("Strict mode enabled: ComfyUI finished generation, but no output video file was returned or found locally.");
-                        }
-                        // Generate simulated video as fallback
-                        File fallbackVideo = generateSimulatedVideo(scene);
-                        Files.copy(fallbackVideo.toPath(), finalVideoFile.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-                        fallbackVideo.delete();
-                        scene.setVideoPath(finalVideoFile.getAbsolutePath());
-                        return finalVideoFile;
+                    if (strictMode) {
+                        throw new Exception("Strict mode enabled: ComfyUI finished generation, but no output video or image file was returned or found locally.");
                     }
+                    File fallbackVideo = generateSimulatedVideo(scene);
+                    Files.copy(fallbackVideo.toPath(), finalVideoFile.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                    fallbackVideo.delete();
+                    scene.setVideoPath(finalVideoFile.getAbsolutePath());
+                    return finalVideoFile;
                 }
 
             } catch (Exception e) {
@@ -761,7 +910,7 @@ public class ComfyPipelineService {
         
         if (isGlobal) {
             try {
-                Process p = processTracker.start(new ProcessBuilder("ffmpeg", "-version"));
+                Process p = startProcess(new ProcessBuilder("ffmpeg", "-version"));
 ;
                 p.destroy();
                 available = true;
@@ -839,7 +988,7 @@ public class ComfyPipelineService {
 
         ProcessBuilder pb = new ProcessBuilder(cmd);
         pb.redirectErrorStream(true);
-        Process process = processTracker.start(pb);
+        Process process = startProcess(pb);
         
         // Consume stream
         try (java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(process.getInputStream(), java.nio.charset.StandardCharsets.UTF_8))) {
@@ -862,7 +1011,7 @@ public class ComfyPipelineService {
                 targetFile.toString()
             );
             pbFallback.redirectErrorStream(true);
-            Process fallbackProcess = processTracker.start(pbFallback);
+            Process fallbackProcess = startProcess(pbFallback);
             try (java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(fallbackProcess.getInputStream(), java.nio.charset.StandardCharsets.UTF_8))) {
                 while (r.readLine() != null) {}
             }
@@ -902,7 +1051,7 @@ public class ComfyPipelineService {
                 mediaFile.getAbsolutePath()
             );
             pb.redirectErrorStream(true);
-            Process p = processTracker.start(pb);
+            Process p = startProcess(pb);
             String line;
             try (java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(p.getInputStream()))) {
                 line = r.readLine();
@@ -957,6 +1106,11 @@ public class ComfyPipelineService {
                     java.util.Map<Integer, Object[]> inputSlotLinks = new java.util.HashMap<>();
                     java.util.Map<Integer, List<Object[]>> outputSlotLinks = new java.util.HashMap<>();
 
+                    JSONArray nodeInputsArr = node.optJSONArray("inputs");
+                    JSONArray nodeOutputsArr = node.optJSONArray("outputs");
+                    JSONArray sgInputsArr = sgDef.optJSONArray("inputs");
+                    JSONArray sgOutputsArr = sgDef.optJSONArray("outputs");
+
                     for (int j = 0; j < mainLinks.length(); j++) {
                         JSONArray link = mainLinks.optJSONArray(j);
                         if (link == null || link.length() < 6) continue;
@@ -968,10 +1122,34 @@ public class ComfyPipelineService {
                         String linkType = link.getString(5);
 
                         if (targetId == subgraphNodeId) {
-                            inputSlotLinks.put(targetSlot, new Object[]{originId, originSlot, linkType, linkId});
+                            int targetSgSlot = targetSlot;
+                            if (nodeInputsArr != null && targetSlot < nodeInputsArr.length()) {
+                                String slotName = nodeInputsArr.getJSONObject(targetSlot).optString("name", "");
+                                if (sgInputsArr != null) {
+                                    for (int s = 0; s < sgInputsArr.length(); s++) {
+                                        if (slotName.equals(sgInputsArr.getJSONObject(s).optString("name", ""))) {
+                                            targetSgSlot = s;
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                            inputSlotLinks.put(targetSgSlot, new Object[]{originId, originSlot, linkType, linkId});
                         }
                         if (originId == subgraphNodeId) {
-                            outputSlotLinks.computeIfAbsent(originSlot, k -> new ArrayList<>())
+                            int originSgSlot = originSlot;
+                            if (nodeOutputsArr != null && originSlot < nodeOutputsArr.length()) {
+                                String slotName = nodeOutputsArr.getJSONObject(originSlot).optString("name", "");
+                                if (sgOutputsArr != null) {
+                                    for (int s = 0; s < sgOutputsArr.length(); s++) {
+                                        if (slotName.equals(sgOutputsArr.getJSONObject(s).optString("name", ""))) {
+                                            originSgSlot = s;
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                            outputSlotLinks.computeIfAbsent(originSgSlot, k -> new ArrayList<>())
                                     .add(new Object[]{targetId, targetSlot, linkType, linkId});
                         }
                     }
@@ -1163,7 +1341,7 @@ public class ComfyPipelineService {
                 logger.error("⚠️ [ComfyPipeline] Failed to parse custom workflow.json: " + e);
             }
         }
-        return DEFAULT_API_TEMPLATE;
+        return "{}";
     }
 
     private void injectPrompt(JSONObject workflowJson, String promptText) {
@@ -1213,24 +1391,74 @@ public class ComfyPipelineService {
 
     public void sanitizeWorkflow(JSONObject workflowJson, String serverUrl) {
         List<String> availableCkpts = fetchAvailableCheckpoints(serverUrl);
-        if (availableCkpts.isEmpty()) {
-            return; // No info, skip sanitization
-        }
+        List<String> availableUnets = fetchObjectInfoOptions(serverUrl, "UNETLoader", "unet_name");
+        List<String> availableClips = fetchObjectInfoOptions(serverUrl, "CLIPLoader", "clip_name");
+        List<String> availableVaes = fetchObjectInfoOptions(serverUrl, "VAELoader", "vae_name");
+        List<String> availableLoras = fetchObjectInfoOptions(serverUrl, "LoraLoader", "lora_name");
 
         JSONObject promptObj = workflowJson.has("prompt") ? workflowJson.getJSONObject("prompt") : workflowJson;
-        for (String key : promptObj.keySet()) {
+        for (String key : new ArrayList<>(promptObj.keySet())) {
             JSONObject node = promptObj.optJSONObject(key);
-            if (node != null && "CheckpointLoaderSimple".equals(node.optString("class_type"))) {
-                JSONObject inputs = node.optJSONObject("inputs");
-                if (inputs != null) {
-                    String currentCkpt = inputs.optString("ckpt_name", "");
-                    if (!availableCkpts.contains(currentCkpt)) {
-                        if (!availableCkpts.isEmpty()) {
-                            String replacement = availableCkpts.get(0);
-                            inputs.put("ckpt_name", replacement);
-                            logger.info("🔄 [ComfyPipeline] Replaced missing checkpoint '" + currentCkpt + "' with first available: '" + replacement + "' in node " + key);
-                        } else {
-                            logger.error("⚠️ [ComfyPipeline] Could not replace missing checkpoint because available checkpoint list is empty (ComfyUI may be offline).");
+            if (node == null) continue;
+            String classType = node.optString("class_type", "");
+            JSONObject inputs = node.optJSONObject("inputs");
+            if (inputs == null) continue;
+
+            if ("CheckpointLoaderSimple".equals(classType)) {
+                String currentCkpt = inputs.optString("ckpt_name", "");
+                if (!availableCkpts.isEmpty() && !availableCkpts.contains(currentCkpt)) {
+                    String match = findExactModelName(currentCkpt, availableCkpts);
+                    if (!availableCkpts.contains(match)) match = availableCkpts.get(0);
+                    inputs.put("ckpt_name", match);
+                    logger.info("🔄 [ComfyPipeline] Sanitized checkpoint '{}' -> '{}' in node {}", currentCkpt, match, key);
+                }
+            } else if ("UNETLoader".equals(classType) || "UNetLoader".equals(classType)) {
+                String currentUnet = inputs.optString("unet_name", "");
+                if (!availableUnets.isEmpty() && !availableUnets.contains(currentUnet)) {
+                    String match = findExactModelName(currentUnet, availableUnets);
+                    if (!availableUnets.contains(match)) match = availableUnets.get(0);
+                    inputs.put("unet_name", match);
+                    logger.info("🔄 [ComfyPipeline] Sanitized UNET '{}' -> '{}' in node {}", currentUnet, match, key);
+                }
+            } else if ("CLIPLoader".equals(classType)) {
+                String currentClip = inputs.optString("clip_name", "");
+                if (!availableClips.isEmpty() && !availableClips.contains(currentClip)) {
+                    String match = findExactModelName(currentClip, availableClips);
+                    if (!availableClips.contains(match)) match = availableClips.get(0);
+                    inputs.put("clip_name", match);
+                    logger.info("🔄 [ComfyPipeline] Sanitized CLIP '{}' -> '{}' in node {}", currentClip, match, key);
+                }
+            } else if ("VAELoader".equals(classType)) {
+                String currentVae = inputs.optString("vae_name", "");
+                if (!availableVaes.isEmpty() && !availableVaes.contains(currentVae)) {
+                    String match = findExactModelName(currentVae, availableVaes);
+                    if (!availableVaes.contains(match)) match = availableVaes.get(0);
+                    inputs.put("vae_name", match);
+                    logger.info("🔄 [ComfyPipeline] Sanitized VAE '{}' -> '{}' in node {}", currentVae, match, key);
+                }
+            } else if ("LoraLoaderModelOnly".equals(classType) || "LoraLoader".equals(classType)) {
+                String currentLora = inputs.optString("lora_name", "");
+                if (!availableLoras.isEmpty() && !availableLoras.contains(currentLora)) {
+                    String match = findExactModelName(currentLora, availableLoras);
+                    if (availableLoras.contains(match)) {
+                        inputs.put("lora_name", match);
+                    }
+                }
+            } else if ("KSamplerSelect".equals(classType)) {
+                String sn = inputs.optString("sampler_name", "");
+                if (sn.isBlank() || sn.equalsIgnoreCase("COMBO") || sn.equalsIgnoreCase("Auto")) {
+                    inputs.put("sampler_name", "euler");
+                }
+            }
+
+            for (String ik : new ArrayList<>(inputs.keySet())) {
+                Object val = inputs.opt(ik);
+                if (val instanceof String s && !s.isBlank()) {
+                    if (s.equalsIgnoreCase("COMBO") || s.equalsIgnoreCase("Auto")) {
+                        if (ik.contains("sampler")) {
+                            inputs.put(ik, "euler");
+                        } else if (ik.contains("scheduler")) {
+                            inputs.put(ik, "simple");
                         }
                     }
                 }
@@ -1255,14 +1483,21 @@ public class ComfyPipelineService {
                         JSONObject required = input.optJSONObject("required");
                         if (required != null) {
                             Object val = required.opt("ckpt_name");
-                            if (val instanceof JSONArray) {
-                                JSONArray outerArray = (JSONArray) val;
-                                if (outerArray.length() > 0) {
-                                    Object firstElement = outerArray.get(0);
-                                    if (firstElement instanceof JSONArray) {
-                                        JSONArray options = (JSONArray) firstElement;
-                                        for (int i = 0; i < options.length(); i++) {
-                                            checkpoints.add(options.getString(i));
+                            if (val instanceof JSONArray outerArray && outerArray.length() > 0) {
+                                Object firstElement = outerArray.get(0);
+                                JSONArray options = null;
+                                if (firstElement instanceof JSONArray) {
+                                    options = (JSONArray) firstElement;
+                                } else if (firstElement instanceof String firstStr && firstStr.equalsIgnoreCase("COMBO") && outerArray.length() > 1 && outerArray.get(1) instanceof JSONObject configObj) {
+                                    options = configObj.optJSONArray("options");
+                                } else if (firstElement instanceof String && !"COMBO".equalsIgnoreCase((String) firstElement)) {
+                                    options = outerArray;
+                                }
+                                if (options != null) {
+                                    for (int i = 0; i < options.length(); i++) {
+                                        Object optVal = options.get(i);
+                                        if (optVal instanceof String s && !s.equalsIgnoreCase("COMBO")) {
+                                            checkpoints.add(s);
                                         }
                                     }
                                 }
@@ -1280,6 +1515,10 @@ public class ComfyPipelineService {
     private String submitPrompt(String serverUrl, JSONObject workflowJson) throws IOException, InterruptedException {
         // Wrap payload in 'prompt' block if it doesn't already have one
         JSONObject payload = workflowJson.has("prompt") ? workflowJson : new JSONObject().put("prompt", workflowJson);
+        JSONObject promptObj = payload.optJSONObject("prompt");
+        if (promptObj != null) {
+            de.tki.comfymodels.service.PromptBlueprintApiService.sanitizeAllSeedsInPrompt(promptObj);
+        }
 
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(serverUrl + "/prompt"))
@@ -1603,14 +1842,16 @@ public class ComfyPipelineService {
                 }
             }
             
-            // Inject seed and Wan-safe sampler params into KSamplers
+            // Inject seed and Wan-safe sampler params into KSamplers or video nodes
+            long clampedSeed = de.tki.comfymodels.service.PromptBlueprintApiService.clampSeedForNode(classType, seed);
+            if (inputs.has("seed")) {
+                inputs.put("seed", clampedSeed);
+            }
+            if (inputs.has("noise_seed")) {
+                inputs.put("noise_seed", clampedSeed);
+            }
+
             if ("KSampler".equals(classType) || "KSamplerAdvanced".equals(classType)) {
-                if (inputs.has("seed")) {
-                    inputs.put("seed", seed);
-                }
-                if (inputs.has("noise_seed")) {
-                    inputs.put("noise_seed", seed);
-                }
                 int wanSteps = scene.getSteps() > 0 ? scene.getSteps() : 4;
                 if (wanSteps > 8) {
                     wanSteps = 4;
@@ -1635,6 +1876,7 @@ public class ComfyPipelineService {
                 }
             }
         }
+        de.tki.comfymodels.service.PromptBlueprintApiService.sanitizeAllSeedsInPrompt(promptObj);
     }
 }
 

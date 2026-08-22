@@ -9,7 +9,7 @@ package de.tki.comfymodels.exception;
  * - Corrupten Files
  * - LFS Stubs
  */
-public class DownloadException extends CompanionException {
+public class DownloadException extends RuntimeException {
     
     private final String downloadUrl;
     private final String modelFilename;
@@ -27,13 +27,13 @@ public class DownloadException extends CompanionException {
     }
     
     public DownloadException(String message, String url, String filename) {
-        super(message, String.format("url=%s, file=%s", url, filename));
+        super(String.format("[url=%s, file=%s] %s", url, filename, message));
         this.downloadUrl = url;
         this.modelFilename = filename;
     }
     
     public DownloadException(String message, String url, String filename, Throwable cause) {
-        super(message, String.format("url=%s, file=%s", url, filename), cause);
+        super(String.format("[url=%s, file=%s] %s", url, filename, message), cause);
         this.downloadUrl = url;
         this.modelFilename = filename;
     }

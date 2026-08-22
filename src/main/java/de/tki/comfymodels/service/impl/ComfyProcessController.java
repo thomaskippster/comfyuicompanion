@@ -184,6 +184,7 @@ public class ComfyProcessController {
                     command.add("--enable-manager");
                 }
                 if (!hasExtraPathsConfig) {
+                    configService.updateExtraModelPathsYaml();
                     java.nio.file.Path extraPathsFile = comfyDir.resolve("extra_model_paths.yaml");
                     if (java.nio.file.Files.exists(extraPathsFile)) {
                         command.add("--extra-model-paths-config");
@@ -228,6 +229,7 @@ public class ComfyProcessController {
                 pb.environment().put("PYTHONIOENCODING", "utf-8");
                 pb.environment().put("TERM", "dumb");
                 pb.environment().put("COLUMNS", "120");
+                pb.environment().put("GIT_PYTHON_REFRESH", "quiet");
                 
                 if (profile.envVars() != null) {
                     pb.environment().putAll(profile.envVars());

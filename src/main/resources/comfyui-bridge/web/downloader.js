@@ -93,6 +93,12 @@ const initializeExtension = async () => {
      * app.graphToPrompt(), and POSTs the result to the Java callback endpoint.
      * The previous canvas is restored afterwards so the user doesn't lose their work.
      */
+    /**
+     * Triggered by /cmfc/convert-workflow (Python).
+     * Loads the GUI workflow, converts it to API format via ComfyUI's own
+     * app.graphToPrompt(), and POSTs the result to the Java callback endpoint.
+     * The previous canvas is restored afterwards so the user doesn't lose their work.
+     */
     api.addEventListener("cmfc-convert-workflow", async (event) => {
         const data = event.detail || {};
         const callbackUrl = data.callbackUrl || "http://127.0.0.1:12345/api/workflow-ready";
@@ -102,6 +108,7 @@ const initializeExtension = async () => {
             try {
                 await fetch(callbackUrl, {
                     method: "POST",
+                    mode: "cors",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ error: "No workflow payload received" }),
                 });
@@ -122,21 +129,32 @@ const initializeExtension = async () => {
             app.loadGraphData(data.workflow);
 
             // Give the graph a tick to settle before converting
-            await new Promise(resolve => setTimeout(resolve, 80));
+            await new Promise(resolve => setTimeout(resolve, 150));
 
             // Use ComfyUI's own conversion — the same path as Queue Prompt
-            const apiPrompt = await app.graphToPrompt();
+            const apiPromptResult = await app.graphToPrompt();
 
             // Restore the previous canvas
             if (previousGraph) {
                 try { app.loadGraphData(previousGraph); } catch (_) {}
             }
 
+            // Extract the actual prompt JSON object
+            let payloadToSend = apiPromptResult;
+            if (apiPromptResult && typeof apiPromptResult === "object") {
+                if (apiPromptResult.output) {
+                    payloadToSend = apiPromptResult.output;
+                } else if (apiPromptResult.prompt) {
+                    payloadToSend = apiPromptResult.prompt;
+                }
+            }
+
             // POST the API JSON back to the Java companion
             const response = await fetch(callbackUrl, {
                 method: "POST",
+                mode: "cors",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(apiPrompt),
+                body: JSON.stringify(payloadToSend),
             });
 
             if (!response.ok) {
@@ -153,10 +171,13 @@ const initializeExtension = async () => {
             try {
                 await fetch(callbackUrl, {
                     method: "POST",
+                    mode: "cors",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ error: e.message || "Unknown conversion error" }),
+                    body: JSON.stringify({ error: e.message || "Workflow conversion failed in browser" }),
                 });
-            } catch (_) {}
+            } catch (fetchErr) {
+                log(`Failed to send conversion error to callback: ${fetchErr.message}`, "error");
+            }
         }
     });
 

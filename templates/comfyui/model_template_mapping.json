@@ -2,6 +2,10 @@
   "mappings": {
     "v1-5-pruned-emaonly.safetensors": "sd15_base_api.json",
     "sd_xl_base_1.0.safetensors": "sdxl_base_api.json",
-    "flux1-schnell-fp8.safetensors": "flux_base_api.json"
+    "flux1-schnell-fp8.safetensors": "flux_base_api.json",
+    "longcat_image_bf16.safetensors": "lumina2_base_api.json",
+    "z_image_turbo_bf16.safetensors": "lumina2_base_api.json",
+    "z_image_bf16.safetensors": "lumina2_base_api.json",
+    "acestep_v1.5_turbo.safetensors": "lumina2_base_api.json"
   }
 }

@@ -7,7 +7,7 @@ package de.tki.comfymodels.exception;
  * - Encryption-/Decryption-Fehlern
  * - Corrupten Vault-Files
  */
-public class VaultException extends CompanionException {
+public class VaultException extends RuntimeException {
     
     public VaultException(String message) {
         super(message);

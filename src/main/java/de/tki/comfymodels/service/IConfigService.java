@@ -65,6 +65,11 @@ public interface IConfigService {
     String getResolvedInputDetailDir();
     String getResolvedOutputDir();
     
+    java.io.File getUserWorkflowsDir();
+    java.io.File getShippedWorkflowsDir();
+    String getAppDataPath();
+    java.io.File getFileInAppData(String filename);
+    
     // ========================================
     // LAUNCH & PROCESS
     // ========================================

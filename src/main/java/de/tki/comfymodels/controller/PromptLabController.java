@@ -1167,35 +1167,50 @@ public class PromptLabController implements PromptLabView.PromptLabController {
                             jsonContent = Files.readString(localFile.toPath(), StandardCharsets.UTF_8).trim();
                         }
                     }
-                    // 1. Local-First: Check local workflows folder before attempting remote network calls
+                    // 1. Local-First: Check user workflows first, then fallback to shipped workflows folder before attempting remote network calls
                     if (jsonContent == null) {
-                        File dir = new File("workflows");
-                        if (dir.exists() && dir.isDirectory()) {
-                            if (targetEntry.registryWorkflow != null) {
-                                if (targetEntry.registryWorkflow.getId() != null) {
-                                    File registryFile = new File(dir, targetEntry.registryWorkflow.getId() + ".json");
-                                    if (registryFile.exists()) {
-                                        jsonContent = Files.readString(registryFile.toPath(), StandardCharsets.UTF_8).trim();
-                                    }
-                                }
-                                if (jsonContent == null && targetEntry.registryWorkflow.getTitle() != null) {
-                                    String sanitized = targetEntry.registryWorkflow.getTitle().replaceAll("[^a-zA-Z0-9\\-_\\s]", "").trim().replaceAll("\\s+", "_").toLowerCase(java.util.Locale.ROOT);
-                                    File titleFile = new File(dir, sanitized + ".json");
-                                    if (titleFile.exists()) {
-                                        jsonContent = Files.readString(titleFile.toPath(), StandardCharsets.UTF_8).trim();
-                                    }
-                                }
-                            }
-                            if (jsonContent == null) {
-                                File[] files = dir.listFiles((d, n) -> n.toLowerCase().endsWith(".json"));
-                                if (files != null) {
-                                    for (File f : files) {
-                                        if (isBlueprintNameMatch(targetEntry.name, f.getName().replace(".json", ""))
-                                                || (targetEntry.filename != null && f.getName().equalsIgnoreCase(targetEntry.filename))) {
-                                            jsonContent = Files.readString(f.toPath(), StandardCharsets.UTF_8).trim();
+                        List<File> searchDirs = new ArrayList<>();
+                        if (configService != null) {
+                            searchDirs.add(configService.getUserWorkflowsDir());
+                            searchDirs.add(configService.getShippedWorkflowsDir());
+                        } else {
+                            searchDirs.add(new File("user_workflows"));
+                            searchDirs.add(new File("workflows"));
+                        }
+
+                        for (File dir : searchDirs) {
+                            if (dir != null && dir.exists() && dir.isDirectory()) {
+                                if (targetEntry.registryWorkflow != null) {
+                                    if (targetEntry.registryWorkflow.getId() != null) {
+                                        File registryFile = new File(dir, targetEntry.registryWorkflow.getId() + ".json");
+                                        if (registryFile.exists()) {
+                                            jsonContent = Files.readString(registryFile.toPath(), StandardCharsets.UTF_8).trim();
                                             break;
                                         }
                                     }
+                                    if (jsonContent == null && targetEntry.registryWorkflow.getTitle() != null) {
+                                        String sanitized = targetEntry.registryWorkflow.getTitle().replaceAll("[^a-zA-Z0-9\\-_\\s]", "").trim().replaceAll("\\s+", "_").toLowerCase(java.util.Locale.ROOT);
+                                        File titleFile = new File(dir, sanitized + ".json");
+                                        if (titleFile.exists()) {
+                                            jsonContent = Files.readString(titleFile.toPath(), StandardCharsets.UTF_8).trim();
+                                            break;
+                                        }
+                                    }
+                                }
+                                if (jsonContent == null) {
+                                    File[] files = dir.listFiles((d, n) -> n.toLowerCase().endsWith(".json"));
+                                    if (files != null) {
+                                        for (File f : files) {
+                                            if (isBlueprintNameMatch(targetEntry.name, f.getName().replace(".json", ""))
+                                                    || (targetEntry.filename != null && f.getName().equalsIgnoreCase(targetEntry.filename))) {
+                                                jsonContent = Files.readString(f.toPath(), StandardCharsets.UTF_8).trim();
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+                                if (jsonContent != null) {
+                                    break;
                                 }
                             }
                         }

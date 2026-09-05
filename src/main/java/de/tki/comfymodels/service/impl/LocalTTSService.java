@@ -30,22 +30,30 @@ public class LocalTTSService {
     private static final java.util.Set<String> ATTEMPTED_INSTALLS = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
     private final ConfigService configService;
-
-    @Autowired(required = false)
-    private EnvironmentBootstrapperImpl bootstrapper;
-
-    @Autowired(required = false)
-    private IComfyLifecycleService lifecycleService;
-
-    @Autowired(required = false)
-    private ProcessTracker processTracker;
-    @Autowired(required = false)
+    private final EnvironmentBootstrapperImpl bootstrapper;
+    private final IComfyLifecycleService lifecycleService;
+    private final ProcessTracker processTracker;
     private HardwareMonitorService hardwareMonitorService;
 
     /** Setter for tests that need to inject a mock HardwareMonitorService. */
     public void setHardwareMonitorService(HardwareMonitorService svc) { this.hardwareMonitorService = svc; }
+
     public LocalTTSService(ConfigService configService) {
+        this(configService, null, null, null, null);
+    }
+
+    @Autowired
+    public LocalTTSService(
+            ConfigService configService,
+            @Autowired(required = false) EnvironmentBootstrapperImpl bootstrapper,
+            @Autowired(required = false) IComfyLifecycleService lifecycleService,
+            @Autowired(required = false) ProcessTracker processTracker,
+            @Autowired(required = false) HardwareMonitorService hardwareMonitorService) {
         this.configService = configService;
+        this.bootstrapper = bootstrapper;
+        this.lifecycleService = lifecycleService;
+        this.processTracker = processTracker;
+        this.hardwareMonitorService = hardwareMonitorService;
     }
 
 

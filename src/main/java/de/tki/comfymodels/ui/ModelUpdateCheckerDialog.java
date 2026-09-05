@@ -92,8 +92,10 @@ public class ModelUpdateCheckerDialog extends JDialog {
         logArea = new JTextArea();
         logArea.setEditable(false);
         logArea.setFont(new Font("Monospaced", Font.PLAIN, 12));
-        logArea.setBackground(new Color(25, 25, 25));
-        logArea.setForeground(new Color(220, 220, 220));
+        Color bg = UIManager.getColor("TextArea.background");
+        Color fg = UIManager.getColor("TextArea.foreground");
+        if (bg != null) logArea.setBackground(bg);
+        if (fg != null) logArea.setForeground(fg);
         logArea.setMargin(new Insets(10, 10, 10, 10));
 
         JScrollPane logScroll = new JScrollPane(logArea);

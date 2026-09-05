@@ -41,8 +41,7 @@ public class GraphMutationService {
 
     private void updateTextEncodeFromSamplerLink(ComfyWorkflow workflow, ComfyNode sampler, String inputKey, String newText) {
         Object link = sampler.getInputs().get(inputKey);
-        if (link instanceof List) {
-            List<?> linkList = (List<?>) link;
+        if (link instanceof List<?> linkList) {
             if (!linkList.isEmpty()) {
                 String targetNodeId = String.valueOf(linkList.get(0));
                 ComfyNode textNode = workflow.getNodes().get(targetNodeId);

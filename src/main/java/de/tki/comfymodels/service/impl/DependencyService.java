@@ -20,12 +20,18 @@ public class DependencyService {
     private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(DependencyService.class);
 
     private final ConfigService configService;
+    private final ProcessTracker processTracker;
 
-
-    @Autowired(required = false)
-    private ProcessTracker processTracker;
-    public DependencyService(ConfigService configService) {
+    @Autowired
+    public DependencyService(
+            ConfigService configService,
+            @Autowired(required = false) ProcessTracker processTracker) {
         this.configService = configService;
+        this.processTracker = processTracker;
+    }
+
+    public DependencyService(ConfigService configService) {
+        this(configService, null);
     }
 
     public boolean isFfmpegInstalled() {

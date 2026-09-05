@@ -66,10 +66,8 @@ public class StabilityEdgeCaseTest {
 
     @Test
     void testDownloadResume() throws Exception {
-        DefaultDownloadManager downloadManager = new DefaultDownloadManager();
         StubConfigService configService = new StubConfigService(tempDir.toString(), tempDir.resolve("archive").toString());
-        ReflectionTestUtils.setField(downloadManager, "configService", configService);
-        ReflectionTestUtils.setField(downloadManager, "pathResolver", new PathResolver());
+        DefaultDownloadManager downloadManager = new DefaultDownloadManager(configService, new PathResolver(), null, null, null);
 
         Path targetFile = tempDir.resolve("checkpoints").resolve("resume.safetensors");
         Path partFile = targetFile.resolveSibling(targetFile.getFileName().toString() + ".cmfd");
@@ -109,10 +107,8 @@ public class StabilityEdgeCaseTest {
 
     @Test
     void testDiskFull() throws Exception {
-        DefaultDownloadManager downloadManager = new DefaultDownloadManager();
         StubConfigService configService = new StubConfigService(tempDir.toString(), tempDir.resolve("archive").toString());
-        ReflectionTestUtils.setField(downloadManager, "configService", configService);
-        ReflectionTestUtils.setField(downloadManager, "pathResolver", new PathResolver());
+        DefaultDownloadManager downloadManager = new DefaultDownloadManager(configService, new PathResolver(), null, null, null);
 
         HttpClient mockClient = new HttpClientStub() {
             @Override
@@ -152,10 +148,8 @@ public class StabilityEdgeCaseTest {
 
     @Test
     void testConcurrencySettingsChange() throws Exception {
-        DefaultDownloadManager downloadManager = new DefaultDownloadManager();
         StubConfigService configService = new StubConfigService(tempDir.toString(), tempDir.resolve("archive").toString());
-        ReflectionTestUtils.setField(downloadManager, "configService", configService);
-        ReflectionTestUtils.setField(downloadManager, "pathResolver", new PathResolver());
+        DefaultDownloadManager downloadManager = new DefaultDownloadManager(configService, new PathResolver(), null, null, null);
 
         PipedInputStream pin = new PipedInputStream();
         PipedOutputStream pout = new PipedOutputStream(pin);

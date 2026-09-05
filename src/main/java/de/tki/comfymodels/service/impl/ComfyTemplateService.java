@@ -939,29 +939,29 @@ public class ComfyTemplateService implements IComfyTemplateService {
 
     @Override
     public String getTemplateFilenameForArchitecture(ModelArchitecture arch) {
-        switch (arch) {
-            case ARCH_FLUX: return "template_flux_api.json";
-            case ARCH_SD15: return "template_sd15_api.json";
-            case ARCH_SDXL: return "template_sdxl_api.json";
-            case ARCH_SD3: return "template_sd3_api.json";
-            case ARCH_LUMINA2: return "template_lumina2_api.json";
-            case ARCH_WAN: return "template_wan_api.json";
-            case ARCH_HUNYUAN: return "template_hunyuan_api.json";
-            default: return "template_sd15_api.json";
-        }
+        return switch (arch) {
+            case ARCH_FLUX -> "template_flux_api.json";
+            case ARCH_SD15 -> "template_sd15_api.json";
+            case ARCH_SDXL -> "template_sdxl_api.json";
+            case ARCH_SD3 -> "template_sd3_api.json";
+            case ARCH_LUMINA2 -> "template_lumina2_api.json";
+            case ARCH_WAN -> "template_wan_api.json";
+            case ARCH_HUNYUAN -> "template_hunyuan_api.json";
+            default -> "template_sd15_api.json";
+        };
     }
 
     private String getDefaultTemplateForName(String name) {
-        switch (name) {
-            case "template_sd15_api.json": return getSd15DefaultTemplate();
-            case "template_sdxl_api.json": return getSdxlDefaultTemplate();
-            case "template_flux_api.json": return getFluxDefaultTemplate();
-            case "template_lumina2_api.json": return getLumina2DefaultTemplate();
-            case "template_sd3_api.json": return getSd3DefaultTemplate();
-            case "template_wan_api.json": return getWanDefaultTemplate();
-            case "template_hunyuan_api.json": return getHunyuanDefaultTemplate();
-            default: return getSd15DefaultTemplate();
-        }
+        return switch (name) {
+            case "template_sd15_api.json" -> getSd15DefaultTemplate();
+            case "template_sdxl_api.json" -> getSdxlDefaultTemplate();
+            case "template_flux_api.json" -> getFluxDefaultTemplate();
+            case "template_lumina2_api.json" -> getLumina2DefaultTemplate();
+            case "template_sd3_api.json" -> getSd3DefaultTemplate();
+            case "template_wan_api.json" -> getWanDefaultTemplate();
+            case "template_hunyuan_api.json" -> getHunyuanDefaultTemplate();
+            default -> getSd15DefaultTemplate();
+        };
     }
 
     private String getSd3DefaultTemplate() {

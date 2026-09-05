@@ -23,12 +23,8 @@ public class DownloadSelectionTest {
 
     @Test
     public void testOnlySelectedItemsAreProcessed() throws InterruptedException {
-        DefaultDownloadManager downloadManager = new DefaultDownloadManager();
-        
-        // Mocking ConfigService to avoid NPE
         ConfigService configService = new ConfigService(encryptionUtils, new PathResolver());
-        ReflectionTestUtils.setField(downloadManager, "configService", configService);
-        ReflectionTestUtils.setField(downloadManager, "pathResolver", new PathResolver());
+        DefaultDownloadManager downloadManager = new DefaultDownloadManager(configService, new PathResolver(), null, null, null);
         
         List<ModelInfo> models = new ArrayList<>();
         models.add(new ModelInfo("checkpoints", "model1.safetensors", "http://127.0.0.1:54321/1"));
@@ -62,10 +58,8 @@ public class DownloadSelectionTest {
 
     @Test
     public void testDynamicUncheckWhilePaused() throws InterruptedException {
-        DefaultDownloadManager downloadManager = new DefaultDownloadManager();
         ConfigService configService = new ConfigService(encryptionUtils, new PathResolver());
-        ReflectionTestUtils.setField(downloadManager, "configService", configService);
-        ReflectionTestUtils.setField(downloadManager, "pathResolver", new PathResolver());
+        DefaultDownloadManager downloadManager = new DefaultDownloadManager(configService, new PathResolver(), null, null, null);
         
         List<ModelInfo> models = new ArrayList<>();
         // Use a dummy model

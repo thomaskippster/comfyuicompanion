@@ -17,18 +17,33 @@ import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;
 
 @Service
 public class ModelSearchService implements IModelSearchService {
 
-    @Autowired
+    private static final Logger logger = LoggerFactory.getLogger(ModelSearchService.class);
+
     private ConfigService configService;
+    private ModelListService modelListService;
+    private de.tki.comfymodels.service.impl.ModelHashRegistry hashRegistry;
+    private de.tki.comfymodels.service.IModelValidator modelValidator;
 
+    public ModelSearchService() {}
 
     @Autowired
-    private ModelListService modelListService;
+    public ModelSearchService(ConfigService configService,
+                              ModelListService modelListService,
+                              de.tki.comfymodels.service.impl.ModelHashRegistry hashRegistry,
+                              de.tki.comfymodels.service.IModelValidator modelValidator) {
+        this.configService = configService;
+        this.modelListService = modelListService;
+        this.hashRegistry = hashRegistry;
+        this.modelValidator = modelValidator;
+    }
 
     private static final Set<String> OFFICIAL_AUTHORS = new HashSet<>(Arrays.asList(
             "black-forest-labs", "stabilityai", "runwayml", "comfyanonymous", "Comfy-Org",
@@ -42,7 +57,7 @@ public class ModelSearchService implements IModelSearchService {
             .connectTimeout(Duration.ofSeconds(10))
             .build();
 
-    private final ExecutorService searchExecutor = Executors.newFixedThreadPool(4);
+    private final ExecutorService searchExecutor = Executors.newVirtualThreadPerTaskExecutor();
 
     @Override
     public void searchOnline(List<ModelInfo> modelsToDownload, boolean[] selectedIndices, String workflowContext, String fileName,
@@ -91,11 +106,6 @@ public class ModelSearchService implements IModelSearchService {
         }
     }
 
-    @Autowired
-    private de.tki.comfymodels.service.impl.ModelHashRegistry hashRegistry;
-
-    @Autowired
-    private de.tki.comfymodels.service.IModelValidator modelValidator;
 
     protected String getHfApiBaseUrl() {
         return "https://huggingface.co/api";
@@ -311,7 +321,9 @@ public class ModelSearchService implements IModelSearchService {
                     }
                 }
             }
-        } catch (Exception e) {}
+        } catch (Exception e) {
+            logger.debug("HuggingFace specific repo search error: {}", e.getMessage());
+        }
         return false;
     }
 
@@ -330,7 +342,9 @@ public class ModelSearchService implements IModelSearchService {
                     if (fetchHuggingFaceUrlInSpecificRepo(info, rowIndex, modelId, onStatusUpdate, onModelFound)) return true;
                 }
             }
-        } catch (Exception e) {}
+        } catch (Exception e) {
+            logger.debug("HuggingFace search error for query {}: {}", query, e.getMessage());
+        }
         return false;
     }
 
@@ -352,7 +366,9 @@ public class ModelSearchService implements IModelSearchService {
                     }
                 }
             }
-        } catch (Exception e) {}
+        } catch (Exception e) {
+            logger.debug("Civitai hash search error: {}", e.getMessage());
+        }
         return false;
     }
 
@@ -384,7 +400,9 @@ public class ModelSearchService implements IModelSearchService {
                     }
                 }
             }
-        } catch (Exception e) {}
+        } catch (Exception e) {
+            logger.debug("Civitai query search error: {}", e.getMessage());
+        }
         return false;
     }
 

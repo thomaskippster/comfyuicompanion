@@ -34,8 +34,17 @@ public class EnvironmentBootstrapperImpl {
      * Wenn das Verzeichnis existiert aber kein Git-Repo ist, wird es zuerst gelöscht.
      */
 
-     @Autowired(required = false)
-     private ProcessTracker processTracker;
+     private final ProcessTracker processTracker;
+
+     public EnvironmentBootstrapperImpl() {
+         this(null);
+     }
+
+     @Autowired
+     public EnvironmentBootstrapperImpl(@Autowired(required = false) ProcessTracker processTracker) {
+         this.processTracker = processTracker;
+     }
+
     public CompletableFuture<Void> cloneComfyUI(Path targetDir, Consumer<String> progressCallback) {
         return CompletableFuture.runAsync(() -> {
             try {

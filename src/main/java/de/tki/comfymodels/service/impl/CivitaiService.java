@@ -21,14 +21,24 @@ import java.util.concurrent.CompletableFuture;
 @Service
 public class CivitaiService {
     private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(CivitaiService.class);
-    @Autowired
-    private ConfigService configService;
 
-    private final HttpClient httpClient = HttpClient.newBuilder()
-            .followRedirects(HttpClient.Redirect.ALWAYS)
-            .connectTimeout(Duration.ofSeconds(10))
-            .build();
-    private final ObjectMapper mapper = new ObjectMapper();
+    private final ConfigService configService;
+    private final HttpClient httpClient;
+    private final ObjectMapper mapper;
+
+    public CivitaiService() {
+        this(null);
+    }
+
+    @Autowired
+    public CivitaiService(@Autowired(required = false) ConfigService configService) {
+        this.configService = configService;
+        this.httpClient = HttpClient.newBuilder()
+                .followRedirects(HttpClient.Redirect.ALWAYS)
+                .connectTimeout(Duration.ofSeconds(10))
+                .build();
+        this.mapper = new ObjectMapper();
+    }
 
     public CompletableFuture<com.fasterxml.jackson.databind.JsonNode> searchModelsRaw(String query) {
         String url = "https://civitai.com/api/v1/models?limit=20&query=" + java.net.URLEncoder.encode(query, java.nio.charset.StandardCharsets.UTF_8);

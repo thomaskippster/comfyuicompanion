@@ -563,4 +563,244 @@ try { java.lang.reflect.Field f1 = service.getClass().getDeclaredField("processT
         assertEquals("S3", scenes.get(2).getSceneId());
         assertTrue(scenes.get(2).getPrompt().contains("The thrusters fire as clouds envelop the cockpit"));
     }
+
+    @Test
+    public void testSceneContrastAndBrightness() {
+        Scene scene = new Scene("S1", "Cyberpunk rain", 0, 90, "", "");
+        assertEquals(1.0, scene.getContrast(), 0.001);
+        assertEquals(0.0, scene.getBrightness(), 0.001);
+
+        scene.setContrast(1.35);
+        scene.setBrightness(25.0);
+        assertEquals(1.35, scene.getContrast(), 0.001);
+        assertEquals(25.0, scene.getBrightness(), 0.001);
+    }
+
+    @Test
+    public void testVideoEditorEngineParametricFilter() {
+        ConfigService mockConfig = Mockito.mock(ConfigService.class);
+        VideoEditorEngine engine = new VideoEditorEngine(mockConfig);
+
+        VideoEditorEngine.Frame mockFrame = Mockito.mock(VideoEditorEngine.Frame.class);
+        org.opencv.core.Mat mockMat = Mockito.mock(org.opencv.core.Mat.class);
+        Mockito.when(mockFrame.mat()).thenReturn(mockMat);
+        Mockito.when(mockMat.empty()).thenReturn(false);
+
+        engine.applyFilter(mockFrame, 1.25, 15.0);
+        Mockito.verify(mockMat, Mockito.times(1)).convertTo(mockMat, -1, 1.25, 15.0);
+    }
+
+    @Test
+    public void testVideoArchitectTabIsSwingJPanel() {
+        ConfigService mockConfig = Mockito.mock(ConfigService.class);
+        ComfyPipelineService mockPipeline = Mockito.mock(ComfyPipelineService.class);
+        Video4jEditorService mockEditor = Mockito.mock(Video4jEditorService.class);
+        Gemma4Service mockGemma = Mockito.mock(Gemma4Service.class);
+        de.tki.comfymodels.service.IComfyLifecycleService mockLifecycle = Mockito.mock(de.tki.comfymodels.service.IComfyLifecycleService.class);
+
+        de.tki.comfymodels.ui.VideoArchitectTab tab = new de.tki.comfymodels.ui.VideoArchitectTab(
+                mockConfig, mockPipeline, mockEditor, mockGemma, mockLifecycle
+        );
+
+        // Verify it is a pure Swing JPanel component and NOT a JavaFX JFXPanel
+        assertTrue(tab instanceof javax.swing.JPanel);
+        assertFalse(javafx.embed.swing.JFXPanel.class.isAssignableFrom(tab.getClass()));
+        assertEquals(1, tab.getComponentCount()); // Contains the JSplitPane
+        assertTrue(tab.getComponent(0) instanceof javax.swing.JSplitPane);
+    }
+
+    @Test
+    public void testVideo4jEditorServiceEnhancementAwtGracefulFallback() {
+        ConfigService mockConfig = Mockito.mock(ConfigService.class);
+        Video4jEditorService service = new Video4jEditorService(mockConfig);
+
+        Scene scene = new Scene("S1", "Empty test", 0, 90, "", "");
+        // Should gracefully return null without throwing exception when no video exists
+        java.awt.image.BufferedImage result = service.applyBasicEnhancementAwt(scene, 1.0, 0.0);
+        assertNull(result);
+    }
+
+    @Test
+    public void testApplyTrimmingWithPunctuationAndQuotesInNarrationText() throws Exception {
+        ConfigService mockConfig = Mockito.mock(ConfigService.class);
+        File projectDir = new File("").getAbsoluteFile();
+        File ffmpegExe = new File(projectDir, "tools/ffmpeg/ffmpeg.exe");
+        if (!ffmpegExe.exists()) {
+            ffmpegExe = new File("C:\\Dev\\workspace\\comfyuicompanion\\tools\\ffmpeg\\ffmpeg.exe");
+        }
+        Mockito.when(mockConfig.getFfmpegPath()).thenReturn(ffmpegExe.getAbsolutePath());
+
+        // Create a 2-second test video
+        File testVideo = new File(System.getProperty("java.io.tmpdir"), "test_trim_input.mp4");
+        if (testVideo.exists()) {
+            testVideo.delete();
+        }
+        ProcessBuilder pb = new ProcessBuilder(
+            ffmpegExe.getAbsolutePath(), "-y",
+            "-f", "lavfi",
+            "-i", "color=c=black:s=320x240:d=2:r=30",
+            "-pix_fmt", "yuv420p",
+            "-c:v", "libx264",
+            testVideo.getAbsolutePath()
+        );
+        pb.redirectErrorStream(true);
+        Process p = pb.start();
+        try (java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(p.getInputStream(), java.nio.charset.StandardCharsets.UTF_8))) {
+            while (r.readLine() != null) {}
+        }
+        p.waitFor();
+        assertTrue(testVideo.exists() && testVideo.length() > 500);
+
+        Video4jEditorService service = new Video4jEditorService(mockConfig);
+        try {
+            java.lang.reflect.Field f1 = service.getClass().getDeclaredField("processTracker");
+            f1.setAccessible(true);
+            f1.set(service, new de.tki.comfymodels.service.impl.ProcessTracker());
+        } catch (Exception ignored) {}
+
+        Scene scene = new Scene("S1", "Cyborg prompt", 0, 60, "", "");
+        scene.setVideoPath(testVideo.getAbsolutePath());
+        // Specifically test the exact problematic pattern that caused the failure:
+        // single quote + comma + "8k resolution" + colon
+        scene.setNarrationText("A warrior's sword, 8k resolution, cinematic: ultra-detailed");
+
+        File trimmed = null;
+        try {
+            trimmed = service.applyTrimming(scene);
+            assertNotNull(trimmed);
+            assertTrue(trimmed.exists());
+            assertTrue(trimmed.length() > 500);
+        } finally {
+            if (trimmed != null && trimmed.exists()) {
+                trimmed.delete();
+            }
+            if (testVideo.exists()) {
+                testVideo.delete();
+            }
+        }
+    }
+
+    @Test
+    public void testVideoArchitectTabInitialTheming() {
+        ConfigService mockConfig = Mockito.mock(ConfigService.class);
+        ComfyPipelineService mockPipeline = Mockito.mock(ComfyPipelineService.class);
+        Video4jEditorService mockEditor = Mockito.mock(Video4jEditorService.class);
+        Gemma4Service mockGemma = Mockito.mock(Gemma4Service.class);
+        de.tki.comfymodels.service.IComfyLifecycleService mockLifecycle = Mockito.mock(de.tki.comfymodels.service.IComfyLifecycleService.class);
+
+        de.tki.comfymodels.ui.VideoArchitectTab tab = new de.tki.comfymodels.ui.VideoArchitectTab(
+                mockConfig, mockPipeline, mockEditor, mockGemma, mockLifecycle
+        );
+
+        // Verify initial theme application
+        assertNotNull(tab);
+
+        // Test dark mode
+        tab.updateTheme(true);
+        // Test light mode
+        tab.updateTheme(false);
+        // Test addNotify
+        tab.addNotify();
+
+        assertNotNull(tab.getComponent(0));
+    }
+
+    @Test
+    public void testSceneDimensionsDefaultAndCustom() {
+        Scene scene = new Scene();
+        assertEquals(1920, scene.getWidth(), "Default scene width should be 1920 (FHD)");
+        assertEquals(1080, scene.getHeight(), "Default scene height should be 1080 (FHD)");
+
+        scene.setWidth(1280);
+        scene.setHeight(720);
+        assertEquals(1280, scene.getWidth());
+        assertEquals(720, scene.getHeight());
+    }
+
+    @Test
+    public void testWanWorkflowPureTextToVideoUsesEmptyImageAndResolution() throws Exception {
+        ConfigService mockConfig = Mockito.mock(ConfigService.class);
+        ComfyPipelineService service = new ComfyPipelineService(mockConfig);
+
+        Scene scene = new Scene("S1", "Cyberpunk skyline in fog", 0, 72, "", "");
+        scene.setWidth(1280);
+        scene.setHeight(720);
+
+        java.lang.reflect.Method method = ComfyPipelineService.class.getDeclaredMethod(
+                "generateWanWorkflowJson", String.class, Scene.class, String.class, long.class, String.class);
+        method.setAccessible(true);
+
+        JSONObject workflow = (JSONObject) method.invoke(service, "http://127.0.0.1:8188", scene, null, 12345L, "test_prefix");
+
+        assertNotNull(workflow);
+        // Pure text-to-video mode: EmptyImage node 20 must be present, LoadImage node 97 must NOT be present
+        assertTrue(workflow.has("20"), "EmptyImage node 20 should exist for pure Text-to-Video");
+        assertFalse(workflow.has("97"), "LoadImage node 97 must not be present when no speaker image is provided");
+
+        JSONObject emptyImageInputs = workflow.getJSONObject("20").getJSONObject("inputs");
+        assertEquals(1280, emptyImageInputs.getInt("width"));
+        assertEquals(720, emptyImageInputs.getInt("height"));
+
+        JSONObject wanInputs = workflow.getJSONObject("129:98").getJSONObject("inputs");
+        assertEquals(1280, wanInputs.getInt("width"));
+        assertEquals(720, wanInputs.getInt("height"));
+    }
+
+    @Test
+    public void testWanWorkflowWithSpeakerImageUsesLoadImage() throws Exception {
+        ConfigService mockConfig = Mockito.mock(ConfigService.class);
+        ComfyPipelineService service = new ComfyPipelineService(mockConfig);
+
+        Scene scene = new Scene("S1", "Cyberpunk skyline with speaker", 0, 72, "", "");
+        scene.setWidth(1920);
+        scene.setHeight(1080);
+
+        java.lang.reflect.Method method = ComfyPipelineService.class.getDeclaredMethod(
+                "generateWanWorkflowJson", String.class, Scene.class, String.class, long.class, String.class);
+        method.setAccessible(true);
+
+        JSONObject workflow = (JSONObject) method.invoke(service, "http://127.0.0.1:8188", scene, "explicit_speaker.png", 12345L, "test_prefix");
+
+        assertNotNull(workflow);
+        assertTrue(workflow.has("97"), "LoadImage node 97 must be present when speaker image is supplied");
+        assertFalse(workflow.has("20"), "EmptyImage node 20 must not be present when speaker image is supplied");
+
+        JSONObject loadImageInputs = workflow.getJSONObject("97").getJSONObject("inputs");
+        assertEquals("explicit_speaker.png", loadImageInputs.getString("image"));
+
+        JSONObject wanInputs = workflow.getJSONObject("129:98").getJSONObject("inputs");
+        assertEquals(1920, wanInputs.getInt("width"));
+        assertEquals(1072, wanInputs.getInt("height"), "Height should be aligned to 16px multiple (1072 for 1080p)");
+    }
+
+    @Test
+    public void testVideoArchitectTabInitialStateHasNoDefaultSpeakerImageAndHDSpinners() throws Exception {
+        ConfigService mockConfig = Mockito.mock(ConfigService.class);
+        Mockito.when(mockConfig.getSpeakerImagePath()).thenReturn("old_persisted_image.png");
+        ComfyPipelineService mockPipeline = Mockito.mock(ComfyPipelineService.class);
+        Video4jEditorService mockEditor = Mockito.mock(Video4jEditorService.class);
+        Gemma4Service mockGemma = Mockito.mock(Gemma4Service.class);
+        de.tki.comfymodels.service.IComfyLifecycleService mockLifecycle = Mockito.mock(de.tki.comfymodels.service.IComfyLifecycleService.class);
+
+        de.tki.comfymodels.ui.VideoArchitectTab tab = new de.tki.comfymodels.ui.VideoArchitectTab(
+                mockConfig, mockPipeline, mockEditor, mockGemma, mockLifecycle
+        );
+
+        java.lang.reflect.Field speakerField = de.tki.comfymodels.ui.VideoArchitectTab.class.getDeclaredField("speakerImageField");
+        speakerField.setAccessible(true);
+        javax.swing.JTextField textField = (javax.swing.JTextField) speakerField.get(tab);
+        assertTrue(textField.getText().isEmpty(), "Start image field must be empty by default (no stale default image)");
+
+        java.lang.reflect.Field widthSpinnerField = de.tki.comfymodels.ui.VideoArchitectTab.class.getDeclaredField("videoWidthSpinner");
+        widthSpinnerField.setAccessible(true);
+        javax.swing.JSpinner widthSpinner = (javax.swing.JSpinner) widthSpinnerField.get(tab);
+        assertEquals(1920, widthSpinner.getValue(), "Default width should be 1920");
+
+        java.lang.reflect.Field heightSpinnerField = de.tki.comfymodels.ui.VideoArchitectTab.class.getDeclaredField("videoHeightSpinner");
+        heightSpinnerField.setAccessible(true);
+        javax.swing.JSpinner heightSpinner = (javax.swing.JSpinner) heightSpinnerField.get(tab);
+        assertEquals(1080, heightSpinner.getValue(), "Default height should be 1080");
+    }
 }
+
+

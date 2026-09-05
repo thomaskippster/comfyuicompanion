@@ -45,8 +45,16 @@ public class RestBridgeService {
     private int port = 12345;
     private String expectedApiToken;
 
-    @Autowired(required = false)
     private ConfigService configService;
+
+    @Autowired
+    public RestBridgeService(@Autowired(required = false) ConfigService configService) {
+        this.configService = configService;
+    }
+
+    public RestBridgeService() {
+        this(null);
+    }
 
     public void setConfigService(ConfigService configService) {
         this.configService = configService;
@@ -73,11 +81,9 @@ public class RestBridgeService {
         if (server != null) return;
         try {
             server = HttpServer.create(new InetSocketAddress("127.0.0.1", port), 0);
-            serverExecutor = Executors.newFixedThreadPool(4, r -> {
-                Thread t = new Thread(r, "RestBridge-Worker");
-                t.setDaemon(true);
-                return t;
-            });
+            serverExecutor = Executors.newThreadPerTaskExecutor(
+                Thread.ofVirtual().name("RestBridge-Worker-", 0).factory()
+            );
             server.setExecutor(serverExecutor);
             server.createContext("/import", new ImportHandler());
             server.createContext("/api/templates", new TemplatesHandler());

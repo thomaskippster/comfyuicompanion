@@ -1,0 +1,1 @@
+package de.tki.comfymodels; public class TestLlama { public static void main(String[] args) { try { Class.forName("de.kherud.llama.LlamaModel"); System.out.println("Success!"); } catch (Throwable t) { t.printStackTrace(); } } }

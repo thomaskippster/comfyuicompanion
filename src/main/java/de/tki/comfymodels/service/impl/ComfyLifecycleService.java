@@ -20,22 +20,11 @@ import java.util.concurrent.atomic.AtomicReference;
 public class ComfyLifecycleService implements IComfyLifecycleService {
     private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(ComfyLifecycleService.class);
 
-    @Autowired
-    private ConfigService configService;
-
-    @Autowired
-    private ProfileManager profileManager;
-
-    @Autowired
-    private EnvironmentBootstrapperImpl bootstrapper;
-
-    @Autowired
-    @org.springframework.context.annotation.Lazy
-    private ComfyProcessController processController;
-
-    @Autowired
-    @org.springframework.context.annotation.Lazy
-    private de.tki.comfymodels.service.IDownloadManager downloadManager;
+    private final ConfigService configService;
+    private final ProfileManager profileManager;
+    private final EnvironmentBootstrapperImpl bootstrapper;
+    private final ComfyProcessController processController;
+    private final de.tki.comfymodels.service.IDownloadManager downloadManager;
 
     private volatile Process comfyProcess;
     private final AtomicReference<String> status = new AtomicReference<>("Stopped");
@@ -44,6 +33,24 @@ public class ComfyLifecycleService implements IComfyLifecycleService {
     private final HttpClient httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofMillis(500)).build();
     private volatile Runnable onBrowserLaunched;
     private final java.util.concurrent.atomic.AtomicBoolean guiLineShown = new java.util.concurrent.atomic.AtomicBoolean(false);
+
+    public ComfyLifecycleService() {
+        this(null, null, null, null, null);
+    }
+
+    @Autowired
+    public ComfyLifecycleService(
+            @Autowired(required = false) ConfigService configService,
+            @Autowired(required = false) ProfileManager profileManager,
+            @Autowired(required = false) EnvironmentBootstrapperImpl bootstrapper,
+            @Autowired(required = false) @org.springframework.context.annotation.Lazy ComfyProcessController processController,
+            @Autowired(required = false) @org.springframework.context.annotation.Lazy de.tki.comfymodels.service.IDownloadManager downloadManager) {
+        this.configService = configService;
+        this.profileManager = profileManager;
+        this.bootstrapper = bootstrapper;
+        this.processController = processController;
+        this.downloadManager = downloadManager;
+    }
 
     @Override
     public void setOnBrowserLaunched(Runnable callback) {

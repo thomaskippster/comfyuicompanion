@@ -354,4 +354,10 @@ public class SettingsView extends JPanel {
     public JPanel getBlueprintPanel() { return blueprintPanel; }
     public JLabel getBlueprintStatusLabel() { return blueprintStatusLabel; }
     public JProgressBar getBlueprintBar() { return blueprintBar; }
+
+    @Override
+    public void addNotify() {
+        super.addNotify();
+        SwingUtilities.updateComponentTreeUI(this);
+    }
 }

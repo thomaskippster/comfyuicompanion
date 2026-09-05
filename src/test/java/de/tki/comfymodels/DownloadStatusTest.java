@@ -34,19 +34,9 @@ public class DownloadStatusTest {
     @BeforeEach
     public void setup() throws Exception {
         tempDir = Files.createTempDirectory("downloader_test");
-        downloadManager = new DefaultDownloadManager();
-        
-        // Use real ConfigService and EncryptionUtils
-        EncryptionUtils encryptionUtils = new EncryptionUtils();
-        ConfigService configService = new ConfigService(encryptionUtils, new de.tki.comfymodels.service.impl.PathResolver());
-        
-        Field field = DefaultDownloadManager.class.getDeclaredField("configService");
-        field.setAccessible(true);
-        field.set(downloadManager, configService);
-
-        Field pathField = DefaultDownloadManager.class.getDeclaredField("pathResolver");
-        pathField.setAccessible(true);
-        pathField.set(downloadManager, new de.tki.comfymodels.service.impl.PathResolver());
+        downloadManager = new DefaultDownloadManager(
+                new ConfigService(new EncryptionUtils(), new de.tki.comfymodels.service.impl.PathResolver()),
+                new de.tki.comfymodels.service.impl.PathResolver(), null, null, null);
 
         // Setup Local Test Server
         server = HttpServer.create(new InetSocketAddress(0), 0);

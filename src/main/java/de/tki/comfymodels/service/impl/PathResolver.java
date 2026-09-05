@@ -22,6 +22,16 @@ public class PathResolver {
 
     private String comfyUIRoot;
     private final Map<String, List<Path>> extraModelPaths = new HashMap<>();
+    private final de.tki.comfymodels.service.SafePathValidator safePathValidator;
+
+    public PathResolver() {
+        this(new de.tki.comfymodels.service.SafePathValidator());
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public PathResolver(de.tki.comfymodels.service.SafePathValidator safePathValidator) {
+        this.safePathValidator = safePathValidator != null ? safePathValidator : new de.tki.comfymodels.service.SafePathValidator();
+    }
 
     public void setComfyUIRoot(String root) {
         this.comfyUIRoot = root;
@@ -96,7 +106,9 @@ public class PathResolver {
         
         if (comfyUIRoot == null || comfyUIRoot.isEmpty()) return p.toAbsolutePath();
         
-        return Paths.get(comfyUIRoot).resolve(inputPath);
+        Path root = Paths.get(comfyUIRoot);
+        Path resolved = root.resolve(inputPath);
+        return safePathValidator.validateWithinBase(root, resolved);
     }
 
     /**

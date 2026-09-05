@@ -67,26 +67,12 @@ public class VramPredictor {
      */
     private long getBytesForDtype(String dtype) {
         String upper = dtype.toUpperCase();
-        switch (upper) {
-            case "F64":
-            case "I64":
-                return 8;
-            case "F32":
-            case "I32":
-                return 4;
-            case "F16":
-            case "BF16":
-            case "I16":
-                return 2;
-            case "F8_E4M3":
-            case "F8_E5M2":
-            case "I8":
-            case "U8":
-            case "BOOL":
-                return 1;
-            default:
-                // Conservative fallback if a new/unknown dtype emerges
-                return 2;
-        }
+        return switch (upper) {
+            case "F64", "I64" -> 8;
+            case "F32", "I32" -> 4;
+            case "F16", "BF16", "I16" -> 2;
+            case "F8_E4M3", "F8_E5M2", "I8", "U8", "BOOL" -> 1;
+            default -> 2; // Conservative fallback if a new/unknown dtype emerges
+        };
     }
 }

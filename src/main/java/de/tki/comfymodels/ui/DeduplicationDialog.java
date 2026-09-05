@@ -45,8 +45,10 @@ public class DeduplicationDialog extends JDialog {
         logArea = new JTextArea();
         logArea.setEditable(false);
         logArea.setFont(new Font("Monospaced", Font.PLAIN, 12));
-        logArea.setBackground(new Color(30, 30, 30));
-        logArea.setForeground(new Color(220, 220, 220));
+        Color bg = UIManager.getColor("TextArea.background");
+        Color fg = UIManager.getColor("TextArea.foreground");
+        if (bg != null) logArea.setBackground(bg);
+        if (fg != null) logArea.setForeground(fg);
         logArea.setMargin(new Insets(10, 10, 10, 10));
         add(new JScrollPane(logArea), BorderLayout.CENTER);
 

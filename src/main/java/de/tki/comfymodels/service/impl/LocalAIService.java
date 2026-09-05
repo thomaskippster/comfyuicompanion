@@ -18,17 +18,28 @@ import java.util.*;
 @Service
 public class LocalAIService {
     private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(LocalAIService.class);
-    @Autowired
-    private ConfigService configService;
 
-    @Autowired
-    private LocalGemmaService localGemmaService;
+    private final ConfigService configService;
+    private final LocalGemmaService localGemmaService;
 
     private boolean gemmaEnabled = false;
 
-    private final HttpClient client = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(10))
-            .build();
+    private final HttpClient client;
+
+    public LocalAIService() {
+        this(null, null);
+    }
+
+    @Autowired
+    public LocalAIService(
+            @Autowired(required = false) ConfigService configService,
+            @Autowired(required = false) LocalGemmaService localGemmaService) {
+        this.configService = configService;
+        this.localGemmaService = localGemmaService;
+        this.client = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(10))
+                .build();
+    }
 
     private final Map<String, String[]> KNOWLEDGE_BASE = new LinkedHashMap<>();
     private final Map<String, Double> GLOBAL_IDF = new HashMap<>();
@@ -181,12 +192,9 @@ public class LocalAIService {
     public List<String> getDirectGemmaCompletions(String subjectText) {
         if (localGemmaService == null || !localGemmaService.isModelDownloaded()) return null;
         try {
-            String systemInstruction = "You are a creative prompt engineer. Given a short core subject for an image generator, " +
-                    "provide 3 different detailed visual suggestions/completions that expand this subject. " +
-                    "Keep each suggestion to a single short descriptive sentence (maximum 15 words) focusing on visual details, textures, or character attributes. " +
-                    "Format the response ONLY as a JSON array of strings, for example: " +
-                    "[\"Suggestion one...\", \"Suggestion two...\", \"Suggestion three...\"]\n" +
-                    "Do NOT wrap in markdown code blocks like ```json. Do NOT include any other text.";
+            String systemInstruction = """
+                    You are a creative prompt engineer. Given a short core subject for an image generator, provide 3 different detailed visual suggestions/completions that expand this subject. Keep each suggestion to a single short descriptive sentence (maximum 15 words) focusing on visual details, textures, or character attributes. Format the response ONLY as a JSON array of strings, for example: ["Suggestion one...", "Suggestion two...", "Suggestion three..."]
+                    Do NOT wrap in markdown code blocks like ```json. Do NOT include any other text.""";
             String userPrompt = "Core subject: " + subjectText;
             
             String resText = localGemmaService.generateCompletion(systemInstruction, userPrompt, 0.7f, 150);
@@ -203,8 +211,7 @@ public class LocalAIService {
                 return list;
             }
         } catch (Throwable e) {
-            logger.error("Direct local Gemma completions failed: " + e.getMessage());
-            e.printStackTrace();
+            logger.error("Direct local Gemma completions failed", e);
         }
         return null;
     }
@@ -268,21 +275,25 @@ public class LocalAIService {
                 break;
         }
 
-        String systemInstruction = "You are an expert prompt engineer and configuration advisor for ComfyUI text-to-image models. "
-                + "Your task is to translate the user's raw input prompt into an optimized JSON payload containing the optimized positive prompt, negative prompt, steps, and CFG scale tailored for the specific model architecture.\n\n"
-                + "GUIDELINE FOR TARGET MODEL ARCHITECTURE (" + arch + "):\n" + promptGuide + "\n\n"
-                + "Instructions:\n"
-                + "1. Translate non-English concepts to English and optimize the positive prompt according to the guideline.\n"
-                + "2. Recommend an appropriate negative prompt (empty for models like Flux if they don't use negative prompts, or containing common negative keywords like 'blurry, low quality' for SDXL/SD1.5).\n"
-                + "3. Recommend dynamic steps (e.g. 4 for Flux Schnell, 20-30 for Flux Dev / SDXL, 20 for SD 1.5) and CFG scale (1.0 for Flux, 3.0-4.5 for Lumina2, 4.0-8.0 for SDXL/SD 1.5) based on the target architecture and prompt mood.\n"
-                + "4. Respond ONLY with a valid JSON object. Do NOT use markdown code blocks (no ```json). Do NOT write any introduction, notes, or explanation.\n\n"
-                + "JSON Structure:\n"
-                + "{\n"
-                + "  \"positive_prompt\": \"string\",\n"
-                + "  \"negative_prompt\": \"string\",\n"
-                + "  \"cfg\": float,\n"
-                + "  \"steps\": integer\n"
-                + "}";
+        String systemInstruction = """
+                You are an expert prompt engineer and configuration advisor for ComfyUI text-to-image models. Your task is to translate the user's raw input prompt into an optimized JSON payload containing the optimized positive prompt, negative prompt, steps, and CFG scale tailored for the specific model architecture.
+                
+                GUIDELINE FOR TARGET MODEL ARCHITECTURE (%s):
+                %s
+                
+                Instructions:
+                1. Translate non-English concepts to English and optimize the positive prompt according to the guideline.
+                2. Recommend an appropriate negative prompt (empty for models like Flux if they don't use negative prompts, or containing common negative keywords like 'blurry, low quality' for SDXL/SD1.5).
+                3. Recommend dynamic steps (e.g. 4 for Flux Schnell, 20-30 for Flux Dev / SDXL, 20 for SD 1.5) and CFG scale (1.0 for Flux, 3.0-4.5 for Lumina2, 4.0-8.0 for SDXL/SD 1.5) based on the target architecture and prompt mood.
+                4. Respond ONLY with a valid JSON object. Do NOT use markdown code blocks (no ```json). Do NOT write any introduction, notes, or explanation.
+                
+                JSON Structure:
+                {
+                  "positive_prompt": "string",
+                  "negative_prompt": "string",
+                  "cfg": float,
+                  "steps": integer
+                }""".formatted(arch, promptGuide);
                 
         return localGemmaService.generateCompletion(systemInstruction, "Original prompt: " + rawPrompt + "\n\nJSON:", 0.7f, 384);
     }

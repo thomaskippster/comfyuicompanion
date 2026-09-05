@@ -29,13 +29,18 @@ public class ComfyRegistryClient implements IComfyRegistryClient {
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
     
-    @Autowired(required = false)
-    private ConfigService configService;
+    private final ConfigService configService;
 
     // Default API Endpoint for the Comfy.org Registry/Workflows
     private static final String DEFAULT_API_URL = "https://raw.githubusercontent.com/Comfy-Org/workflow_templates/main/templates/index.json";
 
     public ComfyRegistryClient() {
+        this(null);
+    }
+
+    @Autowired
+    public ComfyRegistryClient(@Autowired(required = false) ConfigService configService) {
+        this.configService = configService;
         this.objectMapper = new ObjectMapper();
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(5))
@@ -62,7 +67,7 @@ public class ComfyRegistryClient implements IComfyRegistryClient {
 
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(apiUrl))
-                .timeout(Duration.ofSeconds(6))
+                .timeout(Duration.ofSeconds(15))
                 .header("Accept", "application/json")
                 .GET()
                 .build();
@@ -99,7 +104,7 @@ public class ComfyRegistryClient implements IComfyRegistryClient {
     public CompletableFuture<byte[]> downloadFileAsync(String url) {
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(url))
-                .timeout(Duration.ofSeconds(15))
+                .timeout(Duration.ofSeconds(45))
                 .GET()
                 .build();
 

@@ -1621,6 +1621,22 @@ public class BlueprintGalleryTab extends JPanel {
         btnDlWorkflow.setBackground(new Color(0, 150, 136));
         btnDlWorkflow.setForeground(Color.WHITE);
         btnDlWorkflow.addActionListener(e -> {
+            if (entry.filePath != null) {
+                File localFile = new File(entry.filePath);
+                if (localFile.exists() && localFile.isFile() && localFile.length() > 0) {
+                    dlg.dispose();
+                    Window ownerWin = SwingUtilities.getWindowAncestor(this);
+                    if (ownerWin instanceof Main mainApp) {
+                        mainApp.importWorkflow(localFile);
+                    }
+                    return;
+                }
+            }
+
+            if (entry.registryWorkflow == null) {
+                return;
+            }
+
             btnDlWorkflow.setEnabled(false);
             btnDlWorkflow.setText("Downloading...");
             workflowDownloader.downloadWorkflowAsync(entry.registryWorkflow)

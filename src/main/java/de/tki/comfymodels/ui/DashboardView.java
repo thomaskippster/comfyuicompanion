@@ -470,6 +470,12 @@ public class DashboardView extends JPanel {
         return p;
     }
 
+    @Override
+    public void addNotify() {
+        super.addNotify();
+        SwingUtilities.updateComponentTreeUI(this);
+    }
+
     // --- Getters & UI State Modifiers ---
 
     public JList<de.tki.comfymodels.domain.LaunchProfile> getProfileList() { return profileList; }

@@ -281,8 +281,7 @@ public class ArchiveService {
                 return true;
             }
         } catch (IOException e) {
-            logger.error("Error moving file from archive: " + e.getMessage());
-            e.printStackTrace();
+            logger.error("Error moving file from archive: " + e.getMessage(), e);
         }
         return false;
     }

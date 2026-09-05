@@ -286,7 +286,7 @@ public class PromptLabView extends JPanel {
         widthPanel.setOpaque(false);
         JLabel lblWidth = new JLabel("Width");
         lblWidth.setFont(new Font("SansSerif", Font.PLAIN, 11));
-        promptWidthSpinner = new JSpinner(new SpinnerNumberModel(512, 64, 4096, 64));
+        promptWidthSpinner = new JSpinner(new SpinnerNumberModel(1024, 64, 4096, 64));
         if (promptWidthSpinner.getEditor() instanceof JSpinner.NumberEditor ne) ne.getFormat().setGroupingUsed(false);
         widthPanel.add(lblWidth, BorderLayout.NORTH);
         widthPanel.add(promptWidthSpinner, BorderLayout.CENTER);
@@ -295,7 +295,7 @@ public class PromptLabView extends JPanel {
         heightPanel.setOpaque(false);
         JLabel lblHeight = new JLabel("Height");
         lblHeight.setFont(new Font("SansSerif", Font.PLAIN, 11));
-        promptHeightSpinner = new JSpinner(new SpinnerNumberModel(512, 64, 4096, 64));
+        promptHeightSpinner = new JSpinner(new SpinnerNumberModel(1024, 64, 4096, 64));
         if (promptHeightSpinner.getEditor() instanceof JSpinner.NumberEditor ne) ne.getFormat().setGroupingUsed(false);
         heightPanel.add(lblHeight, BorderLayout.NORTH);
         heightPanel.add(promptHeightSpinner, BorderLayout.CENTER);
@@ -533,6 +533,13 @@ public class PromptLabView extends JPanel {
         Image scaled = img.getScaledInstance(nw, nh, Image.SCALE_SMOOTH);
         promptImagePreviewLabel.setIcon(new ImageIcon(scaled));
         promptImagePreviewLabel.setText("");
+    }
+
+    @Override
+    public void addNotify() {
+        super.addNotify();
+        SwingUtilities.updateComponentTreeUI(this);
+        updateTheme(ThemeManager.isDarkMode());
     }
 
     public void updateTheme(boolean darkMode) {

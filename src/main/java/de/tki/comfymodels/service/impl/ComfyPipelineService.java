@@ -8,6 +8,7 @@ import de.tki.comfymodels.service.IComfyLifecycleService;
 import de.tki.comfymodels.domain.ComfyTemplate;
 import de.tki.comfymodels.service.IComfyTemplateService;
 import de.tki.comfymodels.service.PromptBlueprintApiService;
+import de.tki.comfymodels.service.pipeline.MediaTranscodingService;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -50,196 +51,72 @@ public class ComfyPipelineService {
 
     private final HttpClient httpClient;
     private final ConfigService configService;
-    @Autowired(required = false)
-    private ProcessTracker processTracker;
+    private final ProcessTracker processTracker;
+    private final IComfyLifecycleService lifecycleService;
+    private final de.tki.comfymodels.service.IModelArchitectureService modelArchitectureService;
+    private final EnvironmentBootstrapperImpl bootstrapper;
+    private final PromptBlueprintApiService promptBlueprintApiService;
+    private final IComfyTemplateService comfyTemplateService;
+    private final de.tki.comfymodels.service.pipeline.MediaTranscodingService mediaTranscodingService;
+    private final de.tki.comfymodels.service.pipeline.WorkflowTransformationService workflowTransformationService;
+
+    private static final de.tki.comfymodels.service.pipeline.WorkflowTransformationService DEFAULT_TRANSFORMATION_SERVICE =
+            new de.tki.comfymodels.service.pipeline.WorkflowTransformationService(null);
+
+    public ComfyPipelineService(ConfigService configService) {
+        this(configService, null, null, null, null, null, null, null, null);
+    }
+
+    public ComfyPipelineService(ConfigService configService, HttpClient httpClient) {
+        this(configService, httpClient, null, null, null, null, null, null, null, null);
+    }
+
+    @Autowired
+    public ComfyPipelineService(
+            ConfigService configService,
+            @Autowired(required = false) ProcessTracker processTracker,
+            @Autowired(required = false) @org.springframework.context.annotation.Lazy IComfyLifecycleService lifecycleService,
+            @Autowired(required = false) de.tki.comfymodels.service.IModelArchitectureService modelArchitectureService,
+            @Autowired(required = false) EnvironmentBootstrapperImpl bootstrapper,
+            @Autowired(required = false) PromptBlueprintApiService promptBlueprintApiService,
+            @Autowired(required = false) IComfyTemplateService comfyTemplateService,
+            @Autowired(required = false) de.tki.comfymodels.service.pipeline.MediaTranscodingService mediaTranscodingService,
+            @Autowired(required = false) de.tki.comfymodels.service.pipeline.WorkflowTransformationService workflowTransformationService) {
+        this(configService, HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(15)).build(),
+                processTracker, lifecycleService, modelArchitectureService, bootstrapper,
+                promptBlueprintApiService, comfyTemplateService, mediaTranscodingService, workflowTransformationService);
+    }
+
+    public ComfyPipelineService(
+            ConfigService configService,
+            HttpClient httpClient,
+            ProcessTracker processTracker,
+            IComfyLifecycleService lifecycleService,
+            de.tki.comfymodels.service.IModelArchitectureService modelArchitectureService,
+            EnvironmentBootstrapperImpl bootstrapper,
+            PromptBlueprintApiService promptBlueprintApiService,
+            IComfyTemplateService comfyTemplateService,
+            de.tki.comfymodels.service.pipeline.MediaTranscodingService mediaTranscodingService,
+            de.tki.comfymodels.service.pipeline.WorkflowTransformationService workflowTransformationService) {
+        this.configService = configService;
+        this.httpClient = httpClient != null ? httpClient : HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(15)).build();
+        this.processTracker = processTracker;
+        this.lifecycleService = lifecycleService;
+        this.modelArchitectureService = modelArchitectureService;
+        this.bootstrapper = bootstrapper;
+        this.promptBlueprintApiService = promptBlueprintApiService;
+        this.comfyTemplateService = comfyTemplateService;
+        this.mediaTranscodingService = mediaTranscodingService;
+        this.workflowTransformationService = workflowTransformationService;
+    }
 
     private Process startProcess(ProcessBuilder pb) throws IOException {
         return processTracker != null ? processTracker.start(pb) : pb.start();
     }
 
-    @Autowired
-    @org.springframework.context.annotation.Lazy
-    private IComfyLifecycleService lifecycleService;
-    
-    @Autowired(required = false)
-    private de.tki.comfymodels.service.IModelArchitectureService modelArchitectureService;
-
-    @Autowired(required = false)
-    private EnvironmentBootstrapperImpl bootstrapper;
-
-    @Autowired(required = false)
-    private PromptBlueprintApiService promptBlueprintApiService;
-
-    @Autowired(required = false)
-    private IComfyTemplateService comfyTemplateService;
-
-
-
-    @Autowired
-    public ComfyPipelineService(ConfigService configService) {
-        this.configService = configService;
-        this.httpClient = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(15))
-                .build();
-    }
-
-    public ComfyPipelineService(ConfigService configService, HttpClient httpClient) {
-        this.configService = configService;
-        this.httpClient = httpClient;
-    }
-
-    private static final java.util.Map<String, String[]> WIDGET_MAP = new java.util.HashMap<>();
-    static {
-        WIDGET_MAP.put("CheckpointLoaderSimple", new String[]{"ckpt_name"});
-        WIDGET_MAP.put("LoadImage", new String[]{"image", "upload"});
-        WIDGET_MAP.put("LoadAudio", new String[]{"audio", "audioUI", "upload"});
-        WIDGET_MAP.put("LoraLoaderModelOnly", new String[]{"lora_name", "strength_model"});
-        WIDGET_MAP.put("LTXAVTextEncoderLoader", new String[]{"text_encoder", "ckpt_name", "device"});
-        WIDGET_MAP.put("LatentUpscaleModelLoader", new String[]{"model_name"});
-        WIDGET_MAP.put("EmptyLTXVLatentVideo", new String[]{"width", "height", "length", "batch_size"});
-        WIDGET_MAP.put("CFGGuider", new String[]{"cfg"});
-        WIDGET_MAP.put("RandomNoise", new String[]{"noise_seed", "control_after_generate"});
-        WIDGET_MAP.put("KSamplerSelect", new String[]{"sampler_name"});
-        WIDGET_MAP.put("ManualSigmas", new String[]{"sigmas"});
-        WIDGET_MAP.put("VAEDecodeTiled", new String[]{"tile_size", "overlap", "temporal_size", "temporal_overlap"});
-        WIDGET_MAP.put("LTXVPreprocess", new String[]{"img_compression"});
-        WIDGET_MAP.put("ResizeImagesByLongerEdge", new String[]{"longer_edge"});
-        WIDGET_MAP.put("SaveVideo", new String[]{"filename_prefix", "format", "codec"});
-        WIDGET_MAP.put("VHS_VideoCombine", new String[]{"filename_prefix", "format", "frame_rate", "loop_count", "pix_fmt", "crf", "save_output", "pingpong"});
-        WIDGET_MAP.put("SolidMask", new String[]{"value", "width", "height"});
-        WIDGET_MAP.put("98ee9e5b-467b-40aa-a534-36033f27d0b4", new String[]{"value", "value_1", "value_2", "value_3", "value_4", "ckpt_name", "lora_name", "text_encoder", "model_name", "lora_name_1", "noise_seed"});
-        WIDGET_MAP.put("ComfyMathExpression", new String[]{"expression"});
-        WIDGET_MAP.put("LTXVImgToVideoInplace", new String[]{"strength", "bypass"});
-        WIDGET_MAP.put("LTXVConditioning", new String[]{"frame_rate"});
-        WIDGET_MAP.put("CLIPTextEncode", new String[]{"text"});
-        WIDGET_MAP.put("LTXVAudioVAELoader", new String[]{"ckpt_name"});
-        WIDGET_MAP.put("CreateVideo", new String[]{"fps"});
-        WIDGET_MAP.put("PrimitiveInt", new String[]{"value"});
-        WIDGET_MAP.put("PrimitiveFloat", new String[]{"value"});
-        WIDGET_MAP.put("PrimitiveStringMultiline", new String[]{"value"});
-        WIDGET_MAP.put("LTXVAudioVAEDecode", new String[]{});
-        WIDGET_MAP.put("LTXVConcatAVLatent", new String[]{});
-        WIDGET_MAP.put("LTXVSeparateAVLatent", new String[]{});
-        WIDGET_MAP.put("LTXVLatentUpsampler", new String[]{});
-        WIDGET_MAP.put("CLIPLoader", new String[]{"clip_name", "type", "device"});
-        WIDGET_MAP.put("DualCLIPLoader", new String[]{"clip_name1", "clip_name2", "type", "device"});
-        WIDGET_MAP.put("VAELoader", new String[]{"vae_name"});
-        WIDGET_MAP.put("UNETLoader", new String[]{"unet_name", "weight_dtype"});
-        WIDGET_MAP.put("ModelSamplingSD3", new String[]{"shift"});
-        WIDGET_MAP.put("ModelSamplingAuraFlow", new String[]{"shift"});
-        WIDGET_MAP.put("ModelSamplingFlux", new String[]{"max_shift", "base_shift", "width", "height"});
-        WIDGET_MAP.put("ModelSamplingContinuousEDM", new String[]{"sampling", "sigma_max", "sigma_min"});
-        WIDGET_MAP.put("FluxGuidance", new String[]{"guidance"});
-        WIDGET_MAP.put("CFGNorm", new String[]{"strength", "pre_cfg"});
-        WIDGET_MAP.put("BasicScheduler", new String[]{"scheduler", "steps", "denoise"});
-        WIDGET_MAP.put("EmptyLatentImage", new String[]{"width", "height", "batch_size"});
-        WIDGET_MAP.put("EmptySD3LatentImage", new String[]{"width", "height", "batch_size"});
-        WIDGET_MAP.put("KSampler", new String[]{"seed", "control_after_generate", "steps", "cfg", "sampler_name", "scheduler", "denoise"});
-        WIDGET_MAP.put("SaveImage", new String[]{"filename_prefix"});
-        WIDGET_MAP.put("PreviewImage", new String[]{});
-        WIDGET_MAP.put("ConditioningZeroOut", new String[]{});
-        WIDGET_MAP.put("SaveImageAdvanced", new String[]{"filename_prefix", "format", "format.bit_depth", "format.input_color_space"});
-        WIDGET_MAP.put("PrimitiveBoolean", new String[]{"value"});
-        WIDGET_MAP.put("TextEncodeQwenImageEditPlus", new String[]{"prompt"});
-        WIDGET_MAP.put("ImageScaleToTotalPixels", new String[]{"upscale_method", "megapixels", "resolution_steps"});
-        WIDGET_MAP.put("EmptyFlux2LatentImage", new String[]{"width", "height", "batch_size"});
-        WIDGET_MAP.put("Flux2Scheduler", new String[]{"steps", "width", "height"});
-        WIDGET_MAP.put("SamplerCustomAdvanced", new String[]{});
-        WIDGET_MAP.put("SDTurboScheduler", new String[]{"steps", "denoise"});
-        WIDGET_MAP.put("BetaScheduler", new String[]{"scheduler", "steps", "denoise"});
-        WIDGET_MAP.put("LoraLoader", new String[]{"lora_name", "strength_model", "strength_clip"});
-        WIDGET_MAP.put("WanImageToVideo", new String[]{"width", "height", "length", "batch_size"});
-        WIDGET_MAP.put("KSamplerAdvanced", new String[]{"add_noise", "noise_seed", "control_after_generate", "steps", "cfg", "sampler_name", "scheduler", "start_at_step", "end_at_step", "return_with_leftover_noise"});
-    }
-
     public static JSONObject convertUiToApi(JSONObject uiWorkflow) {
-        if (uiWorkflow != null && uiWorkflow.has("definitions") && uiWorkflow.getJSONObject("definitions").has("subgraphs")) {
-            uiWorkflow = flattenWorkflow(uiWorkflow);
-        }
-        JSONObject apiPayload = new JSONObject();
-        JSONObject apiPrompt = new JSONObject();
-        apiPayload.put("prompt", apiPrompt);
-
-        if (uiWorkflow.has("definitions")) {
-            apiPayload.put("definitions", uiWorkflow.getJSONObject("definitions"));
-        }
-
-        JSONArray nodes = uiWorkflow.optJSONArray("nodes");
-        if (nodes == null) return apiPayload;
-
-        JSONArray linksArray = uiWorkflow.optJSONArray("links");
-        java.util.Map<Integer, Object[]> linksMap = new java.util.HashMap<>();
-        if (linksArray != null) {
-            for (int i = 0; i < linksArray.length(); i++) {
-                JSONArray link = linksArray.optJSONArray(i);
-                if (link != null && link.length() >= 6) {
-                    int linkId = link.getInt(0);
-                    int originNodeId = link.getInt(1);
-                    int originSlot = link.getInt(2);
-                    int targetNodeId = link.getInt(3);
-                    int targetSlot = link.getInt(4);
-                    String type = link.getString(5);
-                    linksMap.put(linkId, new Object[]{originNodeId, originSlot, type});
-                }
-            }
-        }
-
-        for (int i = 0; i < nodes.length(); i++) {
-            JSONObject node = nodes.getJSONObject(i);
-            String type = node.getString("type");
-
-            // Skip helper nodes like MarkdownNote
-            if ("MarkdownNote".equals(type) || "Note".equals(type)) {
-                continue;
-            }
-
-            String idStr = String.valueOf(node.getInt("id"));
-            JSONObject apiNode = new JSONObject();
-            apiNode.put("class_type", type);
-
-            JSONObject apiInputs = new JSONObject();
-            apiNode.put("inputs", apiInputs);
-
-            // Resolve links
-            JSONArray inputs = node.optJSONArray("inputs");
-            if (inputs != null) {
-                for (int j = 0; j < inputs.length(); j++) {
-                    JSONObject input = inputs.getJSONObject(j);
-                    String inputName = input.getString("name");
-                    if (!input.isNull("link")) {
-                        int linkId = input.getInt("link");
-                        Object[] origin = linksMap.get(linkId);
-                        if (origin != null) {
-                            if (origin[0] instanceof Integer oId && oId == -10) {
-                                // Skip pseudo origin -10
-                            } else {
-                                JSONArray linkRef = new JSONArray();
-                                linkRef.put(String.valueOf(origin[0]));
-                                linkRef.put(origin[1]);
-                                apiInputs.put(inputName, linkRef);
-                            }
-                        }
-                     }
-                 }
-             }
-
-             // Resolve widgets
-             JSONArray widgetsValues = node.optJSONArray("widgets_values");
-             if (widgetsValues != null && WIDGET_MAP.containsKey(type)) {
-                 String[] widgetNames = WIDGET_MAP.get(type);
-                 for (int j = 0; j < widgetNames.length && j < widgetsValues.length(); j++) {
-                     String widgetName = widgetNames[j];
-                     if (!apiInputs.has(widgetName)) {
-                         apiInputs.put(widgetName, widgetsValues.get(j));
-                     }
-                 }
-             }
-
-             apiPrompt.put(idStr, apiNode);
-         }
-
-         return apiPayload;
-     }
+        return DEFAULT_TRANSFORMATION_SERVICE.convertUiToApi(uiWorkflow);
+    }
 
     private String findExactModelName(String expected, List<String> available) {
         if (expected == null) return "";
@@ -347,8 +224,11 @@ public class ComfyPipelineService {
         String clipName = resolveVideoModel("video_wan_clip", "umt5_xxl_fp8_e4m3fn_scaled.safetensors", availableClips);
         String vaeName = resolveVideoModel("video_wan_vae", "wan_2.1_vae.safetensors", availableVaes);
 
-        int width = 640;
-        int height = 640;
+        int width = scene.getWidth() > 0 ? scene.getWidth() : 1280;
+        int height = scene.getHeight() > 0 ? scene.getHeight() : 720;
+        // Wan 2.2 requires dimensions to be divisible by 16
+        width = Math.max(256, (width / 16) * 16);
+        height = Math.max(256, (height / 16) * 16);
         // Compute duration in seconds from the scene frame range.
         // Convention: startFrame=0, endFrame=duration_seconds*24. A scene
         // with no frames set falls back to a 5-second default.
@@ -434,62 +314,15 @@ public class ComfyPipelineService {
     }
 
     public File convertImageToVideo(File imageFile, File audioFile, float durationSeconds, float fps, File outputFile) throws Exception {
-        validateFfmpeg();
-        String ffmpegPath = configService.getFfmpegPath();
-        List<String> cmd = new ArrayList<>();
-        cmd.add(ffmpegPath);
-        cmd.add("-y");
-        cmd.add("-loop");
-        cmd.add("1");
-        cmd.add("-i");
-        cmd.add(imageFile.getAbsolutePath());
-        if (audioFile != null && audioFile.exists()) {
-            cmd.add("-i");
-            cmd.add(audioFile.getAbsolutePath());
-            cmd.add("-c:v");
-            cmd.add("libx264");
-            cmd.add("-tune");
-            cmd.add("stillimage");
-            cmd.add("-c:a");
-            cmd.add("aac");
-            cmd.add("-b:a");
-            cmd.add("192k");
-            cmd.add("-pix_fmt");
-            cmd.add("yuv420p");
-            cmd.add("-shortest");
-            cmd.add("-vf");
-            cmd.add("scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2");
-        } else {
-            cmd.add("-t");
-            cmd.add(String.valueOf(durationSeconds > 0 ? durationSeconds : 5.0f));
-            cmd.add("-c:v");
-            cmd.add("libx264");
-            cmd.add("-tune");
-            cmd.add("stillimage");
-            cmd.add("-pix_fmt");
-            cmd.add("yuv420p");
-            cmd.add("-r");
-            cmd.add(String.valueOf(fps > 0 ? fps : 24.0f));
-            cmd.add("-vf");
-            cmd.add("scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2");
-        }
-        cmd.add(outputFile.getAbsolutePath());
+        return convertImageToVideo(imageFile, audioFile, durationSeconds, fps, outputFile, 1920, 1080);
+    }
 
-        logger.info("🎬 [ComfyPipeline] Converting image to video via FFmpeg: " + String.join(" ", cmd));
-        ProcessBuilder pb = new ProcessBuilder(cmd);
-        pb.redirectErrorStream(true);
-        Process p = startProcess(pb);
-        try (java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8))) {
-            String line;
-            while ((line = r.readLine()) != null) {
-                logger.info("   [FFmpeg Img2Vid] " + line);
-            }
+    public File convertImageToVideo(File imageFile, File audioFile, float durationSeconds, float fps, File outputFile, int targetWidth, int targetHeight) throws Exception {
+        if (mediaTranscodingService != null) {
+            return mediaTranscodingService.convertImageToVideo(imageFile, audioFile, durationSeconds, fps, outputFile, targetWidth, targetHeight);
         }
-        int exit = p.waitFor();
-        if (exit != 0 || !outputFile.exists() || outputFile.length() < 100) {
-            throw new IOException("FFmpeg image-to-video conversion failed with exit code " + exit);
-        }
-        return outputFile;
+        MediaTranscodingService fallbackTranscoder = new MediaTranscodingService(configService);
+        return fallbackTranscoder.convertImageToVideo(imageFile, audioFile, durationSeconds, fps, outputFile, targetWidth, targetHeight);
     }
 
     private boolean isWanSetupComplete(List<String> unets, List<String> clips, List<String> vaes) {
@@ -554,10 +387,12 @@ public class ComfyPipelineService {
             JSONObject mainObj = pbService.extractApiPayload(apiPayload.toString());
             JSONObject promptObj = mainObj.getJSONObject("prompt");
 
+            int imgWidth = scene.getWidth() > 0 ? scene.getWidth() : 1920;
+            int imgHeight = scene.getHeight() > 0 ? scene.getHeight() : 1080;
             PromptBlueprintApiService.PromptLabInputs inputs = new PromptBlueprintApiService.PromptLabInputs(
                 scene.getPrompt(),
                 "blurry, low quality, distortion, bad anatomy, deformed",
-                1024, 1024,
+                imgWidth, imgHeight,
                 (scene.getSteps() > 0 ? scene.getSteps() : 8),
                 (scene.getCfgScale() > 0 ? scene.getCfgScale() : 1.0),
                 seed, "euler", "simple", 1.0, 1, speakerImage
@@ -711,14 +546,17 @@ public class ComfyPipelineService {
                 long seed = Math.abs(new java.util.Random().nextLong());
                 String filenamePrefix = "videoarchitect_" + scene.getSceneId();
 
-                // Upload speaker image if present
+                // Upload speaker image only if explicitly present and valid for this scene
                 String speakerImage = null;
-                String speakerPath = configService.getSpeakerImagePath();
+                String speakerPath = (scene != null && scene.getSpeakerImagePath() != null && !scene.getSpeakerImagePath().trim().isEmpty())
+                        ? scene.getSpeakerImagePath().trim() : null;
                 if (speakerPath != null && !speakerPath.trim().isEmpty()) {
-                    File speakerFile = new File(speakerPath);
-                    if (speakerFile.exists()) {
-                        logger.info("📤 [ComfyPipeline] Uploading speaker image: " + speakerFile.getName());
+                    File speakerFile = new File(speakerPath.trim());
+                    if (speakerFile.exists() && speakerFile.isFile()) {
+                        logger.info("📤 [ComfyPipeline] Uploading speaker image for scene " + scene.getSceneId() + ": " + speakerFile.getName());
                         speakerImage = uploadFile(serverUrl, speakerFile);
+                    } else {
+                        logger.warn("⚠️ [ComfyPipeline] Speaker image path invalid or not found: " + speakerPath + ", proceeding with pure Text-to-Video.");
                     }
                 }
 
@@ -804,7 +642,7 @@ public class ComfyPipelineService {
 
                     if (isImage) {
                         logger.info("🖼️ [ComfyPipeline] Raw output is an image. Converting to MP4 scene video...");
-                        convertImageToVideo(rawOutputFile, audioFile, duration, fps, finalVideoFile);
+                        convertImageToVideo(rawOutputFile, audioFile, duration, fps, finalVideoFile, scene.getWidth(), scene.getHeight());
                     } else if (audioFile != null && audioFile.exists()) {
                         String ffmpegPath = configService.getFfmpegPath();
                         List<String> cmd = List.of(
@@ -886,17 +724,12 @@ public class ComfyPipelineService {
 
     public CompletableFuture<File> generateMontageScene(Scene scene) {
         return CompletableFuture.supplyAsync(() -> {
-            String originalSpeaker = configService.getSpeakerImagePath();
-            try {
-                String sourceClip = scene.getSourceClipPath();
-                if (sourceClip != null && !sourceClip.trim().isEmpty() && new File(sourceClip).exists()) {
-                    logger.info("🎬 [ComfyPipeline] Montage mode: Using source clip as input: " + sourceClip);
-                    configService.setSpeakerImagePath(sourceClip);
-                }
-                return generateScene(scene).join();
-            } finally {
-                configService.setSpeakerImagePath(originalSpeaker);
+            String sourceClip = scene.getSourceClipPath();
+            if (sourceClip != null && !sourceClip.trim().isEmpty() && new File(sourceClip).exists()) {
+                logger.info("🎬 [ComfyPipeline] Montage mode: Using source clip as input: " + sourceClip);
+                scene.setSpeakerImagePath(sourceClip);
             }
+            return generateScene(scene).join();
         });
     }
 
@@ -1067,257 +900,7 @@ public class ComfyPipelineService {
     }
 
     public static JSONObject flattenWorkflow(JSONObject uiWorkflow) {
-        if (!uiWorkflow.has("definitions") || !uiWorkflow.getJSONObject("definitions").has("subgraphs")) {
-            return uiWorkflow;
-        }
-
-        JSONArray subgraphs = uiWorkflow.getJSONObject("definitions").getJSONArray("subgraphs");
-        java.util.Map<String, JSONObject> subgraphDefs = new java.util.HashMap<>();
-        for (int i = 0; i < subgraphs.length(); i++) {
-            JSONObject sg = subgraphs.getJSONObject(i);
-            subgraphDefs.put(sg.getString("id"), sg);
-        }
-
-        JSONArray mainNodes = uiWorkflow.getJSONArray("nodes");
-        JSONArray mainLinks = uiWorkflow.optJSONArray("links");
-        if (mainLinks == null) {
-            mainLinks = new JSONArray();
-            uiWorkflow.put("links", mainLinks);
-        }
-
-        boolean flattenedAny = true;
-        int safetyCounter = 0;
-        int idOffset = 10000;
-
-        while (flattenedAny && safetyCounter < 10) {
-            flattenedAny = false;
-            safetyCounter++;
-
-            JSONArray newNodes = new JSONArray();
-            for (int i = 0; i < mainNodes.length(); i++) {
-                JSONObject node = mainNodes.getJSONObject(i);
-                String type = node.getString("type");
-
-                if (subgraphDefs.containsKey(type)) {
-                    flattenedAny = true;
-                    JSONObject sgDef = subgraphDefs.get(type);
-                    int subgraphNodeId = node.getInt("id");
-
-                    java.util.Map<Integer, Object[]> inputSlotLinks = new java.util.HashMap<>();
-                    java.util.Map<Integer, List<Object[]>> outputSlotLinks = new java.util.HashMap<>();
-
-                    JSONArray nodeInputsArr = node.optJSONArray("inputs");
-                    JSONArray nodeOutputsArr = node.optJSONArray("outputs");
-                    JSONArray sgInputsArr = sgDef.optJSONArray("inputs");
-                    JSONArray sgOutputsArr = sgDef.optJSONArray("outputs");
-
-                    for (int j = 0; j < mainLinks.length(); j++) {
-                        JSONArray link = mainLinks.optJSONArray(j);
-                        if (link == null || link.length() < 6) continue;
-                        int linkId = link.getInt(0);
-                        int originId = link.getInt(1);
-                        int originSlot = link.getInt(2);
-                        int targetId = link.getInt(3);
-                        int targetSlot = link.getInt(4);
-                        String linkType = link.getString(5);
-
-                        if (targetId == subgraphNodeId) {
-                            int targetSgSlot = targetSlot;
-                            if (nodeInputsArr != null && targetSlot < nodeInputsArr.length()) {
-                                String slotName = nodeInputsArr.getJSONObject(targetSlot).optString("name", "");
-                                if (sgInputsArr != null) {
-                                    for (int s = 0; s < sgInputsArr.length(); s++) {
-                                        if (slotName.equals(sgInputsArr.getJSONObject(s).optString("name", ""))) {
-                                            targetSgSlot = s;
-                                            break;
-                                        }
-                                    }
-                                }
-                            }
-                            inputSlotLinks.put(targetSgSlot, new Object[]{originId, originSlot, linkType, linkId});
-                        }
-                        if (originId == subgraphNodeId) {
-                            int originSgSlot = originSlot;
-                            if (nodeOutputsArr != null && originSlot < nodeOutputsArr.length()) {
-                                String slotName = nodeOutputsArr.getJSONObject(originSlot).optString("name", "");
-                                if (sgOutputsArr != null) {
-                                    for (int s = 0; s < sgOutputsArr.length(); s++) {
-                                        if (slotName.equals(sgOutputsArr.getJSONObject(s).optString("name", ""))) {
-                                            originSgSlot = s;
-                                            break;
-                                        }
-                                    }
-                                }
-                            }
-                            outputSlotLinks.computeIfAbsent(originSgSlot, k -> new ArrayList<>())
-                                    .add(new Object[]{targetId, targetSlot, linkType, linkId});
-                        }
-                    }
-
-                    JSONArray sgNodes = sgDef.getJSONArray("nodes");
-                    java.util.Map<Integer, Integer> nodeIdMap = new java.util.HashMap<>();
-                    for (int j = 0; j < sgNodes.length(); j++) {
-                        JSONObject internalNode = new JSONObject(sgNodes.getJSONObject(j).toString());
-                        int oldId = internalNode.getInt("id");
-                        int newId = oldId + idOffset;
-                        internalNode.put("id", newId);
-                        nodeIdMap.put(oldId, newId);
-
-                        JSONArray nodeInputs = internalNode.optJSONArray("inputs");
-                        if (nodeInputs != null) {
-                            for (int k = 0; k < nodeInputs.length(); k++) {
-                                JSONObject inputObj = nodeInputs.getJSONObject(k);
-                                if (inputObj.has("link") && !inputObj.isNull("link")) {
-                                    int oldLink = inputObj.getInt("link");
-                                    inputObj.put("link", oldLink + idOffset * 10);
-                                }
-                            }
-                        }
-
-                        newNodes.put(internalNode);
-                    }
-
-                    JSONArray sgLinks = sgDef.optJSONArray("links");
-                    if (sgLinks != null) {
-                        for (int j = 0; j < sgLinks.length(); j++) {
-                            int linkId, originId, originSlot, targetId, targetSlot;
-                            String linkType;
-                            Object itemObj = sgLinks.get(j);
-                            if (itemObj instanceof JSONArray) {
-                                JSONArray link = (JSONArray) itemObj;
-                                linkId = link.getInt(0);
-                                originId = link.getInt(1);
-                                originSlot = link.getInt(2);
-                                targetId = link.getInt(3);
-                                targetSlot = link.getInt(4);
-                                linkType = link.getString(5);
-                            } else if (itemObj instanceof JSONObject) {
-                                JSONObject link = (JSONObject) itemObj;
-                                linkId = link.getInt("id");
-                                originId = link.getInt("origin_id");
-                                originSlot = link.getInt("origin_slot");
-                                targetId = link.getInt("target_id");
-                                targetSlot = link.getInt("target_slot");
-                                linkType = link.getString("type");
-                            } else {
-                                continue;
-                            }
-
-                            int newLinkId = linkId + idOffset * 10;
-                            int newOriginId = originId == -10 ? -10 : (nodeIdMap.containsKey(originId) ? nodeIdMap.get(originId) : originId);
-                            int newTargetId = targetId == -20 ? -20 : (nodeIdMap.containsKey(targetId) ? nodeIdMap.get(targetId) : targetId);
-
-                            if (newOriginId == -10 && newTargetId == -20) {
-                                continue;
-                            }
-
-                            JSONArray newLink = new JSONArray();
-                            newLink.put(newLinkId);
-                            newLink.put(newOriginId);
-                            newLink.put(originSlot);
-                            newLink.put(newTargetId);
-                            newLink.put(targetSlot);
-                            newLink.put(linkType);
-
-                            mainLinks.put(newLink);
-                        }
-                    }
-
-                    JSONArray sgInputs = sgDef.optJSONArray("inputs");
-                    if (sgInputs != null) {
-                        for (int slotIdx = 0; slotIdx < sgInputs.length(); slotIdx++) {
-                            JSONObject sgInput = sgInputs.getJSONObject(slotIdx);
-                            JSONArray linkIds = sgInput.optJSONArray("linkIds");
-                            if (linkIds == null) continue;
-
-                            Object[] extLinkInfo = inputSlotLinks.get(slotIdx);
-                            if (extLinkInfo != null) {
-                                int extOriginId = (int) extLinkInfo[0];
-                                int extOriginSlot = (int) extLinkInfo[1];
-
-                                for (int k = 0; k < linkIds.length(); k++) {
-                                    int intLinkId = linkIds.getInt(k);
-                                    int newIntLinkId = intLinkId + idOffset * 10;
-
-                                    for (int m = 0; m < mainLinks.length(); m++) {
-                                        JSONArray l = mainLinks.optJSONArray(m);
-                                        if (l != null && l.length() >= 6 && l.getInt(0) == newIntLinkId) {
-                                            l.put(1, extOriginId);
-                                            l.put(2, extOriginSlot);
-                                            break;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    JSONArray sgOutputs = sgDef.optJSONArray("outputs");
-                    if (sgOutputs != null) {
-                        for (int slotIdx = 0; slotIdx < sgOutputs.length(); slotIdx++) {
-                            JSONObject sgOutput = sgOutputs.getJSONObject(slotIdx);
-                            JSONArray linkIds = sgOutput.optJSONArray("linkIds");
-                            if (linkIds == null) continue;
-
-                            List<Object[]> extLinkInfos = outputSlotLinks.get(slotIdx);
-                            if (extLinkInfos != null) {
-                                for (int k = 0; k < linkIds.length(); k++) {
-                                    int intLinkId = linkIds.getInt(k);
-                                    int newIntLinkId = intLinkId + idOffset * 10;
-
-                                    int internalOriginId = -1;
-                                    int internalOriginSlot = -1;
-                                    for (int m = 0; m < mainLinks.length(); m++) {
-                                        JSONArray l = mainLinks.optJSONArray(m);
-                                        if (l != null && l.length() >= 6 && l.getInt(0) == newIntLinkId) {
-                                            internalOriginId = l.getInt(1);
-                                            internalOriginSlot = l.getInt(2);
-                                            break;
-                                        }
-                                    }
-
-                                    if (internalOriginId != -1) {
-                                        for (Object[] extLinkInfo : extLinkInfos) {
-                                            int extLinkId = (int) extLinkInfo[3];
-                                            for (int m = 0; m < mainLinks.length(); m++) {
-                                                JSONArray l = mainLinks.optJSONArray(m);
-                                                if (l != null && l.length() >= 6 && l.getInt(0) == extLinkId) {
-                                                    l.put(1, internalOriginId);
-                                                    l.put(2, internalOriginSlot);
-                                                    break;
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    JSONArray cleanLinks = new JSONArray();
-                    for (int j = 0; j < mainLinks.length(); j++) {
-                        JSONArray l = mainLinks.optJSONArray(j);
-                        if (l == null || l.length() < 6) continue;
-                        int originId = l.getInt(1);
-                        int targetId = l.getInt(3);
-                        if (originId == subgraphNodeId || targetId == subgraphNodeId || originId == -10 || targetId == -20) {
-                            continue;
-                        }
-                        cleanLinks.put(l);
-                    }
-                    mainLinks = cleanLinks;
-                    uiWorkflow.put("links", mainLinks);
-
-                    idOffset += 10000;
-                } else {
-                    newNodes.put(node);
-                }
-            }
-            mainNodes = newNodes;
-            uiWorkflow.put("nodes", mainNodes);
-        }
-
-        return uiWorkflow;
+        return DEFAULT_TRANSFORMATION_SERVICE.flattenWorkflow(uiWorkflow);
     }
 
     private String loadTemplate() {

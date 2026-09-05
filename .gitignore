@@ -99,3 +99,6 @@ VisualStudioCode/
 eclipse/
 workspace/
 *.bin
+
+# Test logs
+test-log*.txt

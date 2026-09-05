@@ -356,4 +356,10 @@ public class DownloadManagerView extends JPanel {
     public JButton getDownloadButton() { return downloadButton; }
     public JButton getPauseButton() { return pauseButton; }
     public JButton getStopButton() { return stopButton; }
+
+    @Override
+    public void addNotify() {
+        super.addNotify();
+        SwingUtilities.updateComponentTreeUI(this);
+    }
 }

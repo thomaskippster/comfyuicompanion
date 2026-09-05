@@ -54,6 +54,7 @@ public class PromptLabController implements PromptLabView.PromptLabController {
     private final Set<String> comfyUnetWeightDtypes = ConcurrentHashMap.newKeySet();
 
     private volatile String currentBlueprintGuiJson = null;
+    private final java.util.concurrent.atomic.AtomicBoolean isUpdatingCombo = new java.util.concurrent.atomic.AtomicBoolean(false);
     private PromptLabView view;
     private BlueprintGalleryTab blueprintGalleryTab;
     private Runnable sendPromptHandler;
@@ -253,12 +254,78 @@ public class PromptLabController implements PromptLabView.PromptLabController {
             view.getPromptHeightSpinner().setValue(512);
             view.getPromptStepsSpinner().setValue(8);
             view.getPromptCfgSpinner().setValue(1.5);
-        } else {
+        } else if (comboLower.contains("sd1") || comboLower.contains("sd 1") || comboLower.contains("v1-5") || comboLower.contains("v1.5") || comboLower.contains("sd-1-5")) {
             view.getPromptPresetLabel().setText("Detected Preset: Stable Diffusion 1.5 (SD 1.5)");
             view.getPromptWidthSpinner().setValue(512);
             view.getPromptHeightSpinner().setValue(512);
             view.getPromptStepsSpinner().setValue(20);
             view.getPromptCfgSpinner().setValue(7.0);
+        } else {
+            // Modern Generic Architecture Fallback (1024x1024 HD)
+            de.tki.comfymodels.domain.ModelArchitecture arch = (modelArchitectureService != null)
+                    ? modelArchitectureService.detectArchitecture(modelName)
+                    : de.tki.comfymodels.domain.ModelArchitecture.ARCH_UNKNOWN;
+
+            switch (arch) {
+                case ARCH_FLUX -> {
+                    view.getPromptPresetLabel().setText("Detected Preset: FLUX (1024x1024)");
+                    view.getPromptWidthSpinner().setValue(1024);
+                    view.getPromptHeightSpinner().setValue(1024);
+                    view.getPromptStepsSpinner().setValue(20);
+                    view.getPromptCfgSpinner().setValue(1.0);
+                    selectOrAddComboItem(view.getPromptSamplerCombo(), "euler");
+                    selectOrAddComboItem(view.getPromptSchedulerCombo(), "simple");
+                }
+                case ARCH_SDXL -> {
+                    view.getPromptPresetLabel().setText("Detected Preset: SDXL (1024x1024)");
+                    view.getPromptWidthSpinner().setValue(1024);
+                    view.getPromptHeightSpinner().setValue(1024);
+                    view.getPromptStepsSpinner().setValue(30);
+                    view.getPromptCfgSpinner().setValue(6.0);
+                }
+                case ARCH_SD3 -> {
+                    view.getPromptPresetLabel().setText("Detected Preset: Stable Diffusion 3 / 3.5 (1024x1024)");
+                    view.getPromptWidthSpinner().setValue(1024);
+                    view.getPromptHeightSpinner().setValue(1024);
+                    view.getPromptStepsSpinner().setValue(28);
+                    view.getPromptCfgSpinner().setValue(4.5);
+                }
+                case ARCH_WAN -> {
+                    view.getPromptPresetLabel().setText("Detected Preset: Wan 2.1 / 2.2 (1024x1024)");
+                    view.getPromptWidthSpinner().setValue(1024);
+                    view.getPromptHeightSpinner().setValue(1024);
+                    view.getPromptStepsSpinner().setValue(30);
+                    view.getPromptCfgSpinner().setValue(5.0);
+                }
+                case ARCH_HUNYUAN -> {
+                    view.getPromptPresetLabel().setText("Detected Preset: Hunyuan (1024x1024)");
+                    view.getPromptWidthSpinner().setValue(1024);
+                    view.getPromptHeightSpinner().setValue(1024);
+                    view.getPromptStepsSpinner().setValue(30);
+                    view.getPromptCfgSpinner().setValue(5.0);
+                }
+                case ARCH_LUMINA2 -> {
+                    view.getPromptPresetLabel().setText("Detected Preset: Lumina2 (1024x1024)");
+                    view.getPromptWidthSpinner().setValue(1024);
+                    view.getPromptHeightSpinner().setValue(1024);
+                    view.getPromptStepsSpinner().setValue(20);
+                    view.getPromptCfgSpinner().setValue(4.0);
+                }
+                case ARCH_SD15 -> {
+                    view.getPromptPresetLabel().setText("Detected Preset: Stable Diffusion 1.5 (SD 1.5)");
+                    view.getPromptWidthSpinner().setValue(512);
+                    view.getPromptHeightSpinner().setValue(512);
+                    view.getPromptStepsSpinner().setValue(20);
+                    view.getPromptCfgSpinner().setValue(7.0);
+                }
+                default -> {
+                    view.getPromptPresetLabel().setText("Detected Preset: Modern Diffusion (1024x1024)");
+                    view.getPromptWidthSpinner().setValue(1024);
+                    view.getPromptHeightSpinner().setValue(1024);
+                    view.getPromptStepsSpinner().setValue(20);
+                    view.getPromptCfgSpinner().setValue(4.0);
+                }
+            }
         }
         populateUiFromWorkflow(currentBlueprintGuiJson);
     }
@@ -888,8 +955,8 @@ public class PromptLabController implements PromptLabView.PromptLabController {
 
             JSONObject promptObj = mainObj.getJSONObject("prompt");
 
-            int width = (view.getPromptWidthSpinner() != null) ? (Integer) view.getPromptWidthSpinner().getValue() : 512;
-            int height = (view.getPromptHeightSpinner() != null) ? (Integer) view.getPromptHeightSpinner().getValue() : 512;
+            int width = (view.getPromptWidthSpinner() != null) ? (Integer) view.getPromptWidthSpinner().getValue() : 1024;
+            int height = (view.getPromptHeightSpinner() != null) ? (Integer) view.getPromptHeightSpinner().getValue() : 1024;
             int batch = (view.getPromptBatchSizeSpinner() != null) ? (Integer) view.getPromptBatchSizeSpinner().getValue() : 1;
             int steps = (view.getPromptStepsSpinner() != null) ? (Integer) view.getPromptStepsSpinner().getValue() : 20;
             double cfg = (view.getPromptCfgSpinner() != null) ? ((Number) view.getPromptCfgSpinner().getValue()).doubleValue() : 7.0;
@@ -1023,6 +1090,7 @@ public class PromptLabController implements PromptLabView.PromptLabController {
 
     public void onPromptBlueprintSelected(String selectedName) {
         if (selectedName == null || selectedName.isEmpty() || view == null) return;
+        if (isUpdatingCombo.get()) return;
 
         BlueprintGalleryTab.BlueprintEntry matchedEntry = null;
         if (blueprintGalleryTab != null) {
@@ -1070,8 +1138,8 @@ public class PromptLabController implements PromptLabView.PromptLabController {
                 if (view.getPromptStepsSpinner() != null) view.getPromptStepsSpinner().setValue(20);
                 if (view.getPromptCfgSpinner() != null) view.getPromptCfgSpinner().setValue(6.0);
             } else {
-                if (view.getPromptWidthSpinner() != null) view.getPromptWidthSpinner().setValue(512);
-                if (view.getPromptHeightSpinner() != null) view.getPromptHeightSpinner().setValue(512);
+                if (view.getPromptWidthSpinner() != null) view.getPromptWidthSpinner().setValue(1024);
+                if (view.getPromptHeightSpinner() != null) view.getPromptHeightSpinner().setValue(1024);
                 if (view.getPromptStepsSpinner() != null) view.getPromptStepsSpinner().setValue(20);
                 if (view.getPromptCfgSpinner() != null) view.getPromptCfgSpinner().setValue(7.0);
             }
@@ -1099,6 +1167,40 @@ public class PromptLabController implements PromptLabView.PromptLabController {
                             jsonContent = Files.readString(localFile.toPath(), StandardCharsets.UTF_8).trim();
                         }
                     }
+                    // 1. Local-First: Check local workflows folder before attempting remote network calls
+                    if (jsonContent == null) {
+                        File dir = new File("workflows");
+                        if (dir.exists() && dir.isDirectory()) {
+                            if (targetEntry.registryWorkflow != null) {
+                                if (targetEntry.registryWorkflow.getId() != null) {
+                                    File registryFile = new File(dir, targetEntry.registryWorkflow.getId() + ".json");
+                                    if (registryFile.exists()) {
+                                        jsonContent = Files.readString(registryFile.toPath(), StandardCharsets.UTF_8).trim();
+                                    }
+                                }
+                                if (jsonContent == null && targetEntry.registryWorkflow.getTitle() != null) {
+                                    String sanitized = targetEntry.registryWorkflow.getTitle().replaceAll("[^a-zA-Z0-9\\-_\\s]", "").trim().replaceAll("\\s+", "_").toLowerCase(java.util.Locale.ROOT);
+                                    File titleFile = new File(dir, sanitized + ".json");
+                                    if (titleFile.exists()) {
+                                        jsonContent = Files.readString(titleFile.toPath(), StandardCharsets.UTF_8).trim();
+                                    }
+                                }
+                            }
+                            if (jsonContent == null) {
+                                File[] files = dir.listFiles((d, n) -> n.toLowerCase().endsWith(".json"));
+                                if (files != null) {
+                                    for (File f : files) {
+                                        if (isBlueprintNameMatch(targetEntry.name, f.getName().replace(".json", ""))
+                                                || (targetEntry.filename != null && f.getName().equalsIgnoreCase(targetEntry.filename))) {
+                                            jsonContent = Files.readString(f.toPath(), StandardCharsets.UTF_8).trim();
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    // 2. Remote Download fallback if not available on disk
                     if (jsonContent == null && targetEntry.registryWorkflow != null && workflowDownloader != null) {
                         try {
                             File downloaded = workflowDownloader.downloadWorkflowAsync(targetEntry.registryWorkflow).get();
@@ -1109,21 +1211,7 @@ public class PromptLabController implements PromptLabView.PromptLabController {
                             logger.warn("Failed to download workflow for blueprint " + targetEntry.name + ": " + dlEx.getMessage());
                         }
                     }
-                    if (jsonContent == null) {
-                        File dir = new File("workflows");
-                        if (dir.exists() && dir.isDirectory()) {
-                            File[] files = dir.listFiles((d, n) -> n.toLowerCase().endsWith(".json"));
-                            if (files != null) {
-                                for (File f : files) {
-                                    if (isBlueprintNameMatch(targetEntry.name, f.getName().replace(".json", ""))) {
-                                        jsonContent = Files.readString(f.toPath(), StandardCharsets.UTF_8).trim();
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-                    }
-
+                    // 3. Fallback to template generator if workflow cannot be found
                     if (jsonContent == null && comfyTemplateService != null) {
                         ComfyTemplate template = comfyTemplateService.determineTemplateForModel(targetEntry.name);
                         if (template != null) {
@@ -1287,23 +1375,33 @@ public class PromptLabController implements PromptLabView.PromptLabController {
 
             SwingUtilities.invokeLater(() -> {
                 if (view != null && view.getPromptModelCombo() != null) {
-                    String selected = (String) view.getPromptModelCombo().getSelectedItem();
-                    view.getPromptModelCombo().removeAllItems();
+                    isUpdatingCombo.set(true);
+                    try {
+                        String selected = (String) view.getPromptModelCombo().getSelectedItem();
+                        view.getPromptModelCombo().removeAllItems();
 
-                    if (itemsToAdd.isEmpty()) {
-                        view.getPromptModelCombo().addItem("No ready offline blueprints available");
-                        view.getPromptModelCombo().setEnabled(false);
-                    } else {
-                        view.getPromptModelCombo().setEnabled(true);
-                        for (String name : itemsToAdd) {
-                            view.getPromptModelCombo().addItem(name);
-                        }
-
-                        if (selected != null && itemsToAdd.contains(selected)) {
-                            view.getPromptModelCombo().setSelectedItem(selected);
+                        if (itemsToAdd.isEmpty()) {
+                            view.getPromptModelCombo().addItem("No ready offline blueprints available");
+                            view.getPromptModelCombo().setEnabled(false);
                         } else {
-                            view.getPromptModelCombo().setSelectedIndex(0);
+                            view.getPromptModelCombo().setEnabled(true);
+                            for (String name : itemsToAdd) {
+                                view.getPromptModelCombo().addItem(name);
+                            }
+
+                            if (selected != null && itemsToAdd.contains(selected)) {
+                                view.getPromptModelCombo().setSelectedItem(selected);
+                            } else {
+                                view.getPromptModelCombo().setSelectedIndex(0);
+                            }
                         }
+                    } finally {
+                        isUpdatingCombo.set(false);
+                    }
+
+                    String current = (String) view.getPromptModelCombo().getSelectedItem();
+                    if (current != null && !current.equals("No ready offline blueprints available")) {
+                        onPromptBlueprintSelected(current);
                     }
                 }
             });

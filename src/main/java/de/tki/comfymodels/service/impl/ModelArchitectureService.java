@@ -40,14 +40,33 @@ public class ModelArchitectureService implements IModelArchitectureService {
     private volatile String progressFileName = "";
     private volatile boolean progressCompleted = false;
 
-    @Autowired(required = false)
     private ComfyUIArchitectureClassifier classifier;
-
-    @Autowired(required = false)
     private ComfyModelAnalyzer modelAnalyzer;
+    private final ModelListService modelListService;
 
-    @Autowired(required = false)
-    private ModelListService modelListService;
+    public ModelArchitectureService() {
+        this(null, null, null, null);
+    }
+
+    public ModelArchitectureService(ConfigService configService) {
+        this(configService, null, null, null);
+    }
+
+    public ModelArchitectureService(ConfigService configService, ComfyUIArchitectureClassifier classifier) {
+        this(configService, classifier, null, null);
+    }
+
+    @Autowired
+    public ModelArchitectureService(
+            @Autowired(required = false) ConfigService configService,
+            @Autowired(required = false) ComfyUIArchitectureClassifier classifier,
+            @Autowired(required = false) ComfyModelAnalyzer modelAnalyzer,
+            @Autowired(required = false) ModelListService modelListService) {
+        this.configService = configService;
+        this.classifier = classifier;
+        this.modelAnalyzer = modelAnalyzer;
+        this.modelListService = modelListService;
+    }
 
     private final List<Map<String, Object>> blueprintScanResults = new java.util.concurrent.CopyOnWriteArrayList<>();
 
@@ -76,16 +95,6 @@ public class ModelArchitectureService implements IModelArchitectureService {
             this.pattern = Pattern.compile(regex, Pattern.CASE_INSENSITIVE);
             this.architecture = architecture;
         }
-    }
-
-    @Autowired
-    public ModelArchitectureService(ConfigService configService) {
-        this.configService = configService;
-    }
-
-    public ModelArchitectureService(ConfigService configService, ComfyUIArchitectureClassifier classifier) {
-        this.configService = configService;
-        this.classifier = classifier;
     }
 
     @PostConstruct

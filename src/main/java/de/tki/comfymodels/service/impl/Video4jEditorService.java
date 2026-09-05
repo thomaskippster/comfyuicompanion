@@ -14,8 +14,12 @@ import org.opencv.videoio.VideoWriter;
 import org.springframework.stereotype.Service;
 
 import jakarta.annotation.PostConstruct;
+import java.awt.image.BufferedImage;
+import javax.imageio.ImageIO;
 import java.io.File;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.util.List;
 import org.springframework.beans.factory.annotation.Autowired;
 
@@ -24,13 +28,18 @@ public class Video4jEditorService {
     private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(Video4jEditorService.class);
 
     private final ConfigService configService;
+    private final ProcessTracker processTracker;
 
-
-    @Autowired(required = false)
-    private ProcessTracker processTracker;
+    @Autowired
+    public Video4jEditorService(
+            ConfigService configService,
+            @Autowired(required = false) ProcessTracker processTracker) {
+        this.configService = configService;
+        this.processTracker = processTracker;
+    }
 
     public Video4jEditorService(ConfigService configService) {
-        this.configService = configService;
+        this(configService, null);
     }
 
     private Process startProcess(ProcessBuilder pb) throws IOException {
@@ -99,8 +108,7 @@ public class Video4jEditorService {
                 logger.error("❌ [Video4jEditorService] FFmpeg Img2Vid failed with exit code: " + exitCode);
             }
         } catch (Exception e) {
-            logger.error("❌ [Video4jEditorService] Failed to run FFmpeg Img2Vid: " + e.getMessage());
-            e.printStackTrace();
+            logger.error("❌ [Video4jEditorService] Failed to run FFmpeg Img2Vid: " + e.getMessage(), e);
         }
         return false;
     }
@@ -194,6 +202,7 @@ public class Video4jEditorService {
 
         // Handle static image input: convert to video first
         File tempImageVideo = null;
+        File tempSubFile = null;
         try {
             String lower = videoPath.toLowerCase();
             boolean isImage = lower.endsWith(".png") || lower.endsWith(".jpg") || lower.endsWith(".jpeg") || lower.endsWith(".webp");
@@ -265,32 +274,40 @@ public class Video4jEditorService {
             command.add("-t");
             command.add(String.format(java.util.Locale.US, "%.3f", duration));
 
+            // Build video filter chain (contrast/brightness adjustment + subtitle overlay)
+            List<String> vfFilters = new java.util.ArrayList<>();
+            if (Math.abs(scene.getContrast() - 1.0) > 0.01 || Math.abs(scene.getBrightness()) > 0.01) {
+                vfFilters.add(String.format(java.util.Locale.US, "eq=contrast=%.2f:brightness=%.2f",
+                        scene.getContrast(), scene.getBrightness() / 100.0));
+            }
+
             // Add subtitle overlay via drawtext if narration text exists
             String narration = scene.getNarrationText();
             if (narration != null && !narration.trim().isEmpty()) {
-                // Escape special characters for FFmpeg drawtext filter
-                String escapedText = narration
-                    .replace("\\", "\\\\")
-                    .replace("'", "'\\\\\''")
-                    .replace(":", "\\\\:")
-                    .replace("%", "%%");
-                String drawtext = "drawtext=text='" + escapedText + "':fontsize=24:fontcolor=white:borderw=2:bordercolor=black:x=(w-tw)/2:y=h-th-40";
-                command.add("-vf");
-                command.add(drawtext);
-                command.add("-c:v");
-                command.add("libx264");
-                command.add("-preset");
-                command.add("fast");
-                command.add("-crf");
-                command.add("23");
-            } else {
-                command.add("-c:v");
-                command.add("libx264");
-                command.add("-preset");
-                command.add("fast");
-                command.add("-crf");
-                command.add("23");
+                // Write narration to a UTF-8 temp file to avoid command-line and filtergraph syntax errors
+                tempSubFile = File.createTempFile("sub_" + scene.getSceneId() + "_", ".txt");
+                Files.writeString(tempSubFile.toPath(), narration.trim(), StandardCharsets.UTF_8);
+
+                // Escape path for FFmpeg filtergraph: forward slashes, escaped colon (e.g. C\:/path)
+                String escapedSubPath = tempSubFile.getAbsolutePath()
+                        .replace("\\", "/")
+                        .replace(":", "\\:")
+                        .replace("'", "\\'");
+                String drawtext = "drawtext=textfile='" + escapedSubPath + "':fontsize=24:fontcolor=white:borderw=2:bordercolor=black:x=(w-tw)/2:y=h-th-40";
+                vfFilters.add(drawtext);
             }
+
+            if (!vfFilters.isEmpty()) {
+                command.add("-vf");
+                command.add(String.join(",", vfFilters));
+            }
+
+            command.add("-c:v");
+            command.add("libx264");
+            command.add("-preset");
+            command.add("medium");
+            command.add("-crf");
+            command.add("18");
 
             command.add("-pix_fmt");
             command.add("yuv420p");
@@ -310,17 +327,113 @@ public class Video4jEditorService {
 
             int exitCode = process.waitFor();
             if (exitCode != 0 || !tempFile.exists() || tempFile.length() < 1024) {
-                throw new IOException("FFmpeg trimming failed with exit code: " + exitCode + " for Scene " + scene.getSceneId());
+                if (!vfFilters.isEmpty()) {
+                    logger.warn("⚠️ [Video4jEditorService] Trimming with filters failed (exit code " + exitCode
+                            + ") for Scene " + scene.getSceneId() + ". Retrying trimming without video filters as fallback...");
+                    List<String> fallbackCmd = new java.util.ArrayList<>();
+                    fallbackCmd.add(configService.getFfmpegPath());
+                    fallbackCmd.add("-y");
+                    fallbackCmd.add("-ss");
+                    fallbackCmd.add(String.format(java.util.Locale.US, "%.3f", startTime));
+                    fallbackCmd.add("-i");
+                    fallbackCmd.add(videoPath);
+                    fallbackCmd.add("-t");
+                    fallbackCmd.add(String.format(java.util.Locale.US, "%.3f", duration));
+                    fallbackCmd.add("-c:v");
+                    fallbackCmd.add("libx264");
+                    fallbackCmd.add("-preset");
+                    fallbackCmd.add("medium");
+                    fallbackCmd.add("-crf");
+                    fallbackCmd.add("18");
+                    fallbackCmd.add("-pix_fmt");
+                    fallbackCmd.add("yuv420p");
+                    fallbackCmd.add("-an");
+                    fallbackCmd.add(tempFile.getAbsolutePath());
+
+                    ProcessBuilder fbPb = new ProcessBuilder(fallbackCmd);
+                    fbPb.redirectErrorStream(true);
+                    Process fbProcess = startProcess(fbPb);
+                    try (java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(fbProcess.getInputStream(), java.nio.charset.StandardCharsets.UTF_8))) {
+                        String line;
+                        while ((line = r.readLine()) != null) {
+                            logger.info("   [FFmpeg Trim Fallback] " + line);
+                        }
+                    }
+                    int fbExit = fbProcess.waitFor();
+                    if (fbExit != 0 || !tempFile.exists() || tempFile.length() < 1024) {
+                        throw new IOException("FFmpeg trimming failed with exit code: " + fbExit + " for Scene " + scene.getSceneId());
+                    }
+                } else {
+                    throw new IOException("FFmpeg trimming failed with exit code: " + exitCode + " for Scene " + scene.getSceneId());
+                }
             }
 
         } finally {
             if (tempImageVideo != null && tempImageVideo.exists()) {
                 tempImageVideo.delete();
             }
+            if (tempSubFile != null && tempSubFile.exists()) {
+                tempSubFile.delete();
+            }
         }
 
         logger.info("🎬 [Video4jEditorService] Trimmed scene " + scene.getSceneId() + " successfully. Temp File: " + tempFile.getAbsolutePath());
         return tempFile;
+    }
+
+    public BufferedImage applyBasicEnhancementAwt(Scene scene, double alpha, double beta) {
+        String videoPath = scene.getVideoPath();
+        if (videoPath == null || videoPath.trim().isEmpty()) {
+            videoPath = scene.getSourceClipPath();
+        }
+        if (videoPath == null || videoPath.trim().isEmpty() || !new File(videoPath).exists()) {
+            return null;
+        }
+
+        File origFile = new File(videoPath);
+        if (origFile.length() < 100) {
+            return null;
+        }
+
+        try {
+            String lower = videoPath.toLowerCase();
+            boolean isImage = lower.endsWith(".png") || lower.endsWith(".jpg") || lower.endsWith(".jpeg") || lower.endsWith(".webp");
+
+            if (isImage) {
+                Mat mat = org.opencv.imgcodecs.Imgcodecs.imread(videoPath);
+                if (mat != null && !mat.empty()) {
+                    Mat dest = new Mat();
+                    org.opencv.core.Core.convertScaleAbs(mat, dest, alpha, beta);
+                    org.opencv.core.MatOfByte buffer = new org.opencv.core.MatOfByte();
+                    org.opencv.imgcodecs.Imgcodecs.imencode(".png", dest, buffer);
+                    return ImageIO.read(new java.io.ByteArrayInputStream(buffer.toArray()));
+                }
+            } else {
+                try (VideoFile video = Videos.open(videoPath)) {
+                    VideoFrame selectedFrame = null;
+                    java.util.List<VideoFrame> frames = video.streamFrames()
+                            .filter(f -> f.number() >= scene.getStartFrame())
+                            .limit(1)
+                            .collect(java.util.stream.Collectors.toList());
+                    if (!frames.isEmpty()) {
+                        selectedFrame = frames.get(0);
+                    }
+                    if (selectedFrame != null) {
+                        Mat mat = selectedFrame.mat();
+                        if (mat != null && !mat.empty()) {
+                            Mat dest = new Mat();
+                            org.opencv.core.Core.convertScaleAbs(mat, dest, alpha, beta);
+                            org.opencv.core.MatOfByte buffer = new org.opencv.core.MatOfByte();
+                            org.opencv.imgcodecs.Imgcodecs.imencode(".png", dest, buffer);
+                            return ImageIO.read(new java.io.ByteArrayInputStream(buffer.toArray()));
+                        }
+                    }
+                }
+            }
+        } catch (Throwable t) {
+            logger.error("⚠️ [Video4jEditorService] Failed to load/enhance video preview in AWT: " + t.getMessage());
+        }
+        return null;
     }
 
     public javafx.scene.image.Image applyBasicEnhancement(Scene scene) throws Exception {
@@ -374,6 +487,29 @@ public class Video4jEditorService {
 
         String ffmpegPath = configService.getFfmpegPath();
 
+        // Determine target resolution dynamically from scenes or source video files (default 1920x1080 FHD)
+        int targetWidth = 1920;
+        int targetHeight = 1080;
+        if (scenes != null) {
+            for (Scene s : scenes) {
+                if (s.getWidth() > 0 && s.getHeight() > 0) {
+                    targetWidth = s.getWidth();
+                    targetHeight = s.getHeight();
+                    break;
+                }
+                if (s.getVideoPath() != null && !s.getVideoPath().trim().isEmpty()) {
+                    int[] probed = probeVideoDimensions(new File(s.getVideoPath()));
+                    if (probed != null) {
+                        targetWidth = probed[0];
+                        targetHeight = probed[1];
+                        break;
+                    }
+                }
+            }
+        }
+        targetWidth = (targetWidth / 2) * 2;
+        targetHeight = (targetHeight / 2) * 2;
+
         // 1. For each scene: trim video, generate/use audio, merge into a single segment with audio
         for (int i = 0; i < scenes.size(); i++) {
             Scene scene = scenes.get(i);
@@ -398,7 +534,7 @@ public class Video4jEditorService {
             }
 
             // 2. Merge video + audio into a single segment, forcing matching duration
-            // Scale to consistent 720x720, 30fps, yuv420p for concat compatibility
+            // Scale to consistent target dimensions (e.g. 1280x720), 30fps, yuv420p for concat compatibility
             File mergedSegment = new File(System.getProperty("java.io.tmpdir"), "merged_" + scene.getSceneId() + ".mp4");
             if (mergedSegment.exists()) {
                 mergedSegment.delete();
@@ -410,13 +546,13 @@ public class Video4jEditorService {
             mergeCmd.add("-i"); mergeCmd.add(trimmedVideo.getAbsolutePath());
             mergeCmd.add("-i"); mergeCmd.add(audioFile.getAbsolutePath());
             mergeCmd.add("-t"); mergeCmd.add(String.format(java.util.Locale.US, "%.3f", audioDuration));
-            mergeCmd.add("-vf"); mergeCmd.add("scale=720:720:force_original_aspect_ratio=decrease,pad=720:720:(ow-iw)/2:(oh-ih)/2,fps=30");
+            mergeCmd.add("-vf"); mergeCmd.add(String.format(java.util.Locale.US, "scale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-ih)/2,fps=30", targetWidth, targetHeight, targetWidth, targetHeight));
             mergeCmd.add("-c:v"); mergeCmd.add("libx264");
-            mergeCmd.add("-preset"); mergeCmd.add("fast");
-            mergeCmd.add("-crf"); mergeCmd.add("23");
+            mergeCmd.add("-preset"); mergeCmd.add("medium");
+            mergeCmd.add("-crf"); mergeCmd.add("18");
             mergeCmd.add("-pix_fmt"); mergeCmd.add("yuv420p");
             mergeCmd.add("-c:a"); mergeCmd.add("aac");
-            mergeCmd.add("-b:a"); mergeCmd.add("128k");
+            mergeCmd.add("-b:a"); mergeCmd.add("192k");
             mergeCmd.add("-ar"); mergeCmd.add("44100");
             mergeCmd.add("-ac"); mergeCmd.add("2");
             mergeCmd.add("-shortest");
@@ -553,6 +689,39 @@ public class Video4jEditorService {
     }
 
     /**
+     * Probes native video resolution (width, height) using ffmpeg -i.
+     */
+    private int[] probeVideoDimensions(File videoFile) {
+        if (videoFile == null || !videoFile.exists()) return null;
+        try {
+            String ffmpegPathStr = configService.getFfmpegPath();
+            ProcessBuilder probePb = new ProcessBuilder(ffmpegPathStr, "-i", videoFile.getAbsolutePath());
+            probePb.redirectErrorStream(true);
+            Process probeProcess = startProcess(probePb);
+            java.util.regex.Pattern dimPattern = java.util.regex.Pattern.compile("([0-9]{3,4})x([0-9]{3,4})");
+            int w = 0, h = 0;
+            try (java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(probeProcess.getInputStream(), java.nio.charset.StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = r.readLine()) != null) {
+                    java.util.regex.Matcher m = dimPattern.matcher(line);
+                    if (m.find()) {
+                        w = Integer.parseInt(m.group(1));
+                        h = Integer.parseInt(m.group(2));
+                        break;
+                    }
+                }
+            }
+            probeProcess.waitFor();
+            if (w > 0 && h > 0) {
+                return new int[]{w, h};
+            }
+        } catch (Exception e) {
+            logger.debug("Could not probe video dimensions: {}", e.getMessage());
+        }
+        return null;
+    }
+
+    /**
      * Build the ffmpeg lavfi command that generates the dummy fallback audio for a
      * scene that has no narration TTS available. The source is silence (anullsrc)
      * so the master export no longer sounds like a continuous test-tone beep.
@@ -670,11 +839,11 @@ public class Video4jEditorService {
         args.add("-map"); args.add(lastLabel);
         args.add("-map"); args.add(lastAudioLabel);
         args.add("-c:v"); args.add("libx264");
-        args.add("-preset"); args.add("fast");
-        args.add("-crf"); args.add("23");
+        args.add("-preset"); args.add("medium");
+        args.add("-crf"); args.add("18");
         args.add("-pix_fmt"); args.add("yuv420p");
         args.add("-c:a"); args.add("aac");
-        args.add("-b:a"); args.add("128k");
+        args.add("-b:a"); args.add("192k");
         args.add("-ar"); args.add("44100");
         args.add("-ac"); args.add("2");
         args.add("-y");

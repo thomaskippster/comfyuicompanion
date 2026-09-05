@@ -71,80 +71,31 @@ public class Main extends JFrame {
     private JLabel lblPythonVersion;
     private JLabel lifecycleStatusLabel;
 
-    @Autowired
     private ConfigService configService;
-
-    @Autowired
     private de.tki.comfymodels.service.IComfyTemplateService comfyTemplateService;
-
-
-
-    @Autowired
     private de.tki.comfymodels.service.impl.LocalAIService localAIService;
-
-    @Autowired
     private ModelListService modelListService;
-
-    @Autowired
     private ModelHashRegistry hashRegistry;
-
-    @Autowired
     private de.tki.comfymodels.service.impl.LocalModelScanner localScanner;
-
-    @Autowired
     private de.tki.comfymodels.service.impl.PathResolver pathResolver;
-
     private final java.util.Map<Integer, String> apiWorkflowCache = new java.util.concurrent.ConcurrentHashMap<>();
-
-    @Autowired
     private de.tki.comfymodels.service.impl.VersionService versionService;
-
-    @Autowired(required = false)
     private de.tki.comfymodels.service.IModelArchitectureService modelArchitectureService;
-
-
-
-    @Autowired
     private de.tki.comfymodels.service.impl.HardwareMonitorService hardwareMonitorService;
-
-    @Autowired
     private de.tki.comfymodels.service.impl.UpdaterService updaterService;
-
-    @Autowired
     private de.tki.comfymodels.ui.VideoArchitectTab videoArchitectTab;
-
-    @Autowired
     private de.tki.comfymodels.ui.BlueprintGalleryTab blueprintGalleryTab;
-
-    @Autowired
     private de.tki.comfymodels.service.impl.DependencyService dependencyService;
-
-    @Autowired
     private de.tki.comfymodels.util.BackgroundExecutor backgroundExecutor;
-
-    @Autowired
     private de.tki.comfymodels.service.impl.ProcessTracker processTracker;
-
-    @Autowired
     private de.tki.comfymodels.service.PromptBlueprintApiService promptBlueprintApiService;
-
-    @Autowired
     private de.tki.comfymodels.service.impl.ComfyApiClient comfyApiClient;
-
-    @Autowired
     private de.tki.comfymodels.ui.PromptLabView promptLabView;
-
-    @Autowired
     private de.tki.comfymodels.controller.PromptLabController promptLabController;
-
-    @Autowired
     private de.tki.comfymodels.ui.DownloadManagerView downloadManagerView;
-
-    @Autowired
     private de.tki.comfymodels.controller.DownloadManagerController downloadManagerController;
-
-    @Autowired(required = false)
     private de.tki.comfymodels.service.IWorkflowDownloader workflowDownloader;
+    private de.tki.comfymodels.service.impl.AppLifecycleManager appLifecycleManager;
 
 
     private JProgressBar progressCpu;
@@ -263,6 +214,71 @@ public class Main extends JFrame {
     private volatile String currentBlueprintGuiJson = null;
 
 
+    @Autowired
+    public Main(IModelAnalyzer analyzer, IDownloadManager downloadManager,
+                IWorkflowService workflowService, IModelSearchService searchService,
+                IModelValidator modelValidator, de.tki.comfymodels.service.impl.RestBridgeService restBridge,   
+                de.tki.comfymodels.service.impl.ArchiveService archiveService,
+                de.tki.comfymodels.service.IComfyLifecycleService lifecycleService,
+                de.tki.comfymodels.service.impl.ComfyDiagnosticService diagnosticService,
+                de.tki.comfymodels.service.impl.ProfileManager profileManager,
+                de.tki.comfymodels.service.impl.EnvironmentBootstrapperImpl bootstrapper,
+                de.tki.comfymodels.service.impl.ComfyProcessController processController,
+                de.tki.comfymodels.service.impl.CivitaiService civitaiService,
+                de.tki.comfymodels.service.impl.HuggingFaceService huggingFaceService,
+                @Autowired(required = false) ConfigService configService,
+                @Autowired(required = false) de.tki.comfymodels.service.IComfyTemplateService comfyTemplateService,
+                @Autowired(required = false) de.tki.comfymodels.service.impl.LocalAIService localAIService,
+                @Autowired(required = false) ModelListService modelListService,
+                @Autowired(required = false) ModelHashRegistry hashRegistry,
+                @Autowired(required = false) de.tki.comfymodels.service.impl.LocalModelScanner localScanner,
+                @Autowired(required = false) de.tki.comfymodels.service.impl.PathResolver pathResolver,
+                @Autowired(required = false) de.tki.comfymodels.service.impl.VersionService versionService,
+                @Autowired(required = false) de.tki.comfymodels.service.IModelArchitectureService modelArchitectureService,
+                @Autowired(required = false) de.tki.comfymodels.service.impl.HardwareMonitorService hardwareMonitorService,
+                @Autowired(required = false) de.tki.comfymodels.service.impl.UpdaterService updaterService,
+                @Autowired(required = false) de.tki.comfymodels.ui.VideoArchitectTab videoArchitectTab,
+                @Autowired(required = false) de.tki.comfymodels.ui.BlueprintGalleryTab blueprintGalleryTab,
+                @Autowired(required = false) de.tki.comfymodels.service.impl.DependencyService dependencyService,
+                @Autowired(required = false) de.tki.comfymodels.util.BackgroundExecutor backgroundExecutor,
+                @Autowired(required = false) de.tki.comfymodels.service.impl.ProcessTracker processTracker,
+                @Autowired(required = false) de.tki.comfymodels.service.PromptBlueprintApiService promptBlueprintApiService,
+                @Autowired(required = false) de.tki.comfymodels.service.impl.ComfyApiClient comfyApiClient,
+                @Autowired(required = false) de.tki.comfymodels.ui.PromptLabView promptLabView,
+                @Autowired(required = false) de.tki.comfymodels.controller.PromptLabController promptLabController,
+                @Autowired(required = false) de.tki.comfymodels.ui.DownloadManagerView downloadManagerView,
+                @Autowired(required = false) de.tki.comfymodels.controller.DownloadManagerController downloadManagerController,
+                @Autowired(required = false) de.tki.comfymodels.service.IWorkflowDownloader workflowDownloader,
+                @Autowired(required = false) de.tki.comfymodels.service.impl.AppLifecycleManager appLifecycleManager) {
+        this(analyzer, downloadManager, workflowService, searchService, modelValidator,
+             restBridge, archiveService, lifecycleService, diagnosticService, profileManager,
+             bootstrapper, processController, civitaiService, huggingFaceService);
+        this.configService = configService;
+        this.comfyTemplateService = comfyTemplateService;
+        this.localAIService = localAIService;
+        this.modelListService = modelListService;
+        this.hashRegistry = hashRegistry;
+        this.localScanner = localScanner;
+        this.pathResolver = pathResolver;
+        this.versionService = versionService;
+        this.modelArchitectureService = modelArchitectureService;
+        this.hardwareMonitorService = hardwareMonitorService;
+        this.updaterService = updaterService;
+        this.videoArchitectTab = videoArchitectTab;
+        this.blueprintGalleryTab = blueprintGalleryTab;
+        this.dependencyService = dependencyService;
+        this.backgroundExecutor = backgroundExecutor;
+        this.processTracker = processTracker;
+        this.promptBlueprintApiService = promptBlueprintApiService;
+        this.comfyApiClient = comfyApiClient;
+        this.promptLabView = promptLabView;
+        this.promptLabController = promptLabController;
+        this.downloadManagerView = downloadManagerView;
+        this.downloadManagerController = downloadManagerController;
+        this.workflowDownloader = workflowDownloader;
+        this.appLifecycleManager = appLifecycleManager;
+    }
+
     public Main(IModelAnalyzer analyzer, IDownloadManager downloadManager,
                 IWorkflowService workflowService, IModelSearchService searchService,
                 IModelValidator modelValidator, de.tki.comfymodels.service.impl.RestBridgeService restBridge,   
@@ -282,14 +298,16 @@ public class Main extends JFrame {
         this.restBridge = restBridge;
         this.archiveService = archiveService;
         this.lifecycleService = lifecycleService;
-        this.lifecycleService.setOnBrowserLaunched(() -> {
-            SwingUtilities.invokeLater(() -> {
-                refreshPromptLabModels();
-                if (blueprintGalleryTab != null) {
-                    blueprintGalleryTab.refreshAllData();
-                }
+        if (this.lifecycleService != null) {
+            this.lifecycleService.setOnBrowserLaunched(() -> {
+                SwingUtilities.invokeLater(() -> {
+                    refreshPromptLabModels();
+                    if (blueprintGalleryTab != null) {
+                        blueprintGalleryTab.refreshAllData();
+                    }
+                });
             });
-        });
+        }
         this.diagnosticService = diagnosticService;
         this.profileManager = profileManager;
         this.bootstrapper = bootstrapper;
@@ -301,7 +319,7 @@ public class Main extends JFrame {
         // Initialize ProfileManager with app storage directory
         Path appData = Paths.get(System.getProperty("user.home"), ".comfyui-companion");
         try { Files.createDirectories(appData); } catch (Exception ex) {
-            System.err.println("FATAL: Cannot create application data directory: " + appData + " - " + ex.getMessage());
+            logger.error("FATAL: Cannot create application data directory: " + appData + " - " + ex.getMessage());
             JOptionPane.showMessageDialog(null, "Cannot create application data directory:\n" + appData + "\n\n" + ex.getMessage(), "Startup Error", JOptionPane.ERROR_MESSAGE);
         }
         profileManager.init(appData);
@@ -335,47 +353,18 @@ public class Main extends JFrame {
         }
         restBridge.startServer();
 
-        // Ensure server stops on exit. Daemon thread so the JVM does not block on it.
-        Thread shutdownHook = new Thread(() -> {
-            try {
-                if (processController != null) {
-                    processController.stop();
-                }
-                if (downloadManager != null) {
-                    downloadManager.stop();
-                }
-                if (hardwareMonitorService != null) {
-                    hardwareMonitorService.stop();
-                }
-                // Kill every tracked child process BEFORE we close the Spring context,
-                // so the ProcessTracker bean is still alive to do the work.
-                if (processTracker != null) {
-                    processTracker.destroyAll();
-                }
-                // WSL --shutdown can hang on some hosts; run it asynchronously on a
-                // daemon thread so the rest of cleanup is not blocked.
-                Thread wslShutdown = new Thread(() -> {
-                    try {
-                        Runtime.getRuntime().exec(new String[]{"wsl", "--shutdown"});
-                    } catch (Exception e) {
-                        logger.error("Failed to execute wsl --shutdown: " + e.getMessage());
-                    }
-                }, "wsl-shutdown");
-                wslShutdown.setDaemon(true);
-                wslShutdown.start();
-                // Close the Spring context last: this triggers @PreDestroy on every
-                // bean (BackgroundExecutor, RestBridgeService, LocalGemmaService, ModelHashRegistry, ...).
-                if (appContext != null) {
-                    appContext.close();
-                }
-            } catch (Throwable t) {
-                logger.error("Shutdown hook error: " + t);
-            }
-        }, "comfy-shutdown-hook");
-        shutdownHook.setDaemon(true);
-        Runtime.getRuntime().addShutdownHook(shutdownHook);
+        // Ensure server stops on exit via AppLifecycleManager
+        if (appLifecycleManager != null) {
+            appLifecycleManager.registerShutdownHook(appContext);
+        } else {
+            Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+                if (processController != null) processController.stop();
+                if (downloadManager != null) downloadManager.stop();
+            }));
+        }
 
-        if (!promptForPassword()) {
+        boolean unlocked = appLifecycleManager != null ? appLifecycleManager.unlockDefaultVault() : promptForPassword();
+        if (!unlocked) {
             System.exit(0);
         }
 
@@ -416,7 +405,7 @@ public class Main extends JFrame {
                 }
                 scanAndVerifyComfyUIInstallation(false);
             } catch (Exception e) {
-                e.printStackTrace();
+                logger.error("Critical UI Error", e);
                 JOptionPane.showMessageDialog(null, "Critical UI Error: " + e.getMessage());
             }
         });
@@ -424,146 +413,7 @@ public class Main extends JFrame {
 
     public void setupTheme(boolean darkMode) {
         try {
-            // Sync ThemeManager so GlassPanel/CardPanel paint with correct colors
-            de.tki.comfymodels.ui.ThemeManager.setDarkMode(darkMode);
-            // Global arcs for a sci-fi feel - ZERO rounded corners
-            UIManager.put("Button.arc", 0);
-            UIManager.put("Component.arc", 0);
-            UIManager.put("TextComponent.arc", 0);
-            UIManager.put("ProgressBar.arc", 0);
-            UIManager.put("TitlePane.unifiedBackground", true);
-            // Note: "CheckBox.iconSize" is not a valid FlatLaf style; use icon Dimension instead
-            UIManager.put("CheckBox.icon.focusWidth", 1);
-
-            // Clean, highly readable typography
-            Font defaultFont = new Font("Segoe UI", Font.PLAIN, 13);
-            for (String fontName : GraphicsEnvironment.getLocalGraphicsEnvironment().getAvailableFontFamilyNames()) {
-                if (fontName.equalsIgnoreCase("Inter") || fontName.equalsIgnoreCase("Roboto")) {
-                    defaultFont = new Font(fontName, Font.PLAIN, 13);
-                    break;
-                }
-            }
-            UIManager.put("defaultFont", defaultFont);
-
-            if (darkMode) {
-                // SCI-FI CYBERSPACE Dark Palette - Redesign
-                Color nodeBg = new javax.swing.plaf.ColorUIResource(10, 11, 14); // #0a0b0e (Deep blue-black background)
-                Color comfySurface = new javax.swing.plaf.ColorUIResource(10, 11, 14); // #0a0b0e
-                Color componentBg = new javax.swing.plaf.ColorUIResource(24, 27, 33); // #181b21 (Panels/Cards)
-                Color comfyAccent = new javax.swing.plaf.ColorUIResource(30, 190, 170); // #1ebeaa (Subtle Teal/Cyan Accent)
-                Color comfyText = new javax.swing.plaf.ColorUIResource(224, 248, 245); // #e0f8f5 (Soft cyan/white text)
-                Color paleBlue = new javax.swing.plaf.ColorUIResource(112, 138, 144); // #708a90 (Dimmed text/inactive)
-                Color comfyBorder = new javax.swing.plaf.ColorUIResource(42, 46, 56); // #2a2e38 (Subtle panel borders)
-
-                UIManager.put("DefaultBackgroundColor", comfySurface);
-                UIManager.put("Panel.background", nodeBg);
-                UIManager.put("Table.background", componentBg);
-                UIManager.put("TextArea.background", nodeBg); // Console area background
-                UIManager.put("TextField.background", nodeBg); // Search field background
-                UIManager.put("PasswordField.background", nodeBg);
-                
-                UIManager.put("Label.foreground", comfyText);
-                UIManager.put("Table.foreground", comfyText);
-                UIManager.put("TextArea.foreground", comfyText);
-                UIManager.put("TextField.foreground", comfyText);
-                
-                UIManager.put("Table.selectionBackground", comfyAccent); 
-                UIManager.put("Table.selectionForeground", nodeBg); // Dark text on cyan selection
-                UIManager.put("List.selectionBackground", comfyAccent); 
-                UIManager.put("List.selectionForeground", nodeBg); 
-                UIManager.put("Component.focusedBorderColor", comfyAccent);
-                UIManager.put("Component.borderColor", comfyBorder);
-                UIManager.put("TextComponent.borderWidth", 1);
-                UIManager.put("Separator.foreground", comfyBorder);
-                
-                UIManager.put("Button.background", componentBg);
-                UIManager.put("Button.foreground", comfyText);
-                UIManager.put("Button.focusedBackground", comfyAccent); 
-                UIManager.put("Button.hoverBackground", comfyAccent); 
-                UIManager.put("Button.hoverForeground", nodeBg); 
-                UIManager.put("Button.pressedBackground", paleBlue);
-                UIManager.put("Button.borderColor", comfyBorder);
-                UIManager.put("Button.borderWidth", 1);
-                
-                UIManager.put("ScrollBar.track", comfySurface);
-                UIManager.put("ScrollBar.thumb", comfyBorder);
-                
-                UIManager.put("TabbedPane.selectedBackground", nodeBg);
-                UIManager.put("TabbedPane.selectedForeground", comfyAccent);
-                UIManager.put("TabbedPane.foreground", paleBlue);
-                UIManager.put("TabbedPane.underlineColor", comfyAccent);
-                UIManager.put("TabbedPane.underlineHeight", 3);
-
-                // ProgressBar custom styles
-                UIManager.put("ProgressBar.foreground", comfyAccent);
-                UIManager.put("ProgressBar.background", componentBg);
-                UIManager.put("ProgressBar.arc", 0);
-
-                // Card panel & UI styling variables
-                UIManager.put("Card.background", componentBg); 
-                UIManager.put("Card.border", comfyBorder); 
-                UIManager.put("Card.placeholder", new Color(10, 11, 14, 200)); 
-                UIManager.put("Card.placeholderBorder", comfyBorder);
-                UIManager.put("Toolbar.customBg", componentBg);
-                UIManager.put("SlimStat.titleForeground", comfyText);
-                UIManager.put("SlimStat.valueForeground", comfyAccent);
-                UIManager.put("SlimStat.barForeground", comfyAccent);
-                UIManager.put("SlimStat.barBackground", nodeBg);
-                UIManager.put("MainTabs.gradientStart", nodeBg);
-                UIManager.put("MainTabs.gradientEnd", nodeBg);
-                UIManager.put("MainTabs.glowStart", new Color(30, 190, 170, 10)); // Very faint subtle cyan glow
-                UIManager.put("PromptLab.presetForeground", comfyAccent);
-                
-                UIManager.setLookAndFeel(new FlatDarkLaf());
-            } else {
-                // EXHAUSTIVE cleanup of custom overrides
-                String[] keysToClear = {
-                    "DefaultBackgroundColor", "Panel.background", "Table.background", "TextArea.background",
-                    "TextField.background", "PasswordField.background", "Label.foreground",
-                    "Table.foreground", "TextArea.foreground", "Table.selectionBackground",
-                    "Table.selectionForeground", "List.selectionBackground", "List.selectionForeground", "Component.focusedBorderColor", "Separator.foreground",
-                    "Button.background", "Button.foreground", "Button.focusedBackground",
-                    "Button.hoverBackground", "Button.pressedBackground", "Button.borderColor",
-                    "ScrollBar.track", "ScrollBar.thumb", "TabbedPane.selectedBackground",
-                    "TabbedPane.selectedForeground", "ProgressBar.foreground", "ProgressBar.background"
-                };
-                for (String key : keysToClear) {
-                    UIManager.put(key, null);
-                }
-                UIManager.setLookAndFeel(new FlatLightLaf());
-                
-                // Pronounced borders in light mode (white mode)
-                java.awt.Color pronouncedBorder = new javax.swing.plaf.ColorUIResource(180, 185, 195);
-                UIManager.put("Component.borderColor", pronouncedBorder);
-                UIManager.put("Button.borderColor", pronouncedBorder);
-                UIManager.put("Separator.foreground", new javax.swing.plaf.ColorUIResource(200, 205, 215));
-
-                // Soft/Accent light tab styles
-                UIManager.put("TabbedPane.selectedBackground", new javax.swing.plaf.ColorUIResource(new Color(0, 120, 150, 25)));
-                UIManager.put("TabbedPane.selectedForeground", new Color(20, 30, 40));
-                UIManager.put("TabbedPane.underlineColor", new Color(0, 120, 150));
-
-                // Card panel & UI styling variables for light mode
-                UIManager.put("Card.background", new Color(240, 243, 248, 180)); 
-                UIManager.put("Card.border", new Color(0, 0, 0, 24)); 
-                UIManager.put("Card.placeholder", new Color(230, 235, 242, 160)); 
-                UIManager.put("Card.placeholderBorder", new Color(0, 0, 0, 18));
-                UIManager.put("Toolbar.customBg", new Color(240, 243, 248, 128));
-                UIManager.put("SlimStat.titleForeground", new Color(90, 100, 110));
-                UIManager.put("SlimStat.valueForeground", new Color(0, 120, 150));
-                UIManager.put("SlimStat.barForeground", new Color(0, 120, 150));
-                UIManager.put("SlimStat.barBackground", new Color(225, 230, 240));
-                UIManager.put("MainTabs.gradientStart", new Color(245, 247, 250));
-                UIManager.put("MainTabs.gradientEnd", new Color(255, 255, 255));
-                UIManager.put("MainTabs.glowStart", new Color(0, 120, 150, 8));
-                UIManager.put("PromptLab.presetForeground", new Color(30, 100, 200));
-            }
-            
-            // Re-apply global arcs which might be cleared by setLookAndFeel
-            UIManager.put("Button.arc", 12);
-            UIManager.put("Component.arc", 16);
-            UIManager.put("TextComponent.arc", 12);
-            UIManager.put("ProgressBar.arc", 999);
+            de.tki.comfymodels.ui.ThemeManager.applyTheme(darkMode);
 
             // Update text area backgrounds / foregrounds dynamically if already instantiated
             if (consoleOutput != null) {
@@ -585,7 +435,11 @@ public class Main extends JFrame {
                 }
             }
             
+            if (dashboardPanel != null) {
+                SwingUtilities.updateComponentTreeUI(dashboardPanel);
+            }
             if (videoArchitectTab != null) {
+                SwingUtilities.updateComponentTreeUI(videoArchitectTab);
                 videoArchitectTab.updateTheme(darkMode);
             }
             if (blueprintGalleryTab != null) {
@@ -595,9 +449,18 @@ public class Main extends JFrame {
             if (downloadManagerView != null) {
                 SwingUtilities.updateComponentTreeUI(downloadManagerView);
             }
+            if (downloadManagerPanel != null) {
+                SwingUtilities.updateComponentTreeUI(downloadManagerPanel);
+            }
             if (promptLabView != null) {
                 SwingUtilities.updateComponentTreeUI(promptLabView);
                 promptLabView.updateTheme(darkMode);
+            }
+            if (galleryPanel != null) {
+                SwingUtilities.updateComponentTreeUI(galleryPanel);
+            }
+            if (settingsPanel != null) {
+                SwingUtilities.updateComponentTreeUI(settingsPanel);
             }
             
             FlatLaf.updateUI();
@@ -668,7 +531,7 @@ public class Main extends JFrame {
 
     private boolean promptForPassword() {
         setupTheme(configService.isDarkMode());
-        String defaultPass = "companion_default_vault_key";
+        String defaultPass = System.getProperty("user.name", "default") + "@" + getHostName();
         try {
             configService.unlock(defaultPass);
             if (configService.isVaultFresh()) {
@@ -690,6 +553,14 @@ public class Main extends JFrame {
                 logger.error("Failed to reset and unlock vault: {}", ex.getMessage(), ex);
                 return false;
             }
+        }
+    }
+
+    private String getHostName() {
+        try {
+            return java.net.InetAddress.getLocalHost().getHostName();
+        } catch (Exception e) {
+            return "localhost";
         }
     }
 
@@ -1160,6 +1031,8 @@ public class Main extends JFrame {
         this.videoArchitectWrapper.setOpaque(false);
         if (videoArchitectTab != null) {
             this.videoArchitectWrapper.add(videoArchitectTab, BorderLayout.CENTER);
+            SwingUtilities.updateComponentTreeUI(videoArchitectTab);
+            videoArchitectTab.updateTheme(configService.isDarkMode());
         } else {
             JPanel fallback = new JPanel(new GridBagLayout());
             fallback.setOpaque(false);
@@ -1649,7 +1522,7 @@ public class Main extends JFrame {
             org.json.JSONObject root = new org.json.JSONObject(jsonStr);
 
             // ── Format A: GUI format with "nodes" array ──
-            if (root.has("nodes") && root.get("nodes") instanceof org.json.JSONArray) {
+            if (root.has("nodes") && root.get("nodes") instanceof org.json.JSONArray nodesArray) {
                 java.util.List<org.json.JSONObject> nodes = collectAllNodes(root);
                 
                 // First pass: map proxy widgets for Group Nodes
@@ -1667,8 +1540,8 @@ public class Main extends JFrame {
                                     String widgetName = pw.optString(1);
                                     if ("text".equals(widgetName) && wVals.length() > i) {
                                         Object v = wVals.opt(i);
-                                        if (v instanceof String) {
-                                            overriddenTexts.put(innerNodeId, (String) v);
+                                        if (v instanceof String str) {
+                                            overriddenTexts.put(innerNodeId, str);
                                         }
                                     }
                                 }
@@ -1687,8 +1560,8 @@ public class Main extends JFrame {
                         String text = overriddenTexts.get(String.valueOf(node.optInt("id")));
                         
                         if (text == null) {
-                            if (widgetValues != null && widgetValues.length() > 0 && widgetValues.get(0) instanceof String) {
-                                text = widgetValues.getString(0);
+                            if (widgetValues != null && widgetValues.length() > 0 && widgetValues.get(0) instanceof String str) {
+                                text = str;
                             } else if (inputsObj != null && inputsObj.has("text")) {
                                 text = inputsObj.optString("text", "");
                             }
@@ -1702,11 +1575,11 @@ public class Main extends JFrame {
                     // Latent Dimensions & Batch size
                     if (type.contains("Latent") || type.contains("Empty")) {
                         if (widgetValues != null && widgetValues.length() >= 2) {
-                            if (widgetValues.get(0) instanceof Number && widgetValues.get(1) instanceof Number) {
-                                if (data.width == null) data.width = widgetValues.getInt(0);
-                                if (data.height == null) data.height = widgetValues.getInt(1);
-                                if (widgetValues.length() >= 3 && widgetValues.get(2) instanceof Number && data.batchSize == null) {
-                                    data.batchSize = widgetValues.getInt(2);
+                            if (widgetValues.get(0) instanceof Number w0 && widgetValues.get(1) instanceof Number w1) {
+                                if (data.width == null) data.width = w0.intValue();
+                                if (data.height == null) data.height = w1.intValue();
+                                if (widgetValues.length() >= 3 && widgetValues.get(2) instanceof Number w2 && data.batchSize == null) {
+                                    data.batchSize = w2.intValue();
                                 }
                             }
                         }
@@ -1764,8 +1637,8 @@ public class Main extends JFrame {
                     if (inp == null) continue;
 
                     if (ct.equalsIgnoreCase("CLIPTextEncode") || ct.contains("CLIPText") || ct.contains("TextEncode")) {
-                        if (inp.has("text") && inp.get("text") instanceof String) {
-                            String t = inp.getString("text").trim();
+                        if (inp.has("text") && inp.get("text") instanceof String str) {
+                            String t = str.trim();
                             if (!t.isBlank()) textPrompts.add(t);
                         }
                     }
@@ -1814,8 +1687,7 @@ public class Main extends JFrame {
         if (root == null) return allNodes;
 
         // 1. Root level nodes
-        if (root.has("nodes") && root.get("nodes") instanceof org.json.JSONArray) {
-            org.json.JSONArray nodes = root.getJSONArray("nodes");
+        if (root.has("nodes") && root.get("nodes") instanceof org.json.JSONArray nodes) {
             for (int i = 0; i < nodes.length(); i++) {
                 org.json.JSONObject node = nodes.optJSONObject(i);
                 if (node != null) {
@@ -1825,14 +1697,11 @@ public class Main extends JFrame {
         }
 
         // 2. Subgraph nodes via "definitions -> subgraphs"
-        if (root.has("definitions") && root.get("definitions") instanceof org.json.JSONObject) {
-            org.json.JSONObject definitions = root.getJSONObject("definitions");
-            if (definitions.has("subgraphs") && definitions.get("subgraphs") instanceof org.json.JSONArray) {
-                org.json.JSONArray subgraphs = definitions.getJSONArray("subgraphs");
+        if (root.has("definitions") && root.get("definitions") instanceof org.json.JSONObject definitions) {
+            if (definitions.has("subgraphs") && definitions.get("subgraphs") instanceof org.json.JSONArray subgraphs) {
                 for (int i = 0; i < subgraphs.length(); i++) {
                     org.json.JSONObject subgraph = subgraphs.optJSONObject(i);
-                    if (subgraph != null && subgraph.has("nodes") && subgraph.get("nodes") instanceof org.json.JSONArray) {
-                        org.json.JSONArray subnodes = subgraph.getJSONArray("nodes");
+                    if (subgraph != null && subgraph.has("nodes") && subgraph.get("nodes") instanceof org.json.JSONArray subnodes) {
                         for (int j = 0; j < subnodes.length(); j++) {
                             org.json.JSONObject node = subnodes.optJSONObject(j);
                             if (node != null) {
@@ -1845,14 +1714,11 @@ public class Main extends JFrame {
         }
 
         // 3. Subgraph nodes via "extra_data -> subgraphs"
-        if (root.has("extra_data") && root.get("extra_data") instanceof org.json.JSONObject) {
-            org.json.JSONObject extraData = root.getJSONObject("extra_data");
-            if (extraData.has("subgraphs") && extraData.get("subgraphs") instanceof org.json.JSONArray) {
-                org.json.JSONArray subgraphs = extraData.getJSONArray("subgraphs");
+        if (root.has("extra_data") && root.get("extra_data") instanceof org.json.JSONObject extraData) {
+            if (extraData.has("subgraphs") && extraData.get("subgraphs") instanceof org.json.JSONArray subgraphs) {
                 for (int i = 0; i < subgraphs.length(); i++) {
                     org.json.JSONObject subgraph = subgraphs.optJSONObject(i);
-                    if (subgraph != null && subgraph.has("nodes") && subgraph.get("nodes") instanceof org.json.JSONArray) {
-                        org.json.JSONArray subnodes = subgraph.getJSONArray("nodes");
+                    if (subgraph != null && subgraph.has("nodes") && subgraph.get("nodes") instanceof org.json.JSONArray subnodes) {
                         for (int j = 0; j < subnodes.length(); j++) {
                             org.json.JSONObject node = subnodes.optJSONObject(j);
                             if (node != null) {
@@ -1963,8 +1829,8 @@ public class Main extends JFrame {
         final String comfyUrl = configService.getComfyUIUrl();
         final String assembledPrompt = (promptSubjectField != null) ? promptSubjectField.getText().trim() : "";
         final String negativePrompt  = (promptNegativeField != null) ? promptNegativeField.getText().trim() : "";
-        final int    widthVal        = (promptWidthSpinner  != null) ? (int) promptWidthSpinner.getValue()                 : 512;
-        final int    heightVal       = (promptHeightSpinner != null) ? (int) promptHeightSpinner.getValue()                : 512;
+        final int    widthVal        = (promptWidthSpinner  != null) ? (int) promptWidthSpinner.getValue()                 : 1024;
+        final int    heightVal       = (promptHeightSpinner != null) ? (int) promptHeightSpinner.getValue()                : 1024;
         final int    batchSizeVal    = (promptBatchSizeSpinner != null) ? (int) promptBatchSizeSpinner.getValue()          : 1;
         final int    stepsVal        = (promptStepsSpinner  != null) ? (int) promptStepsSpinner.getValue()                 : 20;
         final double cfgVal          = (promptCfgSpinner    != null) ? ((Number) promptCfgSpinner.getValue()).doubleValue() : 7.0;
@@ -2371,11 +2237,11 @@ public class Main extends JFrame {
         if (valObj instanceof org.json.JSONArray outerArray && outerArray.length() > 0) {
             Object firstElement = outerArray.get(0);
             org.json.JSONArray options = null;
-            if (firstElement instanceof org.json.JSONArray) {
-                options = (org.json.JSONArray) firstElement;
+            if (firstElement instanceof org.json.JSONArray jsonArray) {
+                options = jsonArray;
             } else if (firstElement instanceof String firstStr && firstStr.equalsIgnoreCase("COMBO") && outerArray.length() > 1 && outerArray.get(1) instanceof org.json.JSONObject configObj) {
                 options = configObj.optJSONArray("options");
-            } else if (firstElement instanceof String && !"COMBO".equalsIgnoreCase((String) firstElement)) {
+            } else if (firstElement instanceof String str && !"COMBO".equalsIgnoreCase(str)) {
                 options = outerArray;
             }
             
@@ -2741,9 +2607,9 @@ public class Main extends JFrame {
             @Override public java.awt.Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
                 de.tki.comfymodels.domain.LaunchProfile p = (de.tki.comfymodels.domain.LaunchProfile) value;
                 java.awt.Component c = super.getListCellRendererComponent(list, " " + p.name(), index, isSelected, cellHasFocus);
-                if (c instanceof JLabel) {
-                    ((JLabel) c).setPreferredSize(new Dimension(0, 35));
-                    ((JLabel) c).setFont(new Font("SansSerif", isSelected ? Font.BOLD : Font.PLAIN, 14));
+                if (c instanceof JLabel label) {
+                    label.setPreferredSize(new Dimension(0, 35));
+                    label.setFont(new Font("SansSerif", isSelected ? Font.BOLD : Font.PLAIN, 14));
                 }
                 return c;
             }
@@ -3932,8 +3798,7 @@ public class Main extends JFrame {
             Files.writeString(configFile, config.toString(4));
             logger.info("[Bridge-Sync] Successfully wrote config to: " + configFile.toAbsolutePath());
         } catch (Exception e) { 
-            logger.error("[Bridge-Sync] Failed to write config: " + e.getMessage());
-            e.printStackTrace(); 
+            logger.error("[Bridge-Sync] Failed to write config: " + e.getMessage(), e);
         }
     }
 
@@ -4267,7 +4132,7 @@ public class Main extends JFrame {
             if (confirm == JOptionPane.YES_OPTION) {
                 configService.resetVault();
                 try {
-                    configService.unlock("companion_default_vault_key");
+                    configService.unlock(System.getProperty("user.name", "default") + "@" + getHostName());
                     JOptionPane.showMessageDialog(this, "Settings reset successfully. Please restart the application.", "Success", JOptionPane.INFORMATION_MESSAGE);
                 } catch (Exception ex) {
                     logger.error("Failed to unlock vault after reset: {}", ex.getMessage());
@@ -4385,8 +4250,8 @@ public class Main extends JFrame {
     private void triggerEnvironmentRepair() {
         if (mainTabs != null) {
             mainTabs.setSelectedIndex(0);
-        } else if (getContentPane() instanceof JTabbedPane) {
-            ((JTabbedPane) getContentPane()).setSelectedIndex(0);
+        } else if (getContentPane() instanceof JTabbedPane tabbedPane) {
+            tabbedPane.setSelectedIndex(0);
         } else {
             findAndSelectTab(getContentPane(), 0);
         }
@@ -4408,8 +4273,8 @@ public class Main extends JFrame {
     private void triggerWslDependencyFix() {
         if (mainTabs != null) {
             mainTabs.setSelectedIndex(0);
-        } else if (getContentPane() instanceof JTabbedPane) {
-            ((JTabbedPane) getContentPane()).setSelectedIndex(0);
+        } else if (getContentPane() instanceof JTabbedPane tabbedPane) {
+            tabbedPane.setSelectedIndex(0);
         } else {
             findAndSelectTab(getContentPane(), 0);
         }
@@ -4444,8 +4309,8 @@ public class Main extends JFrame {
             
             // Switch to Dashboard and start ComfyUI again using active profile
             SwingUtilities.invokeLater(() -> {
-                if (getContentPane() instanceof JTabbedPane) {
-                    ((JTabbedPane) getContentPane()).setSelectedIndex(0);
+                if (getContentPane() instanceof JTabbedPane tabbedPane) {
+                    tabbedPane.setSelectedIndex(0);
                 }
                 
                 de.tki.comfymodels.domain.LaunchProfile activeProfile = null;
@@ -4626,8 +4491,8 @@ public class Main extends JFrame {
                 searchMissingOnline();
                 
                 // Switch to Download Manager Tab (index 1)
-                if (getContentPane() instanceof JTabbedPane) {
-                    ((JTabbedPane) getContentPane()).setSelectedIndex(1);
+                if (getContentPane() instanceof JTabbedPane tabbedPane) {
+                    tabbedPane.setSelectedIndex(1);
                 } else {
                     findAndSelectTab(getContentPane(), 1);
                 }
@@ -4637,11 +4502,11 @@ public class Main extends JFrame {
 
     private void findAndSelectTab(Container container, int index) {
         for (java.awt.Component child : container.getComponents()) {
-            if (child instanceof JTabbedPane) {
-                ((JTabbedPane) child).setSelectedIndex(index);
+            if (child instanceof JTabbedPane tabbedPane) {
+                tabbedPane.setSelectedIndex(index);
                 return;
-            } else if (child instanceof Container) {
-                findAndSelectTab((Container) child, index);
+            } else if (child instanceof Container cont) {
+                findAndSelectTab(cont, index);
             }
         }
     }
@@ -5155,5 +5020,12 @@ public class Main extends JFrame {
         appContext.getBean(Main.class).launch(args);
     }
 
-    @Configuration @ComponentScan("de.tki.comfymodels") public static class AppConfig {}
+    @Configuration
+    @ComponentScan(basePackages = {"de.tki.comfymodels", "com.thomaskippster.comfyuicompanion"})
+    public static class AppConfig {
+        @org.springframework.context.annotation.Bean
+        public org.springframework.web.reactive.function.client.WebClient.Builder webClientBuilder() {
+            return org.springframework.web.reactive.function.client.WebClient.builder();
+        }
+    }
 }

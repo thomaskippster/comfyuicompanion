@@ -90,12 +90,18 @@ public class OutputGalleryPanel extends JPanel {
     private final Map<Path, JPanel> tileMap = new HashMap<>();
     private final Map<Path, JCheckBox> checkboxMap = new HashMap<>();
     
+    private final de.tki.comfymodels.service.SafePathValidator safePathValidator;
     private JButton deleteBtn;
     private JButton selectAllBtn;
     private JButton clearBtn;
 
     public OutputGalleryPanel(ConfigService configService) {
+        this(configService, new de.tki.comfymodels.service.SafePathValidator());
+    }
+
+    public OutputGalleryPanel(ConfigService configService, de.tki.comfymodels.service.SafePathValidator safePathValidator) {
         this.configService = configService;
+        this.safePathValidator = safePathValidator != null ? safePathValidator : new de.tki.comfymodels.service.SafePathValidator();
         setLayout(new BorderLayout());
         setOpaque(false);
         
@@ -229,8 +235,14 @@ public class OutputGalleryPanel extends JPanel {
         int failedCount = 0;
         StringBuilder failedFiles = new StringBuilder();
         
+        String outDirStr = configService != null ? configService.getResolvedOutputDir() : "output";
+        Path baseOutputDir = Path.of(outDirStr != null && !outDirStr.isBlank() ? outDirStr : "output").toAbsolutePath().normalize();
+
         for (Path file : selectedFiles) {
             try {
+                if (safePathValidator != null) {
+                    safePathValidator.validateWithinBase(baseOutputDir, file);
+                }
                 Files.deleteIfExists(file);
                 deletedCount++;
             } catch (Exception ex) {
@@ -388,5 +400,11 @@ public class OutputGalleryPanel extends JPanel {
         } catch (Exception ex) {
             JOptionPane.showMessageDialog(this, "Failed to open file in external viewer: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
         }
+    }
+
+    @Override
+    public void addNotify() {
+        super.addNotify();
+        SwingUtilities.updateComponentTreeUI(this);
     }
 }

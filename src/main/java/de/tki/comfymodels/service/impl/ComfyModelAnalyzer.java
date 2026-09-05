@@ -14,11 +14,20 @@ import java.util.regex.Pattern;
 @Service
 public class ComfyModelAnalyzer implements IModelAnalyzer {
     
-    @Autowired
-    private LocalAIService aiService;
+    private final LocalAIService aiService;
+    private final ModelListService modelListService;
+
+    public ComfyModelAnalyzer() {
+        this(null, null);
+    }
 
     @Autowired
-    private ModelListService modelListService;
+    public ComfyModelAnalyzer(
+            @Autowired(required = false) LocalAIService aiService,
+            @Autowired(required = false) ModelListService modelListService) {
+        this.aiService = aiService;
+        this.modelListService = modelListService;
+    }
 
 
     private final Pattern FILE_PATTERN = Pattern.compile("([a-zA-Z0-9_\\-\\.\\/\\\\\\:]+\\.(?:safetensors|sft|ckpt|pth|pt|bin|onnx|yaml))", Pattern.CASE_INSENSITIVE);
@@ -141,10 +150,8 @@ public class ComfyModelAnalyzer implements IModelAnalyzer {
     }
 
     private void findModelsMetadata(Object obj, List<ModelInfo> res) {
-        if (obj instanceof JSONObject) {
-            JSONObject jo = (JSONObject) obj;
-            if (jo.has("models") && jo.get("models") instanceof JSONArray) {
-                JSONArray ms = jo.getJSONArray("models");
+        if (obj instanceof JSONObject jo) {
+            if (jo.has("models") && jo.get("models") instanceof JSONArray ms) {
                 for (int i = 0; i < ms.length(); i++) {
                     JSONObject m = ms.optJSONObject(i);
                     if (m != null) {
@@ -159,15 +166,13 @@ public class ComfyModelAnalyzer implements IModelAnalyzer {
                 }
             }
             for (String k : jo.keySet()) findModelsMetadata(jo.get(k), res);
-        } else if (obj instanceof JSONArray) {
-            JSONArray ja = (JSONArray) obj;
+        } else if (obj instanceof JSONArray ja) {
             for (int i = 0; i < ja.length(); i++) findModelsMetadata(ja.get(i), res);
         }
     }
 
     private void scanForModelFiles(Object obj, String ctx, List<ModelInfo> res) {
-        if (obj instanceof JSONObject) {
-            JSONObject jo = (JSONObject) obj;
+        if (obj instanceof JSONObject jo) {
             String node = jo.optString("class_type", jo.optString("type", null));
             
             // Ignore information from markdown notes as requested
@@ -178,16 +183,15 @@ public class ComfyModelAnalyzer implements IModelAnalyzer {
             String curCtx = node != null ? (inferTypeFromNode(node) != null ? inferTypeFromNode(node) : ctx) : ctx;
             if (jo.has("widgets_values")) {
                 JSONArray ws = jo.optJSONArray("widgets_values");
-                if (ws != null) for (int i = 0; i < ws.length(); i++) if (ws.get(i) instanceof String) processVal((String) ws.get(i), curCtx, node, res);
+                if (ws != null) for (int i = 0; i < ws.length(); i++) if (ws.get(i) instanceof String s) processVal(s, curCtx, node, res);
             }
             for (String k : jo.keySet()) {
                 if (k.equals("widgets_values")) continue;
                 Object v = jo.get(k);
-                if (v instanceof String) processVal((String) v, curCtx, k, res);
+                if (v instanceof String s) processVal(s, curCtx, k, res);
                 else if (v instanceof JSONObject || v instanceof JSONArray) scanForModelFiles(v, curCtx, res);
             }
-        } else if (obj instanceof JSONArray) {
-            JSONArray ja = (JSONArray) obj;
+        } else if (obj instanceof JSONArray ja) {
             for (int i = 0; i < ja.length(); i++) scanForModelFiles(ja.get(i), ctx, res);
         }
     }

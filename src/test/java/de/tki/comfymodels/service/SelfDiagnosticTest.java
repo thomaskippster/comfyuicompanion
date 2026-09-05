@@ -94,7 +94,9 @@ public class SelfDiagnosticTest {
         assertFalse(exists, "Model should NOT show as existing if size is 0 (mismatch)");
 
         // Case 3: Correct size
-        Files.write(modelsPath, new byte[1610612736]); // This might be too large for heap, let's use a smaller mock for the test
+        try (java.io.RandomAccessFile raf = new java.io.RandomAccessFile(modelsPath.toFile(), "rw")) {
+            raf.setLength(1610612736L);
+        }
     }
 
     @Test

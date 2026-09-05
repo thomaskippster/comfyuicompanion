@@ -23,8 +23,16 @@ public class ModelListService {
     private static final String STORAGE_FILE = "uploaded_models.json";
     private final List<ModelInfo> models = new java.util.concurrent.CopyOnWriteArrayList<>();
 
+    private final ConfigService configService;
+
+    public ModelListService() {
+        this(null);
+    }
+
     @Autowired
-    private ConfigService configService;
+    public ModelListService(@Autowired(required = false) ConfigService configService) {
+        this.configService = configService;
+    }
 
     @PostConstruct
     public void init() {

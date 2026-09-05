@@ -1,5 +1,7 @@
 package de.tki.comfymodels.ui;
 
+import de.tki.comfymodels.ui.icons.AppIcon;
+import de.tki.comfymodels.ui.icons.SvgIconFactory;
 import org.springframework.stereotype.Component;
 
 import javax.swing.*;
@@ -79,43 +81,43 @@ public class SettingsView extends JPanel {
         pathsHeader.putClientProperty("FlatLaf.styleClass", "h3");
         pathsHeader.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
 
-        JButton pathsBtn = new JButton("📁 Configure Directories...");
+        JButton pathsBtn = new JButton("Configure Directories...", SvgIconFactory.get(AppIcon.FOLDER));
         pathsBtn.setFont(btnFont);
         pathsBtn.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
         pathsBtn.setMaximumSize(new Dimension(360, 40));
         pathsBtn.addActionListener(e -> { if (listener != null) listener.onConfigureDirectories(); });
 
-        JButton scanComfyBtn = new JButton("🔍 Scan ComfyUI Installation...");
+        JButton scanComfyBtn = new JButton("Scan ComfyUI Installation...", SvgIconFactory.get(AppIcon.SEARCH));
         scanComfyBtn.setFont(btnFont);
         scanComfyBtn.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
         scanComfyBtn.setMaximumSize(new Dimension(360, 40));
         scanComfyBtn.addActionListener(e -> { if (listener != null) listener.onScanComfyUI(); });
 
-        JButton repairBtn = new JButton("🛠️ Repair Environment Automatically...");
+        JButton repairBtn = new JButton("Repair Environment Automatically...", SvgIconFactory.get(AppIcon.SETUP));
         repairBtn.setFont(btnFont);
         repairBtn.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
         repairBtn.setMaximumSize(new Dimension(360, 40));
         repairBtn.addActionListener(e -> { if (listener != null) listener.onRepairEnvironment(); });
 
-        JButton fixWslBtn = new JButton("🐧 Fix WSL [wsl-pip] Dependencies...");
+        JButton fixWslBtn = new JButton("Fix WSL [wsl-pip] Dependencies...", SvgIconFactory.get(AppIcon.LINUX));
         fixWslBtn.setFont(btnFont);
         fixWslBtn.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
         fixWslBtn.setMaximumSize(new Dimension(360, 40));
         fixWslBtn.addActionListener(e -> { if (listener != null) listener.onFixWslDependencies(); });
 
-        JButton downloadSettingsBtn = new JButton("📥 Download Settings...");
+        JButton downloadSettingsBtn = new JButton("Download Settings...", SvgIconFactory.get(AppIcon.DOWNLOAD));
         downloadSettingsBtn.setFont(btnFont);
         downloadSettingsBtn.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
         downloadSettingsBtn.setMaximumSize(new Dimension(360, 40));
         downloadSettingsBtn.addActionListener(e -> { if (listener != null) listener.onDownloadSettings(); });
 
-        JButton bridgeBtn = new JButton("🚀 Install ComfyUI Bridge...");
+        JButton bridgeBtn = new JButton("Install ComfyUI Bridge...", SvgIconFactory.get(AppIcon.LAUNCH));
         bridgeBtn.setFont(btnFont);
         bridgeBtn.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
         bridgeBtn.setMaximumSize(new Dimension(360, 40));
         bridgeBtn.addActionListener(e -> { if (listener != null) listener.onInstallBridge(); });
 
-        JButton videoArchitectAutoconfigBtn = new JButton("🎬 Autoconfig Video Architect...");
+        JButton videoArchitectAutoconfigBtn = new JButton("Autoconfig Video Architect...", SvgIconFactory.get(AppIcon.VIDEO_ARCHITECT));
         videoArchitectAutoconfigBtn.setFont(btnFont);
         videoArchitectAutoconfigBtn.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
         videoArchitectAutoconfigBtn.setMaximumSize(new Dimension(360, 40));
@@ -217,25 +219,25 @@ public class SettingsView extends JPanel {
         aiHeader.putClientProperty("FlatLaf.styleClass", "h3");
         aiHeader.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
 
-        JButton apiBtn = new JButton("🎙️ Audio & TTS Settings...");
+        JButton apiBtn = new JButton("Audio & TTS Settings...", SvgIconFactory.get(AppIcon.AUDIO));
         apiBtn.setFont(btnFont);
         apiBtn.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
         apiBtn.setMaximumSize(new Dimension(360, 40));
         apiBtn.addActionListener(e -> { if (listener != null) listener.onAudioTtsSettings(); });
 
-        JButton helpBtn = new JButton("ℹ Show Help & Instructions");
+        JButton helpBtn = new JButton("Show Help & Instructions", SvgIconFactory.get(AppIcon.DIAGNOSTICS));
         helpBtn.setFont(btnFont);
         helpBtn.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
         helpBtn.setMaximumSize(new Dimension(360, 40));
         helpBtn.addActionListener(e -> { if (listener != null) listener.onShowHelp(); });
 
-        JButton resetSettingsBtn = new JButton("🔄 Reset Application Settings...");
+        JButton resetSettingsBtn = new JButton("Reset Application Settings...", SvgIconFactory.get(AppIcon.RESTART));
         resetSettingsBtn.setFont(btnFont);
         resetSettingsBtn.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
         resetSettingsBtn.setMaximumSize(new Dimension(360, 40));
         resetSettingsBtn.addActionListener(e -> { if (listener != null) listener.onResetSettings(); });
 
-        JButton parseBlueprintsBtn = new JButton("🔍 Parse blueprints");
+        JButton parseBlueprintsBtn = new JButton("Parse blueprints", SvgIconFactory.get(AppIcon.SEARCH));
         parseBlueprintsBtn.setFont(btnFont);
         parseBlueprintsBtn.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
         parseBlueprintsBtn.setMaximumSize(new Dimension(360, 40));

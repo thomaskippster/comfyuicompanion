@@ -20,6 +20,8 @@ import org.json.JSONObject;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
+import de.tki.comfymodels.ui.icons.AppIcon;
+import de.tki.comfymodels.ui.icons.SvgIconFactory;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
@@ -260,7 +262,7 @@ public class BlueprintGalleryTab extends JPanel {
         cbCategory.setFont(new Font("SansSerif", Font.PLAIN, 12));
         cbCategory.addActionListener(e -> requestFilterUpdate());
 
-        btnRefresh = new JButton("🔄  Refresh");
+        btnRefresh = new JButton("Refresh", SvgIconFactory.get(AppIcon.REFRESH));
         btnRefresh.setFont(new Font("SansSerif", Font.PLAIN, 12));
         btnRefresh.putClientProperty("Button.arc", 999);
         btnRefresh.addActionListener(e -> refreshAllData(true));
@@ -368,7 +370,7 @@ public class BlueprintGalleryTab extends JPanel {
             lblStatus.setText("⏳  Fetching workflows and checking local models in background…");
             if (btnRefresh != null) {
                 btnRefresh.setEnabled(false);
-                btnRefresh.setText("🔄  Refreshing…");
+                btnRefresh.setText("Refreshing…");
             }
             if (allEntries.isEmpty()) {
                 previewCache.clear();
@@ -511,7 +513,7 @@ public class BlueprintGalleryTab extends JPanel {
                     updateCategoryComboBox();
                     if (btnRefresh != null) {
                         btnRefresh.setEnabled(true);
-                        btnRefresh.setText("🔄  Refresh");
+                        btnRefresh.setText("Refresh");
                     }
                     applyFilter();
                     updateSummary();
@@ -533,7 +535,7 @@ public class BlueprintGalleryTab extends JPanel {
                     lblStatus.setText("❌ Failed to fetch registry data: " + e.getMessage());
                     if (btnRefresh != null) {
                         btnRefresh.setEnabled(true);
-                        btnRefresh.setText("🔄  Refresh");
+                        btnRefresh.setText("Refresh");
                     }
                 });
             } finally {
@@ -1394,7 +1396,7 @@ public class BlueprintGalleryTab extends JPanel {
             JPanel header = new JPanel(new BorderLayout(8, 0));
             header.setOpaque(false);
             header.add(title, BorderLayout.WEST);
-            JButton btnPlayPreview = new JButton("▶  Play Preview");
+            JButton btnPlayPreview = new JButton("Play Preview", SvgIconFactory.get(AppIcon.PLAY, 14));
             btnPlayPreview.setFont(new Font("SansSerif", Font.BOLD, 11));
             btnPlayPreview.setBackground(new Color(0, 150, 136));
             btnPlayPreview.setForeground(Color.WHITE);
@@ -1474,7 +1476,7 @@ public class BlueprintGalleryTab extends JPanel {
             if (!entry.hasBeenValidated) {
                 entry.hasBeenValidated = true;
                 body.add(Box.createVerticalStrut(12));
-                JLabel loadingLbl = new JLabel("⏳ Analyzing workflow JSON for required models...");
+                JLabel loadingLbl = new JLabel("Analyzing workflow JSON for required models...", SvgIconFactory.get(AppIcon.REFRESH, 14), SwingConstants.LEFT);
                 loadingLbl.setFont(new Font("SansSerif", Font.ITALIC, 12));
                 loadingLbl.setForeground(textSecondary);
                 body.add(loadingLbl);
@@ -1493,7 +1495,7 @@ public class BlueprintGalleryTab extends JPanel {
                 }
             } else {
                 body.add(Box.createVerticalStrut(12));
-                JLabel noModelsLbl = new JLabel("✔ No external models required for this workflow.");
+                JLabel noModelsLbl = new JLabel("No external models required for this workflow.", SvgIconFactory.get(AppIcon.CHECK, 14), SwingConstants.LEFT);
                 noModelsLbl.setFont(new Font("SansSerif", Font.ITALIC, 12));
                 noModelsLbl.setForeground(new Color(34, 197, 130)); // GREEN_READY
                 body.add(noModelsLbl);
@@ -1615,7 +1617,7 @@ public class BlueprintGalleryTab extends JPanel {
         bottom.setBackground(bg);
 
         // Download Workflow Button
-        JButton btnDlWorkflow = new JButton("⬇ Download Workflow");
+        JButton btnDlWorkflow = new JButton("Download Workflow", SvgIconFactory.get(AppIcon.DOWNLOAD, 14));
         btnDlWorkflow.setFont(new Font("SansSerif", Font.BOLD, 11));
         btnDlWorkflow.putClientProperty("Button.arc", 999);
         btnDlWorkflow.setBackground(new Color(0, 150, 136));
@@ -1641,7 +1643,8 @@ public class BlueprintGalleryTab extends JPanel {
             btnDlWorkflow.setText("Downloading...");
             workflowDownloader.downloadWorkflowAsync(entry.registryWorkflow)
                 .thenAccept(file -> SwingUtilities.invokeLater(() -> {
-                    btnDlWorkflow.setText("✔ Downloaded");
+                    btnDlWorkflow.setText("Downloaded");
+                    btnDlWorkflow.setIcon(SvgIconFactory.get(AppIcon.CHECK));
                     dlg.dispose(); // Close detail dialog
                     
                     Window ownerWin = SwingUtilities.getWindowAncestor(this);
@@ -1652,7 +1655,8 @@ public class BlueprintGalleryTab extends JPanel {
                 .exceptionally(ex -> {
                     SwingUtilities.invokeLater(() -> {
                         btnDlWorkflow.setEnabled(true);
-                        btnDlWorkflow.setText("⬇ Download Workflow");
+                        btnDlWorkflow.setText("Download Workflow");
+                        btnDlWorkflow.setIcon(SvgIconFactory.get(AppIcon.DOWNLOAD));
                         JOptionPane.showMessageDialog(dlg, 
                             "Failed to download workflow: " + ex.getCause().getMessage(), 
                             "Download Error", JOptionPane.ERROR_MESSAGE);
@@ -1661,7 +1665,7 @@ public class BlueprintGalleryTab extends JPanel {
                 });
         });
         // Send to ComfyUI Button
-        JButton btnSendToComfy = new JButton("🚀 Send to ComfyUI");
+        JButton btnSendToComfy = new JButton("Send to ComfyUI", SvgIconFactory.get(AppIcon.SEND));
         btnSendToComfy.setFont(new Font("SansSerif", Font.BOLD, 11));
         btnSendToComfy.putClientProperty("Button.arc", 999);
         btnSendToComfy.setBackground(new Color(33, 150, 243));
@@ -1734,7 +1738,8 @@ public class BlueprintGalleryTab extends JPanel {
                         
                         SwingUtilities.invokeLater(() -> {
                             btnSendToComfy.setEnabled(true);
-                            btnSendToComfy.setText("🚀 Send to ComfyUI");
+                            btnSendToComfy.setText("Send to ComfyUI");
+                            btnSendToComfy.setIcon(SvgIconFactory.get(AppIcon.SEND));
                             if (response.statusCode() == 200) {
                                 if (isUIFormat) {
                                     JOptionPane.showMessageDialog(dlg,
@@ -1767,7 +1772,8 @@ public class BlueprintGalleryTab extends JPanel {
                         final String finalMsg = msg;
                         SwingUtilities.invokeLater(() -> {
                             btnSendToComfy.setEnabled(true);
-                            btnSendToComfy.setText("🚀 Send to ComfyUI");
+                            btnSendToComfy.setText("Send to ComfyUI");
+                            btnSendToComfy.setIcon(SvgIconFactory.get(AppIcon.SEND));
                             JOptionPane.showMessageDialog(dlg,
                                 finalMsg,
                                 "Connection Error", JOptionPane.ERROR_MESSAGE);

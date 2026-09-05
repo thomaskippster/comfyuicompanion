@@ -202,13 +202,13 @@ public class DownloadManagerController implements DownloadManagerView.DownloadMa
     }
 
     public void importWorkflow(File file, JTabbedPane mainTabs, JPanel downloadManagerPanel) {
-        loadFile(file);
         if (mainTabs != null && downloadManagerPanel != null) {
             int index = mainTabs.indexOfComponent(downloadManagerPanel);
             if (index != -1) {
                 mainTabs.setSelectedIndex(index);
             }
         }
+        loadFile(file);
     }
 
     public void importModelListFile(File file) {

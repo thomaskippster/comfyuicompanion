@@ -1,18 +1,28 @@
 package de.tki.comfymodels.service.impl;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.lang.management.ManagementFactory;
+import java.nio.charset.StandardCharsets;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
-import org.springframework.beans.factory.annotation.Autowired;
 
+/**
+ * Periodically queries system resource utilization (CPU, RAM, NVIDIA GPU/VRAM)
+ * and dispatches statistics to registered UI callbacks.
+ */
 @Service
 public class HardwareMonitorService {
+
+    private static final Logger logger = LoggerFactory.getLogger(HardwareMonitorService.class);
+
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
         Thread t = new Thread(r, "HardwareMonitorThread");
         t.setDaemon(true);
@@ -40,9 +50,17 @@ public class HardwareMonitorService {
         public boolean hasNvidia;
     }
 
+    private final ProcessTracker processTracker;
 
-    @Autowired(required = false)
-    private ProcessTracker processTracker;
+    public HardwareMonitorService() {
+        this(null);
+    }
+
+    @Autowired
+    public HardwareMonitorService(@Autowired(required = false) ProcessTracker processTracker) {
+        this.processTracker = processTracker;
+    }
+
     public void start(Consumer<HardwareStats> callback) {
         scheduler.scheduleAtFixedRate(() -> {
             try {
@@ -61,7 +79,7 @@ public class HardwareMonitorService {
                 
                 callback.accept(stats);
             } catch (Exception e) {
-                // Suppress background errors
+                logger.debug("Background hardware polling encountered an error: {}", e.getMessage());
             }
         }, 0, 2, TimeUnit.SECONDS);
     }
@@ -73,15 +91,16 @@ public class HardwareMonitorService {
     private void queryCpuAndRam() {
         try {
             java.lang.management.OperatingSystemMXBean osBean = ManagementFactory.getOperatingSystemMXBean();
-            if (osBean instanceof com.sun.management.OperatingSystemMXBean) {
-                com.sun.management.OperatingSystemMXBean sunBean = (com.sun.management.OperatingSystemMXBean) osBean;
+            if (osBean instanceof com.sun.management.OperatingSystemMXBean sunBean) {
                 this.cpuLoad = sunBean.getCpuLoad() * 100.0;
                 long total = sunBean.getTotalPhysicalMemorySize();
                 long free = sunBean.getFreePhysicalMemorySize();
                 this.ramTotal = total;
                 this.ramUsed = total - free;
             }
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            logger.trace("Failed to query CPU/RAM via MXBean: {}", e.getMessage());
+        }
     }
 
     private int nvidiaFailCount = 0;
@@ -100,14 +119,14 @@ public class HardwareMonitorService {
             
             Process p = processTracker != null ? processTracker.start(pb) : pb.start();
             try {
-                try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream(), java.nio.charset.StandardCharsets.UTF_8))) {
+                try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8))) {
                     String line = reader.readLine();
                     if (line != null && !line.trim().isEmpty()) {
                         String[] parts = line.split(",");
                         if (parts.length >= 4) {
                             this.gpuName = parts[0].trim();
                             this.gpuUtilization = Integer.parseInt(parts[1].trim());
-                            this.vramUsed = Long.parseLong(parts[2].trim()) * 1024L * 1024L; // in MB to Bytes
+                            this.vramUsed = Long.parseLong(parts[2].trim()) * 1024L * 1024L;
                             this.vramTotal = Long.parseLong(parts[3].trim()) * 1024L * 1024L;
                             this.hasNvidia = true;
                             this.nvidiaFailCount = 0;
@@ -121,7 +140,9 @@ public class HardwareMonitorService {
                     p.destroyForcibly();
                 }
             }
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            logger.trace("NVIDIA GPU query via nvidia-smi failed (expected if non-NVIDIA): {}", e.getMessage());
+        }
         this.hasNvidia = false;
         this.nvidiaFailCount++;
         queryFallbackGpu();
@@ -136,11 +157,10 @@ public class HardwareMonitorService {
         try {
             String os = System.getProperty("os.name").toLowerCase();
             if (os.contains("win")) {
-                // Query primary GPU name using PowerShell (fast one-time call)
                 ProcessBuilder pb = new ProcessBuilder("powershell", "-Command", 
                     "Get-CimInstance Win32_VideoController | Sort-Object AdapterRAM -Descending | Select-Object -First 1 -ExpandProperty Name");
-                Process p = processTracker.start(pb);
-                try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream(), java.nio.charset.StandardCharsets.UTF_8))) {
+                Process p = processTracker != null ? processTracker.start(pb) : pb.start();
+                try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8))) {
                     String line = reader.readLine();
                     if (line != null && !line.trim().isEmpty()) {
                         this.gpuName = line.trim();
@@ -148,24 +168,24 @@ public class HardwareMonitorService {
                 }
                 p.waitFor(3, TimeUnit.SECONDS);
 
-                // Query AdapterRAM
                 pb = new ProcessBuilder("powershell", "-Command", 
                     "Get-CimInstance Win32_VideoController | Sort-Object AdapterRAM -Descending | Select-Object -First 1 -ExpandProperty AdapterRAM");
-                p = processTracker.start(pb);
-                try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream(), java.nio.charset.StandardCharsets.UTF_8))) {
+                p = processTracker != null ? processTracker.start(pb) : pb.start();
+                try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8))) {
                     String line = reader.readLine();
                     if (line != null && !line.trim().isEmpty()) {
                         try {
                             this.vramTotal = Long.parseLong(line.trim());
-                        } catch (NumberFormatException ignored) {}
+                        } catch (NumberFormatException nfe) {
+                            logger.trace("Unable to parse AdapterRAM: {}", line);
+                        }
                     }
                 }
                 p.waitFor(3, TimeUnit.SECONDS);
             } else if (os.contains("mac")) {
-                // Mac display info
                 ProcessBuilder pb = new ProcessBuilder("sh", "-c", "system_profiler SPDisplaysDataType | grep 'Chipset Model'");
-                Process p = processTracker.start(pb);
-                try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream(), java.nio.charset.StandardCharsets.UTF_8))) {
+                Process p = processTracker != null ? processTracker.start(pb) : pb.start();
+                try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8))) {
                     String line = reader.readLine();
                     if (line != null && line.contains(":")) {
                         this.gpuName = line.substring(line.indexOf(":") + 1).trim();
@@ -173,10 +193,9 @@ public class HardwareMonitorService {
                 }
                 p.waitFor(3, TimeUnit.SECONDS);
             } else {
-                // Linux fallback via lspci
                 ProcessBuilder pb = new ProcessBuilder("sh", "-c", "lspci | grep -i -E 'vga|3d'");
-                Process p = processTracker.start(pb);
-                try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream(), java.nio.charset.StandardCharsets.UTF_8))) {
+                Process p = processTracker != null ? processTracker.start(pb) : pb.start();
+                try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8))) {
                     String line = reader.readLine();
                     if (line != null && line.contains(":")) {
                         this.gpuName = line.substring(line.lastIndexOf(":") + 1).trim();
@@ -184,21 +203,16 @@ public class HardwareMonitorService {
                 }
                 p.waitFor(3, TimeUnit.SECONDS);
             }
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            logger.debug("Fallback GPU query failed: {}", e.getMessage());
+        }
     }
 
     /**
-     * Returns the most recently observed total VRAM in bytes. Returns 0 if
-     * the monitor has not yet queried the GPU or no NVIDIA GPU is present.
-     * Triggers an immediate refresh on first call so callers that need a
-     * synchronous answer at startup do not have to wait for the periodic
-     * scheduler to fire.
+     * Returns the most recently observed total VRAM in bytes.
      */
     public synchronized long getVramBytes() {
         if (vramTotal == 0 && !hasNvidia) {
-            // One-shot synchronous refresh so the very first caller gets a
-            // real value instead of zero. The scheduler also runs this in
-            // the background, but we cannot assume it has fired yet.
             queryNvidiaGpu();
         }
         return vramTotal;
@@ -207,4 +221,5 @@ public class HardwareMonitorService {
     /** Returns the GPU model name as last reported by the monitor. */
     public synchronized String getGpuName() {
         return gpuName;
-    }}
+    }
+}

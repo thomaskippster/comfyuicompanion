@@ -45,33 +45,55 @@ public class WorkflowDownloader implements IWorkflowDownloader {
 
         File jsonFile = new File(workflowsDir, baseName + ".json");
 
-        // Step 1: Download JSON payload
+        // Fast-path: If the workflow JSON already exists locally, return it immediately without network roundtrip
+        if (jsonFile.exists() && jsonFile.length() > 0) {
+            logger.info("⚡ [WorkflowDownloader] Using local cached workflow JSON: " + jsonFile.getAbsolutePath());
+            ensureThumbnailCachedAsync(workflowsDir, baseName, thumbUrl);
+            return CompletableFuture.completedFuture(jsonFile);
+        }
+
+        // Step 1: Download JSON payload immediately
         CompletableFuture<byte[]> jsonDownload = registryClient.downloadFileAsync(jsonUrl);
         
-        // Step 2: Download Thumbnail (Optional fallback if not available)
-        CompletableFuture<byte[]> thumbDownload = (thumbUrl != null && !thumbUrl.isEmpty() && !thumbUrl.startsWith("mock:"))
-                ? registryClient.downloadFileAsync(thumbUrl)
-                : CompletableFuture.completedFuture(new byte[0]);
+        // Step 2: Download Thumbnail in background (fire-and-forget, does not block workflow JSON readiness)
+        ensureThumbnailCachedAsync(workflowsDir, baseName, thumbUrl);
 
-        return jsonDownload.thenCombine(thumbDownload, (jsonBytes, thumbBytes) -> {
+        return jsonDownload.thenApply(jsonBytes -> {
             try {
-                // Save JSON File
                 Files.write(jsonFile.toPath(), jsonBytes);
                 logger.info("💾 [WorkflowDownloader] Saved workflow JSON to: " + jsonFile.getAbsolutePath());
-
-                // Save Thumbnail if downloaded successfully
-                if (thumbBytes != null && thumbBytes.length > 0) {
-                    String ext = extractExtension(thumbUrl, "png");
-                    File thumbFile = new File(workflowsDir, baseName + "." + ext);
-                    Files.write(thumbFile.toPath(), thumbBytes);
-                    logger.info("💾 [WorkflowDownloader] Saved thumbnail to: " + thumbFile.getAbsolutePath());
-                }
-
                 return jsonFile;
             } catch (IOException e) {
                 throw new RuntimeException("Failed to save workflow files locally", e);
             }
         });
+    }
+
+    private void ensureThumbnailCachedAsync(File workflowsDir, String baseName, String thumbUrl) {
+        if (thumbUrl == null || thumbUrl.isEmpty() || thumbUrl.startsWith("mock:")) {
+            return;
+        }
+        String ext = extractExtension(thumbUrl, "png");
+        File thumbFile = new File(workflowsDir, baseName + "." + ext);
+        if (thumbFile.exists() && thumbFile.length() > 0) {
+            return;
+        }
+
+        registryClient.downloadFileAsync(thumbUrl)
+                .thenAccept(thumbBytes -> {
+                    if (thumbBytes != null && thumbBytes.length > 0) {
+                        try {
+                            Files.write(thumbFile.toPath(), thumbBytes);
+                            logger.info("💾 [WorkflowDownloader] Background saved thumbnail to: " + thumbFile.getAbsolutePath());
+                        } catch (IOException e) {
+                            logger.warn("Failed saving background thumbnail: " + e.getMessage());
+                        }
+                    }
+                })
+                .exceptionally(ex -> {
+                    logger.debug("Thumbnail background download skipped or failed: " + ex.getMessage());
+                    return null;
+                });
     }
 
     private String sanitizeFileName(String title) {

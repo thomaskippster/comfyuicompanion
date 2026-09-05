@@ -19,10 +19,18 @@ public class VideoEditorEngine {
     private final ConfigService configService;
 
 
-    @Autowired(required = false)
-    private ProcessTracker processTracker;
-    public VideoEditorEngine(ConfigService configService) {
+    private final ProcessTracker processTracker;
+
+    @Autowired
+    public VideoEditorEngine(
+            ConfigService configService,
+            @Autowired(required = false) ProcessTracker processTracker) {
         this.configService = configService;
+        this.processTracker = processTracker;
+    }
+
+    public VideoEditorEngine(ConfigService configService) {
+        this(configService, null);
     }
 
     // Define a wrapper class to satisfy Frame interface
@@ -84,10 +92,13 @@ public class VideoEditorEngine {
     }
 
     public void applyFilter(Frame frame) {
+        applyFilter(frame, 1.15, 10.0);
+    }
+
+    public void applyFilter(Frame frame, double alpha, double beta) {
         Mat mat = frame.mat();
         if (mat != null && !mat.empty()) {
-            // Apply OpenCV operation: Adjust Contrast (alpha = 1.15) and Brightness (beta = 10)
-            mat.convertTo(mat, -1, 1.15, 10.0);
+            mat.convertTo(mat, -1, alpha, beta);
         }
     }
 

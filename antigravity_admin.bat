@@ -9,23 +9,24 @@ if %errorLevel% == 0 (
 
 :requestAdmin
     echo Fordere Administratorrechte an...
-    powershell -Command "Start-Process '%~f0' -Verb RunAs"
+    :: Den aktuellen Pfad an das Skript übergeben, damit dieser beibehalten wird
+    powershell -Command "Start-Process '%~f0' -ArgumentList '\"%cd%\"' -Verb RunAs"
     exit /b
 
 :runAntigravity
-    :: Wechselt in das Verzeichnis, in dem das Skript liegt (optional)
-    cd /d "%~dp0"
+    :: Wechselt in das übergebene Verzeichnis (falls vorhanden) oder in den Skriptordner
+    if not "%~1"=="" (
+        cd /d "%~1"
+    ) else (
+        cd /d "%~dp0"
+    )
+    
     title Antigravity CLI (Admin)
-    echo Starte Antigravity CLI im vollautomatischen YOLO-Modus...
+    echo Starte Antigravity CLI (agy) im vollautomatischen YOLO-Modus...
     
     :: --- DER TRICK FÜR DEN YOLO MODUS ---
-    :: Möglichkeit 1: Direkt über den Startparameter (einfachste Variante)
-    call agy . -y
-    
-    :: Möglichkeit 2: Falls der Parameter zickt, lösch das 'call Antigravity -y' oben 
-    :: und nutze stattdessen diese zwei Zeilen hier ohne das '::':
-    :: set Antigravity_YOLO_MODE=true
-    :: call Antigravity
+    :: WICHTIG: Kein "." und kein "-y". Die neuen Argumente für agy lauten wie folgt:
+    call agy --dangerously-skip-permissions
     :: ------------------------------------
 
     :: Verhindert, dass sich das Fenster sofort schließt, falls Antigravity beendet wird

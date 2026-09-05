@@ -30,10 +30,12 @@ public class ComfyApiClient {
 
     private final ConfigService configService;
     private final HttpClient httpClient;
+    private final de.tki.comfymodels.service.gateway.ComfyUiGateway comfyUiGateway;
 
     @Autowired
-    public ComfyApiClient(ConfigService configService) {
+    public ComfyApiClient(ConfigService configService, @Autowired(required = false) de.tki.comfymodels.service.gateway.ComfyUiGateway comfyUiGateway) {
         this.configService = configService;
+        this.comfyUiGateway = comfyUiGateway;
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(5))
                 .build();
@@ -43,6 +45,9 @@ public class ComfyApiClient {
      * Checks if the ComfyUI server is reachable and responding with 200 OK on /object_info.
      */
     public boolean isServerOnline() {
+        if (comfyUiGateway != null) {
+            return comfyUiGateway.isServerOnline();
+        }
         return isServerOnline(configService.getComfyUIUrl());
     }
 
@@ -108,6 +113,13 @@ public class ComfyApiClient {
      * @return The filename returned by ComfyUI.
      */
     public String uploadInputImage(File imageFile) throws IOException, InterruptedException {
+        if (comfyUiGateway != null) {
+            try {
+                return comfyUiGateway.uploadAsset(imageFile).join();
+            } catch (Exception e) {
+                logger.warn("Gateway upload failed, falling back to direct client: {}", e.getMessage());
+            }
+        }
         return uploadInputImage(configService.getComfyUIUrl(), imageFile);
     }
 

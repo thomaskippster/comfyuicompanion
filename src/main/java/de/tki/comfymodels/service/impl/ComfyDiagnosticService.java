@@ -20,12 +20,20 @@ import java.util.List;
 public class ComfyDiagnosticService {
     private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(ComfyDiagnosticService.class);
 
-    @Autowired
-    private ConfigService configService;
+    private final ConfigService configService;
+    private final HttpClient httpClient;
 
-    private final HttpClient httpClient = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(2))
-            .build();
+    public ComfyDiagnosticService() {
+        this(null);
+    }
+
+    @Autowired
+    public ComfyDiagnosticService(@Autowired(required = false) ConfigService configService) {
+        this.configService = configService;
+        this.httpClient = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(2))
+                .build();
+    }
 
     /**
      * Checks if a specific model is currently known to ComfyUI.

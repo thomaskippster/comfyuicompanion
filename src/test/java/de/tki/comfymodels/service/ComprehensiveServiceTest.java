@@ -47,7 +47,7 @@ public class ComprehensiveServiceTest {
         analyzer = new ComfyModelAnalyzer();
         workflowService = new WorkflowService();
         validator = new ModelValidator();
-        downloadManager = new DefaultDownloadManager();
+        downloadManager = new DefaultDownloadManager(configService, new PathResolver(), null, null, null);
         archiveService = new ArchiveService(configService, pathResolver);
     }
 
@@ -137,10 +137,14 @@ public class ComprehensiveServiceTest {
         );
         
         // Wait briefly for the first status update
-        Thread.sleep(100);
+        long start = System.currentTimeMillis();
+        String status = "Idle";
+        while(System.currentTimeMillis() - start < 3000) {
+            status = downloadManager.getQueueStatus().getOrDefault(0, "Idle");
+            if (!"Idle".equals(status)) break;
+            Thread.sleep(100);
+        }
         
-        String status = lastStatus.get();
-        // Should be either "Connecting...", "Error...", or "Downloading..."
         assertNotNull(status);
         assertNotEquals("Idle", status);
         

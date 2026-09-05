@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 
 function App() {
   const [prompt, setPrompt] = useState('')
@@ -7,8 +7,24 @@ function App() {
   const [error, setError] = useState(null)
   const [imageUrl, setImageUrl] = useState(null)
   const [statusMessage, setStatusMessage] = useState('System Ready')
+  const pollTimeoutRef = useRef(null)
 
-  const pollStatus = async (promptId) => {
+  useEffect(() => {
+    return () => {
+      if (pollTimeoutRef.current) {
+        clearTimeout(pollTimeoutRef.current)
+      }
+    }
+  }, [])
+
+  const pollStatus = async (promptId, retryCount = 0) => {
+    if (retryCount >= 150) {
+      setIsLoading(false)
+      setError('Generation timed out after 5 minutes.')
+      setStatusMessage('Error occurred')
+      return
+    }
+
     try {
       const res = await fetch(`/api/v1/status/${promptId}`)
       if (res.ok) {
@@ -32,11 +48,11 @@ function App() {
       }
       
       // If not done, poll again after 2 seconds
-      setTimeout(() => pollStatus(promptId), 2000);
+      pollTimeoutRef.current = setTimeout(() => pollStatus(promptId, retryCount + 1), 2000);
     } catch (err) {
       console.error('Polling error', err);
       // Keep polling despite temporary network errors
-      setTimeout(() => pollStatus(promptId), 2000);
+      pollTimeoutRef.current = setTimeout(() => pollStatus(promptId, retryCount + 1), 2000);
     }
   }
 

@@ -36,10 +36,8 @@ public class StatusTransitionTest {
     @BeforeEach
     public void setup() throws Exception {
         tempDir = Files.createTempDirectory("transition_test");
-        downloadManager = new DefaultDownloadManager();
         configService = new ConfigService(encryptionUtils, new PathResolver());
-        ReflectionTestUtils.setField(downloadManager, "configService", configService);
-        ReflectionTestUtils.setField(downloadManager, "pathResolver", new PathResolver());
+        downloadManager = new DefaultDownloadManager(configService, new PathResolver(), null, null, null);
 
         // Setup Local Test Server
         server = HttpServer.create(new InetSocketAddress(0), 0);

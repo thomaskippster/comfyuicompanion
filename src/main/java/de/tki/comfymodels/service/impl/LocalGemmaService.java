@@ -32,6 +32,22 @@ import jakarta.annotation.PreDestroy;
 public class LocalGemmaService {
     private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(LocalGemmaService.class);
 
+    static {
+        String oldTmp = System.getProperty("java.io.tmpdir");
+        try {
+            Path customTmp = Files.createTempDirectory("llama_tmp");
+            System.setProperty("java.io.tmpdir", customTmp.toAbsolutePath().toString());
+            // Force initialization of LlamaModel (and LlamaLoader) so it extracts the DLL to the unique folder
+            Class.forName("de.kherud.llama.LlamaModel");
+        } catch (Throwable t) {
+            logger.error("Failed to pre-initialize LlamaModel native libraries", t);
+        } finally {
+            if (oldTmp != null) {
+                System.setProperty("java.io.tmpdir", oldTmp);
+            }
+        }
+    }
+
     private final ConfigService configService;
     private LlamaModel model = null;
     private Timer unloadTimer = null;

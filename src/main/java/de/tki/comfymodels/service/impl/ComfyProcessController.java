@@ -28,8 +28,8 @@ public class ComfyProcessController {
     @org.springframework.context.annotation.Lazy
     private de.tki.comfymodels.service.IComfyLifecycleService lifecycleService;
 
-    @org.springframework.beans.factory.annotation.Autowired
-    private ConfigService configService;
+    private final ConfigService configService;
+    private final ProcessTracker processTracker;
 
     private volatile Process currentProcess;
     private final java.util.concurrent.atomic.AtomicBoolean stopping = new java.util.concurrent.atomic.AtomicBoolean(false);
@@ -37,9 +37,18 @@ public class ComfyProcessController {
     private final AtomicReference<String> detectedUrl = new AtomicReference<>();
     private final Pattern urlPattern = Pattern.compile("(https?://[\\d\\.]+(?::\\d+)?)");
 
+    public ComfyProcessController() {
+        this(null, null);
+    }
 
-    @Autowired(required = false)
-    private ProcessTracker processTracker;
+    @Autowired
+    public ComfyProcessController(
+            @Autowired(required = false) ConfigService configService,
+            @Autowired(required = false) ProcessTracker processTracker) {
+        this.configService = configService;
+        this.processTracker = processTracker;
+    }
+
     public String getDetectedUrl() {
         return detectedUrl.get();
     }

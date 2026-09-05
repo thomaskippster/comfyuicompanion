@@ -30,12 +30,21 @@ public class UpdaterService {
         public String error;
     }
 
+    private final ConfigService configService;
+    private final ProcessTracker processTracker;
+
+    public UpdaterService() {
+        this(null, null);
+    }
+
     @Autowired
-    private ConfigService configService;
+    public UpdaterService(
+            @Autowired(required = false) ConfigService configService,
+            @Autowired(required = false) ProcessTracker processTracker) {
+        this.configService = configService;
+        this.processTracker = processTracker;
+    }
 
-
-    @Autowired(required = false)
-    private ProcessTracker processTracker;
     public List<RepoStatus> scanRepositories() {
         List<RepoStatus> list = new java.util.concurrent.CopyOnWriteArrayList<>();
         String comfyPathStr = configService.getComfyUIPath();

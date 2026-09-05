@@ -21,6 +21,17 @@ public class Scene {
     private boolean enhanceWithLtx = false;
     private double ltxStrength = 0.85;
 
+    // Visual Enhancement Parameters (OpenCV / FFmpeg eq filter)
+    private double contrast = 1.0;
+    private double brightness = 0.0;
+
+    // Dimensions (FHD 1080p Standard)
+    private int width = 1920;
+    private int height = 1080;
+
+    // Optional scene-specific start/reference image (avoids global config state-bleed)
+    private String speakerImagePath;
+
     public Scene() {}
 
     public Scene(String sceneId, String prompt, int startFrame, int endFrame, String audioPath, String videoPath) {
@@ -150,6 +161,46 @@ public class Scene {
 
     public void setLtxStrength(double ltxStrength) {
         this.ltxStrength = ltxStrength;
+    }
+
+    public double getContrast() {
+        return contrast;
+    }
+
+    public void setContrast(double contrast) {
+        this.contrast = contrast;
+    }
+
+    public double getBrightness() {
+        return brightness;
+    }
+
+    public void setBrightness(double brightness) {
+        this.brightness = brightness;
+    }
+
+    public int getWidth() {
+        return width;
+    }
+
+    public void setWidth(int width) {
+        this.width = width;
+    }
+
+    public int getHeight() {
+        return height;
+    }
+
+    public void setHeight(int height) {
+        this.height = height;
+    }
+
+    public String getSpeakerImagePath() {
+        return speakerImagePath;
+    }
+
+    public void setSpeakerImagePath(String speakerImagePath) {
+        this.speakerImagePath = speakerImagePath;
     }
 
     @Override

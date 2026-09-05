@@ -13,8 +13,12 @@ public class PlatformUtils {
     private static String OS_NAME = System.getProperty("os.name").toLowerCase();
 
 
-    @Autowired(required = false)
     private static ProcessTracker processTracker;
+
+    public static void setProcessTracker(ProcessTracker tracker) {
+        processTracker = tracker;
+    }
+
     public static void setOsNameForTesting(String osName) {
         OS_NAME = osName.toLowerCase();
     }
@@ -39,7 +43,11 @@ public class PlatformUtils {
         }
 
         try {
-            processTracker.start(new ProcessBuilder(command));
+            if (processTracker != null) {
+                processTracker.start(new ProcessBuilder(command));
+            } else {
+                new ProcessBuilder(command).start();
+            }
         } catch (IOException e) {
             logger.error("Error executing shutdown command: " + e.getMessage());
         }

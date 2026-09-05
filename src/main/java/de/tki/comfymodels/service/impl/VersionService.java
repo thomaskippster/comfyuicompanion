@@ -30,8 +30,17 @@ public class VersionService {
             .build();
 
 
-            @Autowired(required = false)
-            private ProcessTracker processTracker;
+            private final ProcessTracker processTracker;
+
+    public VersionService() {
+        this(null);
+    }
+
+    @Autowired
+    public VersionService(@Autowired(required = false) ProcessTracker processTracker) {
+        this.processTracker = processTracker;
+    }
+
     public java.util.concurrent.CompletableFuture<String> getRemoteComfyVersionAsync() {
         return java.util.concurrent.CompletableFuture.supplyAsync(() -> {
             try {

@@ -77,9 +77,8 @@ public class AdvancedStabilityTest {
         archiveService = new ArchiveService(configService, pathResolver);
         
         // Initialize Download Manager
-        downloadManager = new DefaultDownloadManager();
-        setField(downloadManager, "configService", configService);
-        setField(downloadManager, "pathResolver", pathResolver);
+        downloadManager = new DefaultDownloadManager(configService, pathResolver, null, null, null);
+        // Fields set below via reflection may override the constructor values
 
         // Initialize AI Services for Analyzer
         aiService = new LocalAIService();

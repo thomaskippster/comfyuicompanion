@@ -6,6 +6,7 @@ import org.slf4j.LoggerFactory;
 import de.tki.comfymodels.domain.ModelInfo;
 import de.tki.comfymodels.service.IDownloadManager;
 import de.tki.comfymodels.service.IModelValidator;
+import de.tki.comfymodels.service.SafePathValidator;
 import de.tki.comfymodels.util.ConfigConstants;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -34,7 +35,9 @@ public class DefaultDownloadManager implements IDownloadManager {
             3, 3, 0L, TimeUnit.MILLISECONDS,
             new LinkedBlockingQueue<>()
     );
-    private final ExecutorService segmentExecutor = Executors.newCachedThreadPool();
+    private final ExecutorService segmentExecutor = Executors.newThreadPerTaskExecutor(
+            Thread.ofVirtual().name("Download-Segment-", 0).factory()
+    );
     private final HttpClient httpClient = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.ALWAYS).connectTimeout(Duration.ofSeconds(60)).build();
     private volatile boolean isPaused = false;
     private volatile boolean isStopped = false;
@@ -42,20 +45,35 @@ public class DefaultDownloadManager implements IDownloadManager {
     private final java.util.Set<Integer> completedIndices = java.util.concurrent.ConcurrentHashMap.newKeySet();
     private final java.util.Map<Integer, String> statusMap = new java.util.concurrent.ConcurrentHashMap<>();
 
-    @Autowired
-    private ConfigService configService;
+    private final ConfigService configService;
+    private final PathResolver pathResolver;
+    private final CivitaiService civitaiService;
+    private final ModelHashRegistry hashRegistry;
+    private final IModelValidator modelValidator;
+    private final SafePathValidator safePathValidator;
 
     @Autowired
-    private PathResolver pathResolver;
+    public DefaultDownloadManager(ConfigService configService,
+                                  PathResolver pathResolver,
+                                  CivitaiService civitaiService,
+                                  ModelHashRegistry hashRegistry,
+                                  IModelValidator modelValidator,
+                                  @Autowired(required = false) SafePathValidator safePathValidator) {
+        this.configService = configService;
+        this.pathResolver = pathResolver;
+        this.civitaiService = civitaiService;
+        this.hashRegistry = hashRegistry;
+        this.modelValidator = modelValidator;
+        this.safePathValidator = safePathValidator != null ? safePathValidator : new SafePathValidator();
+    }
 
-    @Autowired
-    private CivitaiService civitaiService;
-
-    @Autowired
-    private ModelHashRegistry hashRegistry;
-
-    @Autowired
-    private IModelValidator modelValidator;
+    public DefaultDownloadManager(ConfigService configService,
+                                  PathResolver pathResolver,
+                                  CivitaiService civitaiService,
+                                  ModelHashRegistry hashRegistry,
+                                  IModelValidator modelValidator) {
+        this(configService, pathResolver, civitaiService, hashRegistry, modelValidator, new SafePathValidator());
+    }
 
     private void safeUpdateStatus(int index, String status, BiConsumer<Integer, String> statusUpdater) {
         statusMap.put(index, status);
@@ -130,8 +148,12 @@ public class DefaultDownloadManager implements IDownloadManager {
                                     pathResolver.resolve(baseDir) : 
                                     pathResolver.resolve(configService != null ? configService.getModelsPath() : null);
                             Path targetDir = modelsBase.resolve(subPath);
+                            Path targetFile = targetDir.resolve(info.getName());
+                            if (safePathValidator != null) {
+                                safePathValidator.validateWithinBase(modelsBase, targetFile);
+                            }
                             Files.createDirectories(targetDir);
-                            downloadWithResume(info, targetDir.resolve(info.getName()), index, statusUpdater);  
+                            downloadWithResume(info, targetFile, index, statusUpdater);  
                         } catch (Exception e) { 
                             if (!isStopped && isSelected(index)) {
                                 String msg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();

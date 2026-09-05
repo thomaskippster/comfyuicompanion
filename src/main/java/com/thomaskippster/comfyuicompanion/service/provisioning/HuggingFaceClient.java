@@ -15,9 +15,10 @@ public class HuggingFaceClient {
     private static final Logger logger = LoggerFactory.getLogger(HuggingFaceClient.class);
     private final WebClient webClient;
 
-    public HuggingFaceClient(WebClient.Builder webClientBuilder) {
-        // Base URL für alle Hugging Face Hub Requests
-        this.webClient = webClientBuilder.baseUrl("https://huggingface.co/api").build();
+    @org.springframework.beans.factory.annotation.Autowired
+    public HuggingFaceClient(@org.springframework.beans.factory.annotation.Autowired(required = false) WebClient.Builder webClientBuilder) {
+        WebClient.Builder builder = webClientBuilder != null ? webClientBuilder : WebClient.builder();
+        this.webClient = builder.baseUrl("https://huggingface.co/api").build();
     }
 
     /**

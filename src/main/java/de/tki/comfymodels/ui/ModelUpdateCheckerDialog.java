@@ -7,6 +7,8 @@ import de.tki.comfymodels.service.impl.CivitaiService;
 import de.tki.comfymodels.service.impl.CivitaiService.ModelUpdateInfo;
 import de.tki.comfymodels.service.impl.ConfigService;
 import de.tki.comfymodels.service.impl.ModelHashRegistry;
+import de.tki.comfymodels.ui.icons.AppIcon;
+import de.tki.comfymodels.ui.icons.SvgIconFactory;
 
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
@@ -50,8 +52,8 @@ public class ModelUpdateCheckerDialog extends JDialog {
         topPanel.add(titleLabel, BorderLayout.WEST);
 
         JPanel btnPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
-        scanBtn = new JButton("🔍 Scan for Model Updates");
-        downloadBtn = new JButton("📥 Download Selected Upgrades");
+        scanBtn = new JButton("Scan for Model Updates", SvgIconFactory.get(AppIcon.SEARCH));
+        downloadBtn = new JButton("Download Selected Upgrades", SvgIconFactory.get(AppIcon.DOWNLOAD));
         downloadBtn.setEnabled(false);
         btnPanel.add(scanBtn);
         btnPanel.add(downloadBtn);

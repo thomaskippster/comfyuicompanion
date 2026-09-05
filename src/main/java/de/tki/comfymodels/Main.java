@@ -16,6 +16,8 @@ import com.formdev.flatlaf.FlatDarkLaf;
 import com.formdev.flatlaf.FlatLightLaf;
 import com.formdev.flatlaf.FlatLaf;
 import com.formdev.flatlaf.extras.FlatAnimatedLafChange;
+import de.tki.comfymodels.ui.icons.AppIcon;
+import de.tki.comfymodels.ui.icons.SvgIconFactory;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -601,18 +603,18 @@ public class Main extends JFrame {
         gbc.gridy++;
         gbc.insets = new Insets(10, 0, 20, 0);
         JPanel controlButtons = new JPanel(new FlowLayout(FlowLayout.CENTER, 15, 10));
-        JButton startBtn = new JButton("▶ Start");
+        JButton startBtn = new JButton("Start", SvgIconFactory.get(AppIcon.PLAY));
         startBtn.setPreferredSize(new Dimension(110, 40));
         startBtn.addActionListener(e -> {
             configService.autoDiscoverPaths();
             startComfyAndReload();
         });
         
-        JButton stopBtn = new JButton("⏹ Stop");
+        JButton stopBtn = new JButton("Stop", SvgIconFactory.get(AppIcon.STOP));
         stopBtn.setPreferredSize(new Dimension(110, 40));
         stopBtn.addActionListener(e -> lifecycleService.stop());
         
-        JButton restartBtn = new JButton("🔄 Restart");
+        JButton restartBtn = new JButton("Restart", SvgIconFactory.get(AppIcon.RESTART));
         restartBtn.setPreferredSize(new Dimension(110, 40));
         restartBtn.addActionListener(e -> {
             configService.autoDiscoverPaths();
@@ -623,7 +625,7 @@ public class Main extends JFrame {
             });
         });
 
-        JButton openBrowserBtn = new JButton("🌐 Open Interface");
+        JButton openBrowserBtn = new JButton("Open Interface", SvgIconFactory.get(AppIcon.BROWSER));
         openBrowserBtn.setPreferredSize(new Dimension(150, 40));
         openBrowserBtn.addActionListener(e -> {
             try {
@@ -692,26 +694,26 @@ public class Main extends JFrame {
         mainTabs.removeAll();
         
         if (dashboardPanel != null) {
-            mainTabs.addTab("🏠 Dashboard", dashboardPanel);
+            mainTabs.addTab("Dashboard", SvgIconFactory.get(AppIcon.DASHBOARD, SvgIconFactory.SIZE_TAB), dashboardPanel);
         }
         if (downloadManagerPanel != null) {
-            mainTabs.addTab("📥 Download Manager", downloadManagerPanel);
+            mainTabs.addTab("Download Manager", SvgIconFactory.get(AppIcon.DOWNLOAD_MANAGER, SvgIconFactory.SIZE_TAB), downloadManagerPanel);
         }
         // Gallery comes after Download Manager and before Blueprint Gallery
         if (galleryPanel != null) {
-            mainTabs.addTab("🖼️ Gallery", galleryPanel);
+            mainTabs.addTab("Gallery", SvgIconFactory.get(AppIcon.GALLERY, SvgIconFactory.SIZE_TAB), galleryPanel);
         }
         if (configService.isBlueprintGalleryEnabled() && blueprintGalleryWrapper != null) {
-            mainTabs.addTab("📂 Blueprint Gallery", blueprintGalleryWrapper);
+            mainTabs.addTab("Blueprint Gallery", SvgIconFactory.get(AppIcon.BLUEPRINT_GALLERY, SvgIconFactory.SIZE_TAB), blueprintGalleryWrapper);
         }
         if (configService.isPromptLabEnabled() && promptLabPanel != null) {
-            mainTabs.addTab("🖼️ Image Lab", promptLabPanel);
+            mainTabs.addTab("Image Lab", SvgIconFactory.get(AppIcon.IMAGE_LAB, SvgIconFactory.SIZE_TAB), promptLabPanel);
         }
         if (configService.isVideoArchitectEnabled() && videoArchitectWrapper != null) {
-            mainTabs.addTab("🎬 Video Architect (Beta)", videoArchitectWrapper);
+            mainTabs.addTab("Video Architect (Beta)", SvgIconFactory.get(AppIcon.VIDEO_ARCHITECT, SvgIconFactory.SIZE_TAB), videoArchitectWrapper);
         }
         if (settingsPanel != null) {
-            mainTabs.addTab("⚙️ Settings", settingsPanel);
+            mainTabs.addTab("Settings", SvgIconFactory.get(AppIcon.SETTINGS, SvgIconFactory.SIZE_TAB), settingsPanel);
         }
         
         if (selectedComp != null) {
@@ -820,8 +822,7 @@ public class Main extends JFrame {
 
         JPanel leftHeader = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
         leftHeader.setOpaque(false);
-        JLabel logoLabel = new JLabel("🌀");
-        logoLabel.setFont(new Font("Segoe UI Emoji", Font.PLAIN, 22));
+        JLabel logoLabel = new JLabel(SvgIconFactory.get(AppIcon.IMAGE_LAB, 24));
         JLabel titleLabel = new JLabel("Companion for ComfyUI") {
             @Override
             public void updateUI() {
@@ -851,7 +852,7 @@ public class Main extends JFrame {
         headerBlueprintProgressPanel.setOpaque(false);
         headerBlueprintProgressPanel.setVisible(modelArchitectureService != null && !modelArchitectureService.isBlueprintAnalysisCompleted());
         
-        JLabel headerBlueprintLabel = new JLabel("🔄 Blueprints: 0%") {
+        JLabel headerBlueprintLabel = new JLabel("Blueprints: 0%", SvgIconFactory.get(AppIcon.REFRESH, 14), SwingConstants.LEFT) {
             @Override
             public void updateUI() {
                 super.updateUI();
@@ -884,7 +885,7 @@ public class Main extends JFrame {
                     if (completed || percent >= 100) {
                         headerBlueprintProgressPanel.setVisible(false);
                     } else {
-                        headerBlueprintLabel.setText("🔄 Blueprints: " + percent + "%");
+                        headerBlueprintLabel.setText("Blueprints: " + percent + "%");
                         headerBlueprintLabel.setToolTipText(currentFileName != null && !currentFileName.isEmpty()
                             ? "Scanning: " + currentFileName
                             : "Scanning Blueprints...");
@@ -897,15 +898,15 @@ public class Main extends JFrame {
             });
         }
         
-        JLabel activeProfileLabel = new JLabel("👤 Profile: Loading...");
+        JLabel activeProfileLabel = new JLabel("Profile: Loading...", SvgIconFactory.get(AppIcon.USER, 14), SwingConstants.LEFT);
         activeProfileLabel.setFont(new Font("SansSerif", Font.PLAIN, 12));
         activeProfileLabel.setForeground(configService.isDarkMode() ? new Color(224, 248, 245) : Color.GRAY);
         
-        JLabel globalStatusIndicator = new JLabel("Server: Offline 🔴");
+        JLabel globalStatusIndicator = new JLabel("Server: Offline", SvgIconFactory.createStatusDot(new Color(220, 50, 50), 10), SwingConstants.LEFT);
         globalStatusIndicator.setFont(new Font("SansSerif", Font.BOLD, 12));
         globalStatusIndicator.setForeground(configService.isDarkMode() ? new Color(112, 138, 144) : Color.GRAY);
         
-        JButton quickActionBtn = new JButton("▶ Start");
+        JButton quickActionBtn = new JButton("Start", SvgIconFactory.get(AppIcon.PLAY, 12));
         quickActionBtn.putClientProperty("JButton.buttonType", "roundRect");
         quickActionBtn.setFont(new Font("SansSerif", Font.BOLD, 11));
         quickActionBtn.setFocusable(false);
@@ -953,18 +954,24 @@ public class Main extends JFrame {
             
             if (running) {
                 if (starting) {
-                    globalStatusIndicator.setText("Server: Starting 🟡");
+                    globalStatusIndicator.setText("Server: Starting");
+                    globalStatusIndicator.setIcon(SvgIconFactory.createStatusDot(new Color(200, 160, 0), 10));
                     globalStatusIndicator.setForeground(new Color(200, 160, 0)); // More subtle yellow/amber
-                    quickActionBtn.setText("⏹ Stop");
+                    quickActionBtn.setText("Stop");
+                    quickActionBtn.setIcon(SvgIconFactory.get(AppIcon.CLOSE, 12));
                 } else {
-                    globalStatusIndicator.setText("Server: Running 🟢");
+                    globalStatusIndicator.setText("Server: Running");
+                    globalStatusIndicator.setIcon(SvgIconFactory.createStatusDot(new Color(30, 190, 170), 10));
                     globalStatusIndicator.setForeground(new Color(30, 190, 170)); // Subtle Cyan/Teal
-                    quickActionBtn.setText("⏹ Stop");
+                    quickActionBtn.setText("Stop");
+                    quickActionBtn.setIcon(SvgIconFactory.get(AppIcon.CLOSE, 12));
                 }
             } else {
-                globalStatusIndicator.setText("Server: Offline 🔴");
+                globalStatusIndicator.setText("Server: Offline");
+                globalStatusIndicator.setIcon(SvgIconFactory.createStatusDot(new Color(220, 50, 50), 10));
                 globalStatusIndicator.setForeground(configService.isDarkMode() ? new Color(112, 138, 144) : Color.GRAY);
-                quickActionBtn.setText("▶ Start");
+                quickActionBtn.setText("Start");
+                quickActionBtn.setIcon(SvgIconFactory.get(AppIcon.PLAY, 12));
             }
             
             // Sync active profile name (cached to avoid disk I/O on EDT every second)
@@ -981,14 +988,14 @@ public class Main extends JFrame {
                 if (activeProfileVal == null && !profilesVal.isEmpty()) activeProfileVal = profilesVal.get(0);
                 cachedActiveProfileName = (activeProfileVal != null) ? activeProfileVal.name() : "None";
             }
-            activeProfileLabel.setText("👤 Profile: " + cachedActiveProfileName);
+            activeProfileLabel.setText("Profile: " + cachedActiveProfileName);
 
             // Sync header blueprint scan progress
             if (modelArchitectureService != null) {
                 if (!modelArchitectureService.isBlueprintAnalysisCompleted() || modelArchitectureService.isAnalyzing()) {
                     int pct = modelArchitectureService.getBlueprintProgressPercent();
                     String file = modelArchitectureService.getBlueprintProgressFileName();
-                    headerBlueprintLabel.setText("🔄 Blueprints: " + pct + "%");
+                    headerBlueprintLabel.setText("Blueprints: " + pct + "%");
                     headerBlueprintLabel.setToolTipText(file != null && !file.isEmpty() ? "Scanning: " + file : "Scanning Blueprints...");
                     headerBlueprintBar.setValue(pct);
                     if (!headerBlueprintProgressPanel.isVisible()) {
@@ -1036,7 +1043,7 @@ public class Main extends JFrame {
         } else {
             JPanel fallback = new JPanel(new GridBagLayout());
             fallback.setOpaque(false);
-            JLabel label = new JLabel("🎬 Video Architect (Beta) is disabled or initializing...");
+            JLabel label = new JLabel("Video Architect (Beta) is disabled or initializing...", SvgIconFactory.get(AppIcon.VIDEO_ARCHITECT, 20), SwingConstants.CENTER);
             label.setFont(new Font("SansSerif", Font.BOLD, 14));
             label.setForeground(configService.isDarkMode() ? Color.LIGHT_GRAY : Color.DARK_GRAY);
             fallback.add(label);
@@ -1848,7 +1855,8 @@ public class Main extends JFrame {
         }
 
         btnSendToComfy.setEnabled(false);
-        btnSendToComfy.setText("⏳ Generating...");
+        btnSendToComfy.setText("Generating...");
+        btnSendToComfy.setIcon(SvgIconFactory.get(AppIcon.REFRESH));
         promptLabConsole.append("🚀 Starting generation pipeline...\n");
 
         backgroundExecutor.execute(() -> {
@@ -1894,7 +1902,7 @@ public class Main extends JFrame {
                 if (!connected) {
                     SwingUtilities.invokeLater(() -> {
                         btnSendToComfy.setEnabled(true);
-                        btnSendToComfy.setText("🚀 Generate");
+                        btnSendToComfy.setText("Generate"); btnSendToComfy.setIcon(SvgIconFactory.get(AppIcon.IMAGE_LAB));
                         promptLabConsole.append("❌ Cannot connect to ComfyUI.\n\n");
                         JOptionPane.showMessageDialog(this, "Could not connect to ComfyUI. Please start it manually.",
                                 "Connection Failed", JOptionPane.ERROR_MESSAGE);
@@ -1917,7 +1925,7 @@ public class Main extends JFrame {
                 if (guiJsonStr == null || guiJsonStr.isBlank()) {
                     SwingUtilities.invokeLater(() -> {
                         btnSendToComfy.setEnabled(true);
-                        btnSendToComfy.setText("🚀 Generate");
+                        btnSendToComfy.setText("Generate"); btnSendToComfy.setIcon(SvgIconFactory.get(AppIcon.IMAGE_LAB));
                         JOptionPane.showMessageDialog(this, "No workflow JSON available. Please select a blueprint first.",
                                 "No Workflow", JOptionPane.WARNING_MESSAGE);
                     });
@@ -1966,7 +1974,7 @@ public class Main extends JFrame {
                         } catch (Exception convEx) {
                             SwingUtilities.invokeLater(() -> {
                                 btnSendToComfy.setEnabled(true);
-                                btnSendToComfy.setText("🚀 Generate");
+                                btnSendToComfy.setText("Generate"); btnSendToComfy.setIcon(SvgIconFactory.get(AppIcon.IMAGE_LAB));
                                 JOptionPane.showMessageDialog(this,
                                         "Workflow conversion failed: " + convEx.getMessage(),
                                         "Conversion Failed", JOptionPane.ERROR_MESSAGE);
@@ -2005,7 +2013,7 @@ public class Main extends JFrame {
                                 } catch (Exception convEx) {
                                     SwingUtilities.invokeLater(() -> {
                                         btnSendToComfy.setEnabled(true);
-                                        btnSendToComfy.setText("🚀 Generate");
+                                        btnSendToComfy.setText("Generate"); btnSendToComfy.setIcon(SvgIconFactory.get(AppIcon.IMAGE_LAB));
                                         JOptionPane.showMessageDialog(this,
                                                 "Workflow conversion failed: " + convEx.getMessage(),
                                                 "Conversion Failed", JOptionPane.ERROR_MESSAGE);
@@ -2026,7 +2034,7 @@ public class Main extends JFrame {
                                 final String errMsg = receivedObj.getString("error");
                                 SwingUtilities.invokeLater(() -> {
                                     btnSendToComfy.setEnabled(true);
-                                    btnSendToComfy.setText("🚀 Generate");
+                                    btnSendToComfy.setText("Generate"); btnSendToComfy.setIcon(SvgIconFactory.get(AppIcon.IMAGE_LAB));
                                     promptLabConsole.append("❌ Conversion error: " + errMsg + "\n\n");
                                     JOptionPane.showMessageDialog(this,
                                             "Workflow conversion failed:\n" + errMsg, "Conversion Error", JOptionPane.ERROR_MESSAGE);
@@ -2094,7 +2102,7 @@ public class Main extends JFrame {
 
                 SwingUtilities.invokeLater(() -> {
                     btnSendToComfy.setEnabled(true);
-                    btnSendToComfy.setText("🚀 Generate");
+                    btnSendToComfy.setText("Generate"); btnSendToComfy.setIcon(SvgIconFactory.get(AppIcon.IMAGE_LAB));
                     if (response.statusCode() == 200) {
                         promptLabConsole.append("✅ Successfully queued! Status: 200\n\n");
                         try {
@@ -2130,7 +2138,7 @@ public class Main extends JFrame {
             } catch (Exception ex) {
                 SwingUtilities.invokeLater(() -> {
                     btnSendToComfy.setEnabled(true);
-                    btnSendToComfy.setText("🚀 Generate");
+                    btnSendToComfy.setText("Generate"); btnSendToComfy.setIcon(SvgIconFactory.get(AppIcon.IMAGE_LAB));
                     promptLabConsole.append("❌ Error: " + ex.getMessage() + "\n\n");
                     JOptionPane.showMessageDialog(this,
                             "Generation failed:\n" + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
@@ -2362,7 +2370,8 @@ public class Main extends JFrame {
     private void downloadLocalGemmaModel() {
         if (btnSuggestSubject != null) {
             btnSuggestSubject.setEnabled(false);
-            btnSuggestSubject.setText("⏳ Downloading...");
+            btnSuggestSubject.setText("Downloading...");
+            btnSuggestSubject.setIcon(SvgIconFactory.get(AppIcon.REFRESH));
         }
         promptLabConsole.append("Starting download of Gemma-3-4B GGUF model (3 GB) from Hugging Face...\n");
         
@@ -2373,7 +2382,8 @@ public class Main extends JFrame {
             () -> SwingUtilities.invokeLater(() -> {
                 if (btnSuggestSubject != null) {
                     btnSuggestSubject.setEnabled(true);
-                    btnSuggestSubject.setText("✨ Suggest");
+                    btnSuggestSubject.setText("Suggest");
+                    btnSuggestSubject.setIcon(SvgIconFactory.get(AppIcon.SUGGEST));
                 }
                 promptLabConsole.append("✅ Local Gemma model downloaded successfully!\n");
                 JOptionPane.showMessageDialog(this,
@@ -2384,7 +2394,8 @@ public class Main extends JFrame {
             (errorMsg, ex) -> SwingUtilities.invokeLater(() -> {
                 if (btnSuggestSubject != null) {
                     btnSuggestSubject.setEnabled(true);
-                    btnSuggestSubject.setText("✨ Suggest");
+                    btnSuggestSubject.setText("Suggest");
+                    btnSuggestSubject.setIcon(SvgIconFactory.get(AppIcon.SUGGEST));
                 }
                 promptLabConsole.append("❌ Download failed: " + errorMsg + "\n");
                 JOptionPane.showMessageDialog(this,
@@ -2417,7 +2428,8 @@ public class Main extends JFrame {
         }
 
         btnSuggestSubject.setEnabled(false);
-        btnSuggestSubject.setText("✨ Suggesting...");
+        btnSuggestSubject.setText("Suggesting...");
+        btnSuggestSubject.setIcon(SvgIconFactory.get(AppIcon.REFRESH));
         promptLabConsole.append("Generating prompt completion suggestions using local Gemma...\n");
 
         backgroundExecutor.execute(() -> {
@@ -2435,7 +2447,8 @@ public class Main extends JFrame {
             final String finalErrors = errorLogs.toString();
             SwingUtilities.invokeLater(() -> {
                 btnSuggestSubject.setEnabled(true);
-                btnSuggestSubject.setText("✨ Suggest");
+                btnSuggestSubject.setText("Suggest");
+                btnSuggestSubject.setIcon(SvgIconFactory.get(AppIcon.SUGGEST));
                 
                 if (finalSuggestions != null && !finalSuggestions.isEmpty()) {
                     promptSubjectSuggestionsPanel.removeAll();
@@ -2622,8 +2635,8 @@ public class Main extends JFrame {
 
         JPanel profileButtons = new JPanel(new GridLayout(1, 2, 8, 0));
         profileButtons.setOpaque(false);
-        JButton addProfileBtn = new JButton("➕ Add");
-        JButton removeProfileBtn = new JButton("➖ Remove");
+        JButton addProfileBtn = new JButton("Add", SvgIconFactory.get(AppIcon.ADD));
+        JButton removeProfileBtn = new JButton("Remove", SvgIconFactory.get(AppIcon.REMOVE));
         profileButtons.add(addProfileBtn);
         profileButtons.add(removeProfileBtn);
         leftPanel.add(profileButtons, BorderLayout.SOUTH);
@@ -2703,21 +2716,21 @@ public class Main extends JFrame {
         JPanel actionPanel = new JPanel(new GridLayout(1, 5, 12, 12));
         actionPanel.setOpaque(false);
         
-        launchBtn = new JButton("🚀 Launch");
+        launchBtn = new JButton("Launch", SvgIconFactory.get(AppIcon.LAUNCH));
         launchBtn.putClientProperty("JButton.buttonType", "accent");
         launchBtn.setFont(new Font("SansSerif", Font.BOLD, 14));
         
-        JButton restartBtn = new JButton("🔄 Restart");
+        JButton restartBtn = new JButton("Restart", SvgIconFactory.get(AppIcon.RESTART));
         restartBtn.putClientProperty("JButton.buttonType", "roundRect");
         restartBtn.setFont(new Font("SansSerif", Font.BOLD, 14));
         restartBtn.setEnabled(false);
 
-        JButton stopBtn = new JButton("⏹ Stop");
+        JButton stopBtn = new JButton("Stop", SvgIconFactory.get(AppIcon.STOP));
         stopBtn.putClientProperty("JButton.buttonType", "roundRect");
         stopBtn.setFont(new Font("SansSerif", Font.BOLD, 14));
         stopBtn.setEnabled(false);
 
-        JButton browserBtn = new JButton("🌐 Browser");
+        JButton browserBtn = new JButton("Browser", SvgIconFactory.get(AppIcon.BROWSER));
         browserBtn.putClientProperty("JButton.buttonType", "roundRect");
         browserBtn.setFont(new Font("SansSerif", Font.BOLD, 14));
         browserBtn.setEnabled(false);
@@ -2729,7 +2742,7 @@ public class Main extends JFrame {
             }
         });
 
-        JButton bootstrapBtn = new JButton("🛠️ Setup");
+        JButton bootstrapBtn = new JButton("Setup", SvgIconFactory.get(AppIcon.SETUP));
         bootstrapBtn.putClientProperty("JButton.buttonType", "roundRect");
         bootstrapBtn.setFont(new Font("SansSerif", Font.BOLD, 14));
 
@@ -2794,9 +2807,10 @@ public class Main extends JFrame {
         consoleToolbar.setOpaque(false);
         
         JTextField logSearchField = new JTextField();
-        logSearchField.putClientProperty("JTextField.placeholderText", "🔍 Search console logs...");
+        logSearchField.putClientProperty("JTextField.leadingIcon", SvgIconFactory.get(AppIcon.SEARCH, 14));
+        logSearchField.putClientProperty("JTextField.placeholderText", "Search console logs...");
         
-        JButton clearConsoleBtn = new JButton("Clear Console");
+        JButton clearConsoleBtn = new JButton("Clear Console", SvgIconFactory.get(AppIcon.TRASH));
         clearConsoleBtn.putClientProperty("JButton.buttonType", "roundRect");
         clearConsoleBtn.addActionListener(e -> consoleOutput.setText(""));
         
@@ -2991,7 +3005,7 @@ public class Main extends JFrame {
         // Buttons
         eastGbc.gridy++;
         eastGbc.insets = new Insets(6, 5, 6, 5);
-        JButton updateBtn = new JButton("📥 Update ComfyUI & Nodes");
+        JButton updateBtn = new JButton("Update ComfyUI & Nodes", SvgIconFactory.get(AppIcon.DOWNLOAD));
         updateBtn.putClientProperty("JButton.buttonType", "roundRect");
         updateBtn.setFont(new Font("SansSerif", Font.BOLD, 13));
         updateBtn.setPreferredSize(new Dimension(0, 35));
@@ -3003,7 +3017,7 @@ public class Main extends JFrame {
         rightPanelEast.add(updateBtn, eastGbc);
 
         eastGbc.gridy++;
-        JButton checkUpdatesBtn = new JButton("🔍 Check Model Upgrades");
+        JButton checkUpdatesBtn = new JButton("Check Model Upgrades", SvgIconFactory.get(AppIcon.SEARCH));
         checkUpdatesBtn.putClientProperty("JButton.buttonType", "roundRect");
         checkUpdatesBtn.setFont(new Font("SansSerif", Font.BOLD, 13));
         checkUpdatesBtn.setPreferredSize(new Dimension(0, 35));
@@ -3017,7 +3031,7 @@ public class Main extends JFrame {
         rightPanelEast.add(checkUpdatesBtn, eastGbc);
 
         eastGbc.gridy++;
-        JButton storageOptBtn = new JButton("🧼 Storage Optimizer");
+        JButton storageOptBtn = new JButton("Storage Optimizer", SvgIconFactory.get(AppIcon.STORAGE_OPTIMIZER));
         storageOptBtn.putClientProperty("JButton.buttonType", "roundRect");
         storageOptBtn.setFont(new Font("SansSerif", Font.BOLD, 13));
         storageOptBtn.setPreferredSize(new Dimension(0, 35));
@@ -3134,22 +3148,22 @@ public class Main extends JFrame {
     private void showSettingsMenu(JButton parent) {
         JPopupMenu menu = new JPopupMenu();
         
-        JMenuItem pathsItem = new JMenuItem("📁 Directories...");
+        JMenuItem pathsItem = new JMenuItem("Directories...", SvgIconFactory.get(AppIcon.FOLDER));
         pathsItem.addActionListener(e -> showPathsDialog());
         
-        JMenuItem scanItem = new JMenuItem("🔍 Scan ComfyUI Installation...");
+        JMenuItem scanItem = new JMenuItem("Scan ComfyUI Installation...", SvgIconFactory.get(AppIcon.SEARCH));
         scanItem.addActionListener(e -> scanAndVerifyComfyUIInstallation(true));
 
-        JMenuItem apiItem = new JMenuItem("🔑 AI & API Keys...");
+        JMenuItem apiItem = new JMenuItem("AI & API Keys...", SvgIconFactory.get(AppIcon.SETTINGS));
         apiItem.addActionListener(e -> showApiKeysDialog());
         
-        JMenuItem bridgeItem = new JMenuItem("🚀 ComfyUI Bridge...");
+        JMenuItem bridgeItem = new JMenuItem("ComfyUI Bridge...", SvgIconFactory.get(AppIcon.LAUNCH));
         bridgeItem.addActionListener(e -> showInstallationDialog());
         
-        JMenuItem helpItem = new JMenuItem("ℹ Help...");
+        JMenuItem helpItem = new JMenuItem("Help...", SvgIconFactory.get(AppIcon.DIAGNOSTICS));
         helpItem.addActionListener(e -> showHelpDialog());
 
-        JMenuItem exitItem = new JMenuItem("❌ Exit Application");
+        JMenuItem exitItem = new JMenuItem("Exit Application", SvgIconFactory.get(AppIcon.CLOSE));
         exitItem.addActionListener(e -> performAppExit());
 
         menu.add(pathsItem);
@@ -3642,7 +3656,7 @@ public class Main extends JFrame {
 
         // Action buttons
         JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
-        JButton syncBtn = new JButton("🔄 Repair / Sync Token");
+        JButton syncBtn = new JButton("Repair / Sync Token", SvgIconFactory.get(AppIcon.RESTART));
         syncBtn.setToolTipText("Only updates the API token in your existing ComfyUI extension.");
         syncBtn.addActionListener(e -> {
             String selectedPath = pathField.getText().trim();
@@ -3657,7 +3671,7 @@ public class Main extends JFrame {
         
         JButton cancelBtn = new JButton("Cancel");
         cancelBtn.addActionListener(e -> dialog.dispose());
-        JButton installBtn = new JButton("🚀 Start Installation");
+        JButton installBtn = new JButton("Start Installation", SvgIconFactory.get(AppIcon.LAUNCH));
         installBtn.putClientProperty("JButton.buttonType", "accent");
         installBtn.addActionListener(e -> {
             String selectedPath = pathField.getText().trim();
@@ -3949,43 +3963,43 @@ public class Main extends JFrame {
         pathsHeader.putClientProperty("FlatLaf.styleClass", "h3");
         pathsHeader.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
 
-        JButton pathsBtn = new JButton("📁 Configure Directories...");
+        JButton pathsBtn = new JButton("Configure Directories...", SvgIconFactory.get(AppIcon.FOLDER));
         pathsBtn.setFont(btnFont);
         pathsBtn.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
         pathsBtn.setMaximumSize(new Dimension(360, 40));
         pathsBtn.addActionListener(e -> showPathsDialog());
 
-        JButton scanComfyBtn = new JButton("🔍 Scan ComfyUI Installation...");
+        JButton scanComfyBtn = new JButton("Scan ComfyUI Installation...", SvgIconFactory.get(AppIcon.SEARCH));
         scanComfyBtn.setFont(btnFont);
         scanComfyBtn.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
         scanComfyBtn.setMaximumSize(new Dimension(360, 40));
         scanComfyBtn.addActionListener(e -> scanAndVerifyComfyUIInstallation(true));
 
-        JButton repairBtn = new JButton("🛠️ Repair Environment Automatically...");
+        JButton repairBtn = new JButton("Repair Environment Automatically...", SvgIconFactory.get(AppIcon.SETUP));
         repairBtn.setFont(btnFont);
         repairBtn.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
         repairBtn.setMaximumSize(new Dimension(360, 40));
         repairBtn.addActionListener(e -> triggerEnvironmentRepair());
 
-        JButton fixWslBtn = new JButton("🐧 Fix WSL [wsl-pip] Dependencies...");
+        JButton fixWslBtn = new JButton("Fix WSL [wsl-pip] Dependencies...", SvgIconFactory.get(AppIcon.LINUX));
         fixWslBtn.setFont(btnFont);
         fixWslBtn.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
         fixWslBtn.setMaximumSize(new Dimension(360, 40));
         fixWslBtn.addActionListener(e -> triggerWslDependencyFix());
 
-        JButton downloadSettingsBtn = new JButton("📥 Download Settings...");
+        JButton downloadSettingsBtn = new JButton("Download Settings...", SvgIconFactory.get(AppIcon.DOWNLOAD));
         downloadSettingsBtn.setFont(btnFont);
         downloadSettingsBtn.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
         downloadSettingsBtn.setMaximumSize(new Dimension(360, 40));
         downloadSettingsBtn.addActionListener(e -> showDownloadSettingsDialog());
 
-        JButton bridgeBtn = new JButton("🚀 Install ComfyUI Bridge...");
+        JButton bridgeBtn = new JButton("Install ComfyUI Bridge...", SvgIconFactory.get(AppIcon.LAUNCH));
         bridgeBtn.setFont(btnFont);
         bridgeBtn.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
         bridgeBtn.setMaximumSize(new Dimension(360, 40));
         bridgeBtn.addActionListener(e -> showInstallationDialog());
 
-        JButton videoArchitectAutoconfigBtn = new JButton("🎬 Autoconfig Video Architect...");
+        JButton videoArchitectAutoconfigBtn = new JButton("Autoconfig Video Architect...", SvgIconFactory.get(AppIcon.VIDEO_ARCHITECT));
         videoArchitectAutoconfigBtn.setFont(btnFont);
         videoArchitectAutoconfigBtn.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
         videoArchitectAutoconfigBtn.setMaximumSize(new Dimension(360, 40));
@@ -4111,19 +4125,19 @@ public class Main extends JFrame {
         aiHeader.putClientProperty("FlatLaf.styleClass", "h3");
         aiHeader.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
 
-        JButton apiBtn = new JButton("🎙️ Audio & TTS Settings...");
+        JButton apiBtn = new JButton("Audio & TTS Settings...", SvgIconFactory.get(AppIcon.AUDIO));
         apiBtn.setFont(btnFont);
         apiBtn.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
         apiBtn.setMaximumSize(new Dimension(360, 40));
         apiBtn.addActionListener(e -> showApiKeysDialog());
 
-        JButton helpBtn = new JButton("ℹ Show Help & Instructions");
+        JButton helpBtn = new JButton("Show Help & Instructions", SvgIconFactory.get(AppIcon.HELP));
         helpBtn.setFont(btnFont);
         helpBtn.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
         helpBtn.setMaximumSize(new Dimension(360, 40));
         helpBtn.addActionListener(e -> showHelpDialog());
 
-        JButton resetSettingsBtn = new JButton("🔄 Reset Application Settings...");
+        JButton resetSettingsBtn = new JButton("Reset Application Settings...", SvgIconFactory.get(AppIcon.RESTART));
         resetSettingsBtn.setFont(btnFont);
         resetSettingsBtn.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
         resetSettingsBtn.setMaximumSize(new Dimension(360, 40));
@@ -4140,7 +4154,7 @@ public class Main extends JFrame {
             }
         });
 
-        JButton parseBlueprintsBtn = new JButton("🔍 Parse blueprints");
+        JButton parseBlueprintsBtn = new JButton("Parse blueprints", SvgIconFactory.get(AppIcon.BLUEPRINT_GALLERY));
         parseBlueprintsBtn.setFont(btnFont);
         parseBlueprintsBtn.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
         parseBlueprintsBtn.setMaximumSize(new Dimension(360, 40));

@@ -3,6 +3,8 @@ package de.tki.comfymodels.ui;
 import de.tki.comfymodels.service.IModelValidator;
 import de.tki.comfymodels.service.impl.ConfigService;
 import de.tki.comfymodels.service.impl.ModelHashRegistry;
+import de.tki.comfymodels.ui.icons.AppIcon;
+import de.tki.comfymodels.ui.icons.SvgIconFactory;
 
 import javax.swing.*;
 import java.awt.*;
@@ -35,8 +37,8 @@ public class DeduplicationDialog extends JDialog {
         setLayout(new BorderLayout(10, 10));
 
         JPanel topPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 10));
-        scanBtn = new JButton("🔍 Scan for Duplicates");
-        deduplicateBtn = new JButton("🔗 Safe Delete & Hardlink");
+        scanBtn = new JButton("Scan for Duplicates", SvgIconFactory.get(AppIcon.SEARCH));
+        deduplicateBtn = new JButton("Safe Delete & Hardlink", SvgIconFactory.get(AppIcon.LINK));
         deduplicateBtn.setEnabled(false);
         topPanel.add(scanBtn);
         topPanel.add(deduplicateBtn);

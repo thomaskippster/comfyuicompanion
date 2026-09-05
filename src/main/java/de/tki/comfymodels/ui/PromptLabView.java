@@ -1,5 +1,7 @@
 package de.tki.comfymodels.ui;
 
+import de.tki.comfymodels.ui.icons.AppIcon;
+import de.tki.comfymodels.ui.icons.SvgIconFactory;
 import org.springframework.stereotype.Component;
 
 import javax.swing.*;
@@ -109,7 +111,7 @@ public class PromptLabView extends JPanel {
         promptModelCombo.setFont(new Font("SansSerif", Font.PLAIN, 14));
         modelRow.add(promptModelCombo, BorderLayout.CENTER);
 
-        JButton btnRefreshModels = new JButton("🔄");
+        JButton btnRefreshModels = new JButton(SvgIconFactory.get(AppIcon.REFRESH));
         btnRefreshModels.setToolTipText("Refresh models list from ComfyUI");
         btnRefreshModels.addActionListener(e -> {
             if (controller != null) controller.onRefreshModels();
@@ -158,7 +160,7 @@ public class PromptLabView extends JPanel {
         promptSubjectField.setFont(new Font("SansSerif", Font.PLAIN, 14));
         subjectRow.add(promptSubjectField, BorderLayout.CENTER);
 
-        btnSuggestSubject = new JButton("✨ Suggest");
+        btnSuggestSubject = new JButton("Suggest", SvgIconFactory.get(AppIcon.SUGGEST));
         btnSuggestSubject.setFont(new Font("SansSerif", Font.BOLD, 12));
         btnSuggestSubject.putClientProperty("Button.background", ThemeManager.getAccentColor());
         btnSuggestSubject.putClientProperty("Button.foreground", Color.WHITE);
@@ -185,7 +187,7 @@ public class PromptLabView extends JPanel {
         sugTitle.setForeground(Color.GRAY);
         headerPanel.add(sugTitle, BorderLayout.CENTER);
 
-        JButton btnCloseSug = new JButton("✕");
+        JButton btnCloseSug = new JButton(SvgIconFactory.get(AppIcon.CLOSE, 10));
         btnCloseSug.setFont(new Font("SansSerif", Font.PLAIN, 10));
         btnCloseSug.addActionListener(e -> {
             promptSubjectSuggestionsWrapper.setVisible(false);
@@ -465,7 +467,7 @@ public class PromptLabView extends JPanel {
         promptLabProgressBar.setPreferredSize(new Dimension(0, 25));
         imagePreviewTabPanel.add(promptLabProgressBar, BorderLayout.SOUTH);
 
-        promptLabRightTabbedPane.addTab("🖼️ Image Preview", imagePreviewTabPanel);
+        promptLabRightTabbedPane.addTab("Image Preview", SvgIconFactory.get(AppIcon.GALLERY), imagePreviewTabPanel);
 
         // TAB B: JSON Workflow
         promptJsonArea = new JTextArea("{\n  \"prompt\": {}\n}");
@@ -474,7 +476,7 @@ public class PromptLabView extends JPanel {
         jsonScroll.setOpaque(false);
         jsonScroll.getViewport().setOpaque(false);
         jsonScroll.setBorder(BorderFactory.createEmptyBorder());
-        promptLabRightTabbedPane.addTab("📝 JSON Workflow", jsonScroll);
+        promptLabRightTabbedPane.addTab("JSON Workflow", SvgIconFactory.get(AppIcon.FILE_TEXT), jsonScroll);
 
         rightPanel.add(promptLabRightTabbedPane, BorderLayout.CENTER);
 
@@ -492,7 +494,7 @@ public class PromptLabView extends JPanel {
         consoleScroll.setBorder(BorderFactory.createEmptyBorder());
         rightBottomPanel.add(consoleScroll, BorderLayout.CENTER);
 
-        btnSendToComfy = new JButton("🚀 Send to ComfyUI");
+        btnSendToComfy = new JButton("Send to ComfyUI", SvgIconFactory.get(AppIcon.SEND));
         btnSendToComfy.setFont(new Font("SansSerif", Font.BOLD, 14));
         btnSendToComfy.putClientProperty("Button.background", new Color(255, 204, 0));
         btnSendToComfy.putClientProperty("Button.foreground", Color.BLACK);

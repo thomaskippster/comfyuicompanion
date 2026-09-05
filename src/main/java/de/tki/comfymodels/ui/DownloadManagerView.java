@@ -1,5 +1,7 @@
 package de.tki.comfymodels.ui;
 
+import de.tki.comfymodels.ui.icons.AppIcon;
+import de.tki.comfymodels.ui.icons.SvgIconFactory;
 import org.springframework.stereotype.Component;
 
 import javax.swing.*;
@@ -82,13 +84,13 @@ public class DownloadManagerView extends JPanel {
         JPanel toolbar = new JPanel(new FlowLayout(FlowLayout.LEFT, 12, 0));
         toolbar.setOpaque(false);
 
-        JButton verifyBtn = new JButton("🔍 Quick Check");
+        JButton verifyBtn = new JButton("Quick Check", SvgIconFactory.get(AppIcon.QUICK_CHECK));
         verifyBtn.putClientProperty("JButton.buttonType", "roundRect");
         verifyBtn.addActionListener(e -> {
             if (listener != null) listener.onVerifyLocalModels(false);
         });
         
-        JButton optimizeBtn = new JButton("👯 Storage Optimizer");
+        JButton optimizeBtn = new JButton("Storage Optimizer", SvgIconFactory.get(AppIcon.STORAGE_OPTIMIZER));
         optimizeBtn.putClientProperty("JButton.buttonType", "roundRect");
         optimizeBtn.addActionListener(e -> {
             int confirm = JOptionPane.showConfirmDialog(this, 
@@ -100,13 +102,13 @@ public class DownloadManagerView extends JPanel {
             }
         });
 
-        JButton archiveBtn = new JButton("📦 Archive...");
+        JButton archiveBtn = new JButton("Archive...", SvgIconFactory.get(AppIcon.ARCHIVE));
         archiveBtn.putClientProperty("JButton.buttonType", "roundRect");
         archiveBtn.addActionListener(e -> {
             if (listener != null) listener.onShowArchiveDialog();
         });
 
-        JButton diagnosticBtn = new JButton("🩺 Diagnostics");
+        JButton diagnosticBtn = new JButton("Diagnostics", SvgIconFactory.get(AppIcon.DIAGNOSTICS));
         diagnosticBtn.putClientProperty("JButton.buttonType", "roundRect");
         diagnosticBtn.addActionListener(e -> {
             if (listener != null) listener.onRunDiagnostics();
@@ -260,13 +262,13 @@ public class DownloadManagerView extends JPanel {
         workflowInputTabs.putClientProperty("JTabbedPane.tabType", "card");
         workflowInputTabs.setOpaque(false);
         
-        workflowInputTabs.addTab("📝 JSON Source", jsonPanel);
+        workflowInputTabs.addTab("JSON Source", SvgIconFactory.get(AppIcon.FILE_TEXT), jsonPanel);
         
         workflowGraphPanel = new WorkflowGraphPanel();
         workflowGraphPanel.putClientProperty("FlatLaf.style", "arc: 16; background: $Card.background; border: 15,15,15,15,$Card.border,1,16");
         workflowGraphPanel.setOpaque(false);
         setupDragAndDrop(workflowGraphPanel);
-        workflowInputTabs.addTab("📊 Visual Graph", workflowGraphPanel);
+        workflowInputTabs.addTab("Visual Graph", SvgIconFactory.get(AppIcon.GRAPH), workflowGraphPanel);
         
         splitPane.setOpaque(false);
         splitPane.setTopComponent(workflowInputTabs);

@@ -12,6 +12,8 @@ import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import de.tki.comfymodels.ui.icons.AppIcon;
+import de.tki.comfymodels.ui.icons.SvgIconFactory;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
@@ -172,7 +174,7 @@ public class VideoArchitectTab extends JPanel {
         videoModelCombo.setFont(new Font("SansSerif", Font.PLAIN, 13));
         modelRow.add(videoModelCombo, BorderLayout.CENTER);
 
-        JButton btnRefreshModels = new JButton("🔄");
+        JButton btnRefreshModels = new JButton(SvgIconFactory.get(AppIcon.REFRESH));
         btnRefreshModels.setToolTipText("Refresh video models list from ComfyUI");
         btnRefreshModels.addActionListener(e -> logToConsole("Refreshed video pipelines from ComfyUI."));
         modelRow.add(btnRefreshModels, BorderLayout.EAST);
@@ -217,7 +219,7 @@ public class VideoArchitectTab extends JPanel {
         promptSubjectField.setFont(new Font("SansSerif", Font.PLAIN, 13));
         subjectRow.add(promptSubjectField, BorderLayout.CENTER);
 
-        btnSuggestSubject = new JButton("✨ Deconstruct");
+        btnSuggestSubject = new JButton("Deconstruct", SvgIconFactory.get(AppIcon.SUGGEST));
         btnSuggestSubject.setFont(new Font("SansSerif", Font.BOLD, 12));
         btnSuggestSubject.putClientProperty("Button.background", ThemeManager.getAccentColor());
         btnSuggestSubject.putClientProperty("Button.foreground", Color.WHITE);
@@ -261,7 +263,7 @@ public class VideoArchitectTab extends JPanel {
             }
         });
 
-        JButton clearSpeaker = new JButton("❌");
+        JButton clearSpeaker = new JButton(SvgIconFactory.get(AppIcon.CLOSE, 12));
         clearSpeaker.setToolTipText("Clear Start Image (Pure Text-to-Video)");
         clearSpeaker.addActionListener(e -> {
             speakerImageField.setText("");
@@ -367,7 +369,7 @@ public class VideoArchitectTab extends JPanel {
         leftPanel.add(Box.createVerticalStrut(18));
 
         // 6. Autonomous Action
-        btnAutoPilot = new JButton("🤖 Agent: Auto-Pilot (End-to-End)");
+        btnAutoPilot = new JButton("Agent: Auto-Pilot (End-to-End)", SvgIconFactory.get(AppIcon.AGENT));
         btnAutoPilot.setFont(new Font("SansSerif", Font.BOLD, 13));
         btnAutoPilot.putClientProperty("Button.background", new Color(255, 204, 0));
         btnAutoPilot.putClientProperty("Button.foreground", Color.BLACK);
@@ -409,11 +411,11 @@ public class VideoArchitectTab extends JPanel {
         JPanel toolbar = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 2));
         toolbar.setOpaque(false);
 
-        addSceneBtn = new JButton("➕ Add Scene");
+        addSceneBtn = new JButton("Add Scene", SvgIconFactory.get(AppIcon.ADD));
         addSceneBtn.addActionListener(e -> showEditSceneDialog(null, true));
         toolbar.add(addSceneBtn);
 
-        editSceneBtn = new JButton("✏️ Edit");
+        editSceneBtn = new JButton("Edit", SvgIconFactory.get(AppIcon.EDIT));
         editSceneBtn.addActionListener(e -> {
             Scene selected = timelineListView.getSelectedValue();
             if (selected != null) {
@@ -424,7 +426,7 @@ public class VideoArchitectTab extends JPanel {
         });
         toolbar.add(editSceneBtn);
 
-        visualFilterBtn = new JButton("🎨 Visual Filter (OpenCV)");
+        visualFilterBtn = new JButton("Visual Filter (OpenCV)", SvgIconFactory.get(AppIcon.PALETTE));
         visualFilterBtn.setToolTipText("Adjust frame contrast and brightness with native OpenCV real-time preview.");
         visualFilterBtn.addActionListener(e -> {
             Scene selected = timelineListView.getSelectedValue();
@@ -436,19 +438,19 @@ public class VideoArchitectTab extends JPanel {
         });
         toolbar.add(visualFilterBtn);
 
-        playVideoBtn = new JButton("▶ Play Video");
+        playVideoBtn = new JButton("Play Video", SvgIconFactory.get(AppIcon.PLAY));
         playVideoBtn.addActionListener(e -> handlePreviewSceneVideo());
         toolbar.add(playVideoBtn);
 
-        moveUpBtn = new JButton("⬆ Up");
+        moveUpBtn = new JButton("Up");
         moveUpBtn.addActionListener(e -> handleMoveScene(-1));
         toolbar.add(moveUpBtn);
 
-        moveDownBtn = new JButton("⬇ Down");
+        moveDownBtn = new JButton("Down");
         moveDownBtn.addActionListener(e -> handleMoveScene(1));
         toolbar.add(moveDownBtn);
 
-        deleteBtn = new JButton("🗑 Delete");
+        deleteBtn = new JButton("Delete", SvgIconFactory.get(AppIcon.DELETE));
         deleteBtn.addActionListener(e -> handleDeleteScene());
         toolbar.add(deleteBtn);
 
@@ -492,7 +494,7 @@ public class VideoArchitectTab extends JPanel {
         timelineScroll.setBorder(BorderFactory.createEmptyBorder());
         timelineTabPanel.add(timelineScroll, BorderLayout.CENTER);
 
-        videoRightTabbedPane.addTab("🎞️ Timeline Sequence", timelineTabPanel);
+        videoRightTabbedPane.addTab("Timeline Sequence", SvgIconFactory.get(AppIcon.VIDEO_ARCHITECT), timelineTabPanel);
 
         // TAB 2: Scene / Video Preview
         JPanel previewTabPanel = new JPanel(new BorderLayout(10, 10));
@@ -518,7 +520,7 @@ public class VideoArchitectTab extends JPanel {
         previewScroll.setBorder(BorderFactory.createEmptyBorder());
         previewTabPanel.add(previewScroll, BorderLayout.CENTER);
 
-        videoRightTabbedPane.addTab("🖼️ Scene Preview", previewTabPanel);
+        videoRightTabbedPane.addTab("Scene Preview", SvgIconFactory.get(AppIcon.GALLERY), previewTabPanel);
 
         // TAB 3: Storyboard JSON
         storyboardJsonArea = new JTextArea("[]");
@@ -528,7 +530,7 @@ public class VideoArchitectTab extends JPanel {
         jsonScroll.setOpaque(false);
         jsonScroll.getViewport().setOpaque(false);
         jsonScroll.setBorder(BorderFactory.createEmptyBorder());
-        videoRightTabbedPane.addTab("📝 Storyboard JSON", jsonScroll);
+        videoRightTabbedPane.addTab("Storyboard JSON", SvgIconFactory.get(AppIcon.FILE_TEXT), jsonScroll);
 
         rightPanel.add(videoRightTabbedPane, BorderLayout.CENTER);
 
@@ -562,13 +564,13 @@ public class VideoArchitectTab extends JPanel {
         executionRow.setOpaque(false);
         executionRow.setPreferredSize(new Dimension(0, 45));
 
-        btnGenerateScenes = new JButton("🚀 1. Generate All Scenes");
+        btnGenerateScenes = new JButton("1. Generate All Scenes", SvgIconFactory.get(AppIcon.LAUNCH));
         btnGenerateScenes.setFont(new Font("SansSerif", Font.BOLD, 14));
         btnGenerateScenes.putClientProperty("Button.background", ThemeManager.getAccentColor());
         btnGenerateScenes.putClientProperty("Button.foreground", Color.WHITE);
         btnGenerateScenes.addActionListener(e -> handleVideoGeneration());
 
-        btnMasterRender = new JButton("🎬 2. Stitch Videos (Master Render)");
+        btnMasterRender = new JButton("2. Stitch Videos (Master Render)", SvgIconFactory.get(AppIcon.VIDEO_ARCHITECT));
         btnMasterRender.setFont(new Font("SansSerif", Font.BOLD, 14));
         btnMasterRender.putClientProperty("Button.background", new Color(255, 204, 0));
         btnMasterRender.putClientProperty("Button.foreground", Color.BLACK);

@@ -2,6 +2,8 @@ package de.tki.comfymodels.ui;
 
 import de.tki.comfymodels.service.impl.UpdaterService;
 import de.tki.comfymodels.service.impl.UpdaterService.RepoStatus;
+import de.tki.comfymodels.ui.icons.AppIcon;
+import de.tki.comfymodels.ui.icons.SvgIconFactory;
 
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
@@ -36,8 +38,8 @@ public class AutoUpdaterDialog extends JDialog {
         topPanel.add(titleLabel, BorderLayout.WEST);
 
         JPanel btnPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
-        scanBtn = new JButton("🔍 Scan for Updates");
-        updateBtn = new JButton("📥 Update Selected");
+        scanBtn = new JButton("Scan for Updates", SvgIconFactory.get(AppIcon.SEARCH));
+        updateBtn = new JButton("Update Selected", SvgIconFactory.get(AppIcon.DOWNLOAD));
         updateBtn.setEnabled(false);
         btnPanel.add(scanBtn);
         btnPanel.add(updateBtn);

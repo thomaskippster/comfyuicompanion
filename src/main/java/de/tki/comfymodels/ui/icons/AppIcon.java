@@ -32,6 +32,7 @@ public enum AppIcon {
     DELETE("icons/svg/trash.svg"),
     TRASH("icons/svg/trash.svg"),
     PLAY("icons/svg/play.svg"),
+    PAUSE("icons/svg/pause.svg"),
     SEND("icons/svg/rocket.svg"),
     SEARCH("icons/svg/search.svg"),
     DOWNLOAD("icons/svg/download.svg"),

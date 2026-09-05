@@ -44,16 +44,18 @@ public class ModelArchitectureService implements IModelArchitectureService {
     private ComfyModelAnalyzer modelAnalyzer;
     private final ModelListService modelListService;
 
+    private final de.tki.comfymodels.service.IDefaultCacheBootstrapper cacheBootstrapper;
+
     public ModelArchitectureService() {
-        this(null, null, null, null);
+        this(null, null, null, null, null);
     }
 
     public ModelArchitectureService(ConfigService configService) {
-        this(configService, null, null, null);
+        this(configService, null, null, null, null);
     }
 
     public ModelArchitectureService(ConfigService configService, ComfyUIArchitectureClassifier classifier) {
-        this(configService, classifier, null, null);
+        this(configService, classifier, null, null, null);
     }
 
     @Autowired
@@ -61,11 +63,13 @@ public class ModelArchitectureService implements IModelArchitectureService {
             @Autowired(required = false) ConfigService configService,
             @Autowired(required = false) ComfyUIArchitectureClassifier classifier,
             @Autowired(required = false) ComfyModelAnalyzer modelAnalyzer,
-            @Autowired(required = false) ModelListService modelListService) {
+            @Autowired(required = false) ModelListService modelListService,
+            @Autowired(required = false) de.tki.comfymodels.service.IDefaultCacheBootstrapper cacheBootstrapper) {
         this.configService = configService;
         this.classifier = classifier;
         this.modelAnalyzer = modelAnalyzer;
         this.modelListService = modelListService;
+        this.cacheBootstrapper = cacheBootstrapper;
     }
 
     private final List<Map<String, Object>> blueprintScanResults = new java.util.concurrent.CopyOnWriteArrayList<>();
@@ -99,6 +103,9 @@ public class ModelArchitectureService implements IModelArchitectureService {
 
     @PostConstruct
     public void init() {
+        if (cacheBootstrapper != null) {
+            cacheBootstrapper.bootstrapDefaultCache();
+        }
         reloadMappings();
         loadArchitectureCacheFromFile();
         loadResolvedDefaultsFromFile();
@@ -502,12 +509,12 @@ public class ModelArchitectureService implements IModelArchitectureService {
                     Map<String, Object> blueprintMap = new java.util.HashMap<>();
                     blueprintMap.put("name", baseName);
                     blueprintMap.put("filename", file.getName());
-                    blueprintMap.put("filePath", file.getAbsolutePath());
+                    blueprintMap.put("filePath", "companion_blueprints/" + file.getName());
                     blueprintMap.put("category", category);
                     blueprintMap.put("description", description);
                     blueprintMap.put("mediaType", mediaType);
                     blueprintMap.put("mediaSubtype", mediaSubtype);
-                    blueprintMap.put("previewPath", previewPath);
+                    blueprintMap.put("previewPath", previewPath != null && previewPath.startsWith("http") ? previewPath : "");
                     blueprintMap.put("requiredModels", requiredModels);
                     scanList.add(blueprintMap);
 

@@ -15,15 +15,41 @@ import java.nio.file.Files;
 import java.util.Locale;
 import java.util.concurrent.CompletableFuture;
 
+import de.tki.comfymodels.service.IConfigService;
+
 @Service
 public class WorkflowDownloader implements IWorkflowDownloader {
     private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(WorkflowDownloader.class);
 
     private final IComfyRegistryClient registryClient;
+    private final IConfigService configService;
 
     @Autowired
-    public WorkflowDownloader(IComfyRegistryClient registryClient) {
+    public WorkflowDownloader(IComfyRegistryClient registryClient, @Autowired(required = false) IConfigService configService) {
         this.registryClient = registryClient;
+        this.configService = configService;
+    }
+
+    public WorkflowDownloader(IComfyRegistryClient registryClient) {
+        this(registryClient, null);
+    }
+
+    private File getUserWorkflowsDir() {
+        if (configService != null) {
+            return configService.getUserWorkflowsDir();
+        }
+        File dir = new File("user_workflows");
+        if (!dir.exists()) {
+            dir.mkdirs();
+        }
+        return dir;
+    }
+
+    private File getShippedWorkflowsDir() {
+        if (configService != null) {
+            return configService.getShippedWorkflowsDir();
+        }
+        return new File("workflows");
     }
 
     @Override
@@ -38,25 +64,29 @@ public class WorkflowDownloader implements IWorkflowDownloader {
         // Sanitize name for files
         String baseName = sanitizeFileName(workflow.getTitle());
 
-        File workflowsDir = new File("workflows");
-        if (!workflowsDir.exists()) {
-            workflowsDir.mkdirs();
-        }
+        File userDir = getUserWorkflowsDir();
+        File jsonFile = new File(userDir, baseName + ".json");
 
-        File jsonFile = new File(workflowsDir, baseName + ".json");
-
-        // Fast-path: If the workflow JSON already exists locally, return it immediately without network roundtrip
+        // Fast-path: Check user workflows directory first
         if (jsonFile.exists() && jsonFile.length() > 0) {
-            logger.info("⚡ [WorkflowDownloader] Using local cached workflow JSON: " + jsonFile.getAbsolutePath());
-            ensureThumbnailCachedAsync(workflowsDir, baseName, thumbUrl);
+            logger.info("⚡ [WorkflowDownloader] Using local cached user workflow JSON: " + jsonFile.getAbsolutePath());
+            ensureThumbnailCachedAsync(userDir, baseName, thumbUrl);
             return CompletableFuture.completedFuture(jsonFile);
         }
 
-        // Step 1: Download JSON payload immediately
+        // Fast-path fallback: Check shipped workflows directory (read-only)
+        File shippedDir = getShippedWorkflowsDir();
+        File shippedFile = new File(shippedDir, baseName + ".json");
+        if (shippedFile.exists() && shippedFile.length() > 0) {
+            logger.info("⚡ [WorkflowDownloader] Using shipped workflow JSON: " + shippedFile.getAbsolutePath());
+            return CompletableFuture.completedFuture(shippedFile);
+        }
+
+        // Step 1: Download JSON payload immediately into userDir
         CompletableFuture<byte[]> jsonDownload = registryClient.downloadFileAsync(jsonUrl);
         
-        // Step 2: Download Thumbnail in background (fire-and-forget, does not block workflow JSON readiness)
-        ensureThumbnailCachedAsync(workflowsDir, baseName, thumbUrl);
+        // Step 2: Download Thumbnail in background (fire-and-forget, into userDir)
+        ensureThumbnailCachedAsync(userDir, baseName, thumbUrl);
 
         return jsonDownload.thenApply(jsonBytes -> {
             try {

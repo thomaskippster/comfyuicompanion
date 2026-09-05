@@ -98,6 +98,7 @@ public class Main extends JFrame {
     private de.tki.comfymodels.controller.DownloadManagerController downloadManagerController;
     private de.tki.comfymodels.service.IWorkflowDownloader workflowDownloader;
     private de.tki.comfymodels.service.impl.AppLifecycleManager appLifecycleManager;
+    private de.tki.comfymodels.service.IDefaultCacheBootstrapper defaultCacheBootstrapper;
 
 
     private JProgressBar progressCpu;
@@ -251,7 +252,8 @@ public class Main extends JFrame {
                 @Autowired(required = false) de.tki.comfymodels.ui.DownloadManagerView downloadManagerView,
                 @Autowired(required = false) de.tki.comfymodels.controller.DownloadManagerController downloadManagerController,
                 @Autowired(required = false) de.tki.comfymodels.service.IWorkflowDownloader workflowDownloader,
-                @Autowired(required = false) de.tki.comfymodels.service.impl.AppLifecycleManager appLifecycleManager) {
+                @Autowired(required = false) de.tki.comfymodels.service.impl.AppLifecycleManager appLifecycleManager,
+                @Autowired(required = false) de.tki.comfymodels.service.IDefaultCacheBootstrapper defaultCacheBootstrapper) {
         this(analyzer, downloadManager, workflowService, searchService, modelValidator,
              restBridge, archiveService, lifecycleService, diagnosticService, profileManager,
              bootstrapper, processController, civitaiService, huggingFaceService);
@@ -279,6 +281,7 @@ public class Main extends JFrame {
         this.downloadManagerController = downloadManagerController;
         this.workflowDownloader = workflowDownloader;
         this.appLifecycleManager = appLifecycleManager;
+        this.defaultCacheBootstrapper = defaultCacheBootstrapper;
     }
 
     public Main(IModelAnalyzer analyzer, IDownloadManager downloadManager,
@@ -318,6 +321,10 @@ public class Main extends JFrame {
         this.huggingFaceService = huggingFaceService;
     }
     public void launch(String[] args) {
+        if (defaultCacheBootstrapper != null) {
+            defaultCacheBootstrapper.bootstrapDefaultCache();
+        }
+
         // Initialize ProfileManager with app storage directory
         Path appData = Paths.get(System.getProperty("user.home"), ".comfyui-companion");
         try { Files.createDirectories(appData); } catch (Exception ex) {

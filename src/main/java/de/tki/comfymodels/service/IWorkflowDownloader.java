@@ -6,7 +6,7 @@ import java.util.concurrent.CompletableFuture;
 
 public interface IWorkflowDownloader {
     /**
-     * Downloads the workflow JSON and its thumbnail, saving them in the application's local workflows/ directory.
+     * Downloads the workflow JSON and its thumbnail, saving them in the isolated user_workflows/ directory.
      * The files will be saved with the same sanitized name matching the workflow's title.
      *
      * @param workflow the workflow to download

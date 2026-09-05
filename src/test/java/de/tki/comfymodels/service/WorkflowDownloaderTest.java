@@ -28,13 +28,21 @@ public class WorkflowDownloaderTest {
 
     @AfterEach
     void cleanUp() {
-        File testFile = new File("workflows", "test_resilient_workflow.json");
-        if (testFile.exists()) {
-            testFile.delete();
+        File testUserFile = new File("user_workflows", "test_resilient_workflow.json");
+        if (testUserFile.exists()) {
+            testUserFile.delete();
         }
-        File testThumb = new File("workflows", "test_resilient_workflow.png");
-        if (testThumb.exists()) {
-            testThumb.delete();
+        File testUserThumb = new File("user_workflows", "test_resilient_workflow.png");
+        if (testUserThumb.exists()) {
+            testUserThumb.delete();
+        }
+        File testShippedFile = new File("workflows", "test_resilient_workflow.json");
+        if (testShippedFile.exists()) {
+            testShippedFile.delete();
+        }
+        File testShippedThumb = new File("workflows", "test_resilient_workflow.png");
+        if (testShippedThumb.exists()) {
+            testShippedThumb.delete();
         }
     }
 
@@ -64,6 +72,7 @@ public class WorkflowDownloaderTest {
 
         assertNotNull(result);
         assertTrue(result.exists(), "Workflow JSON file should have been written to disk");
+        assertEquals(new File("user_workflows", "test_resilient_workflow.json").getAbsolutePath(), result.getAbsolutePath());
         String content = Files.readString(result.toPath(), StandardCharsets.UTF_8);
         assertEquals(expectedJson, content);
 
@@ -83,17 +92,17 @@ public class WorkflowDownloaderTest {
     }
 
     @Test
-    void testDownloadWorkflowAsync_usesLocalFileIfAlreadyCached() throws Exception {
+    void testDownloadWorkflowAsync_usesUserWorkflowIfAlreadyCached() throws Exception {
         ComfyRegistryWorkflow workflow = new ComfyRegistryWorkflow();
         workflow.setId("cached-wf");
         workflow.setTitle("Test Resilient Workflow");
         workflow.setJsonDownloadUrl("https://raw.githubusercontent.com/example/cached_workflow.json");
 
-        File workflowsDir = new File("workflows");
-        if (!workflowsDir.exists()) {
-            workflowsDir.mkdirs();
+        File userDir = new File("user_workflows");
+        if (!userDir.exists()) {
+            userDir.mkdirs();
         }
-        File existingFile = new File(workflowsDir, "test_resilient_workflow.json");
+        File existingFile = new File(userDir, "test_resilient_workflow.json");
         Files.writeString(existingFile.toPath(), "{\"cached\": true}", StandardCharsets.UTF_8);
 
         CompletableFuture<File> future = workflowDownloader.downloadWorkflowAsync(workflow);
@@ -102,6 +111,28 @@ public class WorkflowDownloaderTest {
         assertNotNull(result);
         assertEquals(existingFile.getAbsolutePath(), result.getAbsolutePath());
         // Verify no network request was made for JSON
+        verify(mockRegistryClient, never()).downloadFileAsync(workflow.getJsonDownloadUrl());
+    }
+
+    @Test
+    void testDownloadWorkflowAsync_usesShippedWorkflowFallbackIfPresent() throws Exception {
+        ComfyRegistryWorkflow workflow = new ComfyRegistryWorkflow();
+        workflow.setId("shipped-wf");
+        workflow.setTitle("Test Resilient Workflow");
+        workflow.setJsonDownloadUrl("https://raw.githubusercontent.com/example/shipped_workflow.json");
+
+        File shippedDir = new File("workflows");
+        if (!shippedDir.exists()) {
+            shippedDir.mkdirs();
+        }
+        File shippedFile = new File(shippedDir, "test_resilient_workflow.json");
+        Files.writeString(shippedFile.toPath(), "{\"shipped\": true}", StandardCharsets.UTF_8);
+
+        CompletableFuture<File> future = workflowDownloader.downloadWorkflowAsync(workflow);
+        File result = future.get();
+
+        assertNotNull(result);
+        assertEquals(shippedFile.getAbsolutePath(), result.getAbsolutePath());
         verify(mockRegistryClient, never()).downloadFileAsync(workflow.getJsonDownloadUrl());
     }
 }

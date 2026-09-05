@@ -1,5 +1,7 @@
 package de.tki.comfymodels.ui;
 
+import de.tki.comfymodels.ui.icons.AppIcon;
+import de.tki.comfymodels.ui.icons.SvgIconFactory;
 import org.springframework.stereotype.Component;
 
 import javax.swing.*;
@@ -118,8 +120,8 @@ public class DashboardView extends JPanel {
 
         JPanel profileButtons = new JPanel(new GridLayout(1, 2, 8, 0));
         profileButtons.setOpaque(false);
-        JButton addProfileBtn = new JButton("➕ Add");
-        JButton removeProfileBtn = new JButton("➖ Remove");
+        JButton addProfileBtn = new JButton("Add", SvgIconFactory.get(AppIcon.ADD));
+        JButton removeProfileBtn = new JButton("Remove", SvgIconFactory.get(AppIcon.REMOVE));
         profileButtons.add(addProfileBtn);
         profileButtons.add(removeProfileBtn);
         leftPanel.add(profileButtons, BorderLayout.SOUTH);
@@ -164,26 +166,26 @@ public class DashboardView extends JPanel {
         JPanel actionPanel = new JPanel(new GridLayout(1, 5, 12, 12));
         actionPanel.setOpaque(false);
 
-        launchBtn = new JButton("🚀 Launch");
+        launchBtn = new JButton("Launch", SvgIconFactory.get(AppIcon.LAUNCH));
         launchBtn.putClientProperty("JButton.buttonType", "accent");
         launchBtn.setFont(new Font("SansSerif", Font.BOLD, 14));
 
-        restartBtn = new JButton("🔄 Restart");
+        restartBtn = new JButton("Restart", SvgIconFactory.get(AppIcon.RESTART));
         restartBtn.putClientProperty("JButton.buttonType", "roundRect");
         restartBtn.setFont(new Font("SansSerif", Font.BOLD, 14));
         restartBtn.setEnabled(false);
 
-        stopBtn = new JButton("⏹ Stop");
+        stopBtn = new JButton("Stop", SvgIconFactory.get(AppIcon.CLOSE));
         stopBtn.putClientProperty("JButton.buttonType", "roundRect");
         stopBtn.setFont(new Font("SansSerif", Font.BOLD, 14));
         stopBtn.setEnabled(false);
 
-        browserBtn = new JButton("🌐 Browser");
+        browserBtn = new JButton("Browser", SvgIconFactory.get(AppIcon.BROWSER));
         browserBtn.putClientProperty("JButton.buttonType", "roundRect");
         browserBtn.setFont(new Font("SansSerif", Font.BOLD, 14));
         browserBtn.setEnabled(false);
 
-        bootstrapBtn = new JButton("🛠️ Setup");
+        bootstrapBtn = new JButton("Setup", SvgIconFactory.get(AppIcon.SETUP));
         bootstrapBtn.putClientProperty("JButton.buttonType", "roundRect");
         bootstrapBtn.setFont(new Font("SansSerif", Font.BOLD, 14));
 
@@ -264,9 +266,10 @@ public class DashboardView extends JPanel {
         consoleToolbar.setOpaque(false);
 
         logSearchField = new JTextField();
-        logSearchField.putClientProperty("JTextField.placeholderText", "🔍 Search console logs...");
+        logSearchField.putClientProperty("JTextField.leadingIcon", SvgIconFactory.get(AppIcon.SEARCH, 14));
+        logSearchField.putClientProperty("JTextField.placeholderText", "Search console logs...");
 
-        JButton clearConsoleBtn = new JButton("Clear Console");
+        JButton clearConsoleBtn = new JButton("Clear Console", SvgIconFactory.get(AppIcon.TRASH, 14));
         clearConsoleBtn.putClientProperty("JButton.buttonType", "roundRect");
         clearConsoleBtn.addActionListener(e -> consoleOutput.setText(""));
 
@@ -380,7 +383,7 @@ public class DashboardView extends JPanel {
         // Buttons
         eastGbc.gridy++;
         eastGbc.insets = new Insets(6, 5, 6, 5);
-        JButton updateBtn = new JButton("📥 Update ComfyUI & Nodes");
+        JButton updateBtn = new JButton("Update ComfyUI & Nodes", SvgIconFactory.get(AppIcon.DOWNLOAD));
         updateBtn.putClientProperty("JButton.buttonType", "roundRect");
         updateBtn.setFont(new Font("SansSerif", Font.BOLD, 13));
         updateBtn.setPreferredSize(new Dimension(0, 35));
@@ -390,7 +393,7 @@ public class DashboardView extends JPanel {
         rightPanelEast.add(updateBtn, eastGbc);
 
         eastGbc.gridy++;
-        JButton checkUpdatesBtn = new JButton("🔍 Check Model Upgrades");
+        JButton checkUpdatesBtn = new JButton("Check Model Upgrades", SvgIconFactory.get(AppIcon.SEARCH));
         checkUpdatesBtn.putClientProperty("JButton.buttonType", "roundRect");
         checkUpdatesBtn.setFont(new Font("SansSerif", Font.BOLD, 13));
         checkUpdatesBtn.setPreferredSize(new Dimension(0, 35));
@@ -400,7 +403,7 @@ public class DashboardView extends JPanel {
         rightPanelEast.add(checkUpdatesBtn, eastGbc);
 
         eastGbc.gridy++;
-        JButton storageOptBtn = new JButton("🧼 Storage Optimizer");
+        JButton storageOptBtn = new JButton("Storage Optimizer", SvgIconFactory.get(AppIcon.STORAGE_OPTIMIZER));
         storageOptBtn.putClientProperty("JButton.buttonType", "roundRect");
         storageOptBtn.setFont(new Font("SansSerif", Font.BOLD, 13));
         storageOptBtn.setPreferredSize(new Dimension(0, 35));

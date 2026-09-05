@@ -10,6 +10,8 @@ import de.tki.comfymodels.service.IModelValidator;
 import de.tki.comfymodels.service.IWorkflowService;
 import de.tki.comfymodels.service.impl.*;
 import de.tki.comfymodels.ui.DownloadManagerView;
+import de.tki.comfymodels.ui.icons.AppIcon;
+import de.tki.comfymodels.ui.icons.SvgIconFactory;
 import de.tki.comfymodels.util.BackgroundExecutor;
 
 import javax.swing.*;
@@ -885,7 +887,7 @@ public class DownloadManagerController implements DownloadManagerView.DownloadMa
             archiveCountLabel.setText("Selected: " + selected + " models");
         });
         
-        JButton archiveNowBtn = new JButton("📦 Move to Archive");
+        JButton archiveNowBtn = new JButton("Move to Archive", SvgIconFactory.get(AppIcon.ARCHIVE));
         archiveNowBtn.putClientProperty("JButton.buttonType", "accent");
         archiveNowBtn.addActionListener(e -> {
             List<Integer> selectedRows = new ArrayList<>();
@@ -960,7 +962,7 @@ public class DownloadManagerController implements DownloadManagerView.DownloadMa
             restoreCountLabel.setText("Selected: " + selected + " models");
         });
 
-        JButton restoreNowBtn = new JButton("🚀 Restore from Archive");
+        JButton restoreNowBtn = new JButton("Restore from Archive", SvgIconFactory.get(AppIcon.LAUNCH));
         restoreNowBtn.putClientProperty("JButton.buttonType", "accent");
         restoreNowBtn.addActionListener(e -> {
             List<Integer> selectedRows = new ArrayList<>();
@@ -978,8 +980,8 @@ public class DownloadManagerController implements DownloadManagerView.DownloadMa
         restoreBottom.add(restoreActionPanel, BorderLayout.EAST);
         restorePanel.add(restoreBottom, BorderLayout.SOUTH);
 
-        tabs.addTab("📦 Archive Models", archivePanel);
-        tabs.addTab("🚀 Restore Models", restorePanel);
+        tabs.addTab("Archive Models", SvgIconFactory.get(AppIcon.ARCHIVE), archivePanel);
+        tabs.addTab("Restore Models", SvgIconFactory.get(AppIcon.LAUNCH), restorePanel);
         
         dialog.add(tabs, BorderLayout.CENTER);
         

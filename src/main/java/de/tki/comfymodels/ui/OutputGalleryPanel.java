@@ -1,6 +1,8 @@
 package de.tki.comfymodels.ui;
 
 import de.tki.comfymodels.service.impl.ConfigService;
+import de.tki.comfymodels.ui.icons.AppIcon;
+import de.tki.comfymodels.ui.icons.SvgIconFactory;
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.MouseAdapter;
@@ -122,12 +124,12 @@ public class OutputGalleryPanel extends JPanel {
         clearBtn.addActionListener(e -> clearSelection());
         buttonPanel.add(clearBtn);
         
-        deleteBtn = new JButton("Delete Selected (0) 🗑️");
+        deleteBtn = new JButton("Delete Selected (0)", SvgIconFactory.get(AppIcon.DELETE));
         deleteBtn.setEnabled(false);
         deleteBtn.addActionListener(e -> deleteSelectedFiles());
         buttonPanel.add(deleteBtn);
         
-        JButton refreshBtn = new JButton("Refresh 🔄");
+        JButton refreshBtn = new JButton("Refresh", SvgIconFactory.get(AppIcon.REFRESH));
         refreshBtn.addActionListener(e -> refresh());
         buttonPanel.add(refreshBtn);
         
@@ -172,7 +174,7 @@ public class OutputGalleryPanel extends JPanel {
     private void updateDeleteButton() {
         if (deleteBtn != null) {
             int count = selectedFiles.size();
-            deleteBtn.setText("Delete Selected (" + count + ") 🗑️");
+            deleteBtn.setText("Delete Selected (" + count + ")");
             deleteBtn.setEnabled(count > 0);
             if (count > 0) {
                 deleteBtn.putClientProperty("Button.background", new Color(180, 50, 50));
@@ -343,9 +345,12 @@ public class OutputGalleryPanel extends JPanel {
         checkboxMap.put(file, selectCheck);
         
         if (name.toLowerCase().endsWith(".mp4")) {
-            tile.add(new JLabel("<html><center>🎥<br>" + name + "</center></html>", SwingConstants.CENTER), BorderLayout.CENTER);
+            JLabel videoLabel = new JLabel("<html><center>" + name + "</center></html>", SvgIconFactory.get(AppIcon.VIDEO_ARCHITECT, 32), SwingConstants.CENTER);
+            videoLabel.setVerticalTextPosition(SwingConstants.BOTTOM);
+            videoLabel.setHorizontalTextPosition(SwingConstants.CENTER);
+            tile.add(videoLabel, BorderLayout.CENTER);
         } else {
-            JLabel imageLabel = new JLabel("⌛ Loading...", SwingConstants.CENTER);
+            JLabel imageLabel = new JLabel("Loading...", SvgIconFactory.get(AppIcon.REFRESH, 16), SwingConstants.CENTER);
             tile.add(imageLabel, BorderLayout.CENTER);
             
             java.util.concurrent.CompletableFuture.runAsync(() -> {

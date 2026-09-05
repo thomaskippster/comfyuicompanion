@@ -10,6 +10,7 @@ import de.tki.comfymodels.service.impl.VideoEditorEngine;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import org.mockito.Mockito;
 import de.tki.comfymodels.service.impl.Video4jEditorService;
 
@@ -261,9 +262,7 @@ try { java.lang.reflect.Field f1 = service.getClass().getDeclaredField("processT
         // Find the absolute path to tools/ffmpeg/ffmpeg.exe
         File projectDir = new File("").getAbsoluteFile();
         File ffmpegExe = new File(projectDir, "tools/ffmpeg/ffmpeg.exe");
-        if (!ffmpegExe.exists()) {
-            ffmpegExe = new File("C:\\Dev\\workspace\\comfyuicompanion\\tools\\ffmpeg\\ffmpeg.exe");
-        }
+        assumeTrue(ffmpegExe.exists(), "ffmpeg not found at " + ffmpegExe.getAbsolutePath());
         
         Mockito.when(mockConfig.getFfmpegPath()).thenReturn(ffmpegExe.getAbsolutePath());
         Mockito.when(mockConfig.getComfyUIUrl()).thenReturn("http://localhost:8188"); // offline
@@ -419,9 +418,7 @@ try { java.lang.reflect.Field f1 = video4jEditorService.getClass().getDeclaredFi
         
         File projectDir = new File("").getAbsoluteFile();
         File ffmpegExe = new File(projectDir, "tools/ffmpeg/ffmpeg.exe");
-        if (!ffmpegExe.exists()) {
-            ffmpegExe = new File("C:\\Dev\\workspace\\comfyuicompanion\\tools\\ffmpeg\\ffmpeg.exe");
-        }
+        assumeTrue(ffmpegExe.exists(), "ffmpeg not found at " + ffmpegExe.getAbsolutePath());
         Mockito.when(mockConfig.getFfmpegPath()).thenReturn(ffmpegExe.getAbsolutePath());
         
         java.net.http.HttpClient mockClient = Mockito.mock(java.net.http.HttpClient.class);
@@ -625,9 +622,7 @@ try { java.lang.reflect.Field f1 = service.getClass().getDeclaredField("processT
         ConfigService mockConfig = Mockito.mock(ConfigService.class);
         File projectDir = new File("").getAbsoluteFile();
         File ffmpegExe = new File(projectDir, "tools/ffmpeg/ffmpeg.exe");
-        if (!ffmpegExe.exists()) {
-            ffmpegExe = new File("C:\\Dev\\workspace\\comfyuicompanion\\tools\\ffmpeg\\ffmpeg.exe");
-        }
+        assumeTrue(ffmpegExe.exists(), "ffmpeg not found at " + ffmpegExe.getAbsolutePath());
         Mockito.when(mockConfig.getFfmpegPath()).thenReturn(ffmpegExe.getAbsolutePath());
 
         // Create a 2-second test video

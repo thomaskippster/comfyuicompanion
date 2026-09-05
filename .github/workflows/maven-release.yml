@@ -99,7 +99,7 @@ jobs:
         run: |
           REL_VERSION="v${{ env.VERSION }}"
           PROJECT_NAME="comfyuicompanion"
-          SF_USER="${{ secrets.SF_USERNAME || 'thomaskifree' }}"
+          SF_USER="${{ secrets.SF_USERNAME }}"
 
           echo "Uploading version $REL_VERSION to project $PROJECT_NAME on SourceForge..."
 

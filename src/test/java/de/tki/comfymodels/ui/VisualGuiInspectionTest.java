@@ -90,7 +90,7 @@ public class VisualGuiInspectionTest {
 
         // 4. Save screenshots to both target and tools directory
         File targetOut = new File("target/comfyuicompanion_gui.png");
-        File toolsOut = new File("C:/Users/thoma/Desktop/Tools/comfyuicompanion_gui.png");
+        File toolsOut = new File(System.getProperty("user.home"), "Desktop/Tools/comfyuicompanion_gui.png");
         
         targetOut.getParentFile().mkdirs();
         ImageIO.write(screenshot, "png", targetOut);

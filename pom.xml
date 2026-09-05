@@ -204,14 +204,19 @@
                                         <Add-Opens>jdk.unsupported/sun.misc java.base/java.lang java.base/java.nio java.base/java.util org.openjfx.graphics/com.sun.marlin</Add-Opens>
                                     </manifestEntries>
                                 </transformer>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
                             </transformers>
                             <filters>
                                 <filter>
                                     <artifact>*:*</artifact>
                                     <excludes>
+                                        <exclude>module-info.class</exclude>
                                         <exclude>META-INF/*.SF</exclude>
                                         <exclude>META-INF/*.DSA</exclude>
                                         <exclude>META-INF/*.RSA</exclude>
+                                        <exclude>META-INF/NOTICE*</exclude>
+                                        <exclude>META-INF/LICENSE*</exclude>
+                                        <exclude>META-INF/DEPENDENCIES</exclude>
                                         <exclude>*.vault</exclude>
                                         <exclude>*.key</exclude>
                                         <exclude>app_settings.json</exclude>

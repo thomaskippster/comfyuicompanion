@@ -33,6 +33,7 @@ object_info*.json
 cache/
 checkpoints/
 templates/comfyui/*_cache.json
+user_workflows/
 
 # Local config & assets
 __pycache__/

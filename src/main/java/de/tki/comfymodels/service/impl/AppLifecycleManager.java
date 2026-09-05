@@ -23,6 +23,16 @@ public class AppLifecycleManager {
     private final IDownloadManager downloadManager;
     private final HardwareMonitorService hardwareMonitorService;
     private final ProcessTracker processTracker;
+    private final de.tki.comfymodels.service.IDefaultCacheBootstrapper cacheBootstrapper;
+
+    public AppLifecycleManager(ConfigService configService,
+                               ModelListService modelListService,
+                               ComfyProcessController processController,
+                               IDownloadManager downloadManager,
+                               HardwareMonitorService hardwareMonitorService,
+                               ProcessTracker processTracker) {
+        this(configService, modelListService, processController, downloadManager, hardwareMonitorService, processTracker, null);
+    }
 
     @Autowired
     public AppLifecycleManager(ConfigService configService,
@@ -30,16 +40,21 @@ public class AppLifecycleManager {
                                @Autowired(required = false) ComfyProcessController processController,
                                @Autowired(required = false) IDownloadManager downloadManager,
                                @Autowired(required = false) HardwareMonitorService hardwareMonitorService,
-                               @Autowired(required = false) ProcessTracker processTracker) {
+                               @Autowired(required = false) ProcessTracker processTracker,
+                               @Autowired(required = false) de.tki.comfymodels.service.IDefaultCacheBootstrapper cacheBootstrapper) {
         this.configService = configService;
         this.modelListService = modelListService;
         this.processController = processController;
         this.downloadManager = downloadManager;
         this.hardwareMonitorService = hardwareMonitorService;
         this.processTracker = processTracker;
+        this.cacheBootstrapper = cacheBootstrapper;
     }
 
     public boolean unlockDefaultVault() {
+        if (cacheBootstrapper != null) {
+            cacheBootstrapper.bootstrapDefaultCache();
+        }
         String defaultPass = System.getProperty("user.name", "default") + "@" + getHostName();
         try {
             configService.unlock(defaultPass);

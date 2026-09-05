@@ -56,16 +56,27 @@ public class LocalModelValidator implements ILocalModelValidator {
             "safetensors", "sft", "ckpt", "bin", "pt", "pth", "onnx"
     );
 
-    @Autowired
     public LocalModelValidator(ConfigService configService,
                                IComfyRegistryClient registryClient,
                                LocalModelScanner localModelScanner,
                                IModelAnalyzer modelAnalyzer) {
+        this(configService, registryClient, localModelScanner, modelAnalyzer, null);
+    }
+
+    @Autowired
+    public LocalModelValidator(ConfigService configService,
+                               IComfyRegistryClient registryClient,
+                               LocalModelScanner localModelScanner,
+                               IModelAnalyzer modelAnalyzer,
+                               @Autowired(required = false) de.tki.comfymodels.service.IDefaultCacheBootstrapper cacheBootstrapper) {
         this.configService = configService;
         this.registryClient = registryClient;
         this.localModelScanner = localModelScanner;
         this.modelAnalyzer = modelAnalyzer;
         this.objectMapper = new ObjectMapper();
+        if (cacheBootstrapper != null) {
+            cacheBootstrapper.bootstrapDefaultCache();
+        }
         initializeCache();
     }
 

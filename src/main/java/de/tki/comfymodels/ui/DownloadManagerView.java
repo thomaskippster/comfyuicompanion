@@ -145,7 +145,7 @@ public class DownloadManagerView extends JPanel {
         
         JPanel jsonButtons = new JPanel(new FlowLayout(FlowLayout.RIGHT));
         jsonButtons.setOpaque(false);
-        JButton loadJsonBtn = new JButton("Load Workflow...");
+        JButton loadJsonBtn = new JButton("Load Workflow...", SvgIconFactory.get(AppIcon.FILE_TEXT));
         loadJsonBtn.addActionListener(e -> {
             FileDialog fd = new FileDialog((Frame) SwingUtilities.getWindowAncestor(this), "Select Workflow", FileDialog.LOAD);
             fd.setVisible(true);
@@ -155,7 +155,7 @@ public class DownloadManagerView extends JPanel {
             }
         });
 
-        JButton importModelListBtn = new JButton("Import Model List...");
+        JButton importModelListBtn = new JButton("Import Model List...", SvgIconFactory.get(AppIcon.FOLDER));
         importModelListBtn.addActionListener(e -> {
             FileDialog fd = new FileDialog((Frame) SwingUtilities.getWindowAncestor(this), "Select Model List JSON", FileDialog.LOAD);
             fd.setVisible(true);
@@ -165,7 +165,7 @@ public class DownloadManagerView extends JPanel {
             }
         });
 
-        JButton analyzeBtn = new JButton("Deep Search");
+        JButton analyzeBtn = new JButton("Deep Search", SvgIconFactory.get(AppIcon.SEARCH));
         analyzeBtn.putClientProperty("JButton.buttonType", "accent");
         analyzeBtn.addActionListener(e -> {
             if (listener != null) listener.onAnalyzeJsonContent();
@@ -197,6 +197,11 @@ public class DownloadManagerView extends JPanel {
 
         modelTable = new JTable(tableModel);
         modelTable.putClientProperty("terminateEditOnFocusLost", Boolean.TRUE);
+        modelTable.setRowHeight(26);
+
+        DownloadManagerTableCellRenderer cellRenderer = new DownloadManagerTableCellRenderer();
+        modelTable.setDefaultRenderer(String.class, cellRenderer);
+        modelTable.setDefaultRenderer(Object.class, cellRenderer);
 
         modelTable.setAutoResizeMode(JTable.AUTO_RESIZE_SUBSEQUENT_COLUMNS);
         TableColumnModel colModel = modelTable.getColumnModel();
@@ -215,7 +220,7 @@ public class DownloadManagerView extends JPanel {
         colModel.getColumn(7).setPreferredWidth(253);
 
         JPopupMenu modelTablePopup = new JPopupMenu();
-        JMenuItem searchCivitaiItem = new JMenuItem("Search on Civitai & select version...");
+        JMenuItem searchCivitaiItem = new JMenuItem("Search on Civitai & select version...", SvgIconFactory.get(AppIcon.SEARCH));
         modelTablePopup.add(searchCivitaiItem);
 
         modelTable.addMouseListener(new MouseAdapter() {
@@ -289,7 +294,7 @@ public class DownloadManagerView extends JPanel {
         
         JPanel actionButtons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 5));
         actionButtons.setOpaque(false);
-        downloadButton = new JButton("Start queue");
+        downloadButton = new JButton("Start queue", SvgIconFactory.get(AppIcon.DOWNLOAD));
         downloadButton.putClientProperty("JButton.buttonType", "accent");
         downloadButton.setFont(new Font("SansSerif", Font.BOLD, 13));
         downloadButton.setEnabled(false);
@@ -297,7 +302,7 @@ public class DownloadManagerView extends JPanel {
             if (listener != null) listener.onStartDownloadQueue();
         });
         
-        pauseButton = new JButton("Pause");
+        pauseButton = new JButton("Pause", SvgIconFactory.get(AppIcon.PAUSE));
         pauseButton.putClientProperty("JButton.buttonType", "roundRect");
         pauseButton.setFont(new Font("SansSerif", Font.BOLD, 13));
         pauseButton.setEnabled(false);
@@ -305,7 +310,7 @@ public class DownloadManagerView extends JPanel {
             if (listener != null) listener.onTogglePause();
         });
         
-        stopButton = new JButton("Stop");
+        stopButton = new JButton("Stop", SvgIconFactory.get(AppIcon.STOP));
         stopButton.putClientProperty("JButton.buttonType", "roundRect");
         stopButton.setFont(new Font("SansSerif", Font.BOLD, 13));
         stopButton.setEnabled(false);

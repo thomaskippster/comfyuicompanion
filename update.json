@@ -3,7 +3,10 @@
     {
       "method": "shell.run",
       "params": {
-        "message": "git pull",
+        "message": [
+          "git stash -u",
+          "git pull"
+        ],
         "title": "Updating Source Code"
       }
     },

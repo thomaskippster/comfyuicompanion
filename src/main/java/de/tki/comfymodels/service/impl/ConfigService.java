@@ -121,7 +121,7 @@ public class ConfigService implements IConfigService {
                                         if (!trimmed.isEmpty()) {
                                             Path fullPath = basePath.resolve(trimmed).toAbsolutePath().normalize();
                                             if (!Files.exists(fullPath)) {
-                                                logger.warn("   ⚠️ [Config] Warning: Path does not exist (will be created on demand): " + fullPath);
+                                                logger.debug("   ℹ️ [Config] Path does not exist yet (will be created on demand): {}", fullPath);
                                             }
                                             pathResolver.addExtraModelPath(type, fullPath);
                                             logger.info("   -> Mapping [" + type + "] to: " + fullPath);
@@ -377,6 +377,24 @@ public class ConfigService implements IConfigService {
             appDataDir.mkdirs();
         }
         return new File(appDataDir, filename);
+    }
+
+    @Override
+    public File getUserWorkflowsDir() {
+        File dir = new File(getAppDataPath(), "user_workflows");
+        if (!dir.exists()) {
+            dir.mkdirs();
+        }
+        return dir;
+    }
+
+    @Override
+    public File getShippedWorkflowsDir() {
+        File shipped = new File("workflows");
+        if (!shipped.exists()) {
+            shipped = new File(System.getProperty("user.dir"), "workflows");
+        }
+        return shipped;
     }
 
     public void unlock(String password) throws Exception {

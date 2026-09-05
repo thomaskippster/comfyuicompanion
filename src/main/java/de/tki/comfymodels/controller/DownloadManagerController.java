@@ -179,7 +179,9 @@ public class DownloadManagerController implements DownloadManagerView.DownloadMa
     public void onTogglePause() {
         downloadManager.togglePause();
         if (view != null && view.getPauseButton() != null) {
-            view.getPauseButton().setText(downloadManager.isPaused() ? "Resume" : "Pause");
+            boolean paused = downloadManager.isPaused();
+            view.getPauseButton().setText(paused ? "Resume" : "Pause");
+            view.getPauseButton().setIcon(SvgIconFactory.get(paused ? AppIcon.PLAY : AppIcon.PAUSE));
         }
         updateDownloadButtonsState();
     }
@@ -478,6 +480,7 @@ public class DownloadManagerController implements DownloadManagerView.DownloadMa
 
         if (!isDownloading) {
             pauseButton.setText("Pause");
+            pauseButton.setIcon(SvgIconFactory.get(AppIcon.PAUSE));
         }
     }
 

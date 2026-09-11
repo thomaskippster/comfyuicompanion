@@ -6,6 +6,8 @@ import com.thomaskippster.comfyuicompanion.domain.graph.ComfyWorkflow;
 import com.thomaskippster.comfyuicompanion.service.graph.WorkflowBuilder;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.net.Socket;
 import java.util.UUID;
@@ -14,6 +16,8 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 @Disabled("End-to-end integration test requiring live ComfyUI instance with specific LTXV model")
 public class ComfyUIEndToEndTest {
+
+    private static final Logger logger = LoggerFactory.getLogger(ComfyUIEndToEndTest.class);
 
     @Test
     public void testWorkflowAndReceiveImage() throws Exception {
@@ -66,19 +70,19 @@ public class ComfyUIEndToEndTest {
         ComfyHttpClient client = new ComfyHttpClient("http://127.0.0.1:8188");
         String clientId = UUID.randomUUID().toString();
         
-        System.out.println("Sende Workflow an ComfyUI...");
+        logger.info("Sende Workflow an ComfyUI...");
         String promptId = client.triggerWorkflow(workflow, clientId).block();
-        System.out.println("Prompt ID erhalten: " + promptId);
+        logger.info("Prompt ID erhalten: {}", promptId);
 
         boolean done = false;
         while (!done) {
             JsonNode history = client.getHistory(promptId).block();
             if (history != null && history.has(promptId)) {
                 JsonNode outputs = history.get(promptId).get("outputs");
-                System.out.println("Generierung erfolgreich! Outputs: " + outputs);
+                logger.info("Generierung erfolgreich! Outputs: {}", outputs);
                 done = true;
             } else {
-                System.out.println("Warte auf Abschluss...");
+                logger.info("Warte auf Abschluss...");
                 Thread.sleep(2000);
             }
         }

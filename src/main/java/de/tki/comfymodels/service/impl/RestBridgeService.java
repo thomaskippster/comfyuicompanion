@@ -72,13 +72,40 @@ public class RestBridgeService {
         this.workflowConsumer = consumer;
     }
 
+    public boolean consumeWorkflow(String workflowJson) {
+        if (workflowConsumer != null) {
+            workflowConsumer.accept(workflowJson);
+            return true;
+        }
+        return false;
+    }
+
     /** Registers a one-shot consumer for the next browser-converted workflow payload. */
     public void setWorkflowReadyConsumer(Consumer<String> consumer) {
         this.workflowReadyConsumer = consumer;
     }
 
+    public boolean consumeWorkflowReady(String apiJson) {
+        Consumer<String> consumer = workflowReadyConsumer;
+        workflowReadyConsumer = null; // one-shot: clear immediately
+        if (consumer != null) {
+            consumer.accept(apiJson);
+            return true;
+        }
+        return false;
+    }
+
+    public String getExpectedApiToken() {
+        return expectedApiToken;
+    }
+
     public void startServer() {
         if (server != null) return;
+        // Port 12345 is natively served by the Reactive Netty WebFlux container (RestBridgeController)
+        if (port == 12345) {
+            logger.info("REST Bridge endpoints are actively served by Spring WebFlux on port 12345.");
+            return;
+        }
         try {
             server = HttpServer.create(new InetSocketAddress("127.0.0.1", port), 0);
             serverExecutor = Executors.newThreadPerTaskExecutor(

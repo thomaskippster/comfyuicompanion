@@ -115,4 +115,41 @@ public class VaultIntegrationTest {
         assertFalse(reconfigService.isDarkMode(), "Dark mode persistent setting should be preserved as false!");
         assertTrue(new File(tempDir.toFile(), "app_settings.json").exists(), "app_settings.json must exist and not be deleted!");
     }
+
+    @Test
+    public void testGcmAndLegacyCbcCompatibility() throws Exception {
+        String secret = "sensitive_api_token_12345";
+        String password = "master_vault_password";
+
+        // 1. New encryption must use GCM format
+        String encryptedGcm = encryptionUtils.encrypt(secret, password);
+        assertTrue(encryptedGcm.startsWith("$GCM$v1$"), "Modern cipher must start with $GCM$v1$ prefix");
+        
+        // 2. Decrypt GCM
+        String decryptedGcm = encryptionUtils.decrypt(encryptedGcm, password);
+        assertEquals(secret, decryptedGcm);
+
+        // 3. Encrypt legacy CBC manually with legacy static salt to simulate existing user vault
+        byte[] legacySalt = "ComfyUI-Vault-Salt-2026".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        byte[] iv = new byte[16];
+        new java.security.SecureRandom().nextBytes(iv);
+        javax.crypto.spec.IvParameterSpec ivspec = new javax.crypto.spec.IvParameterSpec(iv);
+
+        javax.crypto.SecretKeyFactory factory = javax.crypto.SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256");
+        java.security.spec.KeySpec spec = new javax.crypto.spec.PBEKeySpec(password.toCharArray(), legacySalt, 65536, 256);
+        javax.crypto.SecretKey tmp = factory.generateSecret(spec);
+        javax.crypto.spec.SecretKeySpec secretKey = new javax.crypto.spec.SecretKeySpec(tmp.getEncoded(), "AES");
+
+        javax.crypto.Cipher cipher = javax.crypto.Cipher.getInstance("AES/CBC/PKCS5Padding");
+        cipher.init(javax.crypto.Cipher.ENCRYPT_MODE, secretKey, ivspec);
+        byte[] encryptedBytes = cipher.doFinal(secret.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        byte[] combined = new byte[iv.length + encryptedBytes.length];
+        System.arraycopy(iv, 0, combined, 0, iv.length);
+        System.arraycopy(encryptedBytes, 0, combined, iv.length, encryptedBytes.length);
+        String legacyCiphertext = java.util.Base64.getEncoder().encodeToString(combined);
+
+        // 4. Decrypt legacy CBC via modern EncryptionUtils
+        String decryptedLegacy = encryptionUtils.decrypt(legacyCiphertext, password);
+        assertEquals(secret, decryptedLegacy, "Legacy CBC vault ciphertext must be seamlessly decrypted");
+    }
 }

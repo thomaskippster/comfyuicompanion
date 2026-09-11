@@ -25,6 +25,7 @@ import org.springframework.context.annotation.AnnotationConfigApplicationContext
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.stereotype.Component;
+import org.springframework.web.reactive.config.EnableWebFlux;
 
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
@@ -733,9 +734,6 @@ public class Main extends JFrame {
         }
     }
 
-    private boolean isOllamaConfigured() {
-        return false;
-    }
 
     private void updateAiModelDisplay() {
         backgroundExecutor.execute(() -> {
@@ -1994,18 +1992,20 @@ public class Main extends JFrame {
                         try {
                             resultJson = conversionFuture.get(2500, java.util.concurrent.TimeUnit.MILLISECONDS);
                         } catch (java.util.concurrent.TimeoutException te) {
-                            SwingUtilities.invokeLater(() -> promptLabConsole.append(
-                                    "🌐 Opening ComfyUI in your browser (http://127.0.0.1:8188) to process conversion...\n"));
-                            try {
-                                if (java.awt.Desktop.isDesktopSupported() && java.awt.Desktop.getDesktop().isSupported(java.awt.Desktop.Action.BROWSE)) {
-                                    java.awt.Desktop.getDesktop().browse(new java.net.URI(comfyUrl));
-                                }
-                            } catch (Exception ignored) {}
+                            if (!configService.isHideComfyUI()) {
+                                SwingUtilities.invokeLater(() -> promptLabConsole.append(
+                                        "🌐 Opening ComfyUI in your browser (http://127.0.0.1:8188) to process conversion...\n"));
+                                try {
+                                    if (java.awt.Desktop.isDesktopSupported() && java.awt.Desktop.getDesktop().isSupported(java.awt.Desktop.Action.BROWSE)) {
+                                        java.awt.Desktop.getDesktop().browse(new java.net.URI(comfyUrl));
+                                    }
+                                } catch (Exception ignored) {}
 
-                            try {
-                                Thread.sleep(1500);
-                                comfyApiClient.convertWorkflow(comfyUrl, parsedJson, "http://127.0.0.1:12345/api/workflow-ready");
-                            } catch (Exception ignored) {}
+                                try {
+                                    Thread.sleep(1500);
+                                    comfyApiClient.convertWorkflow(comfyUrl, parsedJson, "http://127.0.0.1:12345/api/workflow-ready");
+                                } catch (Exception ignored) {}
+                            }
 
                             try {
                                 resultJson = conversionFuture.get(10, java.util.concurrent.TimeUnit.SECONDS);
@@ -2914,7 +2914,7 @@ public class Main extends JFrame {
                 processController.stop();
                 try { Thread.sleep(1500); } catch (InterruptedException ignored) {}
                 SwingUtilities.invokeLater(() -> {
-                    startComfyUI(selected, false, true);
+                    startComfyUI(selected, false, !configService.isHideComfyUI());
                 });
             });
         });
@@ -2936,7 +2936,7 @@ public class Main extends JFrame {
         launchBtn.addActionListener(e -> {
             de.tki.comfymodels.domain.LaunchProfile selected = profileList.getSelectedValue();
             if (selected == null) { JOptionPane.showMessageDialog(this, "Please select a launch profile."); return; }
-            startComfyUI(selected, true, true);
+            startComfyUI(selected, true, !configService.isHideComfyUI());
         });
 
         stopBtn.addActionListener(e -> { consoleOutput.append("\n⏹ Stopping ComfyUI process...\n"); processController.stop(); });
@@ -4060,6 +4060,7 @@ public class Main extends JFrame {
         hideComfyuiCheck = new JCheckBox("Hide ComfyUI Web Client (Replacement Mode)");
         hideComfyuiCheck.setFont(checkFont);
         hideComfyuiCheck.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        hideComfyuiCheck.setToolTipText("When enabled, ComfyUI Companion replaces the web UI and suppresses opening the browser window when ComfyUI starts.");
         hideComfyuiCheck.setSelected(configService.isHideComfyUI());
         hideComfyuiCheck.addActionListener(e -> configService.setHideComfyUI(hideComfyuiCheck.isSelected()));
 
@@ -4357,7 +4358,7 @@ public class Main extends JFrame {
                     if (consoleOutput != null) {
                         consoleOutput.append("\n🔄 Restarting ComfyUI...\n");
                     }
-                    startComfyUI(activeProfile, false, true);
+                    startComfyUI(activeProfile, false, !configService.isHideComfyUI());
                 } else {
                     statusLabel.setText("⚠️ No launch profile available to start ComfyUI.");
                 }
@@ -4950,7 +4951,8 @@ public class Main extends JFrame {
                     String url = log.substring(idx).trim();
                     backgroundExecutor.execute(() -> {
                         try {
-                            if (Desktop.isDesktopSupported() && openBrowser) {
+                            boolean shouldOpen = openBrowser && (configService == null || !configService.isHideComfyUI());
+                            if (Desktop.isDesktopSupported() && shouldOpen) {
                                 Desktop.getDesktop().browse(new java.net.URI(url));
                             }
                         } catch (Exception e) {
@@ -4987,7 +4989,7 @@ public class Main extends JFrame {
             if (profileList != null) {
                 profileList.setSelectedValue(cpuProfile, true);
             }
-            startComfyUI(cpuProfile, true, true);
+            startComfyUI(cpuProfile, true, !configService.isHideComfyUI());
         } else {
             JOptionPane.showMessageDialog(this, "CPU Mode profile not found. Please add '--cpu' to your launch profile extra args in Settings.");
         }
@@ -5042,6 +5044,7 @@ public class Main extends JFrame {
     }
 
     @Configuration
+    @EnableWebFlux
     @ComponentScan(basePackages = {"de.tki.comfymodels", "com.thomaskippster.comfyuicompanion"})
     public static class AppConfig {
         @org.springframework.context.annotation.Bean

@@ -30,24 +30,32 @@ public class ResourceGapAnalyzer {
     private final LargeFileDownloadService downloadService;
     private final ComfyHttpClient comfyHttpClient;
 
+    private final com.thomaskippster.comfyuicompanion.service.graph.GraphMutationService graphMutationService;
+    private final de.tki.comfymodels.service.SafePathValidator safePathValidator;
+
     @Value("${comfyui.models.path:models}")
     private String modelsBasePath;
 
+    @org.springframework.beans.factory.annotation.Autowired
     public ResourceGapAnalyzer(SafetensorsInspectorService inspectorService,
                                ModelArchitectureAnalyzer architectureAnalyzer,
                                HuggingFaceClient huggingFaceClient,
                                LargeFileDownloadService downloadService,
-                               ComfyHttpClient comfyHttpClient) {
+                               ComfyHttpClient comfyHttpClient,
+                               @org.springframework.beans.factory.annotation.Autowired(required = false) com.thomaskippster.comfyuicompanion.service.graph.GraphMutationService graphMutationService,
+                               @org.springframework.beans.factory.annotation.Autowired(required = false) de.tki.comfymodels.service.SafePathValidator safePathValidator) {
         this.inspectorService = inspectorService;
         this.architectureAnalyzer = architectureAnalyzer;
         this.huggingFaceClient = huggingFaceClient;
         this.downloadService = downloadService;
         this.comfyHttpClient = comfyHttpClient;
+        this.graphMutationService = graphMutationService;
+        this.safePathValidator = safePathValidator;
     }
 
     /**
-     * Steuert den gesamten Flow: Gap erkannt -> Hugging Face gesucht -> 
-     * Modell gestreamt -> /refresh_models getriggert -> Graph asynchron an /prompt gesendet.
+     * Steuert den gesamten Flow nicht-blockierend und reaktiv:
+     * Gap erkannt -> Hugging Face reaktiv gesucht -> Modell gestreamt -> /cmfc/refresh-models getriggert -> Graph asynchron ausgeführt.
      */
     public Mono<String> resolveGapAndExecute(GenerationIntent intent, ComfyWorkflow workflow, String clientId) {
         MissingResourceReport report = analyze(intent);
@@ -57,45 +65,54 @@ public class ResourceGapAnalyzer {
             return comfyHttpClient.triggerWorkflow(workflow, clientId);
         }
 
-        logger.info("Auto-Provisioning: Lücke erkannt. Suche auf Hugging Face nach '{}' (Architektur: {})", 
+        logger.info("Auto-Provisioning: Lücke erkannt. Suche reaktiv auf Hugging Face nach '{}' (Architektur: {})", 
                 report.getKeyword(), report.getArchitecture());
 
-        List<ModelRecommendation> recommendations = huggingFaceClient.searchModels(report.getKeyword(), report.getArchitecture());
-        
-        if (recommendations.isEmpty()) {
-            return Mono.error(new RuntimeException("Auto-Provisioning fehlgeschlagen: Kein passendes Modell auf Hugging Face gefunden."));
-        }
+        return huggingFaceClient.searchModelsReactive(report.getKeyword(), report.getArchitecture())
+                .flatMap(recommendations -> {
+                    if (recommendations == null || recommendations.isEmpty()) {
+                        return Mono.error(new RuntimeException("Auto-Provisioning fehlgeschlagen: Kein passendes Modell auf Hugging Face gefunden."));
+                    }
 
-        ModelRecommendation topPick = recommendations.get(0); // Bestes Modell (nach Downloads sortiert)
-        Path targetPath = Paths.get(modelsBasePath, "checkpoints", topPick.getName() + "_" + report.getArchitecture() + ".safetensors");
-        
-        // Verzeichnisse sicherstellen
-        try {
-            Files.createDirectories(targetPath.getParent());
-        } catch (IOException e) {
-            return Mono.error(new RuntimeException("Konnte Modell-Ordner nicht erstellen", e));
-        }
+                    ModelRecommendation topPick = recommendations.get(0);
+                    String rawName = topPick.getName();
+                    String safeModelName = safePathValidator != null
+                            ? safePathValidator.sanitizeFilename(rawName)
+                            : (rawName != null ? rawName.replaceAll("[^a-zA-Z0-9._-]", "_") : "model");
 
-        logger.info("Auto-Provisioning: Starte Download von {} nach {}", topPick.getDownloadUrl(), targetPath);
+                    Path basePath = Paths.get(modelsBasePath).toAbsolutePath().normalize();
+                    Path targetPath = basePath.resolve("checkpoints").resolve(safeModelName + "_" + report.getArchitecture() + ".safetensors");
+                    if (safePathValidator != null) {
+                        safePathValidator.validateWithinBase(basePath, targetPath);
+                    }
 
-        // Reaktive Pipeline: Download (Flux) -> Refresh (Mono) -> Execute (Mono)
-        return downloadService.downloadModel(topPick.getDownloadUrl(), targetPath)
-                // Loggt alle 10% den Fortschritt, um die Konsole nicht zu fluten
-                .filter(progress -> progress % 10.0 < 1.0) 
-                .doOnNext(progress -> logger.info("Download Fortschritt: {}%", String.format("%.1f", progress)))
-                .then(Mono.defer(() -> {
-                    logger.info("Auto-Provisioning: Download abgeschlossen. Triggere ComfyUI Hot-Reload (/refresh_models).");
-                    return comfyHttpClient.triggerModelRefresh();
-                }))
-                .then(Mono.defer(() -> {
-                    logger.info("Auto-Provisioning: Hot-Reload erfolgreich. Sende verzögerten Ursprungs-Graphen an ComfyUI.");
-                    // Update den CheckpointLoaderSimple Node im Graphen mit dem echten neuen Dateinamen
-                    workflow.getNodes().values().stream()
-                            .filter(node -> "CheckpointLoaderSimple".equals(node.getClassType()))
-                            .forEach(node -> node.getInputs().put("ckpt_name", targetPath.getFileName().toString()));
-                            
-                    return comfyHttpClient.triggerWorkflow(workflow, clientId);
-                }));
+                    try {
+                        Files.createDirectories(targetPath.getParent());
+                    } catch (IOException e) {
+                        return Mono.error(new RuntimeException("Konnte Modell-Ordner nicht erstellen", e));
+                    }
+
+                    logger.info("Auto-Provisioning: Starte Download von {} nach {}", topPick.getDownloadUrl(), targetPath);
+
+                    return downloadService.downloadModel(topPick.getDownloadUrl(), targetPath)
+                            .filter(progress -> progress % 10.0 < 1.0)
+                            .doOnNext(progress -> logger.info("Download Fortschritt: {}%", String.format("%.1f", progress)))
+                            .then(Mono.defer(() -> {
+                                logger.info("Auto-Provisioning: Download abgeschlossen. Triggere ComfyUI Hot-Reload (/cmfc/refresh-models).");
+                                return comfyHttpClient.triggerModelRefresh();
+                            }))
+                            .then(Mono.defer(() -> {
+                                logger.info("Auto-Provisioning: Hot-Reload erfolgreich. Tausche Checkpoint im Graphen generisch aus.");
+                                if (graphMutationService != null) {
+                                    graphMutationService.swapCheckpoint(workflow, targetPath.getFileName().toString());
+                                } else {
+                                    workflow.getNodes().values().stream()
+                                            .filter(node -> "CheckpointLoaderSimple".equals(node.getClassType()))
+                                            .forEach(node -> node.getInputs().put("ckpt_name", targetPath.getFileName().toString()));
+                                }
+                                return comfyHttpClient.triggerWorkflow(workflow, clientId);
+                            }));
+                });
     }
 
     public MissingResourceReport analyze(GenerationIntent intent) {

@@ -22,12 +22,12 @@ public class AgenticWorkflowOrchestrator {
 
     private static final Logger logger = LoggerFactory.getLogger(AgenticWorkflowOrchestrator.class);
 
-    private final LlmRoutingService llmRoutingService;
+    private final com.thomaskippster.comfyuicompanion.service.llm.ILlmRoutingService llmRoutingService;
     private final SafetensorsInspectorService inspectorService;
     private final ComfyHttpClient comfyHttpClient;
     private final ResourceGapAnalyzer gapAnalyzer;
 
-    public AgenticWorkflowOrchestrator(LlmRoutingService llmRoutingService,
+    public AgenticWorkflowOrchestrator(com.thomaskippster.comfyuicompanion.service.llm.ILlmRoutingService llmRoutingService,
                                        SafetensorsInspectorService inspectorService,
                                        ComfyHttpClient comfyHttpClient,
                                        ResourceGapAnalyzer gapAnalyzer) {

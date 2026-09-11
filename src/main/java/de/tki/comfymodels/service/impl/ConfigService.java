@@ -446,7 +446,7 @@ public class ConfigService implements IConfigService {
                     
                     JSONObject legacyVaultSettings = new JSONObject();
                     String[] vaultKeys = {
-                        "gemini_api_key", "hf_token", "models_path", "archive_path",
+                        "hf_token", "models_path", "archive_path",
                         "background_mode", "shutdown_after_download", "comfyui_path",
                         "python_path", "comfy_launch_command", "comfy_working_dir",
                         "restart_after_download", "comfyui_url", "api_token"
@@ -855,17 +855,8 @@ public class ConfigService implements IConfigService {
     public synchronized int getSegmentsPerFile() { return settings.optInt("segments_per_file", 4); }
     public synchronized void setSegmentsPerFile(int segments) { settings.put("segments_per_file", Math.max(1, Math.min(8, segments))); save(); }
 
-    public synchronized boolean isUseOllama() { return settings.optBoolean("use_ollama", false); }
-    public synchronized void setUseOllama(boolean enabled) { settings.put("use_ollama", enabled); save(); }
-
     public synchronized boolean isHideComfyUI() { return settings.optBoolean("hide_comfyui", true); }
     public synchronized void setHideComfyUI(boolean enabled) { settings.put("hide_comfyui", enabled); save(); }
-
-    public synchronized String getOllamaUrl() { return settings.optString("ollama_url", "http://localhost:11434"); }
-    public synchronized void setOllamaUrl(String url) { settings.put("ollama_url", url); save(); }
-
-    public synchronized String getOllamaModel() { return settings.optString("ollama_model", "llama3"); }
-    public synchronized void setOllamaModel(String model) { settings.put("ollama_model", model); save(); }
 
     public synchronized boolean isUseSymlinksOnRestore() { return settings.optBoolean("use_symlinks_on_restore", false); }
     public synchronized void setUseSymlinksOnRestore(boolean enabled) { settings.put("use_symlinks_on_restore", enabled); save(); }

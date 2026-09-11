@@ -115,7 +115,7 @@ public class DefaultDownloadManager implements IDownloadManager {
         
         java.util.concurrent.atomic.AtomicBoolean finishedCalled = new java.util.concurrent.atomic.AtomicBoolean(false);
         
-        new Thread(() -> {
+        Thread.ofVirtual().name("Download-Queue-Worker").unstarted(() -> {
             try {
                 int size = models.size();
                 java.util.concurrent.CompletableFuture<?>[] futures = new java.util.concurrent.CompletableFuture[size];

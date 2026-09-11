@@ -7,10 +7,17 @@ import org.springframework.stereotype.Service;
 public class Gemma4Service {
 
     private final LocalGemmaService localGemmaService;
+    private final de.tki.comfymodels.service.IVideoPromptOptimizer promptOptimizer;
+
+    public Gemma4Service(LocalGemmaService localGemmaService) {
+        this(localGemmaService, new VideoPromptOptimizer());
+    }
 
     @Autowired
-    public Gemma4Service(LocalGemmaService localGemmaService) {
+    public Gemma4Service(LocalGemmaService localGemmaService,
+                         @Autowired(required = false) de.tki.comfymodels.service.IVideoPromptOptimizer promptOptimizer) {
         this.localGemmaService = localGemmaService;
+        this.promptOptimizer = promptOptimizer != null ? promptOptimizer : new VideoPromptOptimizer();
     }
 
     public boolean isGemmaAvailable() {
@@ -29,21 +36,17 @@ public class Gemma4Service {
         return localGemmaService;
     }
 
+    public de.tki.comfymodels.service.IVideoPromptOptimizer getPromptOptimizer() {
+        return promptOptimizer;
+    }
+
     public String generateScript(String idea) throws Exception {
         if (localGemmaService == null || !localGemmaService.isModelDownloaded()) {
             throw new IllegalStateException("Local Gemma model is not downloaded. " +
                     "Please download the Gemma-3-4B model first to unlock AI storyboard deconstruction.");
         }
 
-        String systemPrompt = "You are an expert Hollywood director, storyboard architect, and AI video prompt engineer.\n" +
-                "Deconstruct the user's master video idea into sequential, cinematic visual scenes.\n" +
-                "For EACH scene, you MUST generate an object in a JSON array with exactly these keys:\n" +
-                "1. 'scene_id': sequential identifier ('S1', 'S2', 'S3', ...)\n" +
-                "2. 'visual_prompt': a detailed, highly descriptive prompt capturing character actions, environment, cinematic camera angles, dynamic lighting, mood, and photorealistic textures for video generation (do not include any text, typography, letters, words, subtitles, captions, or overlays).\n" +
-                "3. 'duration_seconds': integer duration in seconds (typically between 3 and 8 seconds).\n" +
-                "4. 'narration_text': compelling voiceover or narration text matching the scene's visual flow.\n\n" +
-                "Return ONLY the raw JSON array starting with '[' and ending with ']'. Do not wrap it in markdown code fences or explanatory text.";
-
+        String systemPrompt = promptOptimizer.buildStoryboardSystemPrompt();
         String userPrompt = "Master Video Script / Idea:\n" + idea;
 
         return localGemmaService.generateCompletion(systemPrompt, userPrompt, 0.3f, 2048);

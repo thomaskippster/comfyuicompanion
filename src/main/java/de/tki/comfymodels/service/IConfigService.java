@@ -131,15 +131,7 @@ public interface IConfigService {
     // AI & LLM SETTINGS
     // ========================================
     
-    boolean isUseOllama();
-    void setUseOllama(boolean enabled);
-    
-    String getOllamaUrl();
-    void setOllamaUrl(String url);
-    
-    String getOllamaModel();
-    void setOllamaModel(String model);
-    
+
     String getQwenTtsModelRepo();
     void setQwenTtsModelRepo(String repo);
     

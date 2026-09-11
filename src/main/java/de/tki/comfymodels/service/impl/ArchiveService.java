@@ -10,10 +10,12 @@ import org.springframework.stereotype.Service;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.IOException;
+import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -298,16 +300,37 @@ public class ArchiveService {
             return;
         }
 
-        // Cross-drive move: Copy with progress, then delete
-        try (InputStream in = Files.newInputStream(source);
-             OutputStream out = Files.newOutputStream(target)) {
-            byte[] buffer = new byte[1024 * 64]; // 64KB buffer
-            int bytesRead;
-            while ((bytesRead = in.read(buffer)) != -1) {
-                out.write(buffer, 0, bytesRead);
-                if (progressUpdate != null) progressUpdate.accept((long) bytesRead);
+        // Cross-drive move: High-Performance Zero-Copy transfer via NIO.2 FileChannel
+        long totalSize = Files.size(source);
+        long transferred = 0;
+        final long chunkSize = 32L * 1024 * 1024; // 32MB chunks for responsive progress updates
+
+        try (FileChannel sourceChannel = FileChannel.open(source, StandardOpenOption.READ);
+             FileChannel targetChannel = FileChannel.open(target,
+                     StandardOpenOption.CREATE,
+                     StandardOpenOption.WRITE,
+                     StandardOpenOption.TRUNCATE_EXISTING)) {
+
+            while (transferred < totalSize) {
+                long count = Math.min(chunkSize, totalSize - transferred);
+                long bytesTransferred = sourceChannel.transferTo(transferred, count, targetChannel);
+                if (bytesTransferred <= 0) {
+                    bytesTransferred = targetChannel.transferFrom(sourceChannel, transferred, count);
+                    if (bytesTransferred <= 0) {
+                        break;
+                    }
+                }
+                transferred += bytesTransferred;
+                if (progressUpdate != null) {
+                    progressUpdate.accept(bytesTransferred);
+                }
             }
         }
-        Files.delete(source);
+
+        if (transferred == totalSize) {
+            Files.delete(source);
+        } else {
+            throw new IOException("Incomplete cross-drive transfer: expected " + totalSize + " bytes, transferred " + transferred);
+        }
     }
 }

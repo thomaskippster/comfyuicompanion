@@ -28,13 +28,19 @@ class ComfyCompanionControllerTest {
     @Mock
     private ComfyHttpClient comfyHttpClient;
 
+    @Mock
+    private com.thomaskippster.comfyuicompanion.service.inspector.TriggerWordService triggerWordService;
+
+    @Mock
+    private com.thomaskippster.comfyuicompanion.service.provisioning.CustomNodeResolverService customNodeResolverService;
+
     private SafePathValidator safePathValidator;
     private ComfyCompanionController controller;
 
     @BeforeEach
     void setUp() {
         safePathValidator = new SafePathValidator();
-        controller = new ComfyCompanionController(orchestrator, comfyHttpClient, safePathValidator);
+        controller = new ComfyCompanionController(orchestrator, comfyHttpClient, safePathValidator, triggerWordService, customNodeResolverService);
     }
 
     @Test
@@ -109,4 +115,45 @@ class ComfyCompanionControllerTest {
         assertThatThrownBy(() -> controller.getImage("..\\file.png"))
                 .isInstanceOf(SecurityException.class);
     }
+
+    @Test
+    @DisplayName("getModelMetadata: should return metadata when model is found")
+    void shouldReturnModelMetadataWhenFound() {
+        var info = new com.thomaskippster.comfyuicompanion.service.inspector.TriggerWordService.ModelTriggerInfo(
+                "flux_dev.safetensors", "FLUX", "CHECKPOINT",
+                java.util.List.of("realistic", "cinematic"), java.util.Map.of("portrait", 42)
+        );
+        when(triggerWordService.findModelTriggerInfo("flux_dev.safetensors"))
+                .thenReturn(java.util.Optional.of(info));
+
+        var response = controller.getModelMetadata("flux_dev.safetensors").block();
+
+        assertThat(response).isNotNull();
+        assertThat(response.getStatusCode().value()).isEqualTo(200);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().architecture()).isEqualTo("FLUX");
+        assertThat(response.getBody().triggerWords()).contains("realistic", "cinematic");
+    }
+
+    @Test
+    @DisplayName("analyzeWorkflowNodes: should return node resolution report")
+    void shouldAnalyzeWorkflowNodesSuccessfully() {
+        String workflow = "{\"nodes\": [{\"type\": \"FaceDetailer\"}]}";
+        var report = new com.thomaskippster.comfyuicompanion.service.provisioning.CustomNodeResolverService.NodeResolutionReport(
+                java.util.Set.of("FaceDetailer"),
+                java.util.Set.of("FaceDetailer"),
+                java.util.List.of(new com.thomaskippster.comfyuicompanion.service.provisioning.CustomNodeResolverService.CustomNodePackage(
+                        "ImpactPack", "https://github.com/ltdrdata/ComfyUI-Impact-Pack", java.util.List.of("FaceDetailer")
+                ))
+        );
+        when(customNodeResolverService.analyzeWorkflowNodes(workflow)).thenReturn(Mono.just(report));
+
+        var result = controller.analyzeWorkflowNodes(workflow).block();
+
+        assertThat(result).isNotNull();
+        assertThat(result.missingNodeTypes()).contains("FaceDetailer");
+        assertThat(result.recommendedPackages()).hasSize(1);
+        assertThat(result.recommendedPackages().get(0).packageName()).isEqualTo("ImpactPack");
+    }
 }
+

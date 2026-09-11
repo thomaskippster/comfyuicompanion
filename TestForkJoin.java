@@ -1,1 +1,0 @@
-import java.util.concurrent.ForkJoinPool; public class TestForkJoin { public static void main(String[] args) throws Exception { ForkJoinPool.commonPool().submit(() -> { try { Class.forName("de.kherud.llama.LlamaModel"); System.out.println("Success in thread!"); } catch (Throwable t) { t.printStackTrace(); } }).get(); } }

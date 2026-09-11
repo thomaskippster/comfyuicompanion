@@ -125,27 +125,31 @@ public class ComfyLifecycleService implements IComfyLifecycleService {
                         if (isHealthy()) {
                             String url = configService.getComfyUIUrl();
                             if (browserLaunched.compareAndSet(false, true)) {
-                                logger.info("🌐 [Lifecycle] Health check passed. Launching browser: " + url);
-                                try {
-                                    if (java.awt.Desktop.isDesktopSupported() && java.awt.Desktop.getDesktop().isSupported(java.awt.Desktop.Action.BROWSE)) {
-                                        java.awt.Desktop.getDesktop().browse(new java.net.URI(url));
-                                    } else {
-                                        String cmd = de.tki.comfymodels.util.PlatformUtils.isWindows() ? "cmd /c start " + url : "xdg-open " + url;
-                                        logger.info("🌐 [Lifecycle] Desktop API not supported. Executing: " + cmd);
-                                        Process p = Runtime.getRuntime().exec(cmd);
-                                        if (p.waitFor() != 0) {
-                                            logger.error("⚠️ [Lifecycle] Browser launch process failed with exit code: " + p.exitValue());
+                                if (configService == null || !configService.isHideComfyUI()) {
+                                    logger.info("🌐 [Lifecycle] Health check passed. Launching browser: " + url);
+                                    try {
+                                        if (java.awt.Desktop.isDesktopSupported() && java.awt.Desktop.getDesktop().isSupported(java.awt.Desktop.Action.BROWSE)) {
+                                            java.awt.Desktop.getDesktop().browse(new java.net.URI(url));
+                                        } else {
+                                            String cmd = de.tki.comfymodels.util.PlatformUtils.isWindows() ? "cmd /c start " + url : "xdg-open " + url;
+                                            logger.info("🌐 [Lifecycle] Desktop API not supported. Executing: " + cmd);
+                                            Process p = Runtime.getRuntime().exec(cmd);
+                                            if (p.waitFor() != 0) {
+                                                logger.error("⚠️ [Lifecycle] Browser launch process failed with exit code: " + p.exitValue());
+                                            }
                                         }
+                                    } catch (Exception e) {
+                                        logger.error("❌ [Lifecycle] Failed to open browser: " + e.getMessage());
+                                        e.printStackTrace();
                                     }
-                                    if (onBrowserLaunched != null) {
-                                        onBrowserLaunched.run();
-                                    }
-                                } catch (Exception e) {
-                                    logger.error("❌ [Lifecycle] Failed to open browser: " + e.getMessage());
-                                    e.printStackTrace();
+                                } else {
+                                    logger.info("🌐 [Lifecycle] Health check passed. Web browser launch skipped (Hide ComfyUI Web Client / Replacement Mode is active).");
+                                }
+                                if (onBrowserLaunched != null) {
+                                    onBrowserLaunched.run();
                                 }
                             } else {
-                                logger.info("🌐 [Lifecycle] Health check passed. Browser already launched during this application run.");
+                                logger.info("🌐 [Lifecycle] Health check passed. Browser already handled during this application run.");
                                 if (onBrowserLaunched != null) {
                                     onBrowserLaunched.run();
                                 }

@@ -10,7 +10,7 @@ import org.springframework.stereotype.Service;
 import java.io.IOException;
 
 @Service
-public class LlmRoutingService {
+public class LlmRoutingService implements ILlmRoutingService {
 
     private static final Logger logger = LoggerFactory.getLogger(LlmRoutingService.class);
 

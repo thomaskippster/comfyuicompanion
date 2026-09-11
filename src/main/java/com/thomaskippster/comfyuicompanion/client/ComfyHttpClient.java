@@ -15,10 +15,20 @@ public class ComfyHttpClient {
 
     private final WebClient webClient;
 
-    public ComfyHttpClient(@Value("${comfyui.api.url:http://127.0.0.1:8188}") String baseUrl) {
-        this.webClient = WebClient.builder()
-                .baseUrl(baseUrl)
-                .build();
+    @org.springframework.beans.factory.annotation.Autowired
+    public ComfyHttpClient(
+            @Value("${comfyui.api.url:http://127.0.0.1:8188}") String baseUrl,
+            @org.springframework.beans.factory.annotation.Autowired(required = false) de.tki.comfymodels.service.impl.ConfigService configService,
+            @org.springframework.beans.factory.annotation.Autowired(required = false) WebClient.Builder webClientBuilder) {
+        String effectiveUrl = (configService != null && configService.getComfyUIUrl() != null && !configService.getComfyUIUrl().isBlank())
+                ? configService.getComfyUIUrl()
+                : baseUrl;
+        WebClient.Builder builder = webClientBuilder != null ? webClientBuilder : WebClient.builder();
+        this.webClient = builder.baseUrl(effectiveUrl).build();
+    }
+
+    public ComfyHttpClient(String baseUrl) {
+        this(baseUrl, null, null);
     }
 
     /**
@@ -76,7 +86,9 @@ public class ComfyHttpClient {
      */
     public Mono<Void> triggerModelRefresh() {
         return webClient.post()
-                .uri("/refresh_models")
+                .uri("/cmfc/refresh-models")
+                .header("Content-Type", "application/json")
+                .bodyValue("{\"force_reload\": true}")
                 .retrieve()
                 .bodyToMono(Void.class);
     }

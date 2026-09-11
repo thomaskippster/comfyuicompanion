@@ -789,12 +789,12 @@ try { java.lang.reflect.Field f1 = service.getClass().getDeclaredField("processT
         java.lang.reflect.Field widthSpinnerField = de.tki.comfymodels.ui.VideoArchitectTab.class.getDeclaredField("videoWidthSpinner");
         widthSpinnerField.setAccessible(true);
         javax.swing.JSpinner widthSpinner = (javax.swing.JSpinner) widthSpinnerField.get(tab);
-        assertEquals(1920, widthSpinner.getValue(), "Default width should be 1920");
+        assertEquals(832, widthSpinner.getValue(), "Default width should be 832 (safe 480p VRAM preset)");
 
         java.lang.reflect.Field heightSpinnerField = de.tki.comfymodels.ui.VideoArchitectTab.class.getDeclaredField("videoHeightSpinner");
         heightSpinnerField.setAccessible(true);
         javax.swing.JSpinner heightSpinner = (javax.swing.JSpinner) heightSpinnerField.get(tab);
-        assertEquals(1080, heightSpinner.getValue(), "Default height should be 1080");
+        assertEquals(480, heightSpinner.getValue(), "Default height should be 480 (safe 480p VRAM preset)");
     }
 }
 

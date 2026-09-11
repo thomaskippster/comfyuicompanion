@@ -59,6 +59,7 @@ public class ComfyPipelineService {
     private final IComfyTemplateService comfyTemplateService;
     private final de.tki.comfymodels.service.pipeline.MediaTranscodingService mediaTranscodingService;
     private final de.tki.comfymodels.service.pipeline.WorkflowTransformationService workflowTransformationService;
+    private final de.tki.comfymodels.service.IHardwareProfileService hardwareProfileService;
 
     private static final de.tki.comfymodels.service.pipeline.WorkflowTransformationService DEFAULT_TRANSFORMATION_SERVICE =
             new de.tki.comfymodels.service.pipeline.WorkflowTransformationService(null);
@@ -84,7 +85,7 @@ public class ComfyPipelineService {
             @Autowired(required = false) de.tki.comfymodels.service.pipeline.WorkflowTransformationService workflowTransformationService) {
         this(configService, HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(15)).build(),
                 processTracker, lifecycleService, modelArchitectureService, bootstrapper,
-                promptBlueprintApiService, comfyTemplateService, mediaTranscodingService, workflowTransformationService);
+                promptBlueprintApiService, comfyTemplateService, mediaTranscodingService, workflowTransformationService, null);
     }
 
     public ComfyPipelineService(
@@ -98,6 +99,22 @@ public class ComfyPipelineService {
             IComfyTemplateService comfyTemplateService,
             de.tki.comfymodels.service.pipeline.MediaTranscodingService mediaTranscodingService,
             de.tki.comfymodels.service.pipeline.WorkflowTransformationService workflowTransformationService) {
+        this(configService, httpClient, processTracker, lifecycleService, modelArchitectureService, bootstrapper,
+                promptBlueprintApiService, comfyTemplateService, mediaTranscodingService, workflowTransformationService, null);
+    }
+
+    public ComfyPipelineService(
+            ConfigService configService,
+            HttpClient httpClient,
+            ProcessTracker processTracker,
+            IComfyLifecycleService lifecycleService,
+            de.tki.comfymodels.service.IModelArchitectureService modelArchitectureService,
+            EnvironmentBootstrapperImpl bootstrapper,
+            PromptBlueprintApiService promptBlueprintApiService,
+            IComfyTemplateService comfyTemplateService,
+            de.tki.comfymodels.service.pipeline.MediaTranscodingService mediaTranscodingService,
+            de.tki.comfymodels.service.pipeline.WorkflowTransformationService workflowTransformationService,
+            de.tki.comfymodels.service.IHardwareProfileService hardwareProfileService) {
         this.configService = configService;
         this.httpClient = httpClient != null ? httpClient : HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(15)).build();
         this.processTracker = processTracker;
@@ -108,6 +125,7 @@ public class ComfyPipelineService {
         this.comfyTemplateService = comfyTemplateService;
         this.mediaTranscodingService = mediaTranscodingService;
         this.workflowTransformationService = workflowTransformationService;
+        this.hardwareProfileService = hardwareProfileService;
     }
 
     private Process startProcess(ProcessBuilder pb) throws IOException {
@@ -224,8 +242,25 @@ public class ComfyPipelineService {
         String clipName = resolveVideoModel("video_wan_clip", "umt5_xxl_fp8_e4m3fn_scaled.safetensors", availableClips);
         String vaeName = resolveVideoModel("video_wan_vae", "wan_2.1_vae.safetensors", availableVaes);
 
-        int width = scene.getWidth() > 0 ? scene.getWidth() : 1280;
-        int height = scene.getHeight() > 0 ? scene.getHeight() : 720;
+        int width = scene.getWidth() > 0 ? scene.getWidth() : 832;
+        int height = scene.getHeight() > 0 ? scene.getHeight() : 480;
+
+        if (hardwareProfileService != null) {
+            de.tki.comfymodels.domain.HardwareProfile profile = hardwareProfileService.getHardwareProfile();
+            if (profile != null && profile.tier() != null && profile.isWeakSystem()) {
+                long maxSafe = profile.tier().getMaxSafePixels();
+                if ((long) width * height > maxSafe) {
+                    double aspect = (double) width / (double) height;
+                    int targetW = profile.tier().getRecommendedWidth();
+                    int targetH = (int) Math.round(targetW / aspect);
+                    logger.warn("⚠️ [ComfyPipeline] Requested resolution {}x{} exceeds safe budget for {} ({} VRAM). Clamping to {}x{} to avoid OOM.",
+                            width, height, profile.tier(), profile.formattedVram(), targetW, targetH);
+                    width = targetW;
+                    height = targetH;
+                }
+            }
+        }
+
         // Wan 2.2 requires dimensions to be divisible by 16
         width = Math.max(256, (width / 16) * 16);
         height = Math.max(256, (height / 16) * 16);
@@ -387,8 +422,8 @@ public class ComfyPipelineService {
             JSONObject mainObj = pbService.extractApiPayload(apiPayload.toString());
             JSONObject promptObj = mainObj.getJSONObject("prompt");
 
-            int imgWidth = scene.getWidth() > 0 ? scene.getWidth() : 1920;
-            int imgHeight = scene.getHeight() > 0 ? scene.getHeight() : 1080;
+            int imgWidth = scene.getWidth() > 0 ? scene.getWidth() : 832;
+            int imgHeight = scene.getHeight() > 0 ? scene.getHeight() : 480;
             PromptBlueprintApiService.PromptLabInputs inputs = new PromptBlueprintApiService.PromptLabInputs(
                 scene.getPrompt(),
                 "blurry, low quality, distortion, bad anatomy, deformed",

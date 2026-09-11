@@ -15,19 +15,26 @@ import reactor.core.publisher.Mono;
  */
 @RestController
 @RequestMapping("/api/v1")
-@CrossOrigin(origins = "*")
+@CrossOrigin(originPatterns = {"http://localhost:*", "http://127.0.0.1:*", "http://[::1]:*"})
 public class ComfyCompanionController {
 
     private final AgenticWorkflowOrchestrator orchestrator;
     private final ComfyHttpClient comfyHttpClient;
     private final SafePathValidator safePathValidator;
 
+    private final com.thomaskippster.comfyuicompanion.service.inspector.TriggerWordService triggerWordService;
+    private final com.thomaskippster.comfyuicompanion.service.provisioning.CustomNodeResolverService customNodeResolverService;
+
     public ComfyCompanionController(AgenticWorkflowOrchestrator orchestrator,
                                     ComfyHttpClient comfyHttpClient,
-                                    SafePathValidator safePathValidator) {
+                                    SafePathValidator safePathValidator,
+                                    com.thomaskippster.comfyuicompanion.service.inspector.TriggerWordService triggerWordService,
+                                    com.thomaskippster.comfyuicompanion.service.provisioning.CustomNodeResolverService customNodeResolverService) {
         this.orchestrator = orchestrator;
         this.comfyHttpClient = comfyHttpClient;
         this.safePathValidator = safePathValidator;
+        this.triggerWordService = triggerWordService;
+        this.customNodeResolverService = customNodeResolverService;
     }
 
     /**
@@ -55,5 +62,26 @@ public class ComfyCompanionController {
     public Mono<byte[]> getImage(@PathVariable String filename) {
         String safeFilename = safePathValidator.validateFilename(filename);
         return comfyHttpClient.downloadAsset(safeFilename);
+    }
+
+    /**
+     * Extracts trigger words, activation phrases, and architecture details for a local model.
+     */
+    @GetMapping(value = "/models/{filename}/metadata", produces = MediaType.APPLICATION_JSON_VALUE)
+    public Mono<org.springframework.http.ResponseEntity<com.thomaskippster.comfyuicompanion.service.inspector.TriggerWordService.ModelTriggerInfo>> getModelMetadata(
+            @PathVariable String filename) {
+        String safeName = safePathValidator.validateFilename(filename);
+        return Mono.fromCallable(() -> triggerWordService.findModelTriggerInfo(safeName))
+                .map(opt -> opt.map(org.springframework.http.ResponseEntity::ok)
+                        .orElseGet(() -> org.springframework.http.ResponseEntity.notFound().build()));
+    }
+
+    /**
+     * Analyzes a workflow to detect missing Custom Nodes and returns recommended community packages.
+     */
+    @PostMapping(value = "/workflow/nodes/analyze", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
+    public Mono<com.thomaskippster.comfyuicompanion.service.provisioning.CustomNodeResolverService.NodeResolutionReport> analyzeWorkflowNodes(
+            @RequestBody String workflowJson) {
+        return customNodeResolverService.analyzeWorkflowNodes(workflowJson);
     }
 }

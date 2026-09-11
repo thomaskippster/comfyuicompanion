@@ -150,4 +150,19 @@ public class ComprehensiveServiceTest {
         
         downloadManager.stop();
     }
+
+    // --- 6. HIDE COMFYUI (REPLACEMENT MODE) CONFIGURATION TEST ---
+    @Test
+    public void testHideComfyUISetting_DefaultAndToggle() {
+        // By default, Replacement Mode should be active (true) to prefer companion as UI
+        assertTrue(configService.isHideComfyUI(), "Default value for hide_comfyui must be true");
+
+        // Toggle to false (user wants web browser to open)
+        configService.setHideComfyUI(false);
+        assertFalse(configService.isHideComfyUI(), "hide_comfyui should be false after updating");
+
+        // Toggle back to true
+        configService.setHideComfyUI(true);
+        assertTrue(configService.isHideComfyUI(), "hide_comfyui should be true after toggling back");
+    }
 }

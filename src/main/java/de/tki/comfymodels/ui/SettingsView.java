@@ -157,6 +157,7 @@ public class SettingsView extends JPanel {
         hideComfyuiCheck = new JCheckBox("Hide ComfyUI Web Client (Replacement Mode)");
         hideComfyuiCheck.setFont(checkFont);
         hideComfyuiCheck.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        hideComfyuiCheck.setToolTipText("When enabled, ComfyUI Companion replaces the web UI and suppresses opening the browser window when ComfyUI starts.");
         hideComfyuiCheck.addActionListener(e -> { if (listener != null) listener.onHideComfyUIChanged(hideComfyuiCheck.isSelected()); });
 
         promptLabCheck = new JCheckBox("Enable Prompt Lab (Experimental)");

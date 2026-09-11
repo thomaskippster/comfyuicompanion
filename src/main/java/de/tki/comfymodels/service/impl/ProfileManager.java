@@ -140,6 +140,12 @@ public class ProfileManager {
             false, "python", List.of("--directml"), new java.util.HashMap<>()
         ));
 
+        profiles.add(new LaunchProfile(
+            "wsl_mode",
+            "WSL / Linux Subsystem",
+            "Executes the ComfyUI server within a Windows Subsystem for Linux environment.",
+            true, "wsl", List.of(), new java.util.HashMap<>()
+        ));
 
         profiles.add(new LaunchProfile(
             "safe_mode",

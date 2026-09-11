@@ -34,7 +34,7 @@ No more saving JSON files and dragging them manually. ComfyUI Companion includes
 
 ### 2. 🧠 AI-Powered Workflow Analysis
 Sometimes workflow files lack metadata, or custom node filenames don't match typical model names. ComfyUI Companion solves this with smart AI analysis:
-* **Gemini & Local AI Support:** Connects securely to Google Gemini AI or a local LLM (like Qwen or Llama via Ollama/Local AI) to inspect node configurations, widget values, and metadata.
+* **Local Gemma AI Engine:** Powered 100% locally by an embedded Gemma 2B model via llama.cpp (zero cloud dependence, absolute privacy). Automatically inspects node configurations, widget values, and metadata without sending your data to external APIs.
 * **Smart Name Reconstitution:** The AI reconstructs missing model names, identifies target folders (e.g., distinguishing between a ControlNet and a LoRA), and suggests potential search queries.
 * **Direct Online Lookup:** Performs automated searches on **Civitai** and **Hugging Face** to find matching download links instantly.
 
@@ -58,14 +58,14 @@ Take full control of your ComfyUI server directly from the Companion app:
 
 ### 6. 🛡️ Local Encrypted Vault
 Your API keys and download tokens are sensitive. ComfyUI Companion features a secure **Credentials Vault**:
-* **AES-256 Encryption:** All keys (Civitai API keys, Hugging Face tokens, Gemini API credentials) are encrypted locally using industrial-grade AES encryption.
+* **AES-256 Encryption:** All keys (Civitai API keys, Hugging Face tokens) are encrypted locally using industrial-grade AES encryption.
 * **Master Password Lock:** The vault is unlocked via a master password upon app startup, ensuring your credentials are never stored in plain text.
 
 ### 7. 🎨 Prompt Lab & Architecture-Tailored AI Optimization
 An interactive environment to design, experiment with, and optimize prompts:
 * **Style Filters & Suggestions:** Quickly apply presets like Photorealistic, Oil Painting, Unreal Engine 5 Render, Anime, Dark Fantasy/Cinematic, and Watercolor Sketch.
 * **Optional Environmental Context:** Pick from curated environments or select `None (Optional)` to skip environmental context formatting.
-* **Model-Specific AI Rewrites:** Built-in "Optimize with AI" utilizes Gemini or local LLMs to rephrase and restructure prompts tailored to the specific target architecture of your selected ComfyUI model (e.g. SD 1.5, SDXL, Flux).
+* **Model-Specific AI Rewrites:** Built-in "Optimize with AI" utilizes the embedded local Gemma model to rephrase and restructure prompts tailored to the specific target architecture of your selected ComfyUI model (e.g. SD 1.5, SDXL, Flux).
 
 ### 8. 📊 Visual Workflow Graph Preview
 Inspect your workflow structure directly inside the Companion application:
@@ -194,7 +194,7 @@ To enable the Rocket button (`🚀`) in your ComfyUI canvas:
 ## 📖 How to Use
 
 1. **Configure Folders:** Open the app, go to **Settings -> Directories** and set your ComfyUI models folder and your preferred Archive folder.
-2. **Unlock the Vault:** Create a Master Password and add your API Keys (Civitai, Hugging Face, Gemini) under **Settings -> AI & API Keys**.
+2. **Unlock the Vault:** Create a Master Password and add your API Keys (Civitai, Hugging Face) under **Settings -> AI & API Keys**.
 3. **Analyze a Workflow:**
    * Drag and drop any `.json` or `.png` workflow into the Companion app window.
    * *OR:* Click the rocket button (`🚀`) in the ComfyUI web canvas.

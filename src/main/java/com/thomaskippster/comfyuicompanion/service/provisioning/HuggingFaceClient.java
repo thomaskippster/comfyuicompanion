@@ -27,19 +27,17 @@ public class HuggingFaceClient {
      *
      * @param keyword Das vom LLM vorgeschlagene Schlagwort (z. B. "juggernaut")
      * @param architecture Die Zielarchitektur (z. B. "SDXL")
-     * @return Eine nach Downloads sortierte Liste von Empfehlungen
+    /**
+     * Sucht reaktiv und non-blocking auf Hugging Face nach Modellen.
      */
-    public List<ModelRecommendation> searchModels(String keyword, String architecture) {
-        List<ModelRecommendation> recommendations = new ArrayList<>();
-
-        // Mappe unsere interne Architektur auf Hugging Face Tags
+    public reactor.core.publisher.Mono<List<ModelRecommendation>> searchModelsReactive(String keyword, String architecture) {
         String archTag = "";
         if ("SDXL".equalsIgnoreCase(architecture)) {
             archTag = "stable-diffusion-xl";
         } else if ("SD1.5".equalsIgnoreCase(architecture)) {
             archTag = "stable-diffusion";
         }
-        
+
         String tempFilter = "safetensors";
         if (!archTag.isEmpty()) {
             tempFilter += "," + archTag;
@@ -48,48 +46,55 @@ public class HuggingFaceClient {
 
         logger.info("Suche Modelle auf Hugging Face mit Keyword: '{}' und Tags: '{}'", keyword, finalFilter);
 
-        try {
-            JsonNode responseArray = webClient.get()
-                    .uri(uriBuilder -> uriBuilder
-                            .path("/models")
-                            .queryParam("search", keyword)
-                            .queryParam("filter", finalFilter)
-                            .queryParam("sort", "downloads")
-                            .queryParam("direction", "-1") // Absteigend (Beliebteste zuerst)
-                            .queryParam("limit", 5) // Wir benötigen nur die Top-Ergebnisse
-                            .build())
-                    .retrieve()
-                    .bodyToMono(JsonNode.class)
-                    .block();
+        return webClient.get()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/models")
+                        .queryParam("search", keyword)
+                        .queryParam("filter", finalFilter)
+                        .queryParam("sort", "downloads")
+                        .queryParam("direction", "-1")
+                        .queryParam("limit", 5)
+                        .build())
+                .retrieve()
+                .bodyToMono(JsonNode.class)
+                .map(this::parseRecommendations)
+                .onErrorResume(e -> {
+                    logger.error("Fehler bei der Kommunikation mit der Hugging Face API: {}", e.getMessage());
+                    return reactor.core.publisher.Mono.just(new ArrayList<>());
+                });
+    }
 
-            if (responseArray != null && responseArray.isArray()) {
-                for (JsonNode node : responseArray) {
-                    String repoId = node.has("id") ? node.get("id").asText() : "";
-                    int downloads = node.has("downloads") ? node.get("downloads").asInt() : 0;
-                    
-                    if (!repoId.isEmpty()) {
-                        ModelRecommendation rec = new ModelRecommendation();
-                        rec.setRepositoryId(repoId);
-                        rec.setDownloads(downloads);
-                        
-                        // Extrahiere den reinen Modell-Namen ohne Autor/Organisation
-                        String[] parts = repoId.split("/");
-                        String modelName = parts.length > 1 ? parts[1] : repoId;
-                        rec.setName(modelName);
-                        
-                        // Konstruktion der direkten URL zur .safetensors Datei im Main-Branch
-                        // Format: https://huggingface.co/{author}/{model}/resolve/main/{model}.safetensors
-                        String downloadUrl = String.format("https://huggingface.co/%s/resolve/main/%s.safetensors", repoId, modelName);
-                        rec.setDownloadUrl(downloadUrl);
-                        
-                        recommendations.add(rec);
-                    }
+    /**
+     * Synchrone Convenience-Methode für bestehende nicht-reaktive Aufrufer.
+     */
+    public List<ModelRecommendation> searchModels(String keyword, String architecture) {
+        List<ModelRecommendation> result = searchModelsReactive(keyword, architecture).block();
+        return result != null ? result : new ArrayList<>();
+    }
+
+    private List<ModelRecommendation> parseRecommendations(JsonNode responseArray) {
+        List<ModelRecommendation> recommendations = new ArrayList<>();
+        if (responseArray != null && responseArray.isArray()) {
+            for (JsonNode node : responseArray) {
+                String repoId = node.has("id") ? node.get("id").asText() : "";
+                int downloads = node.has("downloads") ? node.get("downloads").asInt() : 0;
+
+                if (!repoId.isEmpty()) {
+                    ModelRecommendation rec = new ModelRecommendation();
+                    rec.setRepositoryId(repoId);
+                    rec.setDownloads(downloads);
+
+                    String[] parts = repoId.split("/");
+                    String modelName = parts.length > 1 ? parts[1] : repoId;
+                    rec.setName(modelName);
+
+                    String downloadUrl = String.format("https://huggingface.co/%s/resolve/main/%s.safetensors", repoId, modelName);
+                    rec.setDownloadUrl(downloadUrl);
+
+                    recommendations.add(rec);
                 }
             }
-        } catch (Exception e) {
-            logger.error("Fehler bei der Kommunikation mit der Hugging Face API: {}", e.getMessage());
         }
-
         return recommendations;
     }
 }

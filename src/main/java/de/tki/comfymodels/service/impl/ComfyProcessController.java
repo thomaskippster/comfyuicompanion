@@ -153,6 +153,11 @@ public class ComfyProcessController {
                     command.addAll(profile.cliArguments());
                 }
 
+                // If Replacement Mode is active, strip --auto-launch so ComfyUI does not spawn the browser
+                if (configService != null && configService.isHideComfyUI()) {
+                    command.removeIf(arg -> "--auto-launch".equalsIgnoreCase(arg));
+                }
+
                 // Ensure standard server arguments are present if not already overridden by the profile
                 boolean hasListen = false;
                 boolean hasPort = false;

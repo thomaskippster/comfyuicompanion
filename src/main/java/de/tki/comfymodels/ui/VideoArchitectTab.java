@@ -1,7 +1,10 @@
 package de.tki.comfymodels.ui;
 
+import de.tki.comfymodels.domain.HardwareProfile;
 import de.tki.comfymodels.domain.Scene;
+import de.tki.comfymodels.domain.VideoPresetConfig;
 import de.tki.comfymodels.service.IComfyLifecycleService;
+import de.tki.comfymodels.service.IHardwareProfileService;
 import de.tki.comfymodels.service.impl.ComfyPipelineService;
 import de.tki.comfymodels.service.impl.ConfigService;
 import de.tki.comfymodels.service.impl.Gemma4Service;
@@ -58,8 +61,11 @@ public class VideoArchitectTab extends JPanel {
     private final LocalTTSService ttsService;
     private final Gemma4Service gemma4Service;
     private final IComfyLifecycleService lifecycleService;
+    private final IHardwareProfileService hardwareProfileService;
+    private final de.tki.comfymodels.service.IVideoPromptOptimizer promptOptimizer;
 
     // LEFT PANEL CONTROLS (Analogous to PromptLabView Left Panel)
+    private JLabel hardwareProfileBadge;
     private JComboBox<String> videoModelCombo;
     private JLabel videoPresetLabel;
     private JTextField promptSubjectField;
@@ -101,7 +107,26 @@ public class VideoArchitectTab extends JPanel {
                              Video4jEditorService video4jEditorService,
                              Gemma4Service gemma4Service,
                              IComfyLifecycleService lifecycleService) {
-        this(configService, comfyPipelineService, video4jEditorService, gemma4Service, lifecycleService, null);
+        this(configService, comfyPipelineService, video4jEditorService, gemma4Service, lifecycleService, null, null, null);
+    }
+
+    public VideoArchitectTab(ConfigService configService,
+                             ComfyPipelineService comfyPipelineService,
+                             Video4jEditorService video4jEditorService,
+                             Gemma4Service gemma4Service,
+                             IComfyLifecycleService lifecycleService,
+                             LocalTTSService ttsService) {
+        this(configService, comfyPipelineService, video4jEditorService, gemma4Service, lifecycleService, ttsService, null, null);
+    }
+
+    public VideoArchitectTab(ConfigService configService,
+                             ComfyPipelineService comfyPipelineService,
+                             Video4jEditorService video4jEditorService,
+                             Gemma4Service gemma4Service,
+                             IComfyLifecycleService lifecycleService,
+                             LocalTTSService ttsService,
+                             IHardwareProfileService hardwareProfileService) {
+        this(configService, comfyPipelineService, video4jEditorService, gemma4Service, lifecycleService, ttsService, hardwareProfileService, null);
     }
 
     @Autowired
@@ -110,19 +135,24 @@ public class VideoArchitectTab extends JPanel {
                              Video4jEditorService video4jEditorService,
                              Gemma4Service gemma4Service,
                              IComfyLifecycleService lifecycleService,
-                             @Autowired(required = false) LocalTTSService ttsService) {
+                             @Autowired(required = false) LocalTTSService ttsService,
+                             @Autowired(required = false) IHardwareProfileService hardwareProfileService,
+                             @Autowired(required = false) de.tki.comfymodels.service.IVideoPromptOptimizer promptOptimizer) {
         this.configService = configService;
         this.comfyPipelineService = comfyPipelineService;
         this.video4jEditorService = video4jEditorService;
         this.gemma4Service = gemma4Service;
         this.lifecycleService = lifecycleService;
         this.ttsService = ttsService;
+        this.hardwareProfileService = hardwareProfileService;
+        this.promptOptimizer = promptOptimizer != null ? promptOptimizer : new de.tki.comfymodels.service.impl.VideoPromptOptimizer();
 
         if (configService != null) {
             configService.setSpeakerImagePath("");
         }
 
         initUI();
+        applyHardwarePreset(false);
         updateTheme(ThemeManager.isDarkMode());
 
         ThemeManager.registerObserver(() -> updateTheme(ThemeManager.isDarkMode()));
@@ -153,6 +183,31 @@ public class VideoArchitectTab extends JPanel {
 
         Font subLabelFont = new Font("SansSerif", Font.PLAIN, 12);
 
+        // 0. Hardware Detection & Profile Banner
+        JPanel hwHeaderRow = new JPanel(new BorderLayout(6, 0));
+        hwHeaderRow.setOpaque(false);
+        hwHeaderRow.setAlignmentX(Component.LEFT_ALIGNMENT);
+        hwHeaderRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 30));
+
+        hardwareProfileBadge = new JLabel("⚡ Hardware: Erkennung...", SwingConstants.LEFT);
+        hardwareProfileBadge.setFont(new Font("SansSerif", Font.BOLD, 11));
+        hardwareProfileBadge.setOpaque(true);
+        hardwareProfileBadge.setBackground(new Color(59, 130, 246, 30));
+        hardwareProfileBadge.setForeground(new Color(59, 130, 246));
+        hardwareProfileBadge.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(new Color(59, 130, 246, 90), 1, true),
+                BorderFactory.createEmptyBorder(4, 8, 4, 8)
+        ));
+        hwHeaderRow.add(hardwareProfileBadge, BorderLayout.CENTER);
+
+        JButton btnReapplyHwPreset = new JButton(SvgIconFactory.get(AppIcon.SUGGEST, 12));
+        btnReapplyHwPreset.setToolTipText("Hardware-Empfehlungen automatisch anwenden");
+        btnReapplyHwPreset.addActionListener(e -> applyHardwarePreset(true));
+        hwHeaderRow.add(btnReapplyHwPreset, BorderLayout.EAST);
+
+        leftPanel.add(hwHeaderRow);
+        leftPanel.add(Box.createVerticalStrut(10));
+
         // 1. Blueprint / Workflow Selection
         JLabel lblBlueprint = new JLabel("Blueprint / Video Model");
         lblBlueprint.putClientProperty("FlatLaf.styleClass", "h4");
@@ -172,6 +227,7 @@ public class VideoArchitectTab extends JPanel {
                 "Text to Video (Hunyuan Video 1.5)"
         });
         videoModelCombo.setFont(new Font("SansSerif", Font.PLAIN, 13));
+        videoModelCombo.addActionListener(e -> updateModelPreset());
         modelRow.add(videoModelCombo, BorderLayout.CENTER);
 
         JButton btnRefreshModels = new JButton(SvgIconFactory.get(AppIcon.REFRESH));
@@ -182,7 +238,7 @@ public class VideoArchitectTab extends JPanel {
         leftPanel.add(modelRow);
         leftPanel.add(Box.createVerticalStrut(6));
 
-        videoPresetLabel = new JLabel("Detected Preset: Wan 2.2 Cinematic Video (720x720 | 24 fps)") {
+        videoPresetLabel = new JLabel("Detected Preset: Wan 2.2 Cinematic Video (832x480 | 16 fps, Safe VRAM)") {
             @Override
             public void updateUI() {
                 super.updateUI();
@@ -294,7 +350,7 @@ public class VideoArchitectTab extends JPanel {
         widthPanel.setOpaque(false);
         JLabel lblWidth = new JLabel("Width");
         lblWidth.setFont(new Font("SansSerif", Font.PLAIN, 11));
-        videoWidthSpinner = new JSpinner(new SpinnerNumberModel(1920, 256, 3840, 64));
+        videoWidthSpinner = new JSpinner(new SpinnerNumberModel(832, 256, 3840, 16));
         if (videoWidthSpinner.getEditor() instanceof JSpinner.NumberEditor ne) ne.getFormat().setGroupingUsed(false);
         widthPanel.add(lblWidth, BorderLayout.NORTH);
         widthPanel.add(videoWidthSpinner, BorderLayout.CENTER);
@@ -303,7 +359,7 @@ public class VideoArchitectTab extends JPanel {
         heightPanel.setOpaque(false);
         JLabel lblHeight = new JLabel("Height");
         lblHeight.setFont(new Font("SansSerif", Font.PLAIN, 11));
-        videoHeightSpinner = new JSpinner(new SpinnerNumberModel(1080, 256, 2160, 64));
+        videoHeightSpinner = new JSpinner(new SpinnerNumberModel(480, 256, 2160, 16));
         if (videoHeightSpinner.getEditor() instanceof JSpinner.NumberEditor ne) ne.getFormat().setGroupingUsed(false);
         heightPanel.add(lblHeight, BorderLayout.NORTH);
         heightPanel.add(videoHeightSpinner, BorderLayout.CENTER);
@@ -339,7 +395,7 @@ public class VideoArchitectTab extends JPanel {
         stepsPanel.setOpaque(false);
         JLabel lblSteps = new JLabel("Steps");
         lblSteps.setFont(new Font("SansSerif", Font.PLAIN, 11));
-        videoStepsSpinner = new JSpinner(new SpinnerNumberModel(30, 10, 100, 1));
+        videoStepsSpinner = new JSpinner(new SpinnerNumberModel(20, 1, 100, 1));
         if (videoStepsSpinner.getEditor() instanceof JSpinner.NumberEditor ne) ne.getFormat().setGroupingUsed(false);
         stepsPanel.add(lblSteps, BorderLayout.NORTH);
         stepsPanel.add(videoStepsSpinner, BorderLayout.CENTER);
@@ -348,7 +404,7 @@ public class VideoArchitectTab extends JPanel {
         cfgPanel.setOpaque(false);
         JLabel lblCfg = new JLabel("CFG Scale");
         lblCfg.setFont(new Font("SansSerif", Font.PLAIN, 11));
-        videoCfgSpinner = new JSpinner(new SpinnerNumberModel(1.0, 0.5, 20.0, 0.5));
+        videoCfgSpinner = new JSpinner(new SpinnerNumberModel(3.0, 0.5, 20.0, 0.5));
         if (videoCfgSpinner.getEditor() instanceof JSpinner.NumberEditor ne) ne.getFormat().setGroupingUsed(false);
         cfgPanel.add(lblCfg, BorderLayout.NORTH);
         cfgPanel.add(videoCfgSpinner, BorderLayout.CENTER);
@@ -643,11 +699,110 @@ public class VideoArchitectTab extends JPanel {
         storyboardJsonArea.setText(arr.toString(2));
     }
 
+    public void applyHardwarePreset(boolean logMessage) {
+        if (hardwareProfileService == null) return;
+        VideoPresetConfig config = hardwareProfileService.getRecommendedVideoConfig();
+        HardwareProfile profile = hardwareProfileService.getHardwareProfile();
+
+        if (hardwareProfileBadge != null && profile != null) {
+            String badgeText = String.format("⚡ %s: %s VRAM • %s",
+                    profile.tier().name(), profile.formattedVram(), profile.tier().getDescription());
+            hardwareProfileBadge.setText(badgeText);
+            hardwareProfileBadge.setToolTipText(config != null ? config.statusDescription() : profile.gpuName());
+            if (profile.isWeakSystem()) {
+                hardwareProfileBadge.setBackground(new Color(245, 158, 11, 40));
+                hardwareProfileBadge.setForeground(new Color(217, 119, 6));
+                hardwareProfileBadge.setBorder(BorderFactory.createCompoundBorder(
+                        BorderFactory.createLineBorder(new Color(245, 158, 11, 100), 1, true),
+                        BorderFactory.createEmptyBorder(4, 8, 4, 8)
+                ));
+            } else {
+                hardwareProfileBadge.setBackground(new Color(16, 185, 129, 35));
+                hardwareProfileBadge.setForeground(new Color(16, 185, 129));
+                hardwareProfileBadge.setBorder(BorderFactory.createCompoundBorder(
+                        BorderFactory.createLineBorder(new Color(16, 185, 129, 100), 1, true),
+                        BorderFactory.createEmptyBorder(4, 8, 4, 8)
+                ));
+            }
+        }
+
+        if (config != null) {
+            if (videoModelCombo != null && config.recommendedModel() != null) {
+                videoModelCombo.setSelectedItem(config.recommendedModel());
+            }
+            if (videoWidthSpinner != null) {
+                videoWidthSpinner.setValue(config.defaultWidth());
+            }
+            if (videoHeightSpinner != null) {
+                videoHeightSpinner.setValue(config.defaultHeight());
+            }
+            if (videoStepsSpinner != null) {
+                videoStepsSpinner.setValue(config.defaultSteps());
+            }
+            if (videoCfgSpinner != null) {
+                videoCfgSpinner.setValue(config.defaultCfg());
+            }
+            if (videoPresetLabel != null) {
+                videoPresetLabel.setText("Detected Preset: " + config.recommendedModel() + " (" + config.defaultWidth() + "x" + config.defaultHeight() + " | Safe VRAM)");
+            }
+            if (logMessage) {
+                logToConsole("⚡ Hardware-Vorkonfiguration angewendet: " + config.statusDescription());
+            }
+        }
+    }
+
+    private void updateModelPreset() {
+        String selected = (String) videoModelCombo.getSelectedItem();
+        if (selected == null) return;
+        if (selected.contains("LTX-Video")) {
+            videoPresetLabel.setText("Detected Preset: LTX-Video High-Speed (768x512 | 24 fps)");
+            videoWidthSpinner.setValue(768);
+            videoHeightSpinner.setValue(512);
+            videoStepsSpinner.setValue(30);
+            videoCfgSpinner.setValue(3.0);
+        } else if (selected.contains("Hunyuan")) {
+            videoPresetLabel.setText("Detected Preset: Hunyuan Video 1.5 (832x480 | 24 fps, Safe VRAM)");
+            videoWidthSpinner.setValue(832);
+            videoHeightSpinner.setValue(480);
+            videoStepsSpinner.setValue(20);
+            videoCfgSpinner.setValue(6.0);
+        } else if (selected.contains("Image to Video")) {
+            videoPresetLabel.setText("Detected Preset: Wan 2.1 I2V (832x480 | 16 fps, Safe VRAM)");
+            videoWidthSpinner.setValue(832);
+            videoHeightSpinner.setValue(480);
+            videoStepsSpinner.setValue(20);
+            videoCfgSpinner.setValue(3.0);
+        } else {
+            videoPresetLabel.setText("Detected Preset: Wan 2.2 Cinematic Video (832x480 | 16 fps, Safe VRAM)");
+            videoWidthSpinner.setValue(832);
+            videoHeightSpinner.setValue(480);
+            videoStepsSpinner.setValue(20);
+            videoCfgSpinner.setValue(3.0);
+        }
+
+        // Warn if a heavy 14B model is selected on a weak/budget GPU
+        if (hardwareProfileService != null) {
+            HardwareProfile profile = hardwareProfileService.getHardwareProfile();
+            if (profile != null && profile.isWeakSystem() && (selected.contains("Wan") || selected.contains("Hunyuan"))) {
+                logToConsole("⚠️ Hinweis: " + selected + " ist sehr VRAM-intensiv (14B). Auf deinem System (" + profile.formattedVram() + " VRAM) wird LTX-Video empfohlen.");
+            }
+        }
+
+        logToConsole("Switched model preset: " + selected + " (" + videoWidthSpinner.getValue() + "x" + videoHeightSpinner.getValue() + ")");
+    }
+
     private void logToConsole(String message) {
         SwingUtilities.invokeLater(() -> {
+            if (videoConsoleArea == null || !videoConsoleArea.isDisplayable()) {
+                return;
+            }
             String time = LocalTime.now().format(TIME_FORMATTER);
             videoConsoleArea.append("[" + time + "] " + message + "\n");
-            videoConsoleArea.setCaretPosition(videoConsoleArea.getDocument().getLength());
+            try {
+                videoConsoleArea.setCaretPosition(videoConsoleArea.getDocument().getLength());
+            } catch (IllegalArgumentException ignored) {
+                // Caret position may be stale if document changed concurrently
+            }
         });
     }
 
@@ -861,10 +1016,23 @@ public class VideoArchitectTab extends JPanel {
         gbc.gridx = 0; gbc.gridy = 1;
         formPanel.add(new JLabel("Visual Prompt:"), gbc);
         gbc.gridx = 1;
+        JPanel promptContainer = new JPanel(new BorderLayout(0, 4));
+        promptContainer.setOpaque(false);
         JTextArea promptArea = new JTextArea(targetScene != null && targetScene.getPrompt() != null ? targetScene.getPrompt() : "", 3, 20);
         promptArea.setLineWrap(true);
         promptArea.setWrapStyleWord(true);
-        formPanel.add(new JScrollPane(promptArea), gbc);
+        promptContainer.add(new JScrollPane(promptArea), BorderLayout.CENTER);
+
+        JButton btnEnhanceMotion = new JButton("✨ Motion anreichern", SvgIconFactory.get(AppIcon.SUGGEST, 12));
+        btnEnhanceMotion.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        btnEnhanceMotion.setToolTipText("Reichert den Prompt mit Kameratrajektorie, Kinetik und Umweltphysik an, um Einfrieren zu verhindern.");
+        btnEnhanceMotion.addActionListener(e -> {
+            String current = promptArea.getText();
+            String enhanced = promptOptimizer != null ? promptOptimizer.optimizeVideoPrompt(current) : current;
+            promptArea.setText(enhanced);
+        });
+        promptContainer.add(btnEnhanceMotion, BorderLayout.SOUTH);
+        formPanel.add(promptContainer, gbc);
 
         gbc.gridx = 0; gbc.gridy = 2;
         formPanel.add(new JLabel("Narration Text:"), gbc);
@@ -1484,8 +1652,8 @@ public class VideoArchitectTab extends JPanel {
 
         if (prompt.isEmpty() && narration.isEmpty()) return null;
 
-        int targetW = (videoWidthSpinner != null) ? (Integer) videoWidthSpinner.getValue() : 1920;
-        int targetH = (videoHeightSpinner != null) ? (Integer) videoHeightSpinner.getValue() : 1080;
+        int targetW = (videoWidthSpinner != null) ? (Integer) videoWidthSpinner.getValue() : 832;
+        int targetH = (videoHeightSpinner != null) ? (Integer) videoHeightSpinner.getValue() : 480;
 
         Scene scene = new Scene();
         scene.setSceneId(id);
@@ -1507,15 +1675,18 @@ public class VideoArchitectTab extends JPanel {
     private List<Scene> splitScriptFallback(String idea) {
         List<Scene> fallbackScenes = new ArrayList<>();
         String[] sentences = idea.split("(?<=[.!?\\n])\\s+");
-        int targetW = (videoWidthSpinner != null) ? (Integer) videoWidthSpinner.getValue() : 1920;
-        int targetH = (videoHeightSpinner != null) ? (Integer) videoHeightSpinner.getValue() : 1080;
+        int targetW = (videoWidthSpinner != null) ? (Integer) videoWidthSpinner.getValue() : 832;
+        int targetH = (videoHeightSpinner != null) ? (Integer) videoHeightSpinner.getValue() : 480;
         int count = 1;
         for (String sentence : sentences) {
             String trimmed = sentence.trim();
             if (trimmed.length() > 2) {
                 Scene sc = new Scene();
                 sc.setSceneId("S" + count++);
-                sc.setPrompt("Cinematic shot, 4k resolution, high quality, " + trimmed);
+                String enrichedPrompt = promptOptimizer != null
+                        ? promptOptimizer.enrichFallbackPrompt(trimmed)
+                        : ("Cinematic shot, 4k resolution, high quality, " + trimmed);
+                sc.setPrompt(enrichedPrompt);
                 sc.setNarrationText(trimmed);
                 int duration = Math.min(8, Math.max(3, (trimmed.split("\\s+").length / 2) + 2));
                 sc.setStartFrame(0);
@@ -1528,7 +1699,10 @@ public class VideoArchitectTab extends JPanel {
             }
         }
         if (fallbackScenes.isEmpty() && !idea.trim().isEmpty()) {
-            Scene single = new Scene("S1", "Cinematic shot, " + idea.trim(), 0, 120, "", "");
+            String enrichedSingle = promptOptimizer != null
+                    ? promptOptimizer.enrichFallbackPrompt(idea.trim())
+                    : ("Cinematic shot, " + idea.trim());
+            Scene single = new Scene("S1", enrichedSingle, 0, 120, "", "");
             single.setWidth(targetW);
             single.setHeight(targetH);
             single.setNarrationText(idea.trim());

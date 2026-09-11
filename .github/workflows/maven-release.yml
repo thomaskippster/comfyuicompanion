@@ -69,8 +69,8 @@ jobs:
         if: env.IS_BUMP == 'true'
         run: |
           git add pom.xml
-          git commit -m "chore: bump version to ${{ env.VERSION }}"
-          git tag v${{ env.VERSION }}
+          git diff --cached --quiet || git commit -m "chore: bump version to ${{ env.VERSION }}"
+          git tag -f v${{ env.VERSION }}
           git push origin main --tags
 
       - name: Build Project

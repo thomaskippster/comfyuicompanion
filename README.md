@@ -142,7 +142,7 @@ The app comes with **10 pre-configured launch profiles**, ordered logically by u
 ---
 
 ### Option 1: 📥 Direct Download (SourceForge) — *Recommended*
-1. Download the latest pre-compiled build from [SourceForge](https://sourceforge.net/projects/comfymodeldownloader/).
+1. Download the latest pre-compiled build from [SourceForge](https://sourceforge.net/projects/companion-for-comfyui/).
 2. Run the application:
    ```bash
    java -jar comfyuicompanion.jar

@@ -71,7 +71,8 @@ jobs:
           git add pom.xml
           git diff --cached --quiet || git commit -m "chore: bump version to ${{ env.VERSION }}"
           git tag -f v${{ env.VERSION }}
-          git push origin main --tags
+          git push origin main
+          git push origin v${{ env.VERSION }} --force
 
       - name: Build Project
         run: |

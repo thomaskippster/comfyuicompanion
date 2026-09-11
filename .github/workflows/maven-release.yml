@@ -101,7 +101,7 @@ jobs:
           REL_VERSION="v${{ env.VERSION }}"
           SF_USER="${{ secrets.SF_USERNAME }}"
           PROJECT_NAME="${{ secrets.SF_PROJECT_NAME }}"
-          PROJECT_NAME="${PROJECT_NAME:-comfymodeldownloader}"
+          PROJECT_NAME="${PROJECT_NAME:-companion-for-comfyui}"
 
           echo "Uploading version $REL_VERSION to project $PROJECT_NAME on SourceForge..."
 

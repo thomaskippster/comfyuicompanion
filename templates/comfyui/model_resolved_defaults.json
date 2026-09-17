@@ -1,12 +1,19 @@
 {
   "sam3.1_multiplex_fp16.safetensors" : {
-    "vaeName" : "Wan2_1_VAE_bf16.safetensors",
-    "clipType" : "wan",
+    "vaeName" : "cogvideox_vae.safetensors",
+    "clipType" : "sd3",
     "scheduler" : "simple",
     "samplerName" : "euler",
     "architecture" : "ARCH_SD3"
   },
   "gemma_3_12b_it_fp4_mixed.safetensors" : {
+    "vaeName" : "sd3_vae.safetensors",
+    "clipType" : "sd3",
+    "scheduler" : "normal",
+    "samplerName" : "euler",
+    "architecture" : "ARCH_SD3"
+  },
+  "depth_anything_3_mono_large.safetensors" : {
     "vaeName" : "sd3_vae.safetensors",
     "clipType" : "sd3",
     "scheduler" : "normal",
@@ -20,12 +27,12 @@
     "samplerName" : "euler",
     "architecture" : "ARCH_SD3"
   },
-  "depth_anything_3_mono_large.safetensors" : {
-    "vaeName" : "vae-ft-mse-840000-ema-pruned.safetensors",
+  "ernie-image-turbo.safetensors" : {
+    "vaeName" : "flux2-vae.safetensors",
     "clipType" : "stable_diffusion",
-    "scheduler" : "normal",
+    "scheduler" : "simple",
     "samplerName" : "euler",
-    "architecture" : "ARCH_UNKNOWN"
+    "architecture" : "ARCH_SDXL"
   },
   "flux-2-klein-base-4b-fp8.safetensors" : {
     "vaeName" : "flux2-vae.safetensors",
@@ -34,13 +41,6 @@
     "samplerName" : "euler",
     "architecture" : "ARCH_FLUX"
   },
-  "ernie-image-turbo.safetensors" : {
-    "vaeName" : "flux2-vae.safetensors",
-    "clipType" : "stable_diffusion",
-    "scheduler" : "simple",
-    "samplerName" : "euler",
-    "architecture" : "ARCH_SDXL"
-  },
   "gemma-3-12b-it-abliterated_lora_rank64_bf16.safetensors" : {
     "vaeName" : "vae-ft-mse-840000-ema-pruned.safetensors",
     "clipType" : "stable_diffusion",
@@ -48,16 +48,16 @@
     "samplerName" : "euler",
     "architecture" : "ARCH_UNKNOWN"
   },
+  "flux.2 [klein] 9b: image edit" : {
+    "vaeName" : "FLUX1/ae.safetensors",
+    "clipType" : "flux",
+    "scheduler" : "normal",
+    "samplerName" : "euler",
+    "architecture" : "ARCH_FLUX"
+  },
   "lightx2v_t2v_14b_cfg_step_distill_v2_lora_rank64_bf16.safetensors" : {
     "vaeName" : "Wan2_1_VAE_bf16.safetensors",
     "clipType" : "wan",
-    "scheduler" : "simple",
-    "samplerName" : "euler",
-    "architecture" : "ARCH_UNKNOWN"
-  },
-  "void_pass1.safetensors" : {
-    "vaeName" : "cogvideox_vae.safetensors",
-    "clipType" : "stable_diffusion",
     "scheduler" : "simple",
     "samplerName" : "euler",
     "architecture" : "ARCH_UNKNOWN"
@@ -69,19 +69,26 @@
     "samplerName" : "euler",
     "architecture" : "ARCH_WAN"
   },
-  "anima-base-v1.0.safetensors" : {
-    "vaeName" : "qwen_image_vae.safetensors",
+  "void_pass1.safetensors" : {
+    "vaeName" : "cogvideox_vae.safetensors",
     "clipType" : "stable_diffusion",
     "scheduler" : "simple",
     "samplerName" : "euler",
-    "architecture" : "ARCH_UNKNOWN"
+    "architecture" : "ARCH_SD15"
   },
   "void_pass2.safetensors" : {
     "vaeName" : "cogvideox_vae.safetensors",
     "clipType" : "stable_diffusion",
     "scheduler" : "simple",
     "samplerName" : "euler",
-    "architecture" : "ARCH_UNKNOWN"
+    "architecture" : "ARCH_SD15"
+  },
+  "anima-base-v1.0.safetensors" : {
+    "vaeName" : "qwen_image_vae.safetensors",
+    "clipType" : "stable_diffusion",
+    "scheduler" : "simple",
+    "samplerName" : "euler",
+    "architecture" : "ARCH_SD3"
   },
   "wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors" : {
     "vaeName" : "wan_2.1_vae.safetensors",
@@ -158,7 +165,7 @@
     "clipType" : "stable_diffusion",
     "scheduler" : "simple",
     "samplerName" : "euler",
-    "architecture" : "ARCH_UNKNOWN"
+    "architecture" : "ARCH_SD15"
   },
   "longcat_image_edit_bf16.safetensors" : {
     "vaeName" : "ae.safetensors",
@@ -171,8 +178,8 @@
     "vaeName" : "vae-ft-mse-840000-ema-pruned.safetensors",
     "clipType" : "stable_diffusion",
     "scheduler" : "normal",
-    "samplerName" : "euler_ancestral",
-    "architecture" : "ARCH_UNKNOWN"
+    "samplerName" : "euler",
+    "architecture" : "ARCH_SD15"
   },
   "qwen_image_2512_fp8_e4m3fn.safetensors" : {
     "vaeName" : "qwen_image_vae.safetensors",
@@ -189,25 +196,18 @@
     "architecture" : "ARCH_UNKNOWN"
   },
   "birefnet.safetensors" : {
-    "vaeName" : "vae-ft-mse-840000-ema-pruned.safetensors",
-    "clipType" : "stable_diffusion",
-    "scheduler" : "normal",
-    "samplerName" : "euler",
-    "architecture" : "ARCH_UNKNOWN"
-  },
-  "lotus-depth-d-v1-1.safetensors" : {
-    "vaeName" : "vae-ft-mse-840000-ema-pruned.safetensors",
+    "vaeName" : "triposplat_vae_decoder_fp16.safetensors",
     "clipType" : "sd3",
-    "scheduler" : "normal",
+    "scheduler" : "simple",
     "samplerName" : "euler",
     "architecture" : "ARCH_SD3"
   },
-  "firered-image-edit-1.0-lightning-8steps-v1.0.safetensors" : {
-    "vaeName" : "qwen_image_vae.safetensors",
-    "clipType" : "longcat_image",
+  "lotus-depth-d-v1-1.safetensors" : {
+    "vaeName" : "ae.safetensors",
+    "clipType" : "lumina2",
     "scheduler" : "simple",
     "samplerName" : "euler",
-    "architecture" : "ARCH_LUMINA2"
+    "architecture" : "ARCH_SD3"
   },
   "wan21_causvid_14b_t2v_lora_rank32.safetensors" : {
     "vaeName" : "wan_2.1_vae.safetensors",
@@ -216,12 +216,19 @@
     "samplerName" : "uni_pc",
     "architecture" : "ARCH_WAN"
   },
+  "firered-image-edit-1.0-lightning-8steps-v1.0.safetensors" : {
+    "vaeName" : "qwen_image_vae.safetensors",
+    "clipType" : "longcat_image",
+    "scheduler" : "simple",
+    "samplerName" : "euler",
+    "architecture" : "ARCH_LUMINA2"
+  },
   "stable_audio_3_medium.safetensors" : {
-    "vaeName" : "vae-ft-mse-840000-ema-pruned.safetensors",
+    "vaeName" : "sd3_vae.safetensors",
     "clipType" : "stable_diffusion",
     "scheduler" : "simple",
     "samplerName" : "euler",
-    "architecture" : "ARCH_UNKNOWN"
+    "architecture" : "ARCH_SD3"
   },
   "ltx-2-19b-distilled-lora-384.safetensors" : {
     "vaeName" : "vae-ft-mse-840000-ema-pruned.safetensors",
@@ -242,7 +249,7 @@
     "clipType" : "stable_diffusion",
     "scheduler" : "normal",
     "samplerName" : "euler",
-    "architecture" : "ARCH_UNKNOWN"
+    "architecture" : "ARCH_SD15"
   },
   "model.safetensors" : {
     "vaeName" : "vae-ft-mse-840000-ema-pruned.safetensors",
@@ -312,7 +319,7 @@
     "clipType" : "stable_diffusion",
     "scheduler" : "normal",
     "samplerName" : "euler",
-    "architecture" : "ARCH_UNKNOWN"
+    "architecture" : "ARCH_SDXL"
   },
   "flux_2-turbo-lora_comfyui.safetensors" : {
     "vaeName" : "FLUX1/ae.safetensors",
@@ -353,7 +360,7 @@
     "vaeName" : "vae-ft-mse-840000-ema-pruned.safetensors",
     "clipType" : "stable_diffusion",
     "scheduler" : "normal",
-    "samplerName" : "euler_ancestral",
+    "samplerName" : "euler",
     "architecture" : "ARCH_SD15"
   },
   "qwen_image_fp8_e4m3fn.safetensors" : {
@@ -431,7 +438,7 @@
     "clipType" : "stable_diffusion",
     "scheduler" : "simple",
     "samplerName" : "euler",
-    "architecture" : "ARCH_UNKNOWN"
+    "architecture" : "ARCH_SD15"
   },
   "wan2.2_t2v_lightx2v_4steps_lora_v1.1_low_noise.safetensors" : {
     "vaeName" : "wan_2.1_vae.safetensors",
@@ -452,7 +459,7 @@
     "clipType" : "stable_diffusion",
     "scheduler" : "normal",
     "samplerName" : "euler",
-    "architecture" : "ARCH_UNKNOWN"
+    "architecture" : "ARCH_SD15"
   },
   "qwen-image-instantx-controlnet-inpainting.safetensors" : {
     "vaeName" : "qwen_image_vae.safetensors",
@@ -462,9 +469,9 @@
     "architecture" : "ARCH_LUMINA2"
   },
   "qwen_3_4b.safetensors" : {
-    "vaeName" : "ae.safetensors",
-    "clipType" : "lumina2",
-    "scheduler" : "simple",
+    "vaeName" : "flux2-vae.safetensors",
+    "clipType" : "sd3",
+    "scheduler" : "normal",
     "samplerName" : "euler",
     "architecture" : "ARCH_SD3"
   },
@@ -497,15 +504,15 @@
     "architecture" : "ARCH_SD3"
   },
   "stable_audio_3_medium_base.safetensors" : {
-    "vaeName" : "vae-ft-mse-840000-ema-pruned.safetensors",
+    "vaeName" : "sd3_vae.safetensors",
     "clipType" : "stable_diffusion",
     "scheduler" : "simple",
     "samplerName" : "euler",
-    "architecture" : "ARCH_UNKNOWN"
+    "architecture" : "ARCH_SD3"
   },
   "realesrgan_x4plus.safetensors" : {
-    "vaeName" : "vae-ft-mse-840000-ema-pruned.safetensors",
-    "clipType" : "stable_diffusion",
+    "vaeName" : "ae.safetensors",
+    "clipType" : "lumina2",
     "scheduler" : "normal",
     "samplerName" : "euler",
     "architecture" : "ARCH_UNKNOWN"
@@ -522,14 +529,14 @@
     "clipType" : "lumina2",
     "scheduler" : "simple",
     "samplerName" : "euler",
-    "architecture" : "ARCH_UNKNOWN"
+    "architecture" : "ARCH_SD15"
   },
   "triposplat_fp16.safetensors" : {
     "vaeName" : "triposplat_vae_decoder_fp16.safetensors",
     "clipType" : "stable_diffusion",
     "scheduler" : "simple",
     "samplerName" : "euler",
-    "architecture" : "ARCH_UNKNOWN"
+    "architecture" : "ARCH_SD15"
   },
   "longcat_image_bf16.safetensors" : {
     "vaeName" : "ae.safetensors",
@@ -564,7 +571,7 @@
     "clipType" : "stable_diffusion",
     "scheduler" : "normal",
     "samplerName" : "euler",
-    "architecture" : "ARCH_UNKNOWN"
+    "architecture" : "ARCH_SD15"
   },
   "wan2.2_t2v_high_noise_14b_fp8_scaled.safetensors" : {
     "vaeName" : "wan_2.1_vae.safetensors",

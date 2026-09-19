@@ -17,6 +17,12 @@
   <video src="https://github.com/thomaskippster/comfyuicompanion/raw/main/assets/comfyuicompanion.mp4" controls width="100%" poster="https://github.com/thomaskippster/comfyuicompanion/raw/main/assets/icon.png"></video>
 </p>
 
+> [!TIP]
+> **Quick Start & Installation:**
+> * **Pre-compiled JAR:** Download directly from [GitHub Releases](https://github.com/thomaskippster/comfyuicompanion/releases) or [SourceForge](https://sourceforge.net/projects/companion-for-comfyui/) — no compilation required!
+> * **Pinokio 1-Click Install:** Install and run seamlessly via the [Pinokio Package Post](https://pinokio.co/posts/01m0dh3d006qpf47dx546qrtpd).
+> * **Note:** There is also a direct Pinokio install and a pre-compiled JAR available – you can find those links on the GitHub repo.
+
 ComfyUI Companion is a local companion app designed to eliminate the manual frustration of managing model files for ComfyUI. Instead of hunting down models, downloading them to temporary folders, and manually moving them to `custom_nodes`, `checkpoints`, `loras`, or `vae` folders, ComfyUI Companion automates the entire process. 
 
 From **AI-powered workflow analysis** and **one-click canvas integration** to **reclaiming disk space with cold archives**, this tool ensures your ComfyUI environment is optimized, secure, and always ready to run.
@@ -135,14 +141,19 @@ The app comes with **10 pre-configured launch profiles**, ordered logically by u
 
 ## 🚀 Getting Started
 
+> [!NOTE]
+> There is also a direct Pinokio install and a pre-compiled JAR available – you can find those links on the GitHub repo.
+
 ### Prerequisites
-* **Java 21** or higher
-* **Maven** (only if building from source)
+* **Java 21** or higher (required for pre-compiled JAR & manual build; Pinokio sets up OpenJDK automatically)
+* **Maven** (only required if building from source)
 
 ---
 
-### Option 1: 📥 Direct Download (SourceForge) — *Recommended*
-1. Download the latest pre-compiled build from [SourceForge](https://sourceforge.net/projects/companion-for-comfyui/).
+### Option 1: 📥 Pre-compiled JAR (GitHub Releases / SourceForge) — *Recommended*
+1. Download the latest pre-compiled `comfyuicompanion.jar` directly from:
+   * **GitHub Releases:** [Download latest JAR](https://github.com/thomaskippster/comfyuicompanion/releases)
+   * **SourceForge:** [Download from SourceForge](https://sourceforge.net/projects/companion-for-comfyui/)
 2. Run the application:
    ```bash
    java -jar comfyuicompanion.jar
@@ -150,11 +161,11 @@ The app comes with **10 pre-configured launch profiles**, ordered logically by u
 
 ---
 
-### Option 2: ⚡ Quick Install (Pinokio)
+### Option 2: ⚡ 1-Click Install (Pinokio)
 If you use [Pinokio](https://pinokio.computer):
-* **1-Click Install:** Click [Install on Pinokio](pinokio://download?uri=https://github.com/thomaskippster/comfyuicompanion) or open the web link [pinokio.computer/item?uri=https://github.com/thomaskippster/comfyuicompanion](https://pinokio.computer/item?uri=https://github.com/thomaskippster/comfyuicompanion).
+* **1-Click Install:** Open the [Pinokio Package Post](https://pinokio.co/posts/01m0dh3d006qpf47dx546qrtpd) or click [Install on Pinokio](pinokio://download?uri=https://github.com/thomaskippster/comfyuicompanion).
 * **Or via Pinokio App:** Open Pinokio, paste `https://github.com/thomaskippster/comfyuicompanion` into the address bar, and click **Download** -> **Install**.
-* The script automatically configures OpenJDK 21, Maven, builds the JAR, and manages 1-click start/stop and updates.
+* The script automatically configures OpenJDK 21, Maven, automatically discovers existing ComfyUI installations, builds the JAR, and manages 1-click start/stop and updates.
 
 ---
 
@@ -177,6 +188,10 @@ If you use [Pinokio](https://pinokio.computer):
 ## 🔌 Installing the ComfyUI Bridge Node
 
 To enable the Rocket button (`🚀`) in your ComfyUI canvas:
+
+> [!NOTE]
+> The Bridge Node requires the **ComfyUI Companion** desktop application to be running.
+> There is also a direct Pinokio install and a pre-compiled JAR available – you can find those links on the GitHub repo: [https://github.com/thomaskippster/comfyuicompanion](https://github.com/thomaskippster/comfyuicompanion)
 
 ### Automatic Setup (Easiest)
 1. Launch the ComfyUI Companion app.

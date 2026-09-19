@@ -1,5 +1,5 @@
 {
   "title": "Companion for ComfyUI",
-  "description": "AI-powered model downloader, workflow bridge, timeline video editor, and manager for ComfyUI.",
+  "description": "AI-powered model downloader, workflow bridge, timeline video editor, and manager for ComfyUI. Note: There is also a direct Pinokio install and a pre-compiled JAR available – you can find those links on the GitHub repo.",
   "icon": "assets/icon.png"
 }

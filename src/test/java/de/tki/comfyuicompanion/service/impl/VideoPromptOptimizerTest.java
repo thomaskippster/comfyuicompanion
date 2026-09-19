@@ -95,7 +95,34 @@ class VideoPromptOptimizerTest {
         assertTrue(prompt.contains("832x480"), "Must include resolution");
         assertTrue(prompt.contains("exactly 5 sequential"), "Must enforce scene count");
         assertTrue(prompt.contains("DIRECTOR'S 5-BEAT DRAMATIC ARC"), "Must provide dramatic arc structure");
-        assertTrue(prompt.contains("DUAL-ANCHOR FORMULA & GLOBAL STYLE ANCHOR"), "Must provide style consistency anchor");
+        assertTrue(prompt.contains("DUAL-ANCHOR FORMULA"), "Must provide style consistency anchor");
+        assertTrue(prompt.contains("MANDATORY TEMPORAL & LIGHTING CONTINUITY"), "Must enforce temporal and lighting continuity");
+        assertTrue(prompt.contains("HIGH-OCTANE MACROSCOPIC MOTION"), "Must enforce macroscopic physics");
         assertTrue(prompt.contains("STRICT NEGATIVE DIRECTIVES"), "Must forbid countdowns and abstract adjectives");
+    }
+
+    @Test
+    void testHarmonizeSceneLightingPreventsShifts() {
+        de.tki.comfyuicompanion.domain.Scene s1 = new de.tki.comfyuicompanion.domain.Scene();
+        s1.setSceneId("S1");
+        s1.setPrompt("Camera slowly pushes forward over the rocket launchpad, dusty golden hour sunset backlight.");
+
+        de.tki.comfyuicompanion.domain.Scene s2 = new de.tki.comfyuicompanion.domain.Scene();
+        s2.setSceneId("S2");
+        s2.setPrompt("Low-angle tracking shot of the crowd cheering wildly, pitch-black night silhouette.");
+
+        java.util.List<de.tki.comfyuicompanion.domain.Scene> scenes = java.util.List.of(s1, s2);
+        optimizer.harmonizeSceneLighting(scenes);
+
+        // s2's conflicting night prompt should be stripped and harmonized with s1's golden hour lighting
+        assertFalse(s2.getPrompt().contains("pitch-black night silhouette"), "Conflicting night trigger must be removed");
+        assertTrue(s2.getPrompt().toLowerCase().contains("golden hour"), "Must inherit Scene 1's golden hour lighting anchor");
+    }
+
+    @Test
+    void testDefaultTransitionIsNone() {
+        de.tki.comfyuicompanion.domain.Scene scene = new de.tki.comfyuicompanion.domain.Scene();
+        assertEquals("none", scene.getTransitionType(), "Default transition must be 'none' (hard cut)");
+        assertEquals(0.0, scene.getTransitionDuration(), 0.001, "Default transition duration must be 0.0s");
     }
 }

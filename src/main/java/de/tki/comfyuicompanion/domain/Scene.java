@@ -28,7 +28,7 @@ public class Scene {
      * @param ltxStrength        strength factor for LTX model enhancement
      */
     public record TransitionSettings(String sourceClipPath, String transitionType, double transitionDuration, boolean enhanceWithLtx, double ltxStrength) {
-        public static final TransitionSettings DEFAULT = new TransitionSettings(null, "crossfade", 1.0, false, 0.85);
+        public static final TransitionSettings DEFAULT = new TransitionSettings(null, "none", 0.0, false, 0.85);
     }
 
     /**

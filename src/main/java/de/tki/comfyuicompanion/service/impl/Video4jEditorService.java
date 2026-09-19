@@ -79,8 +79,11 @@ public class Video4jEditorService {
 
 
     private boolean convertImageToVideo(File imageFile, File destVideo, int duration) {
-        logger.info("🖼️ [Video4jEditorService] Converting static image " + imageFile.getName() + " to MP4 video (Duration: " + duration + "s)");
+        logger.info("🖼️ [Video4jEditorService] Converting static image " + imageFile.getName() + " to MP4 video with Ken Burns motion (Duration: " + duration + "s)");
         try {
+            int fps = 24;
+            String motionFilter = String.format(java.util.Locale.US,
+                "scale=trunc(iw/2)*2:trunc(ih/2)*2,zoompan=z='min(zoom+0.0008,1.12)':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':fps=%d", fps);
             ProcessBuilder pb = new ProcessBuilder(
                 configService.getFfmpegPath(), "-y",
                 "-loop", "1",
@@ -88,7 +91,8 @@ public class Video4jEditorService {
                 "-c:v", "libx264",
                 "-t", String.valueOf(duration),
                 "-pix_fmt", "yuv420p",
-                "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2",
+                "-r", String.valueOf(fps),
+                "-vf", motionFilter,
                 destVideo.getAbsolutePath()
             );
             pb.redirectErrorStream(true);
@@ -202,7 +206,6 @@ public class Video4jEditorService {
 
         // Handle static image input: convert to video first
         File tempImageVideo = null;
-        File tempSubFile = null;
         try {
             String lower = videoPath.toLowerCase();
             boolean isImage = lower.endsWith(".png") || lower.endsWith(".jpg") || lower.endsWith(".jpeg") || lower.endsWith(".webp");
@@ -274,27 +277,11 @@ public class Video4jEditorService {
             command.add("-t");
             command.add(String.format(java.util.Locale.US, "%.3f", duration));
 
-            // Build video filter chain (contrast/brightness adjustment + subtitle overlay)
+            // Build video filter chain (contrast/brightness adjustment)
             List<String> vfFilters = new java.util.ArrayList<>();
             if (Math.abs(scene.getContrast() - 1.0) > 0.01 || Math.abs(scene.getBrightness()) > 0.01) {
                 vfFilters.add(String.format(java.util.Locale.US, "eq=contrast=%.2f:brightness=%.2f",
                         scene.getContrast(), scene.getBrightness() / 100.0));
-            }
-
-            // Add subtitle overlay via drawtext if narration text exists
-            String narration = scene.getNarrationText();
-            if (narration != null && !narration.trim().isEmpty()) {
-                // Write narration to a UTF-8 temp file to avoid command-line and filtergraph syntax errors
-                tempSubFile = File.createTempFile("sub_" + scene.getSceneId() + "_", ".txt");
-                Files.writeString(tempSubFile.toPath(), narration.trim(), StandardCharsets.UTF_8);
-
-                // Escape path for FFmpeg filtergraph: forward slashes, escaped colon (e.g. C\:/path)
-                String escapedSubPath = tempSubFile.getAbsolutePath()
-                        .replace("\\", "/")
-                        .replace(":", "\\:")
-                        .replace("'", "\\'");
-                String drawtext = "drawtext=textfile='" + escapedSubPath + "':fontsize=24:fontcolor=white:borderw=2:bordercolor=black:x=(w-tw)/2:y=h-th-40";
-                vfFilters.add(drawtext);
             }
 
             if (!vfFilters.isEmpty()) {
@@ -371,9 +358,6 @@ public class Video4jEditorService {
         } finally {
             if (tempImageVideo != null && tempImageVideo.exists()) {
                 tempImageVideo.delete();
-            }
-            if (tempSubFile != null && tempSubFile.exists()) {
-                tempSubFile.delete();
             }
         }
 
@@ -633,6 +617,9 @@ public class Video4jEditorService {
                     logger.error("[Video4jEditorService] xfade concat failed, keeping simple concat result: " + xfadeEx.getMessage());
                 }
             }
+
+            // 4c. Apply master post-production subtitles as a clean top layer with scene time ranges
+            applyMasterSubtitles(exportFile, scenes, ffmpegPath);
         } catch (Exception e) {
             logger.error("⚠️ [Video4jEditorService] FFmpeg stitching failed: " + e.getMessage());
             throw new Exception("FFmpeg stitching process failed. " + e.getMessage() + 
@@ -862,6 +849,121 @@ public class Video4jEditorService {
         int exit = p.waitFor();
         if (exit != 0 || !exportFile.exists() || exportFile.length() < 1024) {
             throw new IOException("ffmpeg xfade failed with exit " + exit);
+        }
+    }
+
+    /**
+     * Overlays subtitles across the master stitched video in a dedicated post-production pass.
+     * Uses timestamp-based drawtext filters so subtitles change instantaneously without ghosting or overlapping.
+     *
+     * @param masterVideo the assembled master video file
+     * @param scenes      the ordered list of scenes
+     * @param ffmpegPath  path to FFmpeg executable
+     */
+    private void applyMasterSubtitles(File masterVideo, java.util.List<Scene> scenes, String ffmpegPath) {
+        if (masterVideo == null || !masterVideo.exists() || scenes == null || scenes.isEmpty()) {
+            return;
+        }
+
+        boolean hasAnyNarration = scenes.stream().anyMatch(s -> s.getNarrationText() != null && !s.getNarrationText().trim().isEmpty());
+        if (!hasAnyNarration) {
+            return;
+        }
+
+        java.util.List<File> tempSubFiles = new java.util.ArrayList<>();
+        File tempOutput = new File(masterVideo.getParentFile(), "temp_subbed_" + masterVideo.getName());
+
+        try {
+            java.util.List<String> drawtextFilters = new java.util.ArrayList<>();
+            double currentOffset = 0.0;
+            boolean hasTransitions = scenes.size() > 1 && anySceneRequestsTransition(scenes);
+
+            for (int i = 0; i < scenes.size(); i++) {
+                Scene s = scenes.get(i);
+                double dur = (s.getEndFrame() > s.getStartFrame()) ? (s.getEndFrame() - s.getStartFrame()) / 30.0 : 5.0;
+                if (dur <= 0) dur = 5.0;
+
+                double startSec = currentOffset;
+                double endSec = currentOffset + dur;
+
+                if (hasTransitions && i > 0) {
+                    double transDur = s.getTransitionDuration() > 0 ? s.getTransitionDuration() : 1.0;
+                    transDur = Math.min(transDur, dur / 2.0);
+                    startSec = Math.max(0.0, startSec - transDur);
+                    endSec = Math.max(startSec + 0.5, endSec - transDur);
+                }
+
+                String narration = s.getNarrationText();
+                if (narration != null && !narration.trim().isEmpty()) {
+                    File subFile = File.createTempFile("sub_master_" + s.getSceneId() + "_", ".txt");
+                    java.nio.file.Files.writeString(subFile.toPath(), narration.trim(), java.nio.charset.StandardCharsets.UTF_8);
+                    tempSubFiles.add(subFile);
+
+                    String escapedSubPath = subFile.getAbsolutePath()
+                            .replace("\\", "/")
+                            .replace(":", "\\:")
+                            .replace("'", "\\'");
+
+                    String drawtext = String.format(java.util.Locale.US,
+                            "drawtext=textfile='%s':enable='between(t,%.2f,%.2f)':fontsize=24:fontcolor=white:borderw=2:bordercolor=black:x=(w-tw)/2:y=h-th-40",
+                            escapedSubPath, Math.max(0.0, startSec), endSec);
+                    drawtextFilters.add(drawtext);
+                }
+
+                currentOffset = endSec;
+            }
+
+            if (!drawtextFilters.isEmpty()) {
+                java.util.List<String> cmd = new java.util.ArrayList<>();
+                cmd.add(ffmpegPath);
+                cmd.add("-y");
+                cmd.add("-i");
+                cmd.add(masterVideo.getAbsolutePath());
+                cmd.add("-vf");
+                cmd.add(String.join(",", drawtextFilters));
+                cmd.add("-c:v");
+                cmd.add("libx264");
+                cmd.add("-preset");
+                cmd.add("medium");
+                cmd.add("-crf");
+                cmd.add("18");
+                cmd.add("-pix_fmt");
+                cmd.add("yuv420p");
+                cmd.add("-c:a");
+                cmd.add("copy");
+                cmd.add(tempOutput.getAbsolutePath());
+
+                logger.info("📝 [Video4jEditorService] Applying master post-production subtitles...");
+                ProcessBuilder pb = new ProcessBuilder(cmd);
+                pb.redirectErrorStream(true);
+                Process p = startProcess(pb);
+                try (java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(p.getInputStream(), java.nio.charset.StandardCharsets.UTF_8))) {
+                    String line;
+                    while ((line = r.readLine()) != null) {
+                        logger.info("   [FFmpeg MasterSub] " + line);
+                    }
+                }
+                int exit = p.waitFor();
+                if (exit == 0 && tempOutput.exists() && tempOutput.length() > 1024) {
+                    masterVideo.delete();
+                    boolean renamed = tempOutput.renameTo(masterVideo);
+                    if (!renamed) {
+                        java.nio.file.Files.copy(tempOutput.toPath(), masterVideo.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                        tempOutput.delete();
+                    }
+                    logger.info("✅ [Video4jEditorService] Master subtitles applied successfully without ghosting.");
+                } else {
+                    logger.warn("⚠️ [Video4jEditorService] Master subtitle burn exited with " + exit + "; retaining clean video.");
+                    if (tempOutput.exists()) tempOutput.delete();
+                }
+            }
+        } catch (Exception e) {
+            logger.error("⚠️ [Video4jEditorService] Failed applying master subtitles: " + e.getMessage(), e);
+            if (tempOutput.exists()) tempOutput.delete();
+        } finally {
+            for (File tf : tempSubFiles) {
+                if (tf.exists()) tf.delete();
+            }
         }
     }
 }

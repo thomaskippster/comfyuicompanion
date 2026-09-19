@@ -54,4 +54,12 @@ public interface IVideoPromptOptimizer {
      * @return true if explicit motion keywords are present
      */
     boolean hasMotionDirectives(String prompt);
+
+    /**
+     * Harmonizes lighting, atmosphere, and time-of-day across all scenes in a storyboard sequence
+     * to enforce strict temporal continuity and prevent abrupt lighting shifts (e.g. dusk to golden hour to night).
+     *
+     * @param scenes the list of scenes to harmonize
+     */
+    void harmonizeSceneLighting(java.util.List<de.tki.comfyuicompanion.domain.Scene> scenes);
 }

@@ -70,6 +70,10 @@ public class VideoScriptParser {
             scenes = splitScriptFallback(originalIdea, targetW, targetH, promptOptimizer);
         }
 
+        if (promptOptimizer != null && scenes.size() > 1) {
+            promptOptimizer.harmonizeSceneLighting(scenes);
+        }
+
         return scenes;
     }
 

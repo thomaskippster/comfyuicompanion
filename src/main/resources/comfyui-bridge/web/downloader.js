@@ -1,4 +1,6 @@
 // Companion for ComfyUI - Bridge Extension
+// GitHub: https://github.com/thomaskippster/comfyuicompanion
+// Note: There is also a direct Pinokio install and a pre-compiled JAR available – you can find those links on the GitHub repo.
 import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
 
@@ -191,7 +193,7 @@ const initializeExtension = async () => {
         const fab = document.createElement("div");
         fab.id = "tki-companion-fab";
         fab.innerHTML = "&#128640;";
-        fab.title = "Send workflow to Companion for ComfyUI";
+        fab.title = "Send workflow to Companion for ComfyUI (Pre-compiled JAR & Pinokio install available on GitHub)";
         fab.style = "position:fixed; bottom:30px; right:30px; z-index:10000; cursor:pointer; font-size:30px; background:#ffcc00; border-radius:50%; width:60px; height:60px; display:flex; align-items:center; justify-content:center; box-shadow:0 0 20px rgba(0,0,0,0.5); border: 2px solid white; transition: transform 0.2s;";
         fab.onmouseover = () => { fab.style.transform = "scale(1.1)"; };
         fab.onmouseout = () => { fab.style.transform = "scale(1.0)"; };
@@ -216,6 +218,7 @@ const initializeExtension = async () => {
                 }
             } catch (e) {
                 log(`Failed to reach Companion at ${BRIDGE_URL}: ${e.message}`, "error");
+                log("Note: There is also a direct Pinokio install and a pre-compiled JAR available – you can find those links on the GitHub repo: https://github.com/thomaskippster/comfyuicompanion", "warn");
             }
         };
         document.body.appendChild(fab);

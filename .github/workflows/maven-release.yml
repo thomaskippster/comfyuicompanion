@@ -121,6 +121,19 @@ jobs:
             target/comfyuicompanion.jar
             target/comfyuicompanion.jar.sha256
           tag_name: v${{ env.VERSION }}
+          name: ComfyUI Companion v${{ env.VERSION }}
+          body: |
+            ## ComfyUI Companion v${{ env.VERSION }} 🚀
+
+            ### 📥 Installation & Download Options:
+            * **Pre-compiled JAR:** Download `comfyuicompanion.jar` directly from the release assets below. Run with:
+              ```bash
+              java -jar comfyuicompanion.jar
+              ```
+            * **Pinokio 1-Click Install:** Install directly using [Pinokio](https://pinokio.computer/item?uri=https://github.com/thomaskippster/comfyuicompanion).
+            * **SourceForge:** Also available for download on [SourceForge](https://sourceforge.net/projects/companion-for-comfyui/).
+
+            > **Note:** There is also a direct Pinokio install and a pre-compiled JAR available – you can find those links on the GitHub repo.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

@@ -852,8 +852,10 @@ public class VideoArchitectTab extends JPanel {
     }
 
     private void handleDeconstructScript() {
+        String targetModel = (String) videoModelCombo.getSelectedItem();
         executionHandler.deconstructScript(this,
                 promptSubjectField.getText().trim(),
+                targetModel,
                 (Integer) videoWidthSpinner.getValue(),
                 (Integer) videoHeightSpinner.getValue(),
                 ((Number) videoCfgSpinner.getValue()).doubleValue(),
@@ -869,8 +871,10 @@ public class VideoArchitectTab extends JPanel {
     }
 
     private void handleAutoPilot() {
+        String targetModel = (String) videoModelCombo.getSelectedItem();
         executionHandler.executeAutoPilot(this,
                 promptSubjectField.getText().trim(),
+                targetModel,
                 speakerImageField.getText().trim(),
                 (Integer) videoWidthSpinner.getValue(),
                 (Integer) videoHeightSpinner.getValue(),

@@ -12,7 +12,21 @@ public interface IVideoPromptOptimizer {
      * Builds the system prompt for LLMs (e.g. Gemma 3) instructing them
      * to deconstruct scripts into kinetically dynamic video scenes.
      */
-    String buildStoryboardSystemPrompt();
+    default String buildStoryboardSystemPrompt() {
+        return buildStoryboardSystemPrompt(null, 0, 0, 5);
+    }
+
+    /**
+     * Builds a contextual system prompt for LLMs tailored to a target video model,
+     * aspect ratio, and required scene count.
+     *
+     * @param targetModel target video diffusion architecture (e.g. "Wan 2.1", "LTX-Video")
+     * @param width       target video width
+     * @param height      target video height
+     * @param sceneCount  desired number of sequential scenes
+     * @return the fully configured system prompt
+     */
+    String buildStoryboardSystemPrompt(String targetModel, int width, int height, int sceneCount);
 
     /**
      * Analyzes and optimizes a video prompt. Replaces static photography terminology

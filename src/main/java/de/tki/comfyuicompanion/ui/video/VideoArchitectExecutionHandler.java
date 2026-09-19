@@ -70,6 +70,30 @@ public class VideoArchitectExecutionHandler {
                                   Consumer<String> consoleLogger,
                                   Consumer<Scene> previewUpdater,
                                   Runnable storyboardJsonUpdater) {
+        deconstructScript(parent, idea, null, width, height, cfg, steps, motion,
+                timelineListModel, timelineListView, progressBar, buttonsDisabledSetter,
+                consoleLogger, previewUpdater, storyboardJsonUpdater);
+    }
+
+    /**
+     * Deconstructs a master video idea into cinematic storyboard scenes using Gemma AI
+     * with model-specific kinetic directives.
+     */
+    public void deconstructScript(Component parent,
+                                  String idea,
+                                  String targetModel,
+                                  int width,
+                                  int height,
+                                  double cfg,
+                                  int steps,
+                                  int motion,
+                                  DefaultListModel<Scene> timelineListModel,
+                                  JList<Scene> timelineListView,
+                                  JProgressBar progressBar,
+                                  Consumer<Boolean> buttonsDisabledSetter,
+                                  Consumer<String> consoleLogger,
+                                  Consumer<Scene> previewUpdater,
+                                  Runnable storyboardJsonUpdater) {
         if (idea == null || idea.trim().isEmpty()) {
             consoleLogger.accept("Master script is empty!");
             return;
@@ -87,7 +111,7 @@ public class VideoArchitectExecutionHandler {
             );
 
             if (choice == JOptionPane.YES_OPTION) {
-                downloadGemmaAndDeconstruct(parent, idea, width, height, cfg, steps, motion,
+                downloadGemmaAndDeconstruct(parent, idea, targetModel, width, height, cfg, steps, motion,
                         timelineListModel, timelineListView, progressBar, buttonsDisabledSetter,
                         consoleLogger, previewUpdater, storyboardJsonUpdater);
                 return;
@@ -96,25 +120,26 @@ public class VideoArchitectExecutionHandler {
             }
         }
 
-        executeDeconstructScriptTask(parent, idea, width, height, cfg, steps, motion,
+        executeDeconstructScriptTask(parent, idea, targetModel, width, height, cfg, steps, motion,
                 timelineListModel, timelineListView, buttonsDisabledSetter, consoleLogger,
                 previewUpdater, storyboardJsonUpdater);
     }
 
     private void downloadGemmaAndDeconstruct(Component parent,
-                                            String idea,
-                                            int width,
-                                            int height,
-                                            double cfg,
-                                            int steps,
-                                            int motion,
-                                            DefaultListModel<Scene> timelineListModel,
-                                            JList<Scene> timelineListView,
-                                            JProgressBar progressBar,
-                                            Consumer<Boolean> buttonsDisabledSetter,
-                                            Consumer<String> consoleLogger,
-                                            Consumer<Scene> previewUpdater,
-                                            Runnable storyboardJsonUpdater) {
+                                             String idea,
+                                             String targetModel,
+                                             int width,
+                                             int height,
+                                             double cfg,
+                                             int steps,
+                                             int motion,
+                                             DefaultListModel<Scene> timelineListModel,
+                                             JList<Scene> timelineListView,
+                                             JProgressBar progressBar,
+                                             Consumer<Boolean> buttonsDisabledSetter,
+                                             Consumer<String> consoleLogger,
+                                             Consumer<Scene> previewUpdater,
+                                             Runnable storyboardJsonUpdater) {
         buttonsDisabledSetter.accept(true);
         progressBar.setValue(0);
         progressBar.setVisible(true);
@@ -128,7 +153,7 @@ public class VideoArchitectExecutionHandler {
                 () -> SwingUtilities.invokeLater(() -> {
                     progressBar.setVisible(false);
                     consoleLogger.accept("✅ Gemma model downloaded successfully! Starting AI script deconstruction...");
-                    executeDeconstructScriptTask(parent, idea, width, height, cfg, steps, motion,
+                    executeDeconstructScriptTask(parent, idea, targetModel, width, height, cfg, steps, motion,
                             timelineListModel, timelineListView, buttonsDisabledSetter,
                             consoleLogger, previewUpdater, storyboardJsonUpdater);
                 }),
@@ -142,18 +167,19 @@ public class VideoArchitectExecutionHandler {
     }
 
     private void executeDeconstructScriptTask(Component parent,
-                                             String idea,
-                                             int width,
-                                             int height,
-                                             double cfg,
-                                             int steps,
-                                             int motion,
-                                             DefaultListModel<Scene> timelineListModel,
-                                             JList<Scene> timelineListView,
-                                             Consumer<Boolean> buttonsDisabledSetter,
-                                             Consumer<String> consoleLogger,
-                                             Consumer<Scene> previewUpdater,
-                                             Runnable storyboardJsonUpdater) {
+                                              String idea,
+                                              String targetModel,
+                                              int width,
+                                              int height,
+                                              double cfg,
+                                              int steps,
+                                              int motion,
+                                              DefaultListModel<Scene> timelineListModel,
+                                              JList<Scene> timelineListView,
+                                              Consumer<Boolean> buttonsDisabledSetter,
+                                              Consumer<String> consoleLogger,
+                                              Consumer<Scene> previewUpdater,
+                                              Runnable storyboardJsonUpdater) {
         buttonsDisabledSetter.accept(true);
         boolean usingGemma = gemma4Service != null && gemma4Service.isGemmaAvailable();
         consoleLogger.accept(usingGemma ? "🤖 Gemma AI: Analyzing script and generating storyboard..." : "Analyzing script...");
@@ -163,7 +189,7 @@ public class VideoArchitectExecutionHandler {
                 String jsonStr = null;
                 if (gemma4Service != null && gemma4Service.isGemmaAvailable()) {
                     try {
-                        jsonStr = gemma4Service.generateScript(idea);
+                        jsonStr = gemma4Service.generateScript(idea, targetModel, width, height, 5);
                     } catch (Exception ex) {
                         logger.warn("Gemma script generation threw: {}. Falling back to rule-based parser.", ex.getMessage());
                     }
@@ -219,6 +245,31 @@ public class VideoArchitectExecutionHandler {
                                  Consumer<String> consoleLogger,
                                  Consumer<Scene> previewUpdater,
                                  Runnable storyboardJsonUpdater) {
+        executeAutoPilot(parent, idea, null, speakerPath, width, height, cfg, steps, motion,
+                timelineListModel, timelineListView, progressBar, buttonsDisabledSetter,
+                consoleLogger, previewUpdater, storyboardJsonUpdater);
+    }
+
+    /**
+     * Executes the autonomous end-to-end video pipeline including model-specific Gemma storyboard
+     * deconstruction, TTS generation, ComfyUI video rendering, and assembly.
+     */
+    public void executeAutoPilot(Component parent,
+                                 String idea,
+                                 String targetModel,
+                                 String speakerPath,
+                                 int width,
+                                 int height,
+                                 double cfg,
+                                 int steps,
+                                 int motion,
+                                 DefaultListModel<Scene> timelineListModel,
+                                 JList<Scene> timelineListView,
+                                 JProgressBar progressBar,
+                                 Consumer<Boolean> buttonsDisabledSetter,
+                                 Consumer<String> consoleLogger,
+                                 Consumer<Scene> previewUpdater,
+                                 Runnable storyboardJsonUpdater) {
         if (idea == null || idea.trim().isEmpty()) {
             consoleLogger.accept("Master script is empty! Agent needs a concept.");
             return;
@@ -236,7 +287,7 @@ public class VideoArchitectExecutionHandler {
                 String jsonStr = null;
                 try {
                     if (gemma4Service != null) {
-                        jsonStr = gemma4Service.generateScript(idea);
+                        jsonStr = gemma4Service.generateScript(idea, targetModel, width, height, 5);
                     }
                 } catch (Exception ex) {
                     logger.warn("Gemma script generation threw: {}. Using fallback deconstruction.", ex.getMessage());

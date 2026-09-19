@@ -82,6 +82,10 @@ public class MediaTranscodingService {
 
         String scaleFilter = String.format(java.util.Locale.US,
                 "scale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-ih)/2", w, h, w, h);
+        int fpsInt = fps > 0 ? (int) fps : 24;
+        String motionFilter = String.format(java.util.Locale.US,
+                "zoompan=z='min(zoom+0.0008,1.12)':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=%dx%d:fps=%d,%s",
+                w, h, fpsInt, scaleFilter);
 
         List<String> cmd = new ArrayList<>();
         cmd.add(ffmpegPath);
@@ -96,8 +100,6 @@ public class MediaTranscodingService {
             cmd.add(audioFile.getAbsolutePath());
             cmd.add("-c:v");
             cmd.add("libx264");
-            cmd.add("-tune");
-            cmd.add("stillimage");
             cmd.add("-preset");
             cmd.add("medium");
             cmd.add("-crf");
@@ -110,14 +112,12 @@ public class MediaTranscodingService {
             cmd.add("yuv420p");
             cmd.add("-shortest");
             cmd.add("-vf");
-            cmd.add(scaleFilter);
+            cmd.add(motionFilter);
         } else {
             cmd.add("-t");
             cmd.add(String.valueOf(durationSeconds > 0 ? durationSeconds : 5.0f));
             cmd.add("-c:v");
             cmd.add("libx264");
-            cmd.add("-tune");
-            cmd.add("stillimage");
             cmd.add("-preset");
             cmd.add("medium");
             cmd.add("-crf");
@@ -125,9 +125,9 @@ public class MediaTranscodingService {
             cmd.add("-pix_fmt");
             cmd.add("yuv420p");
             cmd.add("-r");
-            cmd.add(String.valueOf(fps > 0 ? fps : 24.0f));
+            cmd.add(String.valueOf(fpsInt));
             cmd.add("-vf");
-            cmd.add(scaleFilter);
+            cmd.add(motionFilter);
         }
         cmd.add(outputFile.getAbsolutePath());
 

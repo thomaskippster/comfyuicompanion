@@ -163,4 +163,74 @@ class PromptBlueprintApiServiceTest {
         assertEquals("euler", promptObj.getJSONObject("75:61").getJSONObject("inputs").getString("sampler_name"));
         assertEquals("normal", promptObj.getJSONObject("75:62").getJSONObject("inputs").getString("scheduler"));
     }
+
+    @Test
+    void testCleanNonNodeKeys_removesMetadataAndPrimitiveFields() {
+        JSONObject promptObj = new JSONObject();
+        promptObj.put("last_node_id", 42);
+        promptObj.put("last_link_id", 100);
+        promptObj.put("version", 0.4);
+        promptObj.put("some_string", "metadata");
+        promptObj.put("nodes", new org.json.JSONArray());
+
+        JSONObject validNode = new JSONObject();
+        validNode.put("class_type", "KSampler");
+        validNode.put("inputs", new JSONObject());
+        promptObj.put("3", validNode);
+
+        JSONObject nodeWithoutClassType = new JSONObject();
+        nodeWithoutClassType.put("title", "orphan node");
+        promptObj.put("99", nodeWithoutClassType);
+
+        PromptBlueprintApiService.cleanNonNodeKeys(promptObj);
+
+        assertEquals(1, promptObj.length());
+        assertTrue(promptObj.has("3"));
+        assertEquals("KSampler", promptObj.getJSONObject("3").getString("class_type"));
+        assertFalse(promptObj.has("last_node_id"));
+        assertFalse(promptObj.has("last_link_id"));
+        assertFalse(promptObj.has("version"));
+        assertFalse(promptObj.has("some_string"));
+        assertFalse(promptObj.has("nodes"));
+        assertFalse(promptObj.has("99"));
+    }
+
+    @Test
+    void testFindModelInObjectInfo_resolvesSubfolderPathForVae() {
+        String objectInfoJson = """
+        {
+          "VAELoader": {
+            "input": {
+              "required": {
+                "vae_name": [
+                  [
+                    "FLUX1\\\\ae.safetensors",
+                    "SD1.5\\\\vae-ft-mse-840000-ema-pruned.safetensors",
+                    "flux2-vae.safetensors",
+                    "pixel_space"
+                  ]
+                ]
+              }
+            }
+          }
+        }
+        """;
+
+        JSONObject objectInfo = new JSONObject(objectInfoJson);
+
+        String matched = PromptBlueprintApiService.findModelInObjectInfo("VAELoader", "vae_name", "ae.safetensors", objectInfo);
+        assertEquals("FLUX1\\ae.safetensors", matched);
+
+        JSONObject promptObj = new JSONObject();
+        JSONObject vaeNode = new JSONObject();
+        vaeNode.put("class_type", "VAELoader");
+        JSONObject inputs = new JSONObject();
+        inputs.put("vae_name", "ae.safetensors");
+        vaeNode.put("inputs", inputs);
+        promptObj.put("10029", vaeNode);
+
+        PromptBlueprintApiService.sanitizeModelInputs(promptObj, objectInfo);
+
+        assertEquals("FLUX1\\ae.safetensors", promptObj.getJSONObject("10029").getJSONObject("inputs").getString("vae_name"));
+    }
 }

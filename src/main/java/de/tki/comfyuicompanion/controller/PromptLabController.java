@@ -6,6 +6,7 @@ import de.tki.comfyuicompanion.service.IModelArchitectureService;
 import de.tki.comfyuicompanion.service.IWorkflowDownloader;
 import de.tki.comfyuicompanion.service.PromptBlueprintApiService;
 import de.tki.comfyuicompanion.service.impl.ComfyApiClient;
+import de.tki.comfyuicompanion.service.impl.ComfyPipelineService;
 import de.tki.comfyuicompanion.service.impl.ConfigService;
 import de.tki.comfyuicompanion.ui.BlueprintGalleryTab;
 import de.tki.comfyuicompanion.ui.PromptLabView;
@@ -248,7 +249,14 @@ public class PromptLabController implements PromptLabView.PromptLabController {
             if (currentJsonStr == null || currentJsonStr.isBlank()) return;
 
             JSONObject mainObj = new JSONObject(currentJsonStr);
-            if (!mainObj.has("prompt")) return;
+            if (!mainObj.has("prompt")) {
+                if (mainObj.has("nodes")) {
+                    JSONObject flattened = ComfyPipelineService.flattenWorkflow(mainObj);
+                    mainObj = ComfyPipelineService.convertUiToApi(flattened);
+                } else {
+                    return;
+                }
+            }
 
             JSONObject promptObj = mainObj.getJSONObject("prompt");
 
@@ -422,7 +430,16 @@ public class PromptLabController implements PromptLabView.PromptLabController {
                     }
 
                     if (jsonContent != null) {
-                        final String finalJson = jsonContent;
+                        String preparedJson = jsonContent;
+                        try {
+                            JSONObject rawObj = new JSONObject(jsonContent);
+                            if (rawObj.has("nodes")) {
+                                JSONObject flattened = ComfyPipelineService.flattenWorkflow(rawObj);
+                                JSONObject apiPayload = ComfyPipelineService.convertUiToApi(flattened);
+                                preparedJson = apiPayload.toString(2);
+                            }
+                        } catch (Exception ignored) {}
+                        final String finalJson = preparedJson;
                         SwingUtilities.invokeLater(() -> {
                             currentBlueprintGuiJson = finalJson;
                             if (view.getPromptJsonArea() != null) {

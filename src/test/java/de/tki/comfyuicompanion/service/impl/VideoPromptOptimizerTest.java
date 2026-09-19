@@ -86,4 +86,16 @@ class VideoPromptOptimizerTest {
         assertTrue(optimizer.hasMotionDirectives("Strong winds blow sand across the dunes"));
         assertTrue(optimizer.hasMotionDirectives("A person running down the street"));
     }
+
+    @Test
+    void testBuildStoryboardSystemPromptWithContextDirectives() {
+        String prompt = optimizer.buildStoryboardSystemPrompt("Wan 2.1 (T2V / I2V 14B)", 832, 480, 5);
+        assertNotNull(prompt);
+        assertTrue(prompt.contains("Wan 2.1 (T2V / I2V 14B)"), "Must include model target");
+        assertTrue(prompt.contains("832x480"), "Must include resolution");
+        assertTrue(prompt.contains("exactly 5 sequential"), "Must enforce scene count");
+        assertTrue(prompt.contains("DIRECTOR'S 5-BEAT DRAMATIC ARC"), "Must provide dramatic arc structure");
+        assertTrue(prompt.contains("DUAL-ANCHOR FORMULA & GLOBAL STYLE ANCHOR"), "Must provide style consistency anchor");
+        assertTrue(prompt.contains("STRICT NEGATIVE DIRECTIVES"), "Must forbid countdowns and abstract adjectives");
+    }
 }

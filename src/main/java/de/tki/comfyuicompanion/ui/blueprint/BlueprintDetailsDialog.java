@@ -394,10 +394,13 @@ public class BlueprintDetailsDialog extends JDialog {
                             SwingUtilities.invokeLater(() -> btnSendToComfy.setText("Sending..."));
                             String jsonContent = java.nio.file.Files.readString(file.toPath());
                             boolean isUIFormatDetected = false;
+                            String payloadToSend = jsonContent;
                             try {
                                 org.json.JSONObject obj = new org.json.JSONObject(jsonContent);
-                                if (obj.has("nodes") && obj.has("links")) {
+                                if (obj.has("nodes") || obj.has("last_node_id")) {
                                     isUIFormatDetected = true;
+                                } else if (!obj.has("prompt")) {
+                                    payloadToSend = new org.json.JSONObject().put("prompt", obj).toString();
                                 }
                             } catch (Exception ignored) {}
                             final boolean isUIFormat = isUIFormatDetected;
@@ -411,7 +414,7 @@ public class BlueprintDetailsDialog extends JDialog {
                             HttpRequest request = HttpRequest.newBuilder()
                                     .uri(URI.create(targetEndpoint))
                                     .header("Content-Type", "application/json")
-                                    .POST(HttpRequest.BodyPublishers.ofString(jsonContent))
+                                    .POST(HttpRequest.BodyPublishers.ofString(payloadToSend))
                                     .build();
 
                             HttpClient client = HttpClient.newHttpClient();

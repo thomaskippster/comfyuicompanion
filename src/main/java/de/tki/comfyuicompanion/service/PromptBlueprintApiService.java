@@ -6,6 +6,8 @@ import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 
@@ -222,6 +224,137 @@ public class PromptBlueprintApiService {
     }
 
     /**
+     * Cleans non-node metadata fields (e.g. "last_node_id", "last_link_id", "version", "extra")
+     * from a prompt dictionary to prevent ComfyUI server crashes (such as TypeError: argument of type 'int' is not iterable).
+     *
+     * @param promptDict the prompt JSON dictionary containing node mappings
+     */
+    public static void cleanNonNodeKeys(JSONObject promptDict) {
+        if (promptDict == null) return;
+        List<String> keysToRemove = new ArrayList<>();
+        for (String key : promptDict.keySet()) {
+            Object val = promptDict.get(key);
+            if (!(val instanceof JSONObject node) || !node.has("class_type")) {
+                keysToRemove.add(key);
+            }
+        }
+        keysToRemove.forEach(promptDict::remove);
+    }
+
+    /**
+     * Searches ComfyUI's /object_info registry for an existing model option matching the requested target.
+     * Supports subfolders (e.g. 'FLUX1\\ae.safetensors' for 'ae.safetensors'), normalized paths, and extension-insensitive matches.
+     *
+     * @param classType   the node class name (e.g. "VAELoader", "UNETLoader", "CLIPLoader")
+     * @param inputKey    the input parameter name (e.g. "vae_name", "unet_name", "clip_name")
+     * @param targetValue the target model filename or identifier
+     * @param objectInfo  the ComfyUI /object_info JSON object
+     * @return the exact matching model path registered in ComfyUI, or null if not found
+     */
+    public static String findModelInObjectInfo(String classType, String inputKey, String targetValue, JSONObject objectInfo) {
+        if (targetValue == null || targetValue.isBlank() || classType == null || objectInfo == null) return null;
+        if (!objectInfo.has(classType)) return null;
+
+        JSONObject nodeInfo = objectInfo.optJSONObject(classType);
+        if (nodeInfo == null) return null;
+        JSONObject input = nodeInfo.optJSONObject("input");
+        if (input == null) return null;
+
+        JSONObject required = input.optJSONObject("required");
+        JSONObject optional = input.optJSONObject("optional");
+
+        Object valObj = null;
+        if (required != null && required.has(inputKey)) valObj = required.get(inputKey);
+        else if (optional != null && optional.has(inputKey)) valObj = optional.get(inputKey);
+
+        if (valObj instanceof JSONArray outerArray && outerArray.length() > 0) {
+            Object firstElement = outerArray.get(0);
+            JSONArray options = null;
+            if (firstElement instanceof JSONArray jsonArray) {
+                options = jsonArray;
+            } else if (firstElement instanceof String firstStr && firstStr.equalsIgnoreCase("COMBO")
+                    && outerArray.length() > 1 && outerArray.get(1) instanceof JSONObject configObj) {
+                options = configObj.optJSONArray("options");
+            } else if (firstElement instanceof String && !"COMBO".equalsIgnoreCase((String) firstElement)) {
+                options = outerArray;
+            }
+
+            if (options != null) {
+                Set<String> optSet = new LinkedHashSet<>();
+                for (int i = 0; i < options.length(); i++) {
+                    if (options.get(i) instanceof String s && !s.equalsIgnoreCase("COMBO")) {
+                        optSet.add(s);
+                    }
+                }
+
+                String targetClean = targetValue.replaceAll("[/\\\\]+", "/").trim().toLowerCase(Locale.ROOT);
+                String targetFileName = targetClean.contains("/") ? targetClean.substring(targetClean.lastIndexOf('/') + 1) : targetClean;
+                String targetNoExt = targetFileName.contains(".") ? targetFileName.substring(0, targetFileName.lastIndexOf('.')) : targetFileName;
+
+                // 1. Exact match (case-insensitive, normalized slashes)
+                for (String opt : optSet) {
+                    if (opt.replaceAll("[/\\\\]+", "/").trim().toLowerCase(Locale.ROOT).equals(targetClean)) {
+                        return opt;
+                    }
+                }
+                // 2. Match by filename (ignoring subfolder like FLUX1/)
+                for (String opt : optSet) {
+                    String optClean = opt.replaceAll("[/\\\\]+", "/").trim().toLowerCase(Locale.ROOT);
+                    String optFileName = optClean.contains("/") ? optClean.substring(optClean.lastIndexOf('/') + 1) : optClean;
+                    if (optFileName.equals(targetFileName)) {
+                        return opt;
+                    }
+                }
+                // 3. Match by filename without extension
+                for (String opt : optSet) {
+                    String optClean = opt.replaceAll("[/\\\\]+", "/").trim().toLowerCase(Locale.ROOT);
+                    String optFileName = optClean.contains("/") ? optClean.substring(optClean.lastIndexOf('/') + 1) : optClean;
+                    String optNoExt = optFileName.contains(".") ? optFileName.substring(0, optFileName.lastIndexOf('.')) : optFileName;
+                    if (optNoExt.equals(targetNoExt)) {
+                        return opt;
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Generic model input sanitizer that adjusts model filenames across all prompt nodes
+     * using ComfyUI's /object_info registry specifications.
+     *
+     * @param promptObj  the prompt JSON dictionary containing node mappings
+     * @param objectInfo the ComfyUI /object_info registry
+     */
+    public static void sanitizeModelInputs(JSONObject promptObj, JSONObject objectInfo) {
+        if (promptObj == null || objectInfo == null) return;
+        for (String key : promptObj.keySet()) {
+            JSONObject node = promptObj.optJSONObject(key);
+            if (node == null) continue;
+            JSONObject inp = node.optJSONObject("inputs");
+            if (inp == null) continue;
+            String classType = node.optString("class_type", "");
+
+            for (String ik : new ArrayList<>(inp.keySet())) {
+                Object val = inp.opt(ik);
+                if (val instanceof String s && !s.isBlank()) {
+                    boolean isModelKey = ik.endsWith("_name") || ik.endsWith("_path")
+                            || ik.equals("model") || ik.equals("vae") || ik.equals("clip") || ik.equals("unet");
+                    boolean isModelFile = s.endsWith(".safetensors") || s.endsWith(".ckpt")
+                            || s.endsWith(".pt") || s.endsWith(".bin") || s.endsWith(".onnx") || s.endsWith(".sft");
+
+                    if (isModelKey || isModelFile) {
+                        String matched = findModelInObjectInfo(classType, ik, s, objectInfo);
+                        if (matched != null) {
+                            inp.put(ik, matched);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /**
      * Extracts and normalizes the API prompt dictionary and workflow metadata
      * from raw conversion JSON returned by ComfyUI's app.graphToPrompt().
      */
@@ -262,11 +395,8 @@ public class PromptBlueprintApiService {
             promptObj = new JSONObject(converted.toString());
         }
 
-        // Clean non-node keys if present in promptObj
-        promptObj.remove("output");
-        promptObj.remove("workflow");
-        promptObj.remove("extra_data");
-        promptObj.remove("id");
+        // Clean non-node keys (including last_node_id, last_link_id, etc.) if present in promptObj
+        cleanNonNodeKeys(promptObj);
 
         JSONObject mainObj = new JSONObject().put("prompt", promptObj);
         if (workflowObj != null) {

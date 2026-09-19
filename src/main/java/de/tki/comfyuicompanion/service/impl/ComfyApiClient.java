@@ -166,7 +166,22 @@ public class ComfyApiClient {
             org.json.JSONObject obj = new org.json.JSONObject(jsonPayload);
             org.json.JSONObject promptObj = obj.has("prompt") ? obj.optJSONObject("prompt") : obj;
             if (promptObj != null) {
+                if (promptObj.has("nodes")) {
+                    org.json.JSONObject flattened = de.tki.comfyuicompanion.service.impl.ComfyPipelineService.flattenWorkflow(promptObj);
+                    org.json.JSONObject apiPayload = de.tki.comfyuicompanion.service.impl.ComfyPipelineService.convertUiToApi(flattened);
+                    promptObj = apiPayload.getJSONObject("prompt");
+                    obj.put("prompt", promptObj);
+                } else if (!obj.has("prompt")) {
+                    obj = new org.json.JSONObject().put("prompt", promptObj);
+                }
+                de.tki.comfyuicompanion.service.PromptBlueprintApiService.cleanNonNodeKeys(promptObj);
                 de.tki.comfyuicompanion.service.PromptBlueprintApiService.sanitizeAllSeedsInPrompt(promptObj);
+                try {
+                    org.json.JSONObject objectInfo = getObjectInfo(comfyUrl);
+                    if (objectInfo != null) {
+                        de.tki.comfyuicompanion.service.PromptBlueprintApiService.sanitizeModelInputs(promptObj, objectInfo);
+                    }
+                } catch (Exception ignored) {}
                 safePayload = obj.toString();
             }
         } catch (Exception ignored) {}

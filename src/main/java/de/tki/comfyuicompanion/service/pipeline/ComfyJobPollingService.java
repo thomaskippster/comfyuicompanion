@@ -79,9 +79,15 @@ public class ComfyJobPollingService {
      * @throws InterruptedException if the operation is interrupted
      */
     public String submitPrompt(String serverUrl, JSONObject workflowJson) throws IOException, InterruptedException {
-        JSONObject payload = workflowJson.has("prompt") ? workflowJson : new JSONObject().put("prompt", workflowJson);
+        JSONObject workingJson = workflowJson;
+        if (workingJson.has("nodes")) {
+            JSONObject flattened = de.tki.comfyuicompanion.service.impl.ComfyPipelineService.flattenWorkflow(workingJson);
+            workingJson = de.tki.comfyuicompanion.service.impl.ComfyPipelineService.convertUiToApi(flattened);
+        }
+        JSONObject payload = workingJson.has("prompt") ? workingJson : new JSONObject().put("prompt", workingJson);
         JSONObject promptObj = payload.optJSONObject("prompt");
         if (promptObj != null) {
+            PromptBlueprintApiService.cleanNonNodeKeys(promptObj);
             PromptBlueprintApiService.sanitizeAllSeedsInPrompt(promptObj);
         }
 

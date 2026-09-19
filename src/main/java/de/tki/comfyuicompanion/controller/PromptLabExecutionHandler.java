@@ -168,18 +168,23 @@ public class PromptLabExecutionHandler {
                 }
 
                 JSONObject objectInfo = comfyApiClient.getObjectInfo(comfyUrl);
+                if (objectInfo != null && promptLabController != null) {
+                    promptLabController.updateComfyModelSets(objectInfo);
+                }
 
                 String promptJsonText = promptLabView.getPromptJsonArea().getText();
                 JSONObject parsedPrompt = new JSONObject(promptJsonText);
                 JSONObject promptToQueue;
-
                 if (parsedPrompt.has("prompt")) {
                     promptToQueue = parsedPrompt.getJSONObject("prompt");
                 } else if (parsedPrompt.has("nodes")) {
-                    promptToQueue = parsedPrompt;
+                    JSONObject flattened = de.tki.comfyuicompanion.service.impl.ComfyPipelineService.flattenWorkflow(parsedPrompt);
+                    JSONObject apiPayload = de.tki.comfyuicompanion.service.impl.ComfyPipelineService.convertUiToApi(flattened);
+                    promptToQueue = apiPayload.getJSONObject("prompt");
                 } else {
                     promptToQueue = parsedPrompt;
                 }
+                PromptBlueprintApiService.cleanNonNodeKeys(promptToQueue);
 
                 PromptBlueprintApiService.PromptLabInputs inputs = new PromptBlueprintApiService.PromptLabInputs(
                         assembledPrompt, negativePrompt, widthVal, heightVal, stepsVal, cfgVal,
@@ -575,41 +580,6 @@ public class PromptLabExecutionHandler {
     }
 
     public String findModelInObjectInfo(String classType, String inputKey, String targetValue, JSONObject objectInfo) {
-        if (objectInfo == null || !objectInfo.has(classType)) return null;
-        JSONObject nodeDef = objectInfo.optJSONObject(classType);
-        if (nodeDef == null) return null;
-        JSONObject inputDef = nodeDef.optJSONObject("input");
-        if (inputDef == null) return null;
-        JSONObject reqInputs = inputDef.optJSONObject("required");
-        JSONObject optInputs = inputDef.optJSONObject("optional");
-
-        JSONObject targetInput = null;
-        if (reqInputs != null && reqInputs.has(inputKey)) {
-            targetInput = reqInputs.optJSONObject(inputKey);
-        } else if (optInputs != null && optInputs.has(inputKey)) {
-            targetInput = optInputs.optJSONObject(inputKey);
-        }
-
-        if (targetInput != null) {
-            org.json.JSONArray choices = targetInput.optJSONArray("0");
-            if (choices != null) {
-                String normTarget = targetValue.replace('\\', '/').trim();
-                for (int i = 0; i < choices.length(); i++) {
-                    String opt = choices.optString(i, "");
-                    if (opt.replace('\\', '/').equalsIgnoreCase(normTarget)) {
-                        return opt;
-                    }
-                }
-                String targetFileName = new File(normTarget).getName();
-                for (int i = 0; i < choices.length(); i++) {
-                    String opt = choices.optString(i, "");
-                    String optFileName = new File(opt.replace('\\', '/')).getName();
-                    if (optFileName.equalsIgnoreCase(targetFileName)) {
-                        return opt;
-                    }
-                }
-            }
-        }
-        return null;
+        return PromptBlueprintApiService.findModelInObjectInfo(classType, inputKey, targetValue, objectInfo);
     }
 }

@@ -1,10 +1,14 @@
 # Companion for ComfyUI Bridge
+# GitHub Repository: https://github.com/thomaskippster/comfyuicompanion
+# Note: There is also a direct Pinokio install and a pre-compiled JAR available – you can find those links on the GitHub repo.
 import server
 import folder_paths
 import asyncio
 from aiohttp import web
 
 print("\033[95m[CMFC] UI Extension Bridge active\033[0m")
+print("\033[96m[CMFC] ComfyUI Companion App: https://github.com/thomaskippster/comfyuicompanion\033[0m")
+print("\033[96m[CMFC] Note: Direct Pinokio install & pre-compiled JAR available on GitHub repo.\033[0m")
 
 
 def _route_registered(method, path):

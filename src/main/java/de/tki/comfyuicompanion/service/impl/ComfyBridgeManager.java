@@ -89,6 +89,7 @@ public class ComfyBridgeManager {
             Path webDir = targetDir.resolve("web");
             Files.createDirectories(webDir);
             extractResource("/comfyui-bridge/web/downloader.js", webDir.resolve("downloader.js").toFile());
+            extractResource("/comfyui-bridge/README.md", targetDir.resolve("README.md").toFile());
 
             writeExtensionConfig(targetDir.toFile());
             configService.updateExtraModelPathsYaml();
@@ -124,6 +125,7 @@ public class ComfyBridgeManager {
             Path webDir = targetDir.resolve("web");
             Files.createDirectories(webDir);
             extractResource("/comfyui-bridge/web/downloader.js", webDir.resolve("downloader.js").toFile());
+            extractResource("/comfyui-bridge/README.md", targetDir.resolve("README.md").toFile());
 
             writeExtensionConfig(targetDir.toFile());
             configService.updateExtraModelPathsYaml();

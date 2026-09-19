@@ -1,7 +1,7 @@
 module.exports = {
   version: "2.0",
   title: "Companion for ComfyUI",
-  description: "AI-powered model downloader, workflow bridge, timeline video editor, and manager for ComfyUI.",
+  description: "AI-powered model downloader, workflow bridge, timeline video editor, and manager for ComfyUI. Note: There is also a direct Pinokio install and a pre-compiled JAR available – you can find those links on the GitHub repo.",
   icon: "assets/icon.png",
   menu: async (kernel, info) => {
     let installed = await kernel.exists("target/comfyuicompanion.jar")
@@ -21,6 +21,7 @@ module.exports = {
     } else {
       results.unshift({ icon: "fa-solid fa-plug", text: "Install", href: "install.json" })
     }
+    results.push({ icon: "fa-brands fa-github", text: "GitHub Releases & Repo", href: "https://github.com/thomaskippster/comfyuicompanion", target: "_blank" })
     return results
   }
 }

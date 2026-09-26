@@ -24,6 +24,9 @@ import java.util.List;
  * encapsulating endpoint calls, payload submissions, and polling functions.
  */
 @Service
+/**
+ * Represents the comfy api client class.
+ */
 public class ComfyApiClient {
 
     private static final Logger logger = LoggerFactory.getLogger(ComfyApiClient.class);
@@ -51,6 +54,11 @@ public class ComfyApiClient {
         return isServerOnline(configService.getComfyUIUrl());
     }
 
+    /**
+     * Handles the is server online operation.
+     * @param comfyUrl the comfyUrl
+     * @return the boolean result
+     */
     public boolean isServerOnline(String comfyUrl) {
         try {
             HttpResponse<String> response = fetchObjectInfoRaw(comfyUrl);
@@ -79,6 +87,13 @@ public class ComfyApiClient {
         return getObjectInfo(configService.getComfyUIUrl());
     }
 
+    /**
+     * Handles the get object info operation.
+     * @param comfyUrl the comfyUrl
+     * @return the JSONObject result
+     * @throws IOException if an error occurs
+     * @throws InterruptedException if an error occurs
+     */
     public JSONObject getObjectInfo(String comfyUrl) throws IOException, InterruptedException {
         HttpResponse<String> response = fetchObjectInfoRaw(comfyUrl);
         if (response != null && response.statusCode() == 200) {
@@ -94,6 +109,15 @@ public class ComfyApiClient {
         return convertWorkflow(configService.getComfyUIUrl(), workflowJson, callbackUrl);
     }
 
+    /**
+     * Handles the convert workflow operation.
+     * @param comfyUrl the comfyUrl
+     * @param workflowJson the workflowJson
+     * @param callbackUrl the callbackUrl
+     * @return the HttpResponse<String> result
+     * @throws IOException if an error occurs
+     * @throws InterruptedException if an error occurs
+     */
     public HttpResponse<String> convertWorkflow(String comfyUrl, JSONObject workflowJson, String callbackUrl) throws IOException, InterruptedException {
         JSONObject convRequest = new JSONObject();
         convRequest.put("workflow", workflowJson.has("nodes") ? workflowJson : workflowJson.optJSONObject("workflow"));
@@ -123,6 +147,14 @@ public class ComfyApiClient {
         return uploadInputImage(configService.getComfyUIUrl(), imageFile);
     }
 
+    /**
+     * Handles the upload input image operation.
+     * @param comfyUrl the comfyUrl
+     * @param imageFile the imageFile
+     * @return the String result
+     * @throws IOException if an error occurs
+     * @throws InterruptedException if an error occurs
+     */
     public String uploadInputImage(String comfyUrl, File imageFile) throws IOException, InterruptedException {
         if (imageFile == null || !imageFile.exists()) {
             throw new IllegalArgumentException("File does not exist or is null");
@@ -160,6 +192,14 @@ public class ComfyApiClient {
         return postPrompt(configService.getComfyUIUrl(), jsonPayload);
     }
 
+    /**
+     * Handles the post prompt operation.
+     * @param comfyUrl the comfyUrl
+     * @param jsonPayload the jsonPayload
+     * @return the HttpResponse<String> result
+     * @throws IOException if an error occurs
+     * @throws InterruptedException if an error occurs
+     */
     public HttpResponse<String> postPrompt(String comfyUrl, String jsonPayload) throws IOException, InterruptedException {
         String safePayload = jsonPayload;
         try {
@@ -218,6 +258,14 @@ public class ComfyApiClient {
         return fetchPromptHistoryImage(configService.getComfyUIUrl(), promptId);
     }
 
+    /**
+     * Handles the fetch prompt history image operation.
+     * @param comfyUrl the comfyUrl
+     * @param promptId the promptId
+     * @return the ImageOutput result
+     * @throws IOException if an error occurs
+     * @throws InterruptedException if an error occurs
+     */
     public ImageOutput fetchPromptHistoryImage(String comfyUrl, String promptId) throws IOException, InterruptedException {
         HttpRequest histReq = HttpRequest.newBuilder()
                 .uri(URI.create(comfyUrl + "/history/" + promptId))
@@ -257,6 +305,14 @@ public class ComfyApiClient {
         return fetchQueueStatus(configService.getComfyUIUrl(), promptId);
     }
 
+    /**
+     * Handles the fetch queue status operation.
+     * @param comfyUrl the comfyUrl
+     * @param promptId the promptId
+     * @return the QueueInfo result
+     * @throws IOException if an error occurs
+     * @throws InterruptedException if an error occurs
+     */
     public QueueInfo fetchQueueStatus(String comfyUrl, String promptId) throws IOException, InterruptedException {
         HttpRequest qReq = HttpRequest.newBuilder()
                 .uri(URI.create(comfyUrl + "/queue"))

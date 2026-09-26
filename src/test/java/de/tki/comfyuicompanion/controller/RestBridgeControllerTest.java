@@ -71,4 +71,15 @@ class RestBridgeControllerTest {
         assertThat(response).isNotNull();
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
     }
+
+    @Test
+    @DisplayName("getTemplates: should handle connection error gracefully with BAD_GATEWAY")
+    void shouldHandleTemplatesConnectionError() {
+        var response = controller.getTemplates("http://127.0.0.1:9999").block();
+
+        assertThat(response).isNotNull();
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_GATEWAY);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().has("error")).isTrue();
+    }
 }

@@ -28,6 +28,9 @@ import java.util.concurrent.ConcurrentHashMap;
  * and generation payload adjustments.
  */
 @Service
+/**
+ * Represents the comfy template service class.
+ */
 public class ComfyTemplateService implements IComfyTemplateService {
     private static final Logger logger = LoggerFactory.getLogger(ComfyTemplateService.class);
 

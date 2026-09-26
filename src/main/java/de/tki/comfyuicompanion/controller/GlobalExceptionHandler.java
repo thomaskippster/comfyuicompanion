@@ -18,6 +18,13 @@ public class GlobalExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
+    /**
+     * Handles IllegalArgumentException thrown when invalid arguments are provided.
+     *
+     * @param ex       The IllegalArgumentException that was thrown.
+     * @param exchange The current ServerWebExchange containing request context.
+     * @return A Mono emitting a ResponseEntity with a BAD_REQUEST (400) status and an ApiErrorResponse body.
+     */
     @ExceptionHandler(IllegalArgumentException.class)
     public Mono<ResponseEntity<ApiErrorResponse>> handleIllegalArgumentException(
             IllegalArgumentException ex, ServerWebExchange exchange) {
@@ -31,6 +38,13 @@ public class GlobalExceptionHandler {
         return Mono.just(ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response));
     }
 
+    /**
+     * Handles SecurityException thrown when a security violation is detected.
+     *
+     * @param ex       The SecurityException that was thrown.
+     * @param exchange The current ServerWebExchange containing request context.
+     * @return A Mono emitting a ResponseEntity with a FORBIDDEN (403) status and an ApiErrorResponse body.
+     */
     @ExceptionHandler(SecurityException.class)
     public Mono<ResponseEntity<ApiErrorResponse>> handleSecurityException(
             SecurityException ex, ServerWebExchange exchange) {
@@ -44,6 +58,13 @@ public class GlobalExceptionHandler {
         return Mono.just(ResponseEntity.status(HttpStatus.FORBIDDEN).body(response));
     }
 
+    /**
+     * Handles general unexpected exceptions acting as a fallback error handler.
+     *
+     * @param ex       The generic Exception that was thrown.
+     * @param exchange The current ServerWebExchange containing request context.
+     * @return A Mono emitting a ResponseEntity with an INTERNAL_SERVER_ERROR (500) status and an ApiErrorResponse body.
+     */
     @ExceptionHandler(Exception.class)
     public Mono<ResponseEntity<ApiErrorResponse>> handleGenericException(
             Exception ex, ServerWebExchange exchange) {

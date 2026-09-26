@@ -38,6 +38,9 @@ import java.util.concurrent.atomic.AtomicInteger;
  * and inference parameter defaults.
  */
 @Service
+/**
+ * Represents the model architecture service class.
+ */
 public class ModelArchitectureService implements IModelArchitectureService {
     private static final Logger logger = LoggerFactory.getLogger(ModelArchitectureService.class);
 
@@ -114,6 +117,10 @@ public class ModelArchitectureService implements IModelArchitectureService {
         return modelAnalyzer;
     }
 
+    /**
+     * Handles the set analyzing operation.
+     * @param isAnalyzing the isAnalyzing
+     */
     public void setAnalyzing(boolean isAnalyzing) {
         this.isAnalyzing = isAnalyzing;
     }
@@ -573,6 +580,11 @@ public class ModelArchitectureService implements IModelArchitectureService {
         return defaults;
     }
 
+    /**
+     * Handles the get standard defaults for architecture operation.
+     * @param arch the arch
+     * @return the ModelDefaults result
+     */
     public ModelDefaults getStandardDefaultsForArchitecture(ModelArchitecture arch) {
         if (arch == null) arch = ModelArchitecture.ARCH_UNKNOWN;
         return switch (arch) {

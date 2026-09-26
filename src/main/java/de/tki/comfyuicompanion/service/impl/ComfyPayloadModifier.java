@@ -18,6 +18,9 @@ import java.util.Random;
  * substituting models, positive and negative prompt texts, and randomizing generation seeds.
  */
 @Component
+/**
+ * Represents the comfy payload modifier class.
+ */
 public class ComfyPayloadModifier {
     private static final Logger logger = LoggerFactory.getLogger(ComfyPayloadModifier.class);
 

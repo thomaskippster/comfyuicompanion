@@ -17,6 +17,9 @@ import java.time.Duration;
 import java.util.concurrent.atomic.AtomicReference;
 
 @Service
+/**
+ * Represents the comfy lifecycle service class.
+ */
 public class ComfyLifecycleService implements IComfyLifecycleService {
     private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(ComfyLifecycleService.class);
 
@@ -139,8 +142,7 @@ public class ComfyLifecycleService implements IComfyLifecycleService {
                                             }
                                         }
                                     } catch (Exception e) {
-                                        logger.error("❌ [Lifecycle] Failed to open browser: " + e.getMessage());
-                                        e.printStackTrace();
+                                        logger.error("❌ [Lifecycle] Failed to open browser: {}", e.getMessage(), e);
                                     }
                                 } else {
                                     logger.info("🌐 [Lifecycle] Health check passed. Web browser launch skipped (Hide ComfyUI Web Client / Replacement Mode is active).");
@@ -166,8 +168,8 @@ public class ComfyLifecycleService implements IComfyLifecycleService {
                 status.set("Error: No launch profile found to start ComfyUI.");
             }
         } catch (Exception e) {
+            logger.error("❌ [Lifecycle] Error starting ComfyUI: {}", e.getMessage(), e);
             status.set("Error: " + e.getMessage());
-            e.printStackTrace();
         }
     }
 
@@ -346,21 +348,22 @@ public class ComfyLifecycleService implements IComfyLifecycleService {
 
             // Re-bootstrap
             java.nio.file.Files.createDirectories(path);
-            bootstrapper.cloneComfyUI(path, System.out::println)
-                .thenCompose(v -> bootstrapper.downloadAndExtractPortablePython(path, System.out::println))
-                .thenCompose(py -> bootstrapper.installPip(py, System.out::println)
-                    .thenCompose(v2 -> bootstrapper.installRequirements(py, path, System.out::println)))
+            bootstrapper.cloneComfyUI(path, msg -> logger.info("🔧 [Bootstrap] {}", msg))
+                .thenCompose(v -> bootstrapper.downloadAndExtractPortablePython(path, msg -> logger.info("🔧 [Bootstrap] {}", msg)))
+                .thenCompose(py -> bootstrapper.installPip(py, msg -> logger.info("🔧 [Bootstrap] {}", msg))
+                    .thenCompose(v2 -> bootstrapper.installRequirements(py, path, msg -> logger.info("🔧 [Bootstrap] {}", msg))))
                 .thenRun(() -> {
                     status.set("Fix completed, restarting...");
                     start();
                 })
                 .exceptionally(e -> {
+                    logger.error("❌ [Lifecycle] Error during fix: {}", e.getMessage(), e);
                     status.set("Error during fix: " + e.getMessage());
-                    e.printStackTrace();
                     return null;
                 });
 
         } catch (IOException e) {
+            logger.error("❌ [Lifecycle] Error during fix operation: {}", e.getMessage(), e);
             status.set("Error: " + e.getMessage());
         }
     }

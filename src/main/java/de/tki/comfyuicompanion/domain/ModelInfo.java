@@ -2,6 +2,10 @@ package de.tki.comfyuicompanion.domain;
 
 import java.util.Objects;
 
+/**
+ * Represents metadata and details about a machine learning model,
+ * including its type, source URL, physical size, and local storage paths.
+ */
 public class ModelInfo {
     private String type;
     private String name;
@@ -17,8 +21,16 @@ public class ModelInfo {
     private String previewPath;
     private String archivedPath; // Absolute path of the file in the archive, if found
 
+    /** Default constructor. */
     public ModelInfo() {}
 
+    /**
+     * Constructs a ModelInfo instance with basic properties.
+     *
+     * @param type the type of the model (e.g., Checkpoint, Lora)
+     * @param name the display name of the model
+     * @param url  the download or reference URL of the model
+     */
     public ModelInfo(String type, String name, String url) {
         this.type = type;
         this.name = name;

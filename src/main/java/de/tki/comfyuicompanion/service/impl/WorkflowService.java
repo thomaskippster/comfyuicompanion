@@ -10,6 +10,9 @@ import java.nio.file.Files;
 import java.util.zip.InflaterInputStream;
 
 @Service
+/**
+ * Represents the workflow service class.
+ */
 public class WorkflowService implements IWorkflowService {
 
     @Override

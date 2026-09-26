@@ -4,6 +4,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 @Service
+/**
+ * Represents the gemma4 service class.
+ */
 public class Gemma4Service {
 
     private final LocalGemmaService localGemmaService;
@@ -20,10 +23,20 @@ public class Gemma4Service {
         this.promptOptimizer = promptOptimizer != null ? promptOptimizer : new VideoPromptOptimizer();
     }
 
+    /**
+     * Handles the is gemma available operation.
+     * @return the boolean result
+     */
     public boolean isGemmaAvailable() {
         return localGemmaService != null && localGemmaService.isModelDownloaded();
     }
 
+    /**
+     * Handles the download gemma model operation.
+     * @param progressListener the progressListener
+     * @param onFinished the onFinished
+     * @param onError the onError
+     */
     public void downloadGemmaModel(java.util.function.BiConsumer<Double, String> progressListener, Runnable onFinished, java.util.function.BiConsumer<String, Exception> onError) {
         if (localGemmaService != null) {
             localGemmaService.downloadModel(progressListener, onFinished, onError);
@@ -32,6 +45,10 @@ public class Gemma4Service {
         }
     }
 
+    /**
+     * Handles the get local gemma service operation.
+     * @return the LocalGemmaService result
+     */
     public LocalGemmaService getLocalGemmaService() {
         return localGemmaService;
     }

@@ -4,6 +4,9 @@ import de.tki.comfyuicompanion.domain.ComfyRegistryWorkflow;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
+/**
+ * Represents the i local model validator interface.
+ */
 public interface ILocalModelValidator {
     /**
      * Scans the local models/ directory recursively and builds a set of available model file names.

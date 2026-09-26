@@ -19,6 +19,9 @@ import java.util.concurrent.TimeUnit;
  * and model filenames using local Gemma LLM inference.
  */
 @Service
+/**
+ * Represents the architecture classification service class.
+ */
 public class ArchitectureClassificationService implements IArchitectureClassifier {
 
     private static final Logger logger = LoggerFactory.getLogger(ArchitectureClassificationService.class);
@@ -71,6 +74,10 @@ public class ArchitectureClassificationService implements IArchitectureClassifie
         return classTypes;
     }
 
+    /**
+     * Handles the build system prompt operation.
+     * @return the String result
+     */
     public String buildSystemPrompt() {
         return "You are a technical classifier for Stable Diffusion workflows. " +
                 "Analyze the list of ComfyUI nodes and determine the base architecture. " +
@@ -79,6 +86,11 @@ public class ArchitectureClassificationService implements IArchitectureClassifie
                 "No explanations.";
     }
 
+    /**
+     * Handles the build user prompt operation.
+     * @param nodeTypes the nodeTypes
+     * @return the String result
+     */
     public String buildUserPrompt(Set<String> nodeTypes) {
         String commaSeparated = String.join(", ", nodeTypes);
         return "The following nodes exist in this workflow: [" + commaSeparated + "]. Which base architecture is this?";
@@ -156,6 +168,11 @@ public class ArchitectureClassificationService implements IArchitectureClassifie
         }
     }
 
+    /**
+     * Handles the parse inner architecture response operation.
+     * @param generatedText the generatedText
+     * @return the ModelArchitecture result
+     */
     public ModelArchitecture parseInnerArchitectureResponse(String generatedText) {
         if (generatedText == null || generatedText.isBlank()) {
             return ModelArchitecture.ARCH_UNKNOWN;

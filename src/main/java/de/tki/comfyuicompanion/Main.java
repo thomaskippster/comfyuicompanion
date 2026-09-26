@@ -10,6 +10,7 @@ import de.tki.comfyuicompanion.service.*;
 import de.tki.comfyuicompanion.service.impl.*;
 import de.tki.comfyuicompanion.ui.*;
 import de.tki.comfyuicompanion.ui.dialog.ComfyLifecycleDialog;
+import de.tki.comfyuicompanion.ui.dialog.MainDialogCoordinator;
 import de.tki.comfyuicompanion.ui.dialog.MainSettingsDialogs;
 import de.tki.comfyuicompanion.ui.icons.AppIcon;
 import de.tki.comfyuicompanion.ui.icons.SvgIconFactory;
@@ -101,6 +102,7 @@ public class Main extends JFrame {
     private MainSettingsPanel settingsPanelCoordinator;
     private MainHeaderBar headerBar;
     private ComfyInstallationScanner comfyInstallationScanner;
+    private MainDialogCoordinator dialogCoordinator;
 
     // UI tab wrappers & components
     private JTabbedPane mainTabs;
@@ -223,6 +225,12 @@ public class Main extends JFrame {
         this.huggingFaceService = huggingFaceService;
     }
 
+    /**
+     * Initializes and launches the main application window and background services.
+     * Starts the reactive REST server, setups the UI theme, tray icon, and background monitors.
+     * 
+     * @param args command line arguments passed during application startup
+     */
     public void launch(String[] args) {
         if (defaultCacheBootstrapper != null) {
             defaultCacheBootstrapper.bootstrapDefaultCache();
@@ -617,6 +625,14 @@ public class Main extends JFrame {
         });
     }
 
+    /**
+     * Starts the ComfyUI process using the specified launch profile.
+     * Optionally clears the console and opens the browser automatically upon startup.
+     * 
+     * @param selected the launch profile containing arguments and environment variables
+     * @param clearConsole whether to clear the output console before starting
+     * @param openBrowser whether to open the default web browser once the server is ready
+     */
     public void startComfyUI(LaunchProfile selected, boolean clearConsole, boolean openBrowser) {
         if (selected == null) return;
         if (clearConsole && dashboardPanelCoordinator != null && dashboardPanelCoordinator.getComfyConsoleArea() != null) {
@@ -689,6 +705,10 @@ public class Main extends JFrame {
         }
     }
 
+    /**
+     * Fully stops and restarts the ComfyUI background process.
+     * Selects the last active profile or default profile and restarts it automatically.
+     */
     public void performFullServiceRestart() {
         backgroundExecutor.execute(() -> {
             processController.stop();
@@ -728,6 +748,13 @@ public class Main extends JFrame {
         });
     }
 
+    /**
+     * Scans and verifies the ComfyUI installation directory.
+     * Checks if paths are correct, Python environment exists, and updates configuration if needed.
+     * 
+     * @param showDialogIfFound whether to display a success dialog if a valid installation is found
+     * @return true if a valid installation is configured or found, false otherwise
+     */
     public boolean scanAndVerifyComfyUIInstallation(boolean showDialogIfFound) {
         if (comfyInstallationScanner == null) {
             comfyInstallationScanner = new ComfyInstallationScanner(configService, bootstrapper, profileManager);
@@ -771,45 +798,47 @@ public class Main extends JFrame {
     }
 
     private void showLifecycleDialog() {
-        ComfyLifecycleDialog.showDialog(this, configService, lifecycleService,
-                backgroundExecutor != null ? backgroundExecutor.getExecutor() : null, this::startComfyAndReload);
+        getDialogCoordinator().showLifecycleDialog(this::startComfyAndReload);
     }
 
     private void showPathsDialog() {
-        MainSettingsDialogs.showPathsDialog(this, configService, lifecycleService,
-                backgroundExecutor != null ? backgroundExecutor.getExecutor() : null,
-                this::refreshVersions, this::syncBridgeFiles);
+        getDialogCoordinator().showPathsDialog(this::refreshVersions, this::syncBridgeFiles);
     }
 
     private void showDownloadSettingsDialog() {
-        MainSettingsDialogs.showDownloadSettingsDialog(this, configService, null);
+        getDialogCoordinator().showDownloadSettingsDialog();
     }
 
     private void showVideoArchitectAutoconfigDialog() {
-        MainSettingsDialogs.showVideoArchitectAutoconfigDialog(this, dependencyService,
-                backgroundExecutor != null ? backgroundExecutor.getExecutor() : null);
+        getDialogCoordinator().showVideoArchitectAutoconfigDialog();
     }
 
     private void showApiKeysDialog() {
-        MainSettingsDialogs.showApiKeysDialog(this, configService, this::updateAiModelDisplay);
+        getDialogCoordinator().showApiKeysDialog(this::updateAiModelDisplay);
     }
 
     private void showInstallationDialog() {
-        MainSettingsDialogs.showInstallationDialog(this, configService, this::syncBridgeFiles, dlg -> installComfyUIBridge(configService != null ? configService.getComfyUIPath() : "", dlg));
+        getDialogCoordinator().showInstallationDialog(this::syncBridgeFiles, dlg -> installComfyUIBridge(configService != null ? configService.getComfyUIPath() : "", dlg));
     }
 
     private void showHelpDialog() {
-        MainSettingsDialogs.showHelpDialog(this, configService);
+        getDialogCoordinator().showHelpDialog();
     }
 
     private void resetSettings() {
-        int opt = JOptionPane.showConfirmDialog(this, "Reset all settings to default values?", "Confirm Reset", JOptionPane.YES_NO_OPTION);
-        if (opt == JOptionPane.YES_OPTION && configService != null) {
-            configService.resetVault();
+        getDialogCoordinator().resetSettings(() -> {
             loadSettingsIntoUI();
             updateTabVisibility();
-            setupTheme(configService.isDarkMode());
+            setupTheme(configService != null && configService.isDarkMode());
+        });
+    }
+
+    private MainDialogCoordinator getDialogCoordinator() {
+        if (dialogCoordinator == null) {
+            dialogCoordinator = new MainDialogCoordinator(this, configService, lifecycleService,
+                    dependencyService, backgroundExecutor != null ? backgroundExecutor.getExecutor() : null);
         }
+        return dialogCoordinator;
     }
 
     public void importWorkflow(File file) {

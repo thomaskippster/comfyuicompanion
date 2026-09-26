@@ -27,6 +27,9 @@ import java.util.concurrent.Semaphore;
 import java.util.stream.Stream;
 
 @Service
+/**
+ * Represents the local model validator class.
+ */
 public class LocalModelValidator implements ILocalModelValidator {
     private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(LocalModelValidator.class);
 
@@ -245,12 +248,22 @@ public class LocalModelValidator implements ILocalModelValidator {
         archivedModelNames.addAll(tempArchived);
     }
 
+    /**
+     * Handles the is model active operation.
+     * @param modelName the modelName
+     * @return the boolean result
+     */
     public boolean isModelActive(String modelName) {
         if (modelName == null || modelName.isBlank()) return false;
         String lower = modelName.toLowerCase(Locale.ROOT).trim();
         return activeLocalModelNames.contains(lower) || activeLocalModelNames.contains(baseName(lower));
     }
 
+    /**
+     * Handles the is model archived operation.
+     * @param modelName the modelName
+     * @return the boolean result
+     */
     public boolean isModelArchived(String modelName) {
         if (modelName == null || modelName.isBlank()) return false;
         String lower = modelName.toLowerCase(Locale.ROOT).trim();

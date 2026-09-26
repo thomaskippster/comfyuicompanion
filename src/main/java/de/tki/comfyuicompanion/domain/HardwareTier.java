@@ -17,6 +17,16 @@ public enum HardwareTier {
     private final String recommendedProfileId;
     private final long maxSafePixels;
 
+    /**
+     * Constructs a HardwareTier with associated recommended parameters.
+     *
+     * @param description          the description of the tier
+     * @param recommendedWidth     the recommended image width
+     * @param recommendedHeight    the recommended image height
+     * @param recommendedSteps     the recommended generation steps
+     * @param recommendedProfileId the recommended execution profile ID
+     * @param maxSafePixels        the maximum safe resolution in pixels
+     */
     HardwareTier(String description, int recommendedWidth, int recommendedHeight,
                  int recommendedSteps, String recommendedProfileId, long maxSafePixels) {
         this.description = description;
@@ -27,30 +37,37 @@ public enum HardwareTier {
         this.maxSafePixels = maxSafePixels;
     }
 
+    /** @return the description of this tier */
     public String getDescription() {
         return description;
     }
 
+    /** @return the recommended width */
     public int getRecommendedWidth() {
         return recommendedWidth;
     }
 
+    /** @return the recommended height */
     public int getRecommendedHeight() {
         return recommendedHeight;
     }
 
+    /** @return the recommended steps */
     public int getRecommendedSteps() {
         return recommendedSteps;
     }
 
+    /** @return the recommended profile ID */
     public String getRecommendedProfileId() {
         return recommendedProfileId;
     }
 
+    /** @return the maximum safe pixels */
     public long getMaxSafePixels() {
         return maxSafePixels;
     }
 
+    /** @return true if this tier represents a weak system */
     public boolean isWeakSystem() {
         return this == CPU_ONLY || this == BUDGET;
     }

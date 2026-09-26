@@ -69,18 +69,35 @@ public class PromptLabExecutionHandler {
         this.onAiModelDisplayUpdated = onAiModelDisplayUpdated;
     }
 
+    /**
+     * Sets the view reference for this handler.
+     *
+     * @param view the prompt lab view
+     */
     public void setPromptLabView(PromptLabView view) {
         this.promptLabView = view;
     }
 
+    /**
+     * Triggers sending the prompt to ComfyUI, using the currently selected input image if applicable.
+     */
     public void sendPromptToComfyUI() {
         sendPromptToComfyUI(promptLabView, promptLabView != null ? promptLabView.getSelectedInputImage() : null);
     }
 
+    /**
+     * Triggers AI-assisted subject completions based on the current prompt.
+     */
     public void suggestSubjectCompletions() {
         suggestSubjectCompletions(promptLabView);
     }
 
+    /**
+     * Prepares and sends the workflow prompt to ComfyUI.
+     *
+     * @param parentComponent    the parent component for dialogs
+     * @param selectedInputImage the selected input image file, if any
+     */
     public void sendPromptToComfyUI(Component parentComponent, File selectedInputImage) {
         if (promptLabView == null) return;
 
@@ -231,6 +248,11 @@ public class PromptLabExecutionHandler {
         });
     }
 
+    /**
+     * Polls the ComfyUI API for the status of a queued prompt until completion.
+     *
+     * @param promptId the ID of the queued prompt
+     */
     public void startPollingPromptStatus(String promptId) {
         if (promptLabView == null) return;
         String comfyUrl = configService.getComfyUIUrl();
@@ -303,6 +325,13 @@ public class PromptLabExecutionHandler {
         });
     }
 
+    /**
+     * Downloads and displays the generated image from ComfyUI.
+     *
+     * @param filename  the image filename
+     * @param subfolder the subfolder containing the image
+     * @param type      the image type
+     */
     public void loadAndDisplayImage(String filename, String subfolder, String type) {
         String comfyUrl = configService.getComfyUIUrl();
         String imageUrl = comfyUrl + "/view?filename=" + filename + "&subfolder=" + subfolder + "&type=" + type;
@@ -325,6 +354,11 @@ public class PromptLabExecutionHandler {
         });
     }
 
+    /**
+     * Scales and sets the downloaded image on the UI preview panel.
+     *
+     * @param img the image to display
+     */
     public void scaleAndSetImage(Image img) {
         if (onPreviewImageChanged != null) {
             onPreviewImageChanged.accept(img);
@@ -334,6 +368,11 @@ public class PromptLabExecutionHandler {
         }
     }
 
+    /**
+     * Downloads the local Gemma model from Hugging Face for offline AI suggestions.
+     *
+     * @param parent the parent component for dialogs
+     */
     public void downloadLocalGemmaModel(Component parent) {
         if (promptLabView == null) return;
         JButton btnSuggest = promptLabView.getBtnSuggestSubject();
@@ -378,6 +417,11 @@ public class PromptLabExecutionHandler {
         );
     }
 
+    /**
+     * Uses the local Gemma model to generate subject completion suggestions based on the current prompt.
+     *
+     * @param parent the parent component for dialogs
+     */
     public void suggestSubjectCompletions(Component parent) {
         if (promptLabView == null) return;
 
@@ -419,9 +463,11 @@ public class PromptLabExecutionHandler {
             try {
                 suggestions = localAIService.getDirectGemmaCompletions(currentSubject);
             } catch (Throwable ex) {
-                StringWriter sw = new StringWriter();
-                ex.printStackTrace(new PrintWriter(sw));
-                errorLogs.append("AI suggestions failed:\n").append(sw).append("\n");
+                logger.warn("AI suggestions failed: {}", ex.getMessage(), ex);
+                errorLogs.append("AI suggestions failed: ").append(ex.getMessage()).append("\n");
+                for (StackTraceElement ste : ex.getStackTrace()) {
+                    errorLogs.append("\tat ").append(ste).append("\n");
+                }
             }
 
             final List<String> finalSuggestions = suggestions;
@@ -474,6 +520,12 @@ public class PromptLabExecutionHandler {
         });
     }
 
+    /**
+     * Sanitizes and injects selected models into the ComfyUI workflow JSON before submission.
+     *
+     * @param promptObj  the root prompt JSON object
+     * @param objectInfo the ComfyUI object info for validation
+     */
     public void sanitizeModelInputsInPrompt(JSONObject promptObj, JSONObject objectInfo) {
         if (promptObj == null) return;
         for (String key : promptObj.keySet()) {
@@ -543,6 +595,14 @@ public class PromptLabExecutionHandler {
         PromptBlueprintApiService.sanitizeAllSeedsInPrompt(promptObj);
     }
 
+    /**
+     * Resolves an exact comfy model option given a target value.
+     *
+     * @param classType   the node class type
+     * @param inputKey    the input property key
+     * @param targetValue the target model value
+     * @return the matched exact ComfyUI model name or null
+     */
     public String findExactComfyModelOption(String classType, String inputKey, String targetValue) {
         if (targetValue == null || targetValue.isBlank()) return targetValue;
         Set<String> options = null;
@@ -579,6 +639,15 @@ public class PromptLabExecutionHandler {
         return null;
     }
 
+    /**
+     * Resolves a model name directly against the ComfyUI object info payload.
+     *
+     * @param classType   the node class type
+     * @param inputKey    the input property key
+     * @param targetValue the target model value
+     * @param objectInfo  the ComfyUI object info
+     * @return the resolved model name
+     */
     public String findModelInObjectInfo(String classType, String inputKey, String targetValue, JSONObject objectInfo) {
         return PromptBlueprintApiService.findModelInObjectInfo(classType, inputKey, targetValue, objectInfo);
     }

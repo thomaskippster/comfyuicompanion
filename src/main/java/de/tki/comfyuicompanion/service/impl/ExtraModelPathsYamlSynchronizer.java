@@ -23,6 +23,9 @@ import java.util.Map;
  * and ComfyUI Desktop {@code extra_models_config.yaml} files.
  */
 @Component
+/**
+ * Represents the extra model paths yaml synchronizer class.
+ */
 public class ExtraModelPathsYamlSynchronizer {
     private static final Logger logger = LoggerFactory.getLogger(ExtraModelPathsYamlSynchronizer.class);
 

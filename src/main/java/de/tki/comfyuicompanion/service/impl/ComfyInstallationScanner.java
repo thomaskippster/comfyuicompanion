@@ -18,6 +18,9 @@ import java.nio.file.Paths;
  * for local ComfyUI installations on the host system.
  */
 @Service
+/**
+ * Represents the comfy installation scanner class.
+ */
 public class ComfyInstallationScanner {
 
     private static final Logger logger = LoggerFactory.getLogger(ComfyInstallationScanner.class);

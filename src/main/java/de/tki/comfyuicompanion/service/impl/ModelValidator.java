@@ -20,6 +20,9 @@ import java.security.MessageDigest;
 import java.util.Locale;
 
 @Service
+/**
+ * Represents the model validator class.
+ */
 public class ModelValidator implements IModelValidator {
 
     private static final Logger logger = LoggerFactory.getLogger(ModelValidator.class);
@@ -34,6 +37,10 @@ public class ModelValidator implements IModelValidator {
         this.configService = configService;
     }
 
+    /**
+     * Handles the set config service operation.
+     * @param configService the configService
+     */
     public void setConfigService(ConfigService configService) {
         this.configService = configService;
     }

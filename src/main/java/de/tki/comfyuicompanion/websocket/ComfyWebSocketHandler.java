@@ -12,6 +12,11 @@ import org.springframework.context.ApplicationEventPublisher;
 import de.tki.comfyuicompanion.event.ProgressUpdateEvent;
 import de.tki.comfyuicompanion.event.WorkflowCompletedEvent;
 
+/**
+ * Handler for WebSocket messages received from the ComfyUI server.
+ * Parses incoming events such as progress updates or execution state changes,
+ * and publishes corresponding Spring application events.
+ */
 @Component
 public class ComfyWebSocketHandler extends TextWebSocketHandler {
 
@@ -19,11 +24,25 @@ public class ComfyWebSocketHandler extends TextWebSocketHandler {
     private final ObjectMapper objectMapper;
     private final ApplicationEventPublisher eventPublisher;
 
+    /**
+     * Constructs a new {@code ComfyWebSocketHandler}.
+     *
+     * @param objectMapper the object mapper used to deserialize JSON payloads
+     * @param eventPublisher the event publisher to dispatch internal application events
+     */
     public ComfyWebSocketHandler(ObjectMapper objectMapper, ApplicationEventPublisher eventPublisher) {
         this.objectMapper = objectMapper;
         this.eventPublisher = eventPublisher;
     }
 
+    /**
+     * Handles an incoming text message from the WebSocket.
+     * Parses the JSON payload into a {@link ComfyEvent} and publishes relevant progress or completion events.
+     *
+     * @param session the current WebSocket session
+     * @param message the received text message
+     * @throws Exception if an error occurs during processing
+     */
     @Override
     protected void handleTextMessage(WebSocketSession session, TextMessage message) throws Exception {
         String payload = message.getPayload();

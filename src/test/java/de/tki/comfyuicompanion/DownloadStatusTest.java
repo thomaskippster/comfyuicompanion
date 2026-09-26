@@ -21,7 +21,9 @@ import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.time.Duration;
 
+import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class DownloadStatusTest {
@@ -51,7 +53,7 @@ public class DownloadStatusTest {
                     os.flush();
                     Thread.sleep(100); 
                 }
-            } catch (InterruptedException ignored) {}
+            } catch (Exception ignored) {}
         });
         server.start();
         serverUrl = "http://localhost:" + server.getAddress().getPort() + "/test.safetensors";
@@ -82,20 +84,23 @@ public class DownloadStatusTest {
         );
 
         // 1. Check for Start/Download
-        Thread.sleep(300);
-        assertTrue(capturedStatus.stream().anyMatch(s -> s.contains("Downloading")), "Should show Downloading status");
+        await().atMost(Duration.ofMillis(900)).pollInterval(Duration.ofMillis(50)).untilAsserted(() -> {
+            assertTrue(capturedStatus.stream().anyMatch(s -> s.contains("Downloading")), "Should show Downloading status");
+        });
 
         // 2. Teste PAUSE
         System.out.println("--- Triggering PAUSE ---");
         downloadManager.togglePause();
-        Thread.sleep(500);
-        assertTrue(capturedStatus.contains("Paused"), "Should show Paused status");
+        await().atMost(Duration.ofMillis(1500)).pollInterval(Duration.ofMillis(50)).untilAsserted(() -> {
+            assertTrue(capturedStatus.contains("Paused"), "Should show Paused status");
+        });
 
         // 3. Teste RESUME
         System.out.println("--- Triggering RESUME ---");
         downloadManager.togglePause();
-        Thread.sleep(500);
-        assertTrue(capturedStatus.contains("Resuming..."), "Should show Resuming status");
+        await().atMost(Duration.ofMillis(1500)).pollInterval(Duration.ofMillis(50)).untilAsserted(() -> {
+            assertTrue(capturedStatus.contains("Resuming..."), "Should show Resuming status");
+        });
 
         // 4. Teste STOP
         System.out.println("--- Triggering STOP ---");

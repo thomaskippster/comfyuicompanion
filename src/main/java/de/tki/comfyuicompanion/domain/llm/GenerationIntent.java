@@ -30,10 +30,12 @@ public class GenerationIntent {
     // E.g., "juggernaut" or "anime"
     private String suggestedCheckpointKeyword;
 
+    /** @return the targeted architecture (e.g. FLUX, SDXL) */
     public String getArchitecture() {
         return architecture;
     }
 
+    /** @param architecture the architecture to set */
     public void setArchitecture(String architecture) {
         this.architecture = architecture;
     }

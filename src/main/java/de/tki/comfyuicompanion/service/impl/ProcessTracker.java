@@ -20,6 +20,9 @@ import java.util.concurrent.ConcurrentHashMap;
  * (shutdown hook) never block each other.
  */
 @Component
+/**
+ * Represents the process tracker class.
+ */
 public class ProcessTracker {
 
     private final Set<Process> processes = ConcurrentHashMap.newKeySet();

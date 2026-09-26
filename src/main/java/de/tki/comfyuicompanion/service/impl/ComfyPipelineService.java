@@ -50,6 +50,9 @@ import java.util.concurrent.ConcurrentHashMap;
  * video muxing, and fallback synthetic scene rendering.
  */
 @Service
+/**
+ * Represents the comfy pipeline service class.
+ */
 public class ComfyPipelineService {
     private static final Logger logger = LoggerFactory.getLogger(ComfyPipelineService.class);
 
@@ -199,10 +202,32 @@ public class ComfyPipelineService {
         return DEFAULT_TRANSFORMATION_SERVICE.flattenWorkflow(uiWorkflow);
     }
 
+    /**
+     * Handles the convert image to video operation.
+     * @param imageFile the imageFile
+     * @param audioFile the audioFile
+     * @param durationSeconds the durationSeconds
+     * @param fps the fps
+     * @param outputFile the outputFile
+     * @return the File result
+     * @throws Exception if an error occurs
+     */
     public File convertImageToVideo(File imageFile, File audioFile, float durationSeconds, float fps, File outputFile) throws Exception {
         return convertImageToVideo(imageFile, audioFile, durationSeconds, fps, outputFile, 1920, 1080);
     }
 
+    /**
+     * Handles the convert image to video operation.
+     * @param imageFile the imageFile
+     * @param audioFile the audioFile
+     * @param durationSeconds the durationSeconds
+     * @param fps the fps
+     * @param outputFile the outputFile
+     * @param targetWidth the targetWidth
+     * @param targetHeight the targetHeight
+     * @return the File result
+     * @throws Exception if an error occurs
+     */
     public File convertImageToVideo(File imageFile, File audioFile, float durationSeconds, float fps, File outputFile, int targetWidth, int targetHeight) throws Exception {
         if (mediaTranscodingService != null) {
             return mediaTranscodingService.convertImageToVideo(imageFile, audioFile, durationSeconds, fps, outputFile, targetWidth, targetHeight);
@@ -211,10 +236,20 @@ public class ComfyPipelineService {
         return fallbackTranscoder.convertImageToVideo(imageFile, audioFile, durationSeconds, fps, outputFile, targetWidth, targetHeight);
     }
 
+    /**
+     * Handles the generate scene operation.
+     * @param scene the scene
+     * @return the CompletableFuture<File> result
+     */
     public CompletableFuture<File> generateScene(Scene scene) {
         return generateSceneInternal(scene, false);
     }
 
+    /**
+     * Handles the generate scene strict operation.
+     * @param scene the scene
+     * @return the CompletableFuture<File> result
+     */
     public CompletableFuture<File> generateSceneStrict(Scene scene) {
         return generateSceneInternal(scene, true);
     }
@@ -276,7 +311,7 @@ public class ComfyPipelineService {
                                 if (comfyPath != null && !comfyPath.trim().isEmpty()) {
                                     Path comfyDir = Paths.get(comfyPath);
                                     Path pythonExe = (pythonPath != null && !pythonPath.trim().isEmpty()) ? Paths.get(pythonPath) : null;
-                                    bootstrapper.ensureVideoHelperSuiteInstalled(comfyDir, pythonExe, System.out::println);
+                                    bootstrapper.ensureVideoHelperSuiteInstalled(comfyDir, pythonExe, msg -> logger.info("[Bootstrap] {}", msg));
                                 }
                                 lifecycleService.start();
                             } else {
@@ -481,6 +516,11 @@ public class ComfyPipelineService {
         });
     }
 
+    /**
+     * Handles the generate montage scene operation.
+     * @param scene the scene
+     * @return the CompletableFuture<File> result
+     */
     public CompletableFuture<File> generateMontageScene(Scene scene) {
         return CompletableFuture.supplyAsync(() -> {
             String sourceClip = scene.getSourceClipPath();
@@ -492,6 +532,11 @@ public class ComfyPipelineService {
         });
     }
 
+    /**
+     * Handles the sanitize workflow operation.
+     * @param workflowJson the workflowJson
+     * @param serverUrl the serverUrl
+     */
     public void sanitizeWorkflow(JSONObject workflowJson, String serverUrl) {
         workflowBuilder.sanitizeWorkflow(workflowJson, serverUrl);
     }
@@ -500,10 +545,26 @@ public class ComfyPipelineService {
         return jobPollingService.submitPrompt(serverUrl, workflowJson);
     }
 
+    /**
+     * Handles the poll history for filename operation.
+     * @param serverUrl the serverUrl
+     * @param promptId the promptId
+     * @return the String result
+     * @throws IOException if an error occurs
+     * @throws InterruptedException if an error occurs
+     */
     public String pollHistoryForFilename(String serverUrl, String promptId) throws IOException, InterruptedException {
         return jobPollingService.pollHistoryForFilename(serverUrl, promptId);
     }
 
+    /**
+     * Handles the poll history for output operation.
+     * @param serverUrl the serverUrl
+     * @param promptId the promptId
+     * @return the ComfyOutputRef result
+     * @throws IOException if an error occurs
+     * @throws InterruptedException if an error occurs
+     */
     public ComfyOutputRef pollHistoryForOutput(String serverUrl, String promptId) throws IOException, InterruptedException {
         return ComfyOutputRef.from(jobPollingService.pollHistoryForOutput(serverUrl, promptId));
     }
@@ -612,6 +673,14 @@ public class ComfyPipelineService {
         return workflowBuilder.generateWanWorkflowJson(serverUrl, scene, uploadedSpeakerImage, seed, filenamePrefix);
     }
 
+    /**
+     * Handles the upload file operation.
+     * @param serverUrl the serverUrl
+     * @param file the file
+     * @return the String result
+     * @throws IOException if an error occurs
+     * @throws InterruptedException if an error occurs
+     */
     public String uploadFile(String serverUrl, File file) throws IOException, InterruptedException {
         return jobPollingService.uploadFile(serverUrl, file);
     }

@@ -17,6 +17,9 @@ import java.util.List;
 import java.util.function.Consumer;
 
 @Service
+/**
+ * Represents the updater service class.
+ */
 public class UpdaterService {
 
     public static class RepoStatus {
@@ -45,6 +48,10 @@ public class UpdaterService {
         this.processTracker = processTracker;
     }
 
+    /**
+     * Handles the scan repositories operation.
+     * @return the List<RepoStatus> result
+     */
     public List<RepoStatus> scanRepositories() {
         List<RepoStatus> list = new java.util.concurrent.CopyOnWriteArrayList<>();
         String comfyPathStr = configService.getComfyUIPath();
@@ -144,6 +151,11 @@ public class UpdaterService {
         return status;
     }
 
+    /**
+     * Handles the update repository operation.
+     * @param repo the repo
+     * @param logCallback the logCallback
+     */
     public void updateRepository(RepoStatus repo, Consumer<String> logCallback) {
         logCallback.accept("Updating " + repo.name + "...\n");
         File gitFolder = new File(repo.path, ".git");
@@ -241,6 +253,10 @@ public class UpdaterService {
         }
     }
 
+    /**
+     * Handles the repair environment operation.
+     * @param logCallback the logCallback
+     */
     public void repairEnvironment(Consumer<String> logCallback) {
         String pythonPath = configService.getPythonPath();
         if (pythonPath == null || pythonPath.isEmpty()) {

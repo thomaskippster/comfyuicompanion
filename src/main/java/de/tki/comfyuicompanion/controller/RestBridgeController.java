@@ -2,7 +2,6 @@ package de.tki.comfyuicompanion.controller;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import de.tki.comfyuicompanion.service.impl.ConfigService;
 import de.tki.comfyuicompanion.service.impl.RestBridgeService;
@@ -20,13 +19,6 @@ import reactor.core.publisher.Mono;
 
 import java.net.InetAddress;
 import java.net.URI;
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
-import java.time.Duration;
-import java.util.ArrayList;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
 
 /**
  * Enterprise Reactive Controller consolidating ComfyUI Canvas Bridge communication:
@@ -46,6 +38,14 @@ public class RestBridgeController {
     private final ObjectMapper objectMapper;
     private final WebClient webClient;
 
+    /**
+     * Constructs a new RestBridgeController.
+     *
+     * @param restBridgeService The service handling business logic for the REST bridge.
+     * @param configService     The configuration service.
+     * @param objectMapper      The ObjectMapper for JSON processing.
+     * @param webClientBuilder  The WebClient.Builder for creating WebClient instances.
+     */
     @Autowired
     public RestBridgeController(RestBridgeService restBridgeService,
                                 @Autowired(required = false) ConfigService configService,
@@ -57,6 +57,13 @@ public class RestBridgeController {
         this.webClient = webClientBuilder.build();
     }
 
+    /**
+     * Imports a workflow JSON payload directly from the floating Rocket button.
+     *
+     * @param workflowJson The workflow JSON to import.
+     * @param authHeader   The authorization header to validate the request.
+     * @return A ResponseEntity indicating success or failure.
+     */
     @PostMapping(value = "/import", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<String> importWorkflow(@RequestBody String workflowJson,
                                                  @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authHeader) {
@@ -73,6 +80,12 @@ public class RestBridgeController {
         }
     }
 
+    /**
+     * Handles the callback for browser graphToPrompt conversion.
+     *
+     * @param convertedApiJson The converted API JSON payload from the workflow graph.
+     * @return A ResponseEntity indicating whether the conversion was accepted.
+     */
     @PostMapping(value = "/api/workflow-ready", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<String> workflowReady(@RequestBody String convertedApiJson) {
         boolean accepted = restBridgeService.consumeWorkflowReady(convertedApiJson);
@@ -83,56 +96,30 @@ public class RestBridgeController {
         }
     }
 
+    /**
+     * Retrieves the templates index from ComfyUI, proxying the request.
+     *
+     * @param requestedBaseUrl Optional base URL to request templates from.
+     * @return A Mono emitting a ResponseEntity containing the templates index JSON.
+     */
     @GetMapping(value = "/api/templates", produces = MediaType.APPLICATION_JSON_VALUE)
     public Mono<ResponseEntity<JsonNode>> getTemplates(@RequestParam(value = "baseUrl", required = false) String requestedBaseUrl) {
-        String baseUrl = (requestedBaseUrl != null && !requestedBaseUrl.isBlank())
-                ? requestedBaseUrl
-                : (configService != null ? configService.getComfyUIUrl() : ConfigConstants.DEFAULT_COMFYUI_URL);
-
-        if (baseUrl == null || baseUrl.isBlank()) {
-            baseUrl = ConfigConstants.DEFAULT_COMFYUI_URL;
-        }
-
-        final String effectiveBaseUrl = baseUrl.replaceAll("/+$", "");
-
-        return webClient.get()
-                .uri(effectiveBaseUrl + "/templates/index.json")
-                .retrieve()
-                .bodyToMono(JsonNode.class)
-                .timeout(Duration.ofSeconds(10))
-                .map(rootNode -> {
-                    List<ObjectNode> flattened = restBridgeService.extractFlattenedTemplates(rootNode, objectMapper);
-
-                    ArrayNode templatesArray = objectMapper.createArrayNode();
-                    for (ObjectNode templateNode : flattened) {
-                        String templateName = templateNode.path("name").asText("");
-                        String mediaSubtype = templateNode.path("mediaSubtype").asText("");
-
-                        if (!mediaSubtype.isEmpty()) {
-                            try {
-                                String comfyuiInternalUrl = effectiveBaseUrl + "/templates/"
-                                        + URLEncoder.encode(templateName, StandardCharsets.UTF_8).replace("+", "%20")
-                                        + "-1." + mediaSubtype;
-                                String clientPreviewUrl = "/api/preview?url="
-                                        + URLEncoder.encode(comfyuiInternalUrl, StandardCharsets.UTF_8).replace("+", "%20");
-                                templateNode.put("previewUrl", clientPreviewUrl);
-                            } catch (Exception ignored) {}
-                        }
-                        templatesArray.add(templateNode);
-                    }
-
-                    ObjectNode responseJson = objectMapper.createObjectNode();
-                    responseJson.set("templates", templatesArray);
-                    return ResponseEntity.ok((JsonNode) responseJson);
-                })
+        return restBridgeService.getTemplatesIndex(requestedBaseUrl, webClient, objectMapper)
+                .map(ResponseEntity::ok)
                 .onErrorResume(ex -> {
-                    logger.error("Failed to fetch templates from ComfyUI {}: {}", effectiveBaseUrl, ex.getMessage());
+                    logger.error("Failed to fetch templates from ComfyUI: {}", ex.getMessage());
                     ObjectNode errNode = objectMapper.createObjectNode();
                     errNode.put("error", "Failed to fetch templates index from ComfyUI: " + ex.getMessage());
                     return Mono.just(ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(errNode));
                 });
     }
 
+    /**
+     * Proxies thumbnail preview images with SSRF hardening.
+     *
+     * @param remoteUrl The remote URL of the image preview to fetch.
+     * @return A Mono emitting a ResponseEntity containing the byte array of the image.
+     */
     @GetMapping("/api/preview")
     public Mono<ResponseEntity<byte[]>> proxyPreview(@RequestParam("url") String remoteUrl) {
         if (remoteUrl == null || !isValidProxyUrl(remoteUrl)) {

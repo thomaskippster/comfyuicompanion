@@ -26,6 +26,9 @@ import java.util.Map;
  * parsing template hierarchies, and acquiring preview assets and workflow descriptions.
  */
 @Component
+/**
+ * Represents the server blueprint discovery service class.
+ */
 public class ServerBlueprintDiscoveryService {
     private static final Logger logger = LoggerFactory.getLogger(ServerBlueprintDiscoveryService.class);
 

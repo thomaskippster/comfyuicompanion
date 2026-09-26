@@ -17,6 +17,9 @@ import java.util.Set;
  * Never touches model loaders, class_type fields, or graph wiring.
  */
 @Service
+/**
+ * Represents the prompt blueprint api service class.
+ */
 public class PromptBlueprintApiService {
 
     public record PromptLabInputs(

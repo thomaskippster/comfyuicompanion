@@ -18,6 +18,9 @@ import java.util.concurrent.CompletableFuture;
 import de.tki.comfyuicompanion.service.IConfigService;
 
 @Service
+/**
+ * Represents the workflow downloader class.
+ */
 public class WorkflowDownloader implements IWorkflowDownloader {
     private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(WorkflowDownloader.class);
 

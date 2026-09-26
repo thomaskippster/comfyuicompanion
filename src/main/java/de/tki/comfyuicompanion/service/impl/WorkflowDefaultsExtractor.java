@@ -20,6 +20,9 @@ import java.util.function.Function;
  * and extracting recommended model defaults such as VAE, CLIP type, sampler, and scheduler.
  */
 @Component
+/**
+ * Represents the workflow defaults extractor class.
+ */
 public class WorkflowDefaultsExtractor {
     private static final Logger logger = LoggerFactory.getLogger(WorkflowDefaultsExtractor.class);
 

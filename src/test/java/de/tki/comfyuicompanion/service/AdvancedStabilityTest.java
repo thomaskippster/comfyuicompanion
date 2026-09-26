@@ -24,6 +24,8 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.awaitility.Awaitility.await;
+import java.time.Duration;
 
 /**
  * Advanced stability tests covering archive integrity, network resilience, 
@@ -271,13 +273,9 @@ public class AdvancedStabilityTest {
     }
 
     private void waitForStatus(AtomicReference<String> statusRef, String expectedPart, int timeoutMs) throws InterruptedException {
-        long start = System.currentTimeMillis();
-        while (System.currentTimeMillis() - start < timeoutMs) {
+        await().atMost(Duration.ofMillis(timeoutMs * 3L)).pollInterval(Duration.ofMillis(100)).until(() -> {
             String current = statusRef.get();
-            if (current != null && (current.contains(expectedPart) || current.contains("Error") || current.contains("Finished"))) {
-                return;
-            }
-            Thread.sleep(100);
-        }
+            return current != null && (current.contains(expectedPart) || current.contains("Error") || current.contains("Finished"));
+        });
     }
 }

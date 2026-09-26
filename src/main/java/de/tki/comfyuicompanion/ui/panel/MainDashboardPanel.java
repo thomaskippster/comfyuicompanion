@@ -76,6 +76,19 @@ public class MainDashboardPanel {
     private Runnable fullServiceRestartHandler;
     private Runnable openBootstrapHandler;
 
+    /**
+     * Constructs a new MainDashboardPanel coordinator.
+     *
+     * @param parentFrame the parent application frame
+     * @param configService the configuration service
+     * @param profileManager the launch profile manager
+     * @param lifecycleService the ComfyUI lifecycle monitor
+     * @param updaterService the ComfyUI updater service
+     * @param hashRegistry the model hash registry
+     * @param modelValidator the model validator
+     * @param civitaiService the CivitAI integration service
+     * @param downloadManager the background download manager
+     */
     public MainDashboardPanel(JFrame parentFrame,
                               ConfigService configService,
                               ProfileManager profileManager,

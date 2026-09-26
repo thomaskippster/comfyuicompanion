@@ -43,6 +43,7 @@ import java.util.function.Consumer;
  */
 public class BlueprintDataCoordinator {
     private static final Logger logger = LoggerFactory.getLogger(BlueprintDataCoordinator.class);
+    private static final java.util.concurrent.ExecutorService VIRTUAL_EXECUTOR = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor();
 
     private final ConfigService configService;
     private final LocalModelScanner localModelScanner;
@@ -362,7 +363,7 @@ public class BlueprintDataCoordinator {
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }
-        }).thenAccept(videoFile -> SwingUtilities.invokeLater(() -> {
+        }, VIRTUAL_EXECUTOR).thenAccept(videoFile -> SwingUtilities.invokeLater(() -> {
             if (triggerBtn != null) {
                 triggerBtn.setEnabled(true);
                 triggerBtn.setText("▶  Play Preview");

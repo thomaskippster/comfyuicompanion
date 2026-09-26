@@ -12,6 +12,9 @@ import java.util.Objects;
  * Service to guard file operations against Path Traversal and illegal directory escapes.
  */
 @Service
+/**
+ * Represents the safe path validator class.
+ */
 public class SafePathValidator {
 
     private static final Logger logger = LoggerFactory.getLogger(SafePathValidator.class);

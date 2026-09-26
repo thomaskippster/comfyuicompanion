@@ -67,6 +67,8 @@ public class VideoArchitectTab extends JPanel {
     private final de.tki.comfyuicompanion.service.IVideoPromptOptimizer promptOptimizer;
     private final de.tki.comfyuicompanion.ui.video.VideoScriptParser scriptParser = new de.tki.comfyuicompanion.ui.video.VideoScriptParser();
     private final de.tki.comfyuicompanion.ui.video.VideoArchitectExecutionHandler executionHandler;
+    private final de.tki.comfyuicompanion.ui.video.VideoArchitectTimelineCoordinator timelineCoordinator = new de.tki.comfyuicompanion.ui.video.VideoArchitectTimelineCoordinator();
+    private final de.tki.comfyuicompanion.ui.video.VideoArchitectPresetCoordinator presetCoordinator;
 
     // LEFT PANEL CONTROLS (Analogous to PromptLabView Left Panel)
     private JLabel hardwareProfileBadge;
@@ -106,18 +108,27 @@ public class VideoArchitectTab extends JPanel {
     private JButton deleteBtn;
     private JButton clearListBtn;
 
+    /**
+     * Constructs a new VideoArchitectTab with default dependencies.
+     */
     public VideoArchitectTab(ConfigService configService, ComfyPipelineService comfyPipelineService,
                              Video4jEditorService video4jEditorService, Gemma4Service gemma4Service,
                              IComfyLifecycleService lifecycleService) {
         this(configService, comfyPipelineService, video4jEditorService, gemma4Service, lifecycleService, null, null, null);
     }
 
+    /**
+     * Constructs a new VideoArchitectTab with TTS support.
+     */
     public VideoArchitectTab(ConfigService configService, ComfyPipelineService comfyPipelineService,
                              Video4jEditorService video4jEditorService, Gemma4Service gemma4Service,
                              IComfyLifecycleService lifecycleService, LocalTTSService ttsService) {
         this(configService, comfyPipelineService, video4jEditorService, gemma4Service, lifecycleService, ttsService, null, null);
     }
 
+    /**
+     * Constructs a new VideoArchitectTab with TTS and hardware profile support.
+     */
     public VideoArchitectTab(ConfigService configService, ComfyPipelineService comfyPipelineService,
                              Video4jEditorService video4jEditorService, Gemma4Service gemma4Service,
                              IComfyLifecycleService lifecycleService, LocalTTSService ttsService,
@@ -125,6 +136,18 @@ public class VideoArchitectTab extends JPanel {
         this(configService, comfyPipelineService, video4jEditorService, gemma4Service, lifecycleService, ttsService, hardwareProfileService, null);
     }
 
+    /**
+     * Constructs a new VideoArchitectTab with all dependencies fully injected.
+     *
+     * @param configService the configuration service
+     * @param comfyPipelineService the ComfyUI pipeline integration service
+     * @param video4jEditorService the video editor backend
+     * @param gemma4Service the local LLM service for script parsing
+     * @param lifecycleService the ComfyUI lifecycle monitor
+     * @param ttsService the local TTS engine
+     * @param hardwareProfileService the hardware monitor service
+     * @param promptOptimizer the video prompt optimizer
+     */
     @Autowired
     public VideoArchitectTab(ConfigService configService, ComfyPipelineService comfyPipelineService,
                              Video4jEditorService video4jEditorService, Gemma4Service gemma4Service,
@@ -140,6 +163,7 @@ public class VideoArchitectTab extends JPanel {
         this.ttsService = ttsService;
         this.hardwareProfileService = hardwareProfileService;
         this.promptOptimizer = promptOptimizer != null ? promptOptimizer : new de.tki.comfyuicompanion.service.impl.VideoPromptOptimizer();
+        this.presetCoordinator = new de.tki.comfyuicompanion.ui.video.VideoArchitectPresetCoordinator(hardwareProfileService);
         this.executionHandler = new de.tki.comfyuicompanion.ui.video.VideoArchitectExecutionHandler(
                 configService, comfyPipelineService, video4jEditorService,
                 ttsService, gemma4Service, lifecycleService, this.scriptParser, this.promptOptimizer);
@@ -643,112 +667,26 @@ public class VideoArchitectTab extends JPanel {
     }
 
     private void updateStoryboardJson() {
-        JSONArray arr = new JSONArray();
-        for (int i = 0; i < timelineListModel.size(); i++) {
-            Scene sc = timelineListModel.get(i);
-            JSONObject obj = new JSONObject();
-            obj.put("scene_id", sc.getSceneId());
-            obj.put("visual_prompt", sc.getPrompt());
-            obj.put("narration_text", sc.getNarrationText());
-            int dur = Math.max(1, (sc.getEndFrame() - sc.getStartFrame()) / 24);
-            obj.put("duration_seconds", dur);
-            obj.put("contrast", sc.getContrast());
-            obj.put("brightness", sc.getBrightness());
-            arr.put(obj);
-        }
-        storyboardJsonArea.setText(arr.toString(2));
+        timelineCoordinator.updateStoryboardJson(timelineListModel, storyboardJsonArea);
     }
 
+    /**
+     * Applies the recommended hardware-specific preset for the current GPU capabilities.
+     * Updates the video model, resolution, and generation settings based on the system's VRAM.
+     *
+     * @param logMessage true to print a confirmation log to the UI console, false otherwise
+     */
     public void applyHardwarePreset(boolean logMessage) {
-        if (hardwareProfileService == null) return;
-        VideoPresetConfig config = hardwareProfileService.getRecommendedVideoConfig();
-        HardwareProfile profile = hardwareProfileService.getHardwareProfile();
-
-        if (hardwareProfileBadge != null && profile != null) {
-            String badgeText = String.format("⚡ %s: %s VRAM • %s",
-                    profile.tier().name(), profile.formattedVram(), profile.tier().getDescription());
-            hardwareProfileBadge.setText(badgeText);
-            hardwareProfileBadge.setToolTipText(config != null ? config.statusDescription() : profile.gpuName());
-            if (profile.isWeakSystem()) {
-                hardwareProfileBadge.setBackground(new Color(245, 158, 11, 40));
-                hardwareProfileBadge.setForeground(new Color(217, 119, 6));
-                hardwareProfileBadge.setBorder(BorderFactory.createCompoundBorder(
-                        BorderFactory.createLineBorder(new Color(245, 158, 11, 100), 1, true),
-                        BorderFactory.createEmptyBorder(4, 8, 4, 8)
-                ));
-            } else {
-                hardwareProfileBadge.setBackground(new Color(16, 185, 129, 35));
-                hardwareProfileBadge.setForeground(new Color(16, 185, 129));
-                hardwareProfileBadge.setBorder(BorderFactory.createCompoundBorder(
-                        BorderFactory.createLineBorder(new Color(16, 185, 129, 100), 1, true),
-                        BorderFactory.createEmptyBorder(4, 8, 4, 8)
-                ));
-            }
-        }
-
-        if (config != null) {
-            if (videoModelCombo != null && config.recommendedModel() != null) {
-                videoModelCombo.setSelectedItem(config.recommendedModel());
-            }
-            if (videoWidthSpinner != null) {
-                videoWidthSpinner.setValue(config.defaultWidth());
-            }
-            if (videoHeightSpinner != null) {
-                videoHeightSpinner.setValue(config.defaultHeight());
-            }
-            if (videoStepsSpinner != null) {
-                videoStepsSpinner.setValue(config.defaultSteps());
-            }
-            if (videoCfgSpinner != null) {
-                videoCfgSpinner.setValue(config.defaultCfg());
-            }
-            if (videoPresetLabel != null) {
-                videoPresetLabel.setText("Detected Preset: " + config.recommendedModel() + " (" + config.defaultWidth() + "x" + config.defaultHeight() + " | Safe VRAM)");
-            }
-            if (logMessage) {
-                logToConsole("⚡ Hardware-Vorkonfiguration angewendet: " + config.statusDescription());
-            }
-        }
+        presetCoordinator.applyHardwarePreset(logMessage, hardwareProfileBadge, videoModelCombo,
+                videoWidthSpinner, videoHeightSpinner, videoStepsSpinner, videoCfgSpinner,
+                videoPresetLabel, this::logToConsole);
     }
 
     private void updateModelPreset() {
         String selected = (String) videoModelCombo.getSelectedItem();
-        if (selected == null) return;
-        if (selected.contains("LTX-Video")) {
-            videoPresetLabel.setText("Detected Preset: LTX-Video High-Speed (768x512 | 24 fps)");
-            videoWidthSpinner.setValue(768);
-            videoHeightSpinner.setValue(512);
-            videoStepsSpinner.setValue(30);
-            videoCfgSpinner.setValue(3.0);
-        } else if (selected.contains("Hunyuan")) {
-            videoPresetLabel.setText("Detected Preset: Hunyuan Video 1.5 (832x480 | 24 fps, Safe VRAM)");
-            videoWidthSpinner.setValue(832);
-            videoHeightSpinner.setValue(480);
-            videoStepsSpinner.setValue(20);
-            videoCfgSpinner.setValue(6.0);
-        } else if (selected.contains("Image to Video")) {
-            videoPresetLabel.setText("Detected Preset: Wan 2.1 I2V (832x480 | 16 fps, Safe VRAM)");
-            videoWidthSpinner.setValue(832);
-            videoHeightSpinner.setValue(480);
-            videoStepsSpinner.setValue(20);
-            videoCfgSpinner.setValue(3.0);
-        } else {
-            videoPresetLabel.setText("Detected Preset: Wan 2.2 Cinematic Video (832x480 | 16 fps, Safe VRAM)");
-            videoWidthSpinner.setValue(832);
-            videoHeightSpinner.setValue(480);
-            videoStepsSpinner.setValue(20);
-            videoCfgSpinner.setValue(3.0);
-        }
-
-        // Warn if a heavy 14B model is selected on a weak/budget GPU
-        if (hardwareProfileService != null) {
-            HardwareProfile profile = hardwareProfileService.getHardwareProfile();
-            if (profile != null && profile.isWeakSystem() && (selected.contains("Wan") || selected.contains("Hunyuan"))) {
-                logToConsole("⚠️ Notice: " + selected + " is very VRAM-intensive (14B). On your system (" + profile.formattedVram() + " VRAM), LTX-Video is recommended.");
-            }
-        }
-
-        logToConsole("Switched model preset: " + selected + " (" + videoWidthSpinner.getValue() + "x" + videoHeightSpinner.getValue() + ")");
+        presetCoordinator.updateModelPreset(selected, videoPresetLabel,
+                videoWidthSpinner, videoHeightSpinner, videoStepsSpinner, videoCfgSpinner,
+                this::logToConsole);
     }
 
     private void logToConsole(String message) {
@@ -767,88 +705,31 @@ public class VideoArchitectTab extends JPanel {
     }
 
     private void handleMoveScene(int direction) {
-        int index = timelineListView.getSelectedIndex();
-        if (index < 0) {
-            logToConsole("Select a scene to reorder.");
-            return;
-        }
-        int newIndex = index + direction;
-        if (newIndex >= 0 && newIndex < timelineListModel.size()) {
-            Scene scene = timelineListModel.remove(index);
-            timelineListModel.add(newIndex, scene);
-            timelineListView.setSelectedIndex(newIndex);
-            updateStoryboardJson();
-            logToConsole("Moved scene " + scene.getSceneId() + " to position " + (newIndex + 1));
-        }
+        timelineCoordinator.handleMoveScene(direction, timelineListView, timelineListModel,
+                this::logToConsole, this::updateStoryboardJson);
     }
 
     private void handleDeleteScene() {
-        int index = timelineListView.getSelectedIndex();
-        if (index >= 0) {
-            Scene removed = timelineListModel.remove(index);
-            updateStoryboardJson();
-            logToConsole("Deleted Scene: " + removed.getSceneId());
-        } else {
-            logToConsole("No scene selected to delete!");
-        }
+        timelineCoordinator.handleDeleteScene(timelineListView, timelineListModel,
+                this::logToConsole, this::updateStoryboardJson);
     }
 
     private void handlePreviewSceneVideo() {
-        Scene selected = timelineListView.getSelectedValue();
-        if (selected == null) {
-            logToConsole("Select a scene to preview.");
-            return;
-        }
-        String path = selected.getVideoPath();
-        if (path == null || path.trim().isEmpty()) {
-            logToConsole("Scene " + selected.getSceneId() + " has no generated video yet.");
-            return;
-        }
-        File vf = new File(path);
-        if (!vf.exists()) {
-            logToConsole("Video file not found at: " + path);
-            return;
-        }
-        try {
-            if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.OPEN)) {
-                Desktop.getDesktop().open(vf);
-                logToConsole("Opening video for scene: " + selected.getSceneId());
-            } else {
-                logToConsole("Desktop open not supported. Video: " + path);
-            }
-        } catch (Exception ex) {
-            logger.error("Failed to open video file: {}", ex.getMessage());
-            logToConsole("Failed to open video: " + ex.getMessage());
-        }
+        timelineCoordinator.handlePreviewSceneVideo(timelineListView, this::logToConsole);
     }
 
-    /**
-     * OpenCV-powered Visual Enhancement modal dialog with real-time contrast & brightness feedback.
-     */
     private void showOpenCvEnhancementDialog(Scene scene) {
-        new de.tki.comfyuicompanion.ui.video.OpenCvEnhancementDialog(this, scene, video4jEditorService, () -> {
-            timelineListView.repaint();
-            updateStoryboardJson();
-            updatePreviewForScene(scene);
-        }, this::logToConsole);
+        timelineCoordinator.showOpenCvEnhancementDialog(this, scene, video4jEditorService,
+                timelineListView, () -> {
+                    updateStoryboardJson();
+                    updatePreviewForScene(scene);
+                }, this::logToConsole);
     }
 
     private void showEditSceneDialog(Scene targetScene, boolean isNew) {
-        new de.tki.comfyuicompanion.ui.video.SceneEditDialog(this, targetScene, isNew,
-                timelineListModel.size() + 1,
-                (Integer) videoWidthSpinner.getValue(),
-                (Integer) videoHeightSpinner.getValue(),
-                promptOptimizer,
-                sc -> {
-                    if (isNew) {
-                        timelineListModel.addElement(sc);
-                        logToConsole("Added new Scene: " + sc.getSceneId());
-                    } else {
-                        timelineListView.repaint();
-                        logToConsole("Updated Scene: " + sc.getSceneId());
-                    }
-                    updateStoryboardJson();
-                });
+        timelineCoordinator.showEditSceneDialog(this, targetScene, isNew,
+                timelineListModel, timelineListView, videoWidthSpinner, videoHeightSpinner,
+                promptOptimizer, this::updateStoryboardJson, this::logToConsole);
     }
 
     private void handleDeconstructScript() {
@@ -946,6 +827,11 @@ public class VideoArchitectTab extends JPanel {
         updateTheme(ThemeManager.isDarkMode());
     }
 
+    /**
+     * Updates the UI components to reflect the current light or dark theme.
+     *
+     * @param darkMode true if dark mode is active, false for light mode
+     */
     public void updateTheme(boolean darkMode) {
         VideoArchitectThemeHandler.applyTheme(this, darkMode, videoPresetLabel, videoPreviewLabel,
                 timelineListView, timelineScroll, videoConsoleArea, storyboardJsonArea,

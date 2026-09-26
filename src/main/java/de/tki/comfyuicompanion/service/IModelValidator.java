@@ -2,6 +2,9 @@ package de.tki.comfyuicompanion.service;
 
 import java.io.File;
 
+/**
+ * Represents the i model validator interface.
+ */
 public interface IModelValidator {
     ValidationResult validateFile(File file);
     String calculateHash(File file);

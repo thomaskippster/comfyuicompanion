@@ -14,6 +14,9 @@ import java.util.Map;
 import java.util.stream.Stream;
 
 @Component
+/**
+ * Represents the path resolver class.
+ */
 public class PathResolver {
 
     public static final String MODELS_DIR = "models";
@@ -33,22 +36,43 @@ public class PathResolver {
         this.safePathValidator = safePathValidator != null ? safePathValidator : new de.tki.comfyuicompanion.service.SafePathValidator();
     }
 
+    /**
+     * Handles the set comfy ui root operation.
+     * @param root the root
+     */
     public void setComfyUIRoot(String root) {
         this.comfyUIRoot = root;
     }
 
+    /**
+     * Handles the get comfy ui root operation.
+     * @return the String result
+     */
     public String getComfyUIRoot() {
         return comfyUIRoot;
     }
 
+    /**
+     * Handles the add extra model path operation.
+     * @param type the type
+     * @param path the path
+     */
     public void addExtraModelPath(String type, Path path) {
         extraModelPaths.computeIfAbsent(type.toLowerCase(), k -> new ArrayList<>()).add(path);
     }
 
+    /**
+     * Handles the clear extra model paths operation.
+     */
     public void clearExtraModelPaths() {
         extraModelPaths.clear();
     }
 
+    /**
+     * Handles the get model paths operation.
+     * @param type the type
+     * @return the List<Path> result
+     */
     public List<Path> getModelPaths(String type) {
         List<Path> paths = new ArrayList<>();
         if (type == null) return paths;

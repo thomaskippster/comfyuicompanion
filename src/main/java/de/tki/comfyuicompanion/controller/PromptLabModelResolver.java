@@ -29,13 +29,29 @@ public class PromptLabModelResolver {
         this.modelArchitectureService = modelArchitectureService;
     }
 
+    /** @return the set of available Comfy checkpoints */
     public Set<String> getComfyCheckpoints() { return comfyCheckpoints; }
+
+    /** @return the set of available Comfy UNET models */
     public Set<String> getComfyUnetModels() { return comfyUnetModels; }
+
+    /** @return the set of available Comfy CLIP models */
     public Set<String> getComfyClips() { return comfyClips; }
+
+    /** @return the set of available Comfy VAE models */
     public Set<String> getComfyVaes() { return comfyVaes; }
+
+    /** @return the set of available Comfy CLIP types */
     public Set<String> getComfyClipTypes() { return comfyClipTypes; }
+
+    /** @return the set of available Comfy UNET weight data types */
     public Set<String> getComfyUnetWeightDtypes() { return comfyUnetWeightDtypes; }
 
+    /**
+     * Updates the internal sets of available models by parsing the ComfyUI object info.
+     *
+     * @param info the JSON object containing node information from ComfyUI
+     */
     public void updateComfyModelSets(JSONObject info) {
         if (info == null) return;
         comfyCheckpoints.clear();
@@ -146,6 +162,13 @@ public class PromptLabModelResolver {
         }
     }
 
+    /**
+     * Injects the selected model parameters (checkpoint, unet, clip, vae) into the workflow template JSON.
+     *
+     * @param templateJson the raw workflow template JSON
+     * @param modelName    the selected model name to inject
+     * @return the updated workflow template JSON string
+     */
     public String injectModelsIntoTemplate(String templateJson, String modelName) {
         if (templateJson == null || templateJson.isBlank() || modelName == null || modelName.isBlank()) {
             return templateJson;
@@ -191,6 +214,12 @@ public class PromptLabModelResolver {
         }
     }
 
+    /**
+     * Finds the exact UNET model name matching the given selected model.
+     *
+     * @param selectedModel the selected model name
+     * @return the matched exact UNET model name, or a cleaned version of the selected model
+     */
     public String findExactUnetName(String selectedModel) {
         if (selectedModel == null) return "";
         for (String unet : comfyUnetModels) {
@@ -205,6 +234,12 @@ public class PromptLabModelResolver {
         return clean;
     }
 
+    /**
+     * Finds the exact checkpoint name matching the given selected model.
+     *
+     * @param selectedModel the selected model name
+     * @return the matched exact checkpoint name, or a cleaned version of the selected model
+     */
     public String findExactCheckpointName(String selectedModel) {
         if (selectedModel == null) return "";
         for (String ckpt : comfyCheckpoints) {
@@ -219,6 +254,13 @@ public class PromptLabModelResolver {
         return clean;
     }
 
+    /**
+     * Resolves the appropriate CLIP type string based on the given clip model name and selected model.
+     *
+     * @param clipModel     the clip model name
+     * @param selectedModel the selected model name
+     * @return the resolved CLIP type string
+     */
     public String resolveClipType(String clipModel, String selectedModel) {
         String lower = clipModel != null ? clipModel.toLowerCase() : "";
 
@@ -278,6 +320,13 @@ public class PromptLabModelResolver {
         return candidate;
     }
 
+    /**
+     * Checks whether two model names refer to the same logical model file, ignoring directory prefixes.
+     *
+     * @param modelA the first model name
+     * @param modelB the second model name
+     * @return true if the models match
+     */
     public boolean modelsMatch(String modelA, String modelB) {
         if (modelA == null || modelB == null) return false;
         String a = modelA.replace("\\", "/").toLowerCase();
@@ -299,6 +348,12 @@ public class PromptLabModelResolver {
         return nameA.equalsIgnoreCase(nameB);
     }
 
+    /**
+     * Resolves the appropriate CLIP model filename for the given selected model.
+     *
+     * @param selectedModel the selected model name
+     * @return the resolved CLIP model filename
+     */
     public String resolveClipForModel(String selectedModel) {
         if (selectedModel == null) return "clip_l.safetensors";
         if (modelArchitectureService != null) {
@@ -373,6 +428,12 @@ public class PromptLabModelResolver {
         return "clip_l.safetensors";
     }
 
+    /**
+     * Resolves the appropriate VAE model filename for the given selected model.
+     *
+     * @param modelName the selected model name
+     * @return the resolved VAE model filename
+     */
     public String resolveVaeForModel(String modelName) {
         if (modelName == null) return "ae.safetensors";
         String expected = "FLUX1/ae.safetensors";

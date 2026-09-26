@@ -23,6 +23,9 @@ import java.util.function.Consumer;
  * process execution, and JGit fallbacks for custom nodes and ComfyUI installations.
  */
 @Service
+/**
+ * Represents the git repository manager class.
+ */
 public class GitRepositoryManager {
 
     private static final Logger logger = LoggerFactory.getLogger(GitRepositoryManager.class);
@@ -106,7 +109,7 @@ public class GitRepositoryManager {
             cb.accept("⚠️ System git pull failed (" + systemEx.getMessage() + "). Trying JGit fallback...");
             try (Git git = Git.open(targetDir.toFile())) {
                 git.pull()
-                        .setProgressMonitor(new TextProgressMonitor(new PrintWriter(System.out) {
+                        .setProgressMonitor(new TextProgressMonitor(new PrintWriter(java.io.Writer.nullWriter()) {
                             @Override
                             public void println(String x) { cb.accept(x); }
                         }))
@@ -140,7 +143,7 @@ public class GitRepositoryManager {
                     .setURI(repoUrl)
                     .setDirectory(targetDir.toFile())
                     .setBranch(branch)
-                    .setProgressMonitor(new TextProgressMonitor(new PrintWriter(System.out) {
+                    .setProgressMonitor(new TextProgressMonitor(new PrintWriter(java.io.Writer.nullWriter()) {
                         @Override
                         public void println(String x) { cb.accept(x); }
                     }))

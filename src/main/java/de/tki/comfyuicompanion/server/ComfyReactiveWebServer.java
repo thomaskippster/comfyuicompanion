@@ -27,6 +27,13 @@ public class ComfyReactiveWebServer {
     private final boolean enabled;
     private DisposableServer disposableServer;
 
+    /**
+     * Constructs a new reactive web server.
+     * 
+     * @param applicationContext the Spring application context
+     * @param port the port to bind the server to
+     * @param enabled whether the server should be started
+     */
     public ComfyReactiveWebServer(
             ApplicationContext applicationContext,
             @Value("${companion.server.port:12345}") int port,
@@ -36,6 +43,10 @@ public class ComfyReactiveWebServer {
         this.enabled = enabled;
     }
 
+    /**
+     * Starts the embedded reactive HTTP server if enabled and not in a test environment.
+     * Binds the server to the configured port.
+     */
     @PostConstruct
     public void start() {
         if (!enabled) {
@@ -64,6 +75,9 @@ public class ComfyReactiveWebServer {
         }
     }
 
+    /**
+     * Stops the embedded reactive HTTP server, releasing bound resources.
+     */
     @PreDestroy
     public void stop() {
         if (disposableServer != null) {
@@ -73,10 +87,20 @@ public class ComfyReactiveWebServer {
         }
     }
 
+    /**
+     * Checks if the server is currently running.
+     * 
+     * @return true if the server is running, false otherwise
+     */
     public boolean isRunning() {
         return disposableServer != null && !disposableServer.isDisposed();
     }
 
+    /**
+     * Returns the port the server is configured to run on.
+     * 
+     * @return the server port
+     */
     public int getPort() {
         return port;
     }

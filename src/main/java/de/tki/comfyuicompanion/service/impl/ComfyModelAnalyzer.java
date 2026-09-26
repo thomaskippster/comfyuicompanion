@@ -12,6 +12,9 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 @Service
+/**
+ * Represents the comfy model analyzer class.
+ */
 public class ComfyModelAnalyzer implements IModelAnalyzer {
     
     private final LocalAIService aiService;

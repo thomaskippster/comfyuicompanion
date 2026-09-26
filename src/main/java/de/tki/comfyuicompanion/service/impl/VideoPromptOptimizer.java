@@ -14,6 +14,9 @@ import java.util.regex.Pattern;
  * and kinetic physics directives required by video diffusion models (Wan 2.1/2.2, Hunyuan, LTX).
  */
 @Service
+/**
+ * Represents the video prompt optimizer class.
+ */
 public class VideoPromptOptimizer implements IVideoPromptOptimizer {
 
     private static final Logger logger = LoggerFactory.getLogger(VideoPromptOptimizer.class);
@@ -197,6 +200,11 @@ public class VideoPromptOptimizer implements IVideoPromptOptimizer {
             return null;
         }
 
+        /**
+         * Handles the strip from operation.
+         * @param prompt the prompt
+         * @return the String result
+         */
         public String stripFrom(String prompt) {
             String res = prompt;
             for (String kw : keywords) {

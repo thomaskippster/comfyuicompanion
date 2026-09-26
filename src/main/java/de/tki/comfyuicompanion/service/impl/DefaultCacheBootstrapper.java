@@ -24,6 +24,9 @@ import java.util.List;
  */
 @Service
 @Order(1)
+/**
+ * Represents the default cache bootstrapper class.
+ */
 public class DefaultCacheBootstrapper implements IDefaultCacheBootstrapper {
 
     private static final Logger logger = LoggerFactory.getLogger(DefaultCacheBootstrapper.class);
@@ -31,6 +34,11 @@ public class DefaultCacheBootstrapper implements IDefaultCacheBootstrapper {
     private final IConfigService configService;
     private final SafePathValidator pathValidator;
 
+    /**
+     * Represents a bundled cache resource mapped to its relative target path.
+     * @param classpathResource the source path within the classpath
+     * @param relativeTargetPath the destination path relative to the app data base directory
+     */
     public record BundledCacheResource(String classpathResource, String relativeTargetPath) {}
 
     private static final List<BundledCacheResource> BUNDLED_RESOURCES = List.of(
@@ -42,6 +50,12 @@ public class DefaultCacheBootstrapper implements IDefaultCacheBootstrapper {
             new BundledCacheResource("/default_cache/cache/registry_index.json", "cache/registry_index.json")
     );
 
+    /**
+     * Constructs a new DefaultCacheBootstrapper.
+     *
+     * @param configService the configuration service to retrieve app data paths
+     * @param pathValidator the validator to ensure safe path resolutions
+     */
     @Autowired
     public DefaultCacheBootstrapper(@Autowired(required = false) IConfigService configService,
                                    @Autowired(required = false) SafePathValidator pathValidator) {
@@ -49,11 +63,18 @@ public class DefaultCacheBootstrapper implements IDefaultCacheBootstrapper {
         this.pathValidator = pathValidator != null ? pathValidator : new SafePathValidator();
     }
 
+    /**
+     * Initializes the default cache resources by bootstrapping them into the configured paths.
+     */
     @PostConstruct
     public void init() {
         bootstrapDefaultCache();
     }
 
+    /**
+     * Bootstraps the default cache by copying resources to both the user's home directory
+     * and the configured application data path if they differ.
+     */
     @Override
     public synchronized void bootstrapDefaultCache() {
         // 1. Seed user home storage ~/.comfyui-companion
@@ -69,6 +90,11 @@ public class DefaultCacheBootstrapper implements IDefaultCacheBootstrapper {
         }
     }
 
+    /**
+     * Bootstraps the default cache resources into the specified target base directory.
+     *
+     * @param targetBaseDirectory the base directory where cache resources should be seeded
+     */
     @Override
     public synchronized void bootstrapDefaultCache(Path targetBaseDirectory) {
         if (targetBaseDirectory == null) {

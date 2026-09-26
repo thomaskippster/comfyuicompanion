@@ -23,6 +23,9 @@ import java.util.UUID;
  * directory paths, and runtime settings for ComfyUI Companion.
  */
 @Service
+/**
+ * Represents the config service class.
+ */
 public class ConfigService implements IConfigService {
     private static final Logger logger = LoggerFactory.getLogger(ConfigService.class);
 
@@ -274,6 +277,10 @@ public class ConfigService implements IConfigService {
         }
     }
 
+    /**
+     * Handles the is vault fresh operation.
+     * @return the boolean result
+     */
     public boolean isVaultFresh() {
         return vaultFresh;
     }
@@ -311,7 +318,11 @@ public class ConfigService implements IConfigService {
             if (isTestEnvironment()) {
                 return "";
             }
-            return "C:\\AI\\comfyuidata";
+            String envPath = System.getenv("COMFYUI_DATA_PATH");
+            if (envPath != null && !envPath.isBlank()) {
+                return envPath.trim();
+            }
+            return Paths.get(System.getProperty("user.home"), "comfyuidata").toAbsolutePath().toString();
         }
         return path;
     }
@@ -582,10 +593,18 @@ public class ConfigService implements IConfigService {
         return settings.optString("api_token", "");
     }
 
+    /**
+     * Handles the is unlocked operation.
+     * @return the boolean result
+     */
     public boolean isUnlocked() {
         return masterPassword != null;
     }
 
+    /**
+     * Handles the has vault operation.
+     * @return the boolean result
+     */
     public boolean hasVault() {
         return getFileInAppData(VAULT_FILE).exists();
     }

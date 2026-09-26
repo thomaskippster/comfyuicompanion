@@ -21,7 +21,9 @@ import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.time.Duration;
 
+import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class StatusTransitionTest {
@@ -110,8 +112,9 @@ public class StatusTransitionTest {
         );
 
         // Wait a bit for search to progress (it will fail anyway as no API key is set)
-        Thread.sleep(1500);
-        assertTrue(statuses.stream().anyMatch(s -> s.contains("Searching") || s.contains("Scouting")), "Statuses: " + statuses);
+        await().atMost(Duration.ofMillis(4500)).pollInterval(Duration.ofMillis(50)).untilAsserted(() -> {
+            assertTrue(statuses.stream().anyMatch(s -> s.contains("Searching") || s.contains("Scouting")), "Statuses: " + statuses);
+        });
     }
 
     @Test
@@ -136,14 +139,16 @@ public class StatusTransitionTest {
         downloadManager.startQueue(Collections.singletonList(info), new boolean[]{true}, tempDir.toString(), 
             (idx, s) -> statuses.add(s), latch::countDown);
 
-        Thread.sleep(300);
+        await().atMost(Duration.ofMillis(900)).pollInterval(Duration.ofMillis(50)).until(() -> statuses.stream().anyMatch(s -> s.contains("Downloading")));
         downloadManager.togglePause();
-        Thread.sleep(500);
-        assertTrue(statuses.contains("Paused"), "Statuses: " + statuses);
+        await().atMost(Duration.ofMillis(1500)).pollInterval(Duration.ofMillis(50)).untilAsserted(() -> {
+            assertTrue(statuses.contains("Paused"), "Statuses: " + statuses);
+        });
 
         downloadManager.togglePause(); // Resume
-        Thread.sleep(500);
-        assertTrue(statuses.contains("Resuming..."), "Statuses: " + statuses);
+        await().atMost(Duration.ofMillis(1500)).pollInterval(Duration.ofMillis(50)).untilAsserted(() -> {
+            assertTrue(statuses.contains("Resuming..."), "Statuses: " + statuses);
+        });
         
         downloadManager.stop();
         latch.await(2, TimeUnit.SECONDS);
@@ -158,9 +163,9 @@ public class StatusTransitionTest {
         downloadManager.startQueue(Collections.singletonList(info), new boolean[]{true}, tempDir.toString(), 
             (idx, s) -> statuses.add(s), latch::countDown);
 
-        Thread.sleep(300);
+        await().atMost(Duration.ofMillis(900)).pollInterval(Duration.ofMillis(50)).until(() -> statuses.stream().anyMatch(s -> s.contains("Downloading")));
         downloadManager.togglePause();
-        Thread.sleep(300);
+        await().atMost(Duration.ofMillis(900)).pollInterval(Duration.ofMillis(50)).until(() -> statuses.contains("Paused"));
         
         downloadManager.updateSelection(new boolean[]{false});
         downloadManager.togglePause(); // Resume triggers check
@@ -178,7 +183,7 @@ public class StatusTransitionTest {
         downloadManager.startQueue(Collections.singletonList(info), new boolean[]{true}, tempDir.toString(), 
             (idx, s) -> statuses.add(s), latch::countDown);
 
-        Thread.sleep(300);
+        await().atMost(Duration.ofMillis(900)).pollInterval(Duration.ofMillis(50)).until(() -> statuses.stream().anyMatch(s -> s.contains("Downloading")));
         downloadManager.stop();
 
         assertTrue(latch.await(2, TimeUnit.SECONDS));

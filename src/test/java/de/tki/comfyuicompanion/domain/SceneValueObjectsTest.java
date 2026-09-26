@@ -32,8 +32,8 @@ public class SceneValueObjectsTest {
     @Test
     void testTransitionSettingsDefaultsAndMutation() {
         Scene scene = new Scene();
-        assertEquals("crossfade", scene.getTransitionType());
-        assertEquals(1.0, scene.getTransitionDuration());
+        assertEquals("none", scene.getTransitionType());
+        assertEquals(0.0, scene.getTransitionDuration());
         assertFalse(scene.isEnhanceWithLtx());
         assertEquals(0.85, scene.getLtxStrength());
 

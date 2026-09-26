@@ -92,6 +92,11 @@ if not _route_registered("POST", "/cmfc/convert-workflow"):
 
         workflow = data.get("workflow")
         callback_url = data.get("callbackUrl", "http://127.0.0.1:12345/api/workflow-ready")
+        if not (callback_url.startswith("http://127.0.0.1:") or callback_url.startswith("http://localhost:")):
+            return web.json_response(
+                {"status": "error", "message": "Invalid callback URL: must target local loopback address"},
+                status=400,
+            )
 
         if not workflow:
             return web.json_response(

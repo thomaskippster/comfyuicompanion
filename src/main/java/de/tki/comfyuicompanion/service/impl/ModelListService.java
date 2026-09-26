@@ -18,6 +18,9 @@ import java.util.List;
 import java.util.Optional;
 
 @Service
+/**
+ * Represents the model list service class.
+ */
 public class ModelListService {
     private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(ModelListService.class);
     private static final String STORAGE_FILE = "uploaded_models.json";
@@ -39,11 +42,21 @@ public class ModelListService {
         loadFromStorage();
     }
 
+    /**
+     * Handles the import json operation.
+     * @param file the file
+     * @throws Exception if an error occurs
+     */
     public void importJson(File file) throws Exception {
         String content = Files.readString(file.toPath(), StandardCharsets.UTF_8);
         importJsonContent(content);
     }
 
+    /**
+     * Handles the import json content operation.
+     * @param content the content
+     * @throws Exception if an error occurs
+     */
     public void importJsonContent(String content) throws Exception {
         JSONObject root = new JSONObject(content);
         JSONArray modelsArray = root.getJSONArray("models");
@@ -73,6 +86,10 @@ public class ModelListService {
         saveToStorage();
     }
 
+    /**
+     * Handles the import from url operation.
+     * @param url the url
+     */
     public void importFromUrl(String url) {
         if (url == null || url.isEmpty()) return;
         
@@ -116,6 +133,11 @@ public class ModelListService {
         }
     }
 
+    /**
+     * Handles the find by filename operation.
+     * @param filename the filename
+     * @return the Optional<ModelInfo> result
+     */
     public Optional<ModelInfo> findByFilename(String filename) {
         if (filename == null) return Optional.empty();
         String low = filename.toLowerCase();
@@ -170,7 +192,7 @@ public class ModelListService {
                 models.addAll(loadedModels);
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            logger.error("Failed to load model storage: {}", e.getMessage(), e);
         }
     }
 
@@ -193,10 +215,14 @@ public class ModelListService {
             File file = configService != null ? configService.getFileInAppData(STORAGE_FILE) : new File(STORAGE_FILE);
             Files.writeString(file.toPath(), array.toString(4), StandardCharsets.UTF_8);
         } catch (Exception e) {
-            e.printStackTrace();
+            logger.error("Failed to save model storage: {}", e.getMessage(), e);
         }
     }
     
+    /**
+     * Handles the get models operation.
+     * @return the List<ModelInfo> result
+     */
     public List<ModelInfo> getModels() {
         return models;
     }

@@ -14,6 +14,9 @@ import java.io.File;
 import org.springframework.beans.factory.annotation.Autowired;
 
 @Service
+/**
+ * Represents the video editor engine class.
+ */
 public class VideoEditorEngine {
 
     private final ConfigService configService;
@@ -41,10 +44,18 @@ public class VideoEditorEngine {
             this.videoFrame = videoFrame;
         }
 
+        /**
+         * Handles the mat operation.
+         * @return the Mat result
+         */
         public Mat mat() {
             return videoFrame.mat();
         }
 
+        /**
+         * Handles the number operation.
+         * @return the long result
+         */
         public long number() {
             return videoFrame.number();
         }
@@ -55,6 +66,14 @@ public class VideoEditorEngine {
         de.tki.comfyuicompanion.util.OpenCvLoader.load();
     }
 
+    /**
+     * Handles the process scene operation.
+     * @param inputPath the inputPath
+     * @param startFrame the startFrame
+     * @param endFrame the endFrame
+     * @return the File result
+     * @throws Exception if an error occurs
+     */
     public File processScene(String inputPath, int startFrame, int endFrame) throws Exception {
         File tempFile = File.createTempFile("scene_clip_", ".mp4");
         tempFile.deleteOnExit();
@@ -91,10 +110,20 @@ public class VideoEditorEngine {
         return tempFile;
     }
 
+    /**
+     * Handles the apply filter operation.
+     * @param frame the frame
+     */
     public void applyFilter(Frame frame) {
         applyFilter(frame, 1.15, 10.0);
     }
 
+    /**
+     * Handles the apply filter operation.
+     * @param frame the frame
+     * @param alpha the alpha
+     * @param beta the beta
+     */
     public void applyFilter(Frame frame, double alpha, double beta) {
         Mat mat = frame.mat();
         if (mat != null && !mat.empty()) {
@@ -102,6 +131,13 @@ public class VideoEditorEngine {
         }
     }
 
+    /**
+     * Handles the merge audio and video operation.
+     * @param videoPath the videoPath
+     * @param audioPath the audioPath
+     * @param outputPath the outputPath
+     * @throws Exception if an error occurs
+     */
     public void mergeAudioAndVideo(String videoPath, String audioPath, String outputPath) throws Exception {
         ProcessBuilder pb = new ProcessBuilder(
             configService.getFfmpegPath(), "-y", "-i", videoPath, "-i", audioPath,

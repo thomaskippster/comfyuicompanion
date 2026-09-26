@@ -29,6 +29,15 @@ public class ModelVerificationHandler {
     private final ModelHashRegistry hashRegistry;
     private final BackgroundExecutor backgroundExecutor;
 
+    /**
+     * Constructs a new ModelVerificationHandler with the provided dependencies.
+     *
+     * @param view               The main UI view for downloading and managing models.
+     * @param configService      The configuration service to fetch the models directory path.
+     * @param modelValidator     The validator for checking model file integrity.
+     * @param hashRegistry       The registry for calculating and storing model hashes.
+     * @param backgroundExecutor The executor for running background tasks.
+     */
     public ModelVerificationHandler(DownloadManagerView view,
                                     ConfigService configService,
                                     IModelValidator modelValidator,
@@ -168,6 +177,11 @@ public class ModelVerificationHandler {
         });
     }
 
+    /**
+     * Displays a dialog showing duplicate model files detected during verification.
+     *
+     * @param duplicates A map of SHA-256 hash strings to lists of paths of duplicate files.
+     */
     public void showDuplicatesDialog(Map<String, List<Path>> duplicates) {
         StringBuilder sb = new StringBuilder("Storage Optimizer - Duplicate Models Found:\n\n");
         sb.append("The following files have identical content (SHA-256 match).\n");

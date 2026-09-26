@@ -23,6 +23,9 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 @Service
+/**
+ * Represents the model hash registry class.
+ */
 public class ModelHashRegistry {
 
     private static final Logger logger = LoggerFactory.getLogger(ModelHashRegistry.class);
@@ -113,6 +116,9 @@ public class ModelHashRegistry {
         }
     }
 
+    /**
+     * Handles the save operation.
+     */
     public void save() {
         synchronized (saveLock) {
             if (configService == null) return;
@@ -180,11 +186,20 @@ public class ModelHashRegistry {
         return hash;
     }
 
+    /**
+     * Handles the find path by hash operation.
+     * @param hash the hash
+     * @return the Optional<String> result
+     */
     public Optional<String> findPathByHash(String hash) {
         if (hash == null) return Optional.empty();
         return Optional.ofNullable(hashToPath.get(hash));
     }
 
+    /**
+     * Handles the unregister operation.
+     * @param file the file
+     */
     public void unregister(File file) {
         if (file == null) return;
         String path = file.getAbsolutePath();

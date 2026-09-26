@@ -20,6 +20,9 @@ import java.util.regex.Pattern;
  * mapping rules that classify model file names into their corresponding {@link ModelArchitecture}.
  */
 @Component
+/**
+ * Represents the architecture mapping repository class.
+ */
 public class ArchitectureMappingRepository {
     private static final Logger logger = LoggerFactory.getLogger(ArchitectureMappingRepository.class);
 

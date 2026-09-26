@@ -16,6 +16,9 @@ import java.time.Duration;
 import java.util.*;
 
 @Service
+/**
+ * Represents the local ai service class.
+ */
 public class LocalAIService {
     private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(LocalAIService.class);
 
@@ -82,10 +85,20 @@ public class LocalAIService {
         }
     }
 
+    /**
+     * Handles the predict provider operation.
+     * @param fileName the fileName
+     * @return the Prediction result
+     */
     public Prediction predictProvider(String fileName) {
         return predict(fileName, false);
     }
 
+    /**
+     * Handles the predict from url operation.
+     * @param url the url
+     * @return the Prediction result
+     */
     public Prediction predictFromUrl(String url) {
         return predict(url, true);
     }
@@ -147,10 +160,17 @@ public class LocalAIService {
         return new Prediction(bestProvider, confidence);
     }
 
+    /**
+     * Represents the prediction class.
+     */
     public class Prediction {
         public final String provider;
         public final double confidence;
         public Prediction(String provider, double confidence) { this.provider = provider; this.confidence = confidence; }
+        /**
+         * Handles the get label operation.
+         * @return the String result
+         */
         public String getLabel() {
             if (confidence > 0.75) return "🧠 AI Verified: " + provider;
             if (confidence > 0.35) return "🎯 AI Predicted: " + provider;
@@ -158,10 +178,22 @@ public class LocalAIService {
         }
     }
 
+    /**
+     * Handles the get gemma completions operation.
+     * @param subjectText the subjectText
+     * @return the List<String> result
+     */
     public List<String> getGemmaCompletions(String subjectText) {
         return getDirectGemmaCompletions(subjectText);
     }
 
+    /**
+     * Handles the optimize prompt operation.
+     * @param rawPrompt the rawPrompt
+     * @param modelName the modelName
+     * @return the String result
+     * @throws Exception if an error occurs
+     */
     public String optimizePrompt(String rawPrompt, String modelName) throws Exception {
         try {
             return optimizePromptDirectly(rawPrompt, modelName);
@@ -173,22 +205,43 @@ public class LocalAIService {
         }
     }
 
+    /**
+     * Handles the is local gemma downloaded operation.
+     * @return the boolean result
+     */
     public boolean isLocalGemmaDownloaded() {
         return localGemmaService != null && localGemmaService.isModelDownloaded();
     }
 
+    /**
+     * Handles the is gemma enabled operation.
+     * @return the boolean result
+     */
     public boolean isGemmaEnabled() {
         return gemmaEnabled;
     }
 
+    /**
+     * Handles the set gemma enabled operation.
+     * @param gemmaEnabled the gemmaEnabled
+     */
     public void setGemmaEnabled(boolean gemmaEnabled) {
         this.gemmaEnabled = gemmaEnabled;
     }
     
+    /**
+     * Handles the get local gemma service operation.
+     * @return the LocalGemmaService result
+     */
     public LocalGemmaService getLocalGemmaService() {
         return localGemmaService;
     }
     
+    /**
+     * Handles the get direct gemma completions operation.
+     * @param subjectText the subjectText
+     * @return the List<String> result
+     */
     public List<String> getDirectGemmaCompletions(String subjectText) {
         if (localGemmaService == null || !localGemmaService.isModelDownloaded()) return null;
         try {
@@ -216,6 +269,13 @@ public class LocalAIService {
         return null;
     }
     
+    /**
+     * Handles the optimize prompt directly operation.
+     * @param rawPrompt the rawPrompt
+     * @param modelName the modelName
+     * @return the String result
+     * @throws Throwable if an error occurs
+     */
     public String optimizePromptDirectly(String rawPrompt, String modelName) throws Throwable {
         if (localGemmaService == null || !localGemmaService.isModelDownloaded()) {
             throw new Exception("Direct local Gemma is not downloaded.");
@@ -298,6 +358,13 @@ public class LocalAIService {
         return localGemmaService.generateCompletion(systemInstruction, "Original prompt: " + rawPrompt + "\n\nJSON:", 0.7f, 384);
     }
 
+    /**
+     * Handles the generate text operation.
+     * @param promptText the promptText
+     * @param temperature the temperature
+     * @param maxTokens the maxTokens
+     * @return the String result
+     */
     public String generateText(String promptText, float temperature, int maxTokens) {
         if (localGemmaService != null && localGemmaService.isModelDownloaded()) {
             try {

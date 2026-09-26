@@ -4,6 +4,9 @@ import de.tki.comfyuicompanion.domain.ModelInfo;
 import java.util.List;
 import java.util.function.BiConsumer;
 
+/**
+ * Represents the i download manager interface.
+ */
 public interface IDownloadManager {
     void startQueue(List<ModelInfo> models, boolean[] selectedIndices, String baseDir, BiConsumer<Integer, String> statusUpdater, Runnable onFinished);
     void updateSelection(boolean[] selectedIndices);

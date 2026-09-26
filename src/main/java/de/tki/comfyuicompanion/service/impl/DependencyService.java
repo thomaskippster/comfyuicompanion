@@ -16,6 +16,9 @@ import java.util.zip.ZipInputStream;
 import org.springframework.beans.factory.annotation.Autowired;
 
 @Service
+/**
+ * Represents the dependency service class.
+ */
 public class DependencyService {
     private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(DependencyService.class);
 
@@ -34,6 +37,10 @@ public class DependencyService {
         this(configService, null);
     }
 
+    /**
+     * Handles the is ffmpeg installed operation.
+     * @return the boolean result
+     */
     public boolean isFfmpegInstalled() {
         String ffmpegPath = configService.getFfmpegPath();
         if ("ffmpeg".equals(ffmpegPath)) {
@@ -49,6 +56,11 @@ public class DependencyService {
         return new File(ffmpegPath).exists();
     }
 
+    /**
+     * Handles the install ffmpeg operation.
+     * @param onProgress the onProgress
+     * @throws Exception if an error occurs
+     */
     public void installFfmpeg(java.util.function.Consumer<String> onProgress) throws Exception {
         onProgress.accept("Checking environment...");
         if (isFfmpegInstalled()) {

@@ -29,6 +29,9 @@ import java.util.concurrent.CompletableFuture;
 import java.util.function.BiConsumer;
 
 @Service
+/**
+ * Represents the default download manager class.
+ */
 public class DefaultDownloadManager implements IDownloadManager {
     private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(DefaultDownloadManager.class);
     private final ThreadPoolExecutor executor = new ThreadPoolExecutor(

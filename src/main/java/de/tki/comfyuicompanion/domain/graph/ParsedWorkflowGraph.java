@@ -27,8 +27,20 @@ public record ParsedWorkflowGraph(List<VisualNode> nodes, List<VisualLink> links
         public double drawX;
         public double drawY;
 
+        /**
+         * Constructs an empty VisualNode.
+         */
         public VisualNode() {}
 
+        /**
+         * Constructs a VisualNode with layout properties.
+         *
+         * @param id    the node identifier
+         * @param type  the class type
+         * @param title the display title
+         * @param x     the x coordinate
+         * @param y     the y coordinate
+         */
         public VisualNode(long id, String type, String title, double x, double y) {
             this.id = id;
             this.type = type;
@@ -48,8 +60,20 @@ public record ParsedWorkflowGraph(List<VisualNode> nodes, List<VisualLink> links
         public int originSlot;
         public int targetSlot;
 
+        /**
+         * Constructs an empty VisualLink.
+         */
         public VisualLink() {}
 
+        /**
+         * Constructs a VisualLink with connection properties.
+         *
+         * @param id         the link identifier
+         * @param originId   the origin node identifier
+         * @param targetId   the target node identifier
+         * @param originSlot the origin slot index
+         * @param targetSlot the target slot index
+         */
         public VisualLink(long id, long originId, long targetId, int originSlot, int targetSlot) {
             this.id = id;
             this.originId = originId;

@@ -23,23 +23,36 @@ import java.nio.file.Files;
 import java.util.List;
 import org.springframework.beans.factory.annotation.Autowired;
 
+/**
+ * Service for non-linear video editing operations utilizing Video4j, OpenCV, and FFmpeg.
+ * <p>
+ * Handles scene assembly, frame extraction, visual enhancement filters (brightness, contrast, sharpening),
+ * audio-video synchronization, and final master video generation with transition effects.
+ */
 @Service
 public class Video4jEditorService {
     private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(Video4jEditorService.class);
 
     private final ConfigService configService;
     private final ProcessTracker processTracker;
+    private final VideoPostProductionEngine postProductionEngine;
 
     @Autowired
     public Video4jEditorService(
             ConfigService configService,
-            @Autowired(required = false) ProcessTracker processTracker) {
+            @Autowired(required = false) ProcessTracker processTracker,
+            @Autowired(required = false) VideoPostProductionEngine postProductionEngine) {
         this.configService = configService;
         this.processTracker = processTracker;
+        this.postProductionEngine = postProductionEngine != null ? postProductionEngine : new VideoPostProductionEngine();
+    }
+
+    public Video4jEditorService(ConfigService configService, ProcessTracker processTracker) {
+        this(configService, processTracker, null);
     }
 
     public Video4jEditorService(ConfigService configService) {
-        this(configService, null);
+        this(configService, null, null);
     }
 
     private Process startProcess(ProcessBuilder pb) throws IOException {
@@ -162,6 +175,12 @@ public class Video4jEditorService {
         return null;
     }
 
+    /**
+     * Handles the apply trimming operation.
+     * @param scene the scene
+     * @return the File result
+     * @throws Exception if an error occurs
+     */
     public File applyTrimming(Scene scene) throws Exception {
         validateFfmpeg();
         String videoPath = scene.getVideoPath();
@@ -365,6 +384,13 @@ public class Video4jEditorService {
         return tempFile;
     }
 
+    /**
+     * Handles the apply basic enhancement awt operation.
+     * @param scene the scene
+     * @param alpha the alpha
+     * @param beta the beta
+     * @return the BufferedImage result
+     */
     public BufferedImage applyBasicEnhancementAwt(Scene scene, double alpha, double beta) {
         String videoPath = scene.getVideoPath();
         if (videoPath == null || videoPath.trim().isEmpty()) {
@@ -465,6 +491,12 @@ public class Video4jEditorService {
         return null;
     }
 
+    /**
+     * Handles the execute master render operation.
+     * @param scenes the scenes
+     * @return the File result
+     * @throws Exception if an error occurs
+     */
     public File executeMasterRender(List<Scene> scenes) throws Exception {
         validateFfmpeg();
         List<File> mergedSegments = new java.util.ArrayList<>();
@@ -610,16 +642,16 @@ public class Video4jEditorService {
 
             // 4b. If the user requested a non-default transition between scenes,
             // build an xfade filter chain. Otherwise the simple concat above is final.
-            if (mergedSegments.size() > 1 && anySceneRequestsTransition(scenes)) {
+            if (mergedSegments.size() > 1 && postProductionEngine.anySceneRequestsTransition(scenes)) {
                 try {
-                    runXfadeConcat(mergedSegments, scenes, ffmpegPath, exportFile);
+                    postProductionEngine.runXfadeConcat(mergedSegments, scenes, ffmpegPath, exportFile, this::startProcess);
                 } catch (Exception xfadeEx) {
                     logger.error("[Video4jEditorService] xfade concat failed, keeping simple concat result: " + xfadeEx.getMessage());
                 }
             }
 
             // 4c. Apply master post-production subtitles as a clean top layer with scene time ranges
-            applyMasterSubtitles(exportFile, scenes, ffmpegPath);
+            postProductionEngine.applyMasterSubtitles(exportFile, scenes, ffmpegPath, this::startProcess);
         } catch (Exception e) {
             logger.error("⚠️ [Video4jEditorService] FFmpeg stitching failed: " + e.getMessage());
             throw new Exception("FFmpeg stitching process failed. " + e.getMessage() + 
@@ -647,32 +679,7 @@ public class Video4jEditorService {
      * Probes the duration of a media file using ffmpeg -i.
      */
     private double probeDuration(File mediaFile) {
-        try {
-            String ffmpegPathStr = configService.getFfmpegPath();
-            ProcessBuilder pb = new ProcessBuilder(ffmpegPathStr, "-i", mediaFile.getAbsolutePath());
-            pb.redirectErrorStream(true);
-            Process p = startProcess(pb);
-            double duration = 0.0;
-            try (java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(p.getInputStream()))) {
-                String line;
-                java.util.regex.Pattern durPattern = java.util.regex.Pattern.compile("Duration:\\s+(\\d+):(\\d+):([0-9.]+)");
-                while ((line = r.readLine()) != null) {
-                    java.util.regex.Matcher m = durPattern.matcher(line);
-                    if (m.find()) {
-                        double hours = Double.parseDouble(m.group(1));
-                        double minutes = Double.parseDouble(m.group(2));
-                        double seconds = Double.parseDouble(m.group(3));
-                        duration = hours * 3600 + minutes * 60 + seconds;
-                        break;
-                    }
-                }
-            }
-            p.waitFor();
-            if (duration > 0) return duration;
-        } catch (Exception e) {
-            logger.error("⚠️ [Video4jEditorService] Could not probe duration: " + e.getMessage());
-        }
-        return 0.0;
+        return postProductionEngine.probeDuration(mediaFile, configService.getFfmpegPath(), this::startProcess);
     }
 
     /**
@@ -766,204 +773,6 @@ public class Video4jEditorService {
             }
         } catch (Exception e) {
             logger.error("⚠️ Could not open system folder: " + e.getMessage());
-        }
-    }
-
-    private boolean anySceneRequestsTransition(java.util.List<Scene> scenes) {
-        for (Scene s : scenes) {
-            String t = s.getTransitionType();
-            if (t != null && !t.isEmpty() && !"none".equalsIgnoreCase(t)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private void runXfadeConcat(java.util.List<File> segments, java.util.List<Scene> scenes,
-                                String ffmpegPath, File exportFile) throws Exception {
-        // Probe each segment duration
-        double[] durations = new double[segments.size()];
-        for (int i = 0; i < segments.size(); i++) {
-            durations[i] = probeDuration(segments.get(i));
-            if (durations[i] <= 0) durations[i] = 5.0;
-        }
-        // Build the xfade filter_complex: chain xfade nodes between segments.
-        // Reference: https://trac.ffmpeg.org/wiki/Xfade
-        StringBuilder filter = new StringBuilder();
-        java.util.List<String> args = new java.util.ArrayList<>();
-        args.add(ffmpegPath);
-        for (int i = 0; i < segments.size(); i++) {
-            args.add("-i"); args.add(segments.get(i).getAbsolutePath());
-        }
-        // Track the most recent output label so each xfade can reference it.
-        String lastLabel = "[0:v]";
-        String lastAudioLabel = "[0:a]";
-        double offset = durations[0];
-        for (int i = 1; i < segments.size(); i++) {
-            // Use scene[i-1] transition between segment i-1 and i.
-            Scene s = scenes.get(i - 1);
-            String transition = s.getTransitionType();
-            if (transition == null || transition.isEmpty() || "none".equalsIgnoreCase(transition) || "crossfade".equalsIgnoreCase(transition)) {
-                transition = "fade";
-            }
-            double transDur = s.getTransitionDuration();
-            if (transDur <= 0) transDur = 1.0;
-            // Make sure the transition is not longer than the shortest segment.
-            transDur = Math.min(transDur, Math.min(durations[i - 1], durations[i]) / 2.0);
-            String outV = i == segments.size() - 1 ? "[v]" : ("[v" + i + "]");
-            String outA = i == segments.size() - 1 ? "[a]" : ("[a" + i + "]");
-            filter.append(lastLabel).append("[").append(i).append(":v]xfade=transition=")
-                  .append(transition).append(":duration=").append(String.format(java.util.Locale.US, "%.3f", transDur))
-                  .append(":offset=").append(String.format(java.util.Locale.US, "%.3f", Math.max(0.0, offset - transDur)))
-                  .append(outV).append(";");
-            filter.append(lastAudioLabel).append("[").append(i).append(":a]acrossfade=d=")
-                  .append(String.format(java.util.Locale.US, "%.3f", transDur)).append(outA).append(";");
-            lastLabel = outV;
-            lastAudioLabel = outA;
-            offset += durations[i] - transDur;
-        }
-        args.add("-filter_complex"); args.add(filter.toString());
-        args.add("-map"); args.add(lastLabel);
-        args.add("-map"); args.add(lastAudioLabel);
-        args.add("-c:v"); args.add("libx264");
-        args.add("-preset"); args.add("medium");
-        args.add("-crf"); args.add("18");
-        args.add("-pix_fmt"); args.add("yuv420p");
-        args.add("-c:a"); args.add("aac");
-        args.add("-b:a"); args.add("192k");
-        args.add("-ar"); args.add("44100");
-        args.add("-ac"); args.add("2");
-        args.add("-y");
-        args.add(exportFile.getAbsolutePath());
-
-        logger.info("[Video4jEditorService] Running xfade: " + String.join(" ", args));
-        ProcessBuilder pb = new ProcessBuilder(args);
-        pb.redirectErrorStream(true);
-        Process p = startProcess(pb);
-        try (java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(p.getInputStream(), java.nio.charset.StandardCharsets.UTF_8))) {
-            String line;
-            while ((line = r.readLine()) != null) {
-                logger.info("   [FFmpeg xFade] " + line);
-            }
-        }
-        int exit = p.waitFor();
-        if (exit != 0 || !exportFile.exists() || exportFile.length() < 1024) {
-            throw new IOException("ffmpeg xfade failed with exit " + exit);
-        }
-    }
-
-    /**
-     * Overlays subtitles across the master stitched video in a dedicated post-production pass.
-     * Uses timestamp-based drawtext filters so subtitles change instantaneously without ghosting or overlapping.
-     *
-     * @param masterVideo the assembled master video file
-     * @param scenes      the ordered list of scenes
-     * @param ffmpegPath  path to FFmpeg executable
-     */
-    private void applyMasterSubtitles(File masterVideo, java.util.List<Scene> scenes, String ffmpegPath) {
-        if (masterVideo == null || !masterVideo.exists() || scenes == null || scenes.isEmpty()) {
-            return;
-        }
-
-        boolean hasAnyNarration = scenes.stream().anyMatch(s -> s.getNarrationText() != null && !s.getNarrationText().trim().isEmpty());
-        if (!hasAnyNarration) {
-            return;
-        }
-
-        java.util.List<File> tempSubFiles = new java.util.ArrayList<>();
-        File tempOutput = new File(masterVideo.getParentFile(), "temp_subbed_" + masterVideo.getName());
-
-        try {
-            java.util.List<String> drawtextFilters = new java.util.ArrayList<>();
-            double currentOffset = 0.0;
-            boolean hasTransitions = scenes.size() > 1 && anySceneRequestsTransition(scenes);
-
-            for (int i = 0; i < scenes.size(); i++) {
-                Scene s = scenes.get(i);
-                double dur = (s.getEndFrame() > s.getStartFrame()) ? (s.getEndFrame() - s.getStartFrame()) / 30.0 : 5.0;
-                if (dur <= 0) dur = 5.0;
-
-                double startSec = currentOffset;
-                double endSec = currentOffset + dur;
-
-                if (hasTransitions && i > 0) {
-                    double transDur = s.getTransitionDuration() > 0 ? s.getTransitionDuration() : 1.0;
-                    transDur = Math.min(transDur, dur / 2.0);
-                    startSec = Math.max(0.0, startSec - transDur);
-                    endSec = Math.max(startSec + 0.5, endSec - transDur);
-                }
-
-                String narration = s.getNarrationText();
-                if (narration != null && !narration.trim().isEmpty()) {
-                    File subFile = File.createTempFile("sub_master_" + s.getSceneId() + "_", ".txt");
-                    java.nio.file.Files.writeString(subFile.toPath(), narration.trim(), java.nio.charset.StandardCharsets.UTF_8);
-                    tempSubFiles.add(subFile);
-
-                    String escapedSubPath = subFile.getAbsolutePath()
-                            .replace("\\", "/")
-                            .replace(":", "\\:")
-                            .replace("'", "\\'");
-
-                    String drawtext = String.format(java.util.Locale.US,
-                            "drawtext=textfile='%s':enable='between(t,%.2f,%.2f)':fontsize=24:fontcolor=white:borderw=2:bordercolor=black:x=(w-tw)/2:y=h-th-40",
-                            escapedSubPath, Math.max(0.0, startSec), endSec);
-                    drawtextFilters.add(drawtext);
-                }
-
-                currentOffset = endSec;
-            }
-
-            if (!drawtextFilters.isEmpty()) {
-                java.util.List<String> cmd = new java.util.ArrayList<>();
-                cmd.add(ffmpegPath);
-                cmd.add("-y");
-                cmd.add("-i");
-                cmd.add(masterVideo.getAbsolutePath());
-                cmd.add("-vf");
-                cmd.add(String.join(",", drawtextFilters));
-                cmd.add("-c:v");
-                cmd.add("libx264");
-                cmd.add("-preset");
-                cmd.add("medium");
-                cmd.add("-crf");
-                cmd.add("18");
-                cmd.add("-pix_fmt");
-                cmd.add("yuv420p");
-                cmd.add("-c:a");
-                cmd.add("copy");
-                cmd.add(tempOutput.getAbsolutePath());
-
-                logger.info("📝 [Video4jEditorService] Applying master post-production subtitles...");
-                ProcessBuilder pb = new ProcessBuilder(cmd);
-                pb.redirectErrorStream(true);
-                Process p = startProcess(pb);
-                try (java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(p.getInputStream(), java.nio.charset.StandardCharsets.UTF_8))) {
-                    String line;
-                    while ((line = r.readLine()) != null) {
-                        logger.info("   [FFmpeg MasterSub] " + line);
-                    }
-                }
-                int exit = p.waitFor();
-                if (exit == 0 && tempOutput.exists() && tempOutput.length() > 1024) {
-                    masterVideo.delete();
-                    boolean renamed = tempOutput.renameTo(masterVideo);
-                    if (!renamed) {
-                        java.nio.file.Files.copy(tempOutput.toPath(), masterVideo.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-                        tempOutput.delete();
-                    }
-                    logger.info("✅ [Video4jEditorService] Master subtitles applied successfully without ghosting.");
-                } else {
-                    logger.warn("⚠️ [Video4jEditorService] Master subtitle burn exited with " + exit + "; retaining clean video.");
-                    if (tempOutput.exists()) tempOutput.delete();
-                }
-            }
-        } catch (Exception e) {
-            logger.error("⚠️ [Video4jEditorService] Failed applying master subtitles: " + e.getMessage(), e);
-            if (tempOutput.exists()) tempOutput.delete();
-        } finally {
-            for (File tf : tempSubFiles) {
-                if (tf.exists()) tf.delete();
-            }
         }
     }
 }

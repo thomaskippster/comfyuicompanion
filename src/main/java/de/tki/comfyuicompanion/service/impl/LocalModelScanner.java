@@ -24,6 +24,9 @@ import java.util.stream.Stream;
  * Service for scanning local directories for ComfyUI models.
  */
 @Service
+/**
+ * Represents the local model scanner class.
+ */
 public class LocalModelScanner {
     private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(LocalModelScanner.class);
 
@@ -121,6 +124,14 @@ public class LocalModelScanner {
         return findModelWithPrefSizeAndType(specificRoot, filename, preferredSize, null);
     }
 
+    /**
+     * Handles the find model with pref size and type operation.
+     * @param specificRoot the specificRoot
+     * @param filename the filename
+     * @param preferredSize the preferredSize
+     * @param type the type
+     * @return the Optional<Path> result
+     */
     public Optional<Path> findModelWithPrefSizeAndType(Path specificRoot, String filename, long preferredSize, String type) {
         if (filename == null || filename.isBlank()) return Optional.empty();
 

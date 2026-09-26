@@ -17,6 +17,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 @Service
+/**
+ * Represents the comfy diagnostic service class.
+ */
 public class ComfyDiagnosticService {
     private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(ComfyDiagnosticService.class);
 

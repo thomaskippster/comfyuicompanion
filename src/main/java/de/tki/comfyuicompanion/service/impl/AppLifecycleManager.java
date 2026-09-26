@@ -13,6 +13,9 @@ import java.net.InetAddress;
  * Service managing application lifecycle events, shutdown hooks, and vault unlock routines.
  */
 @Service
+/**
+ * Represents the app lifecycle manager class.
+ */
 public class AppLifecycleManager {
 
     private static final Logger logger = LoggerFactory.getLogger(AppLifecycleManager.class);
@@ -51,6 +54,10 @@ public class AppLifecycleManager {
         this.cacheBootstrapper = cacheBootstrapper;
     }
 
+    /**
+     * Handles the unlock default vault operation.
+     * @return the boolean result
+     */
     public boolean unlockDefaultVault() {
         if (cacheBootstrapper != null) {
             cacheBootstrapper.bootstrapDefaultCache();
@@ -80,6 +87,10 @@ public class AppLifecycleManager {
         }
     }
 
+    /**
+     * Handles the register shutdown hook operation.
+     * @param appContext the appContext
+     */
     public void registerShutdownHook(ConfigurableApplicationContext appContext) {
         Thread shutdownHook = new Thread(() -> {
             try {
@@ -116,6 +127,10 @@ public class AppLifecycleManager {
         Runtime.getRuntime().addShutdownHook(shutdownHook);
     }
 
+    /**
+     * Handles the perform app exit operation.
+     * @param appContext the appContext
+     */
     public void performAppExit(ConfigurableApplicationContext appContext) {
         logger.info("[LifecycleManager] Exiting application...");
         if (processController != null) processController.stop();

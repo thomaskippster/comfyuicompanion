@@ -41,10 +41,20 @@ public class ComfyWebSocketClient {
     private final AtomicBoolean isConnecting = new AtomicBoolean(false);
     private final AtomicInteger reconnectAttempts = new AtomicInteger(0);
 
+    /**
+     * Constructs a ComfyWebSocketClient with default URL and timeout.
+     */
     public ComfyWebSocketClient() {
         this("ws://127.0.0.1:8188/ws", DEFAULT_TIMEOUT_SECONDS, null);
     }
 
+    /**
+     * Constructs a ComfyWebSocketClient with specified base URL, timeout, and handler.
+     *
+     * @param baseUrl the ComfyUI WebSocket base URL
+     * @param timeoutSeconds connection timeout in seconds
+     * @param handler the WebSocket handler
+     */
     @Autowired
     public ComfyWebSocketClient(
             @Value("${comfyui.ws.url:ws://127.0.0.1:8188/ws}") String baseUrl,
@@ -55,6 +65,12 @@ public class ComfyWebSocketClient {
         this.handler = handler;
     }
 
+    /**
+     * Constructs a ComfyWebSocketClient with specified base URL and handler.
+     *
+     * @param baseUrl the ComfyUI WebSocket base URL
+     * @param handler the WebSocket handler
+     */
     public ComfyWebSocketClient(
             String baseUrl,
             ComfyWebSocketHandler handler) {
@@ -180,6 +196,10 @@ public class ComfyWebSocketClient {
         }
     }
 
+    /**
+     * Shuts down the WebSocket client, disconnects the active session,
+     * and terminates the reconnect executor.
+     */
     @PreDestroy
     public void shutdown() {
         disconnect();

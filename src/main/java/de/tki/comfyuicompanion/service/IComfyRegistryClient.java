@@ -4,6 +4,10 @@ import de.tki.comfyuicompanion.domain.ComfyRegistryWorkflow;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
+/**
+ * Client interface for interacting with the official ComfyUI registry API.
+ * Provides methods to fetch community workflows and download remote files.
+ */
 public interface IComfyRegistryClient {
     /**
      * Asynchronously fetches the list of workflows from the comfy.org registry API.

@@ -13,8 +13,12 @@ RUN mvn clean package -DskipTests
 FROM eclipse-temurin:21-jre-jammy
 WORKDIR /app
 
+RUN useradd -u 1001 -m -s /bin/bash appuser && chown -R appuser:appuser /app
+
 # Copy the built jar from the builder stage
-COPY --from=builder /app/target/comfyuicompanion.jar app.jar
+COPY --from=builder --chown=appuser:appuser /app/target/comfyuicompanion.jar app.jar
+
+USER appuser
 
 # Set volume for external models mapping (so we don't copy huge models into the image)
 VOLUME /models

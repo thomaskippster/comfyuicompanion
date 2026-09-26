@@ -5,6 +5,10 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.List;
 import java.util.ArrayList;
 
+/**
+ * Represents a workflow entry fetched from a remote workflow registry (e.g., ComfyWorkflows).
+ * Contains metadata such as title, author, required models, and preview URLs.
+ */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class ComfyRegistryWorkflow {
 

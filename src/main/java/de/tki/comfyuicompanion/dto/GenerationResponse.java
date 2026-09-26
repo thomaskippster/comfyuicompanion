@@ -8,6 +8,12 @@ public record GenerationResponse(
         String promptId,
         String message
 ) {
+    /**
+     * Factory method to create a processing response.
+     *
+     * @param promptId The identifier for the initiated prompt generation.
+     * @return A GenerationResponse with a processing status and default message.
+     */
     public static GenerationResponse processing(String promptId) {
         return new GenerationResponse(
                 "processing",

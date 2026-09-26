@@ -23,6 +23,9 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
 @Service
+/**
+ * Represents the comfy registry client class.
+ */
 public class ComfyRegistryClient implements IComfyRegistryClient {
     private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(ComfyRegistryClient.class);
 
@@ -62,6 +65,11 @@ public class ComfyRegistryClient implements IComfyRegistryClient {
         return fetchWorkflowsAsync(DEFAULT_API_URL);
     }
 
+    /**
+     * Handles the fetch workflows async operation.
+     * @param apiUrl the apiUrl
+     * @return the CompletableFuture<List<ComfyRegistryWorkflow>> result
+     */
     public CompletableFuture<List<ComfyRegistryWorkflow>> fetchWorkflowsAsync(String apiUrl) {
         java.io.File cacheFile = getIndexCacheFile();
 

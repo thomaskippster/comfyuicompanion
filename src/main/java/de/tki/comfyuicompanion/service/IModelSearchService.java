@@ -4,6 +4,9 @@ import de.tki.comfyuicompanion.domain.ModelInfo;
 import java.util.function.BiConsumer;
 import java.util.List;
 
+/**
+ * Represents the i model search service interface.
+ */
 public interface IModelSearchService {
     /**
      * Searches for models online.

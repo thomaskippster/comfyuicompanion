@@ -19,6 +19,9 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
 @Service
+/**
+ * Represents the civitai service class.
+ */
 public class CivitaiService {
     private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(CivitaiService.class);
 
@@ -66,6 +69,11 @@ public class CivitaiService {
                 });
     }
 
+    /**
+     * Handles the search models operation.
+     * @param query the query
+     * @return the CompletableFuture<List<ModelInfo>> result
+     */
     public CompletableFuture<List<ModelInfo>> searchModels(String query) {
         String url = "https://civitai.com/api/v1/models?limit=20&query=" + java.net.URLEncoder.encode(query, java.nio.charset.StandardCharsets.UTF_8);
         
@@ -139,6 +147,11 @@ public class CivitaiService {
         };
     }
 
+    /**
+     * Handles the download metadata and preview operation.
+     * @param url the url
+     * @param targetFile the targetFile
+     */
     public void downloadMetadataAndPreview(String url, java.nio.file.Path targetFile) {
         try {
             String versionId = null;
@@ -224,6 +237,12 @@ public class CivitaiService {
         public boolean hasUpdate;
     }
 
+    /**
+     * Handles the check for update operation.
+     * @param modelFile the modelFile
+     * @param hash the hash
+     * @return the ModelUpdateInfo result
+     */
     public ModelUpdateInfo checkForUpdate(java.io.File modelFile, String hash) {
         if (hash == null || hash.isEmpty()) return null;
         

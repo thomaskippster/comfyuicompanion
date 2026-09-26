@@ -104,3 +104,6 @@ workspace/
 
 # Test logs
 test-log*.txt
+
+tools/
+launch_kit/

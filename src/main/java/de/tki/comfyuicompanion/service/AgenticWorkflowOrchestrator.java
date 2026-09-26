@@ -17,7 +17,15 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.UUID;
 
+/**
+ * Orchestrates the agentic workflow by translating raw user inputs through an LLM
+ * into a validated, dynamic ComfyUI execution graph. It handles intent parsing,
+ * hardware checks, model selection, dynamic graph building, and auto-provisioning.
+ */
 @Service
+/**
+ * Represents the agentic workflow orchestrator class.
+ */
 public class AgenticWorkflowOrchestrator {
 
     private static final Logger logger = LoggerFactory.getLogger(AgenticWorkflowOrchestrator.class);
@@ -38,8 +46,12 @@ public class AgenticWorkflowOrchestrator {
     }
 
     /**
-     * Das Herzstück der Anwendung. Übersetzt rohe Nutzerwünsche durch das LLM in 
-     * einen validierten, dynamischen ComfyUI-Ausführungsgraphen.
+     * The core of the application. Translates raw user requests via the LLM into 
+     * a validated, dynamic ComfyUI execution graph. Handles conditional routing like
+     * FaceDetailer or upscaling based on the parsed intent.
+     * 
+     * @param userInput The raw input string provided by the user.
+     * @return A Mono emitting the result string or client ID for the asynchronous execution.
      */
     public Mono<String> orchestrateAndRun(String userInput) {
         // --- Schritt A: Intent Parsing ---

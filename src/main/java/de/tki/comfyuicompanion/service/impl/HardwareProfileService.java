@@ -16,6 +16,9 @@ import java.lang.management.ManagementFactory;
  * Klassifizierung in Hardware-Tiers und Vorkonfiguration des Video Architects.
  */
 @Service
+/**
+ * Represents the hardware profile service class.
+ */
 public class HardwareProfileService implements IHardwareProfileService {
     private static final Logger logger = LoggerFactory.getLogger(HardwareProfileService.class);
 

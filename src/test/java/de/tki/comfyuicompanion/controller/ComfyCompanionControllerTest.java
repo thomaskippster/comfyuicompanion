@@ -155,5 +155,16 @@ class ComfyCompanionControllerTest {
         assertThat(result.recommendedPackages()).hasSize(1);
         assertThat(result.recommendedPackages().get(0).packageName()).isEqualTo("ImpactPack");
     }
+
+    @Test
+    @DisplayName("getHealthStatus: should report status UP")
+    void shouldReturnHealthStatusUp() {
+        java.util.Map<String, Object> health = controller.getHealthStatus().block();
+
+        assertThat(health).isNotNull();
+        assertThat(health.get("status")).isEqualTo("UP");
+        assertThat(health.get("service")).isEqualTo("comfyuicompanion");
+        assertThat(health.get("timestamp")).isNotNull();
+    }
 }
 

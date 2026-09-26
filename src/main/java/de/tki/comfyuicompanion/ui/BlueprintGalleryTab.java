@@ -123,6 +123,21 @@ public class BlueprintGalleryTab extends JPanel {
     );
     private static final String[] DEFAULT_PALETTE = {"#0C0E16", "#2A3060", "#5060A0"};
 
+    /**
+     * Constructs a new BlueprintGalleryTab with necessary dependencies.
+     *
+     * @param configService the configuration service
+     * @param modelArchitectureService the model architecture mapping service
+     * @param lifecycleService the ComfyUI lifecycle monitor
+     * @param registryClient the ComfyUI registry API client
+     * @param localModelValidator the local model presence validator
+     * @param workflowDownloader the service for downloading external workflows
+     * @param localModelScanner the local filesystem model scanner
+     * @param archiveService the service for managing zip archives
+     * @param localAIService the local AI helper service
+     * @param modelSearchService the model search integration service
+     * @param processTracker the process tracking service (optional)
+     */
     @Autowired
     public BlueprintGalleryTab(ConfigService configService,
                                IModelArchitectureService modelArchitectureService,

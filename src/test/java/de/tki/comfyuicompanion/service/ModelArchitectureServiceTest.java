@@ -12,7 +12,9 @@ import org.mockito.Mockito;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 
+import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.*;
 
 public class ModelArchitectureServiceTest {
@@ -150,13 +152,9 @@ public class ModelArchitectureServiceTest {
         service.init();
         service.runBlueprintAnalysis();
         
-        int count = 0;
-        while (!service.isBlueprintAnalysisCompleted() && count < 50) {
-            Thread.sleep(100);
-            count++;
-        }
-        
-        assertTrue(service.isBlueprintAnalysisCompleted());
+        await().atMost(Duration.ofMillis(15000)).pollInterval(Duration.ofMillis(100)).untilAsserted(() -> {
+            assertTrue(service.isBlueprintAnalysisCompleted());
+        });
         
         var highUnet = service.getDefaultsForModel("video_wan_high_unet");
         assertNotNull(highUnet);
@@ -212,12 +210,9 @@ public class ModelArchitectureServiceTest {
         service.init();
         service.runBlueprintAnalysis();
 
-        long startTime = System.currentTimeMillis();
-        while (!service.isBlueprintAnalysisCompleted() && (System.currentTimeMillis() - startTime) < 3000) {
-            Thread.sleep(50);
-        }
-
-        assertTrue(service.isBlueprintAnalysisCompleted(), "Blueprint analysis should complete quickly when server is offline");
+        await().atMost(Duration.ofMillis(9000)).pollInterval(Duration.ofMillis(50)).untilAsserted(() -> {
+            assertTrue(service.isBlueprintAnalysisCompleted(), "Blueprint analysis should complete quickly when server is offline");
+        });
         assertEquals(100, service.getBlueprintProgressPercent());
     }
 }

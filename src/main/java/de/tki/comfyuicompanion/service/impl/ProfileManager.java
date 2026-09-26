@@ -18,27 +18,43 @@ import java.util.List;
 import java.util.Set;
 
 @Service
+/**
+ * Represents the profile manager class.
+ */
 public class ProfileManager {
     private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(ProfileManager.class);
     private static final ObjectMapper MAPPER = new ObjectMapper()
             .enable(SerializationFeature.INDENT_OUTPUT);
     private Path profilesPath;
 
+    /**
+     * Handles the init operation.
+     * @param appRoot the appRoot
+     */
     public void init(Path appRoot) {
         this.profilesPath = appRoot.resolve("profiles.json");
     }
 
+    /**
+     * Handles the save profiles operation.
+     * @param profiles the profiles
+     * @throws IOException if an error occurs
+     */
     public void saveProfiles(List<LaunchProfile> profiles) throws IOException {
         if (profilesPath == null) throw new IllegalStateException("ProfileManager not initialized with appRoot");
         MAPPER.writeValue(profilesPath.toFile(), profiles);
     }
 
+    /**
+     * Handles the load profiles operation.
+     * @return the List<LaunchProfile> result
+     */
     public List<LaunchProfile> loadProfiles() {
         if (profilesPath == null) return new ArrayList<>();
         
         List<LaunchProfile> defaults = createDefaultProfiles();
         if (!Files.exists(profilesPath)) {
-            try { saveProfiles(defaults); } catch (IOException e) { e.printStackTrace(); }
+            try { saveProfiles(defaults); } catch (IOException e) { logger.error("Failed to save default profiles: {}", e.getMessage(), e); }
             return defaults;
         }
         

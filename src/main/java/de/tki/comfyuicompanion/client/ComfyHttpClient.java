@@ -10,11 +10,23 @@ import reactor.core.publisher.Mono;
 import java.util.HashMap;
 import java.util.Map;
 
+/**
+ * HTTP client for communicating with the ComfyUI API.
+ * Provides methods to trigger workflows, download assets, retrieve execution history,
+ * and manage server state such as refreshing models.
+ */
 @Service
 public class ComfyHttpClient {
 
     private final WebClient webClient;
 
+    /**
+     * Constructs a new {@code ComfyHttpClient} with the specified base URL, config service, and web client builder.
+     * 
+     * @param baseUrl the default base URL for the ComfyUI API
+     * @param configService the configuration service used to retrieve the effective ComfyUI URL
+     * @param webClientBuilder the builder used to construct the WebClient instance
+     */
     @org.springframework.beans.factory.annotation.Autowired
     public ComfyHttpClient(
             @Value("${comfyui.api.url:http://127.0.0.1:8188}") String baseUrl,
@@ -27,6 +39,11 @@ public class ComfyHttpClient {
         this.webClient = builder.baseUrl(effectiveUrl).build();
     }
 
+    /**
+     * Constructs a new {@code ComfyHttpClient} with the specified base URL.
+     * 
+     * @param baseUrl the base URL for the ComfyUI API
+     */
     public ComfyHttpClient(String baseUrl) {
         this(baseUrl, null, null);
     }
@@ -90,6 +107,9 @@ public class ComfyHttpClient {
     /**
      * Retrieves the execution history for a given prompt ID.
      * This is required to parse the final filename of the generated asset.
+     * 
+     * @param promptId the unique identifier of the prompt execution
+     * @return a Mono emitting the JSON response containing the execution history
      */
     public Mono<JsonNode> getHistory(String promptId) {
         return webClient.get()
@@ -101,9 +121,11 @@ public class ComfyHttpClient {
     }
 
     /**
-     * Zwingt den ComfyUI-Server, seine lokalen Modell-Ordner (Checkpoints, LoRAs, etc.)
-     * neu einzulesen, ohne dass der Prozess neu gestartet werden muss.
-     * Ideal für Hot-Reloading nach einem automatischen Download.
+     * Forces the ComfyUI server to reload its local model directories (Checkpoints, LoRAs, etc.)
+     * without requiring a process restart.
+     * Ideal for hot-reloading after an automatic download.
+     * 
+     * @return a Mono signaling completion of the model refresh request
      */
     public Mono<Void> triggerModelRefresh() {
         return webClient.post()
@@ -117,7 +139,9 @@ public class ComfyHttpClient {
     }
 
     /**
-     * Prüft den aktuellen Systemstatus von ComfyUI (z.B. VRAM Nutzung, Geräte).
+     * Checks the current system status of ComfyUI (e.g., VRAM usage, available devices).
+     * 
+     * @return a Mono emitting the JSON response containing system statistics
      */
     public Mono<JsonNode> getSystemStats() {
         return webClient.get()

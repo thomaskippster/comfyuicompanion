@@ -4,6 +4,9 @@ import de.tki.comfyuicompanion.domain.ComfyRegistryWorkflow;
 import java.io.File;
 import java.util.concurrent.CompletableFuture;
 
+/**
+ * Represents the i workflow downloader interface.
+ */
 public interface IWorkflowDownloader {
     /**
      * Downloads the workflow JSON and its thumbnail, saving them in the isolated user_workflows/ directory.

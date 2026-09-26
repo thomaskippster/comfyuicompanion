@@ -31,6 +31,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class ComfyUiGatewayImpl implements ComfyUiGateway {
 
     private static final Logger logger = LoggerFactory.getLogger(ComfyUiGatewayImpl.class);
+    private static final java.util.concurrent.ExecutorService VIRTUAL_EXECUTOR = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor();
 
     private final ConfigService configService;
     private final ObjectMapper objectMapper;
@@ -200,7 +201,7 @@ public class ComfyUiGatewayImpl implements ComfyUiGateway {
             } catch (Exception e) {
                 throw new RuntimeException("Upload failed: " + e.getMessage(), e);
             }
-        });
+        }, VIRTUAL_EXECUTOR);
     }
 
     @Override

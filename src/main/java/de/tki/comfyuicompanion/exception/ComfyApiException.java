@@ -53,10 +53,12 @@ public class ComfyApiException extends ComfyCompanionException {
         this.endpoint = endpoint;
     }
 
+    /** @return the HTTP status code */
     public Integer getStatusCode() {
         return statusCode;
     }
 
+    /** @return the target API endpoint */
     public String getEndpoint() {
         return endpoint;
     }

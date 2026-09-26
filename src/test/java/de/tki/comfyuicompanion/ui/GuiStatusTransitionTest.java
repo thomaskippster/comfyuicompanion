@@ -17,7 +17,9 @@ import java.awt.*;
 import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
 import java.util.List;
+import java.time.Duration;
 
+import static org.awaitility.Awaitility.await;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
@@ -137,13 +139,12 @@ public class GuiStatusTransitionTest {
         });
         
         // Wait for searchService to be called (it's called in a separate thread)
-        Thread.sleep(1000);
-        
-        verify(searchService, atLeastOnce()).searchOnline(eq(mockModels), any(), anyString(), anyString(), anyBoolean(), any(), any(), any());
-        
-        SwingUtilities.invokeAndWait(() -> {
-            JLabel statusLabel = (JLabel) ReflectionTestUtils.getField(mainFrame, "statusLabel");
-            assertThat(statusLabel.getText()).isEqualTo("Searching...");
+        await().atMost(Duration.ofMillis(3000)).pollInterval(Duration.ofMillis(50)).untilAsserted(() -> {
+            verify(searchService, atLeastOnce()).searchOnline(eq(mockModels), any(), anyString(), anyString(), anyBoolean(), any(), any(), any());
+            SwingUtilities.invokeAndWait(() -> {
+                JLabel statusLabel = (JLabel) ReflectionTestUtils.getField(mainFrame, "statusLabel");
+                assertThat(statusLabel.getText()).isEqualTo("Searching...");
+            });
         });
     }
 
@@ -162,11 +163,11 @@ public class GuiStatusTransitionTest {
             analyzeBtn.doClick();
         });
 
-        Thread.sleep(1000);
-
-        SwingUtilities.invokeAndWait(() -> {
-            JButton downloadButton = (JButton) ReflectionTestUtils.getField(mainFrame, "downloadButton");
-            assertThat(downloadButton.isEnabled()).isTrue();
+        await().atMost(Duration.ofMillis(3000)).pollInterval(Duration.ofMillis(50)).untilAsserted(() -> {
+            SwingUtilities.invokeAndWait(() -> {
+                JButton downloadButton = (JButton) ReflectionTestUtils.getField(mainFrame, "downloadButton");
+                assertThat(downloadButton.isEnabled()).isTrue();
+            });
         });
     }
 
@@ -316,11 +317,11 @@ public class GuiStatusTransitionTest {
             ReflectionTestUtils.invokeMethod(mainFrame, "updateAiModelDisplay");
         });
         
-        Thread.sleep(500);
-        
-        SwingUtilities.invokeAndWait(() -> {
-            JLabel activeAiModelLabel = (JLabel) ReflectionTestUtils.getField(mainFrame, "activeAiModelLabel");
-            assertThat(activeAiModelLabel.getText()).contains("Local Gemma");
+        await().atMost(Duration.ofMillis(1500)).pollInterval(Duration.ofMillis(50)).untilAsserted(() -> {
+            SwingUtilities.invokeAndWait(() -> {
+                JLabel activeAiModelLabel = (JLabel) ReflectionTestUtils.getField(mainFrame, "activeAiModelLabel");
+                assertThat(activeAiModelLabel.getText()).contains("Local Gemma");
+            });
         });
     }
 

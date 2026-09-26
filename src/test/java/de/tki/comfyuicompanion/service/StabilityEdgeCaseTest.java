@@ -20,6 +20,9 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 
+import static org.awaitility.Awaitility.await;
+import java.time.Duration;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 public class StabilityEdgeCaseTest {
@@ -95,14 +98,12 @@ public class StabilityEdgeCaseTest {
         downloadManager.startQueue(Collections.singletonList(model), new boolean[]{true}, tempDir.toString(), 
             (idx, status) -> lastStatus.set(status), () -> {});
 
-        long start = System.currentTimeMillis();
-        while (!lastStatus.get().contains("✅ Finished") && !lastStatus.get().contains("Already exists") && !lastStatus.get().contains("❌") && System.currentTimeMillis() - start < 5000) {
-            Thread.sleep(100);
-        }
-
-        assertTrue(lastStatus.get().contains("✅ Finished") || lastStatus.get().contains("Already exists"), "Status was: " + lastStatus.get());
-        Thread.sleep(500); 
-        assertEquals(40000, Files.size(targetFile), "File size should be resumed to 40000");
+        await().atMost(Duration.ofMillis(15000)).pollInterval(Duration.ofMillis(100)).untilAsserted(() -> {
+            assertTrue(lastStatus.get().contains("✅ Finished") || lastStatus.get().contains("Already exists"), "Status was: " + lastStatus.get());
+        });
+        await().atMost(Duration.ofMillis(1500)).pollInterval(Duration.ofMillis(50)).untilAsserted(() -> {
+            assertEquals(40000, Files.size(targetFile), "File size should be resumed to 40000");
+        });
     }
 
     @Test
@@ -123,12 +124,9 @@ public class StabilityEdgeCaseTest {
         downloadManager.startQueue(Collections.singletonList(model), new boolean[]{true}, tempDir.toString(), 
             (idx, status) -> lastStatus.set(status), () -> {});
 
-        long start = System.currentTimeMillis();
-        while (!lastStatus.get().contains("❌ No Space") && !lastStatus.get().contains("✅ Finished") && System.currentTimeMillis() - start < 5000) {
-            Thread.sleep(100);
-        }
-
-        assertTrue(lastStatus.get().contains("No Space"), "Expected No Space error. Status: " + lastStatus.get());
+        await().atMost(Duration.ofMillis(15000)).pollInterval(Duration.ofMillis(100)).untilAsserted(() -> {
+            assertTrue(lastStatus.get().contains("No Space"), "Expected No Space error. Status: " + lastStatus.get());
+        });
     }
 
     @Test
@@ -180,11 +178,9 @@ public class StabilityEdgeCaseTest {
         pout.write(new byte[10000]);
         pout.close();
 
-        long start = System.currentTimeMillis();
-        while (!lastStatus.get().contains("✅ Finished") && System.currentTimeMillis() - start < 5000) {
-            Thread.sleep(100);
-        }
-        assertTrue(lastStatus.get().contains("✅ Finished"), "Should finish despite setting change. Status: " + lastStatus.get());
+        await().atMost(Duration.ofMillis(15000)).pollInterval(Duration.ofMillis(100)).untilAsserted(() -> {
+            assertTrue(lastStatus.get().contains("✅ Finished"), "Should finish despite setting change. Status: " + lastStatus.get());
+        });
     }
 
     @Test

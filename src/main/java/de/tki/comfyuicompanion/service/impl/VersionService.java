@@ -19,6 +19,9 @@ import java.time.Duration;
 import org.springframework.beans.factory.annotation.Autowired;
 
 @Service
+/**
+ * Represents the version service class.
+ */
 public class VersionService {
     private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(VersionService.class);
     private static final String COMFY_VERSION_URL = "https://api.github.com/repos/comfyanonymous/ComfyUI/releases/latest";
@@ -69,10 +72,19 @@ public class VersionService {
         });
     }
 
+    /**
+     * Handles the get remote python version operation.
+     * @return the String result
+     */
     public String getRemotePythonVersion() {
         return "3.12.9"; // Current stable fallback
     }
 
+    /**
+     * Handles the get installed comfy version operation.
+     * @param comfyPath the comfyPath
+     * @return the String result
+     */
     public String getInstalledComfyVersion(String comfyPath) {
         if (comfyPath == null || comfyPath.isEmpty()) return "Unknown";
         File mainPy = new File(comfyPath, "main.py");
@@ -94,6 +106,11 @@ public class VersionService {
         return "Installed (v2.x)"; // Generic if not git
     }
 
+    /**
+     * Handles the get installed python version operation.
+     * @param pythonPath the pythonPath
+     * @return the String result
+     */
     public String getInstalledPythonVersion(String pythonPath) {
         if (pythonPath == null || pythonPath.isEmpty() || pythonPath.equals("python")) return "System Python";
         try {

@@ -23,6 +23,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;
 
 @Service
+/**
+ * Represents the model search service class.
+ */
 public class ModelSearchService implements IModelSearchService {
 
     private static final Logger logger = LoggerFactory.getLogger(ModelSearchService.class);

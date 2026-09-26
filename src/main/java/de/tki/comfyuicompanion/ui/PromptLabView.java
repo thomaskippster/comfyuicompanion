@@ -75,6 +75,9 @@ public class PromptLabView extends JPanel {
     private JCheckBox chkFantasy = new JCheckBox();
     private JCheckBox chkSketch = new JCheckBox();
 
+    /**
+     * Constructs a new PromptLabView and initializes the UI components.
+     */
     public PromptLabView() {
         initUI();
     }
@@ -514,6 +517,12 @@ public class PromptLabView extends JPanel {
         add(splitPane, BorderLayout.CENTER);
     }
 
+    /**
+     * Scales the provided image to fit within the preview label while maintaining aspect ratio,
+     * and sets it as the label's icon.
+     *
+     * @param img the image to scale and display
+     */
     public void scaleAndSetImage(Image img) {
         if (img == null) return;
         this.currentPreviewImage = img;
@@ -544,6 +553,11 @@ public class PromptLabView extends JPanel {
         updateTheme(ThemeManager.isDarkMode());
     }
 
+    /**
+     * Updates the UI components to reflect the active theme (light/dark).
+     *
+     * @param darkMode true if dark mode is active, false otherwise
+     */
     public void updateTheme(boolean darkMode) {
         if (promptPresetLabel != null) {
             Color c = UIManager.getColor("PromptLab.presetForeground");

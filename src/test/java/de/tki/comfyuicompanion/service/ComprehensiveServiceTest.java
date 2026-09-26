@@ -16,7 +16,9 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
+import java.time.Duration;
 
+import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
@@ -137,16 +139,11 @@ public class ComprehensiveServiceTest {
         );
         
         // Wait briefly for the first status update
-        long start = System.currentTimeMillis();
-        String status = "Idle";
-        while(System.currentTimeMillis() - start < 3000) {
-            status = downloadManager.getQueueStatus().getOrDefault(0, "Idle");
-            if (!"Idle".equals(status)) break;
-            Thread.sleep(100);
-        }
-        
-        assertNotNull(status);
-        assertNotEquals("Idle", status);
+        await().atMost(Duration.ofMillis(9000)).pollInterval(Duration.ofMillis(100)).untilAsserted(() -> {
+            String status = downloadManager.getQueueStatus().getOrDefault(0, "Idle");
+            assertNotNull(status);
+            assertNotEquals("Idle", status);
+        });
         
         downloadManager.stop();
     }

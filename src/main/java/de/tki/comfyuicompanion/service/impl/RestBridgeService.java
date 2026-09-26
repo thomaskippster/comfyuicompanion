@@ -32,8 +32,15 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import org.springframework.web.reactive.function.client.WebClient;
+import reactor.core.publisher.Mono;
+import java.net.URLEncoder;
+import java.time.Duration;
 
 @Service
+/**
+ * Represents the rest bridge service class.
+ */
 public class RestBridgeService {
     private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(RestBridgeService.class);
 
@@ -56,22 +63,43 @@ public class RestBridgeService {
         this(null);
     }
 
+    /**
+     * Handles the set config service operation.
+     * @param configService the configService
+     */
     public void setConfigService(ConfigService configService) {
         this.configService = configService;
     }
 
+    /**
+     * Handles the set port operation.
+     * @param port the port
+     */
     public void setPort(int port) {
         this.port = port;
     }
 
+    /**
+     * Handles the set api token operation.
+     * @param token the token
+     */
     public void setApiToken(String token) {
         this.expectedApiToken = token;
     }
 
+    /**
+     * Handles the set workflow consumer operation.
+     * @param consumer the consumer
+     */
     public void setWorkflowConsumer(Consumer<String> consumer) {
         this.workflowConsumer = consumer;
     }
 
+    /**
+     * Handles the consume workflow operation.
+     * @param workflowJson the workflowJson
+     * @return the boolean result
+     */
     public boolean consumeWorkflow(String workflowJson) {
         if (workflowConsumer != null) {
             workflowConsumer.accept(workflowJson);
@@ -85,6 +113,11 @@ public class RestBridgeService {
         this.workflowReadyConsumer = consumer;
     }
 
+    /**
+     * Handles the consume workflow ready operation.
+     * @param apiJson the apiJson
+     * @return the boolean result
+     */
     public boolean consumeWorkflowReady(String apiJson) {
         Consumer<String> consumer = workflowReadyConsumer;
         workflowReadyConsumer = null; // one-shot: clear immediately
@@ -95,10 +128,17 @@ public class RestBridgeService {
         return false;
     }
 
+    /**
+     * Handles the get expected api token operation.
+     * @return the String result
+     */
     public String getExpectedApiToken() {
         return expectedApiToken;
     }
 
+    /**
+     * Handles the start server operation.
+     */
     public void startServer() {
         if (server != null) return;
         // Port 12345 is natively served by the Reactive Netty WebFlux container (RestBridgeController)
@@ -316,6 +356,58 @@ public class RestBridgeService {
             return false;
         }
         return true;
+    }
+
+    /**
+     * Fetches the template catalog from ComfyUI and enriches each template with internal preview URLs.
+     *
+     * @param requestedBaseUrl optional ComfyUI base URL requested by caller
+     * @param webClient        reactive WebClient instance
+     * @param objectMapper     Jackson ObjectMapper instance
+     * @return Mono publishing the structured templates JsonNode
+     */
+    public Mono<JsonNode> getTemplatesIndex(String requestedBaseUrl, WebClient webClient, ObjectMapper objectMapper) {
+        String baseUrl = (requestedBaseUrl != null && !requestedBaseUrl.isBlank())
+                ? requestedBaseUrl
+                : (configService != null ? configService.getComfyUIUrl() : ConfigConstants.DEFAULT_COMFYUI_URL);
+
+        if (baseUrl == null || baseUrl.isBlank()) {
+            baseUrl = ConfigConstants.DEFAULT_COMFYUI_URL;
+        }
+
+        final String effectiveBaseUrl = baseUrl.replaceAll("/+$", "");
+        final ObjectMapper mapper = objectMapper != null ? objectMapper : new ObjectMapper();
+
+        return webClient.get()
+                .uri(effectiveBaseUrl + "/templates/index.json")
+                .retrieve()
+                .bodyToMono(JsonNode.class)
+                .timeout(Duration.ofSeconds(10))
+                .map(rootNode -> {
+                    List<ObjectNode> flattened = extractFlattenedTemplates(rootNode, mapper);
+
+                    ArrayNode templatesArray = mapper.createArrayNode();
+                    for (ObjectNode templateNode : flattened) {
+                        String templateName = templateNode.path("name").asText("");
+                        String mediaSubtype = templateNode.path("mediaSubtype").asText("");
+
+                        if (!mediaSubtype.isEmpty()) {
+                            try {
+                                String comfyuiInternalUrl = effectiveBaseUrl + "/templates/"
+                                        + URLEncoder.encode(templateName, StandardCharsets.UTF_8).replace("+", "%20")
+                                        + "-1." + mediaSubtype;
+                                String clientPreviewUrl = "/api/preview?url="
+                                        + URLEncoder.encode(comfyuiInternalUrl, StandardCharsets.UTF_8).replace("+", "%20");
+                                templateNode.put("previewUrl", clientPreviewUrl);
+                            } catch (Exception ignored) {}
+                        }
+                        templatesArray.add(templateNode);
+                    }
+
+                    ObjectNode responseJson = mapper.createObjectNode();
+                    responseJson.set("templates", templatesArray);
+                    return (JsonNode) responseJson;
+                });
     }
 
     /**
@@ -559,8 +651,7 @@ public class RestBridgeService {
                     in.transferTo(out);
                 }
             } catch (Exception e) {
-                logger.error("REST Bridge: Error fetching preview: " + e.getMessage());
-                e.printStackTrace();
+                logger.error("REST Bridge: Error fetching preview: {}", e.getMessage(), e);
                 exchange.sendResponseHeaders(500, -1);
             } finally {
                 exchange.close();

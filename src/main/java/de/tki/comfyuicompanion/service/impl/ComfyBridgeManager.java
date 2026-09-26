@@ -32,6 +32,11 @@ public class ComfyBridgeManager {
         this.pathResolver = pathResolver;
     }
 
+    /**
+     * Handles the install comfy ui bridge operation.
+     * @param comfyPath the comfyPath
+     * @param parentDialog the parentDialog
+     */
     public void installComfyUIBridge(String comfyPath, JDialog parentDialog) {
         Path inputPath = Paths.get(comfyPath);
         if (!Files.exists(inputPath)) {
@@ -106,6 +111,9 @@ public class ComfyBridgeManager {
         }
     }
 
+    /**
+     * Handles the sync bridge files operation.
+     */
     public void syncBridgeFiles() {
         String comfyPath = configService.getComfyUIPath();
         if (comfyPath == null || comfyPath.isEmpty()) return;
@@ -165,6 +173,10 @@ public class ComfyBridgeManager {
         return null;
     }
 
+    /**
+     * Handles the write extension config operation.
+     * @param dir the dir
+     */
     public void writeExtensionConfig(File dir) {
         try {
             File webDir = new File(dir, "web");

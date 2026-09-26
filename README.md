@@ -14,7 +14,9 @@
 > **Automate your model management and keep your creative flow uninterrupted.**
 
 <p align="center">
-  <video src="https://github.com/thomaskippster/comfyuicompanion/raw/main/assets/comfyuicompanion.mp4" controls width="100%" poster="https://github.com/thomaskippster/comfyuicompanion/raw/main/assets/icon.png"></video>
+  <a href="https://github.com/thomaskippster/comfyuicompanion/raw/main/assets/comfyuicompanion.mp4">
+    <img src="assets/demo_social.gif" width="100%" alt="ComfyUI Companion Quick Demo" />
+  </a>
 </p>
 
 > [!TIP]

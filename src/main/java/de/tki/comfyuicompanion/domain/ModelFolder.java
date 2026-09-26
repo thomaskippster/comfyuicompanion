@@ -1,5 +1,8 @@
 package de.tki.comfyuicompanion.domain;
 
+/**
+ * Defines the standard directory names used by ComfyUI to store various model types.
+ */
 public enum ModelFolder {
     CHECKPOINTS("checkpoints"),
     LORAS("loras"),
@@ -29,6 +32,11 @@ public enum ModelFolder {
 
     private final String defaultFolderName;
 
+    /**
+     * Constructs a ModelFolder with its corresponding ComfyUI directory name.
+     *
+     * @param defaultFolderName the relative directory name
+     */
     ModelFolder(String defaultFolderName) {
         this.defaultFolderName = defaultFolderName;
     }

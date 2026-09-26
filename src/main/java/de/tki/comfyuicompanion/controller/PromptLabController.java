@@ -139,74 +139,166 @@ public class PromptLabController implements PromptLabView.PromptLabController {
         }
     }
 
+    /** @return the current blueprint GUI JSON string */
     public String getCurrentBlueprintGuiJson() {
         return currentBlueprintGuiJson;
     }
 
+    /** @param currentBlueprintGuiJson the blueprint GUI JSON string to set */
     public void setCurrentBlueprintGuiJson(String currentBlueprintGuiJson) {
         this.currentBlueprintGuiJson = currentBlueprintGuiJson;
     }
 
+    /** @return the set of available Comfy checkpoints */
     public Set<String> getComfyCheckpoints() { return modelResolver.getComfyCheckpoints(); }
+    /** @return the set of available Comfy UNET models */
     public Set<String> getComfyUnetModels() { return modelResolver.getComfyUnetModels(); }
+    /** @return the set of available Comfy CLIP models */
     public Set<String> getComfyClips() { return modelResolver.getComfyClips(); }
+    /** @return the set of available Comfy VAE models */
     public Set<String> getComfyVaes() { return modelResolver.getComfyVaes(); }
+    /** @return the set of available Comfy CLIP types */
     public Set<String> getComfyClipTypes() { return modelResolver.getComfyClipTypes(); }
+    /** @return the set of available Comfy UNET weight data types */
     public Set<String> getComfyUnetWeightDtypes() { return modelResolver.getComfyUnetWeightDtypes(); }
 
+    /**
+     * Applies default settings to the Prompt Lab UI based on the selected model.
+     *
+     * @param modelNameRaw the raw model name
+     */
     public void applyModelPreset(String modelNameRaw) {
         presetManager.applyModelPreset(view, modelNameRaw, getActualModelForPromptLab(modelNameRaw),
                 currentBlueprintGuiJson, s -> this.currentBlueprintGuiJson = s);
     }
 
+    /**
+     * Injects the selected model parameters into the workflow template JSON.
+     *
+     * @param templateJson the raw workflow template JSON
+     * @param modelName    the selected model name to inject
+     * @return the updated workflow template JSON string
+     */
     public String injectModelsIntoTemplate(String templateJson, String modelName) {
         return modelResolver.injectModelsIntoTemplate(templateJson, modelName);
     }
 
+    /**
+     * Selects an item in a JComboBox if it exists, otherwise adds it and then selects it.
+     *
+     * @param combo  the JComboBox
+     * @param target the target string
+     */
     public void selectOrAddComboItem(JComboBox<String> combo, String target) {
         presetManager.selectOrAddComboItem(combo, target);
     }
 
+    /**
+     * Collects all nodes from a workflow graph.
+     *
+     * @param root the root JSONObject
+     * @return a list of all JSON objects representing nodes
+     */
     public List<JSONObject> collectAllNodes(JSONObject root) {
         return presetManager.collectAllNodes(root);
     }
 
+    /**
+     * Parses the workflow JSON to extract parameters and populates the UI.
+     *
+     * @param jsonStr the workflow JSON string
+     */
     public void populateUiFromWorkflow(String jsonStr) {
         presetManager.populateUiFromWorkflow(view, jsonStr);
     }
 
+    /**
+     * Finds the exact UNET model name matching the given selected model.
+     *
+     * @param selectedModel the selected model name
+     * @return the matched exact UNET model name
+     */
     public String findExactUnetName(String selectedModel) {
         return modelResolver.findExactUnetName(selectedModel);
     }
 
+    /**
+     * Finds the exact checkpoint name matching the given selected model.
+     *
+     * @param selectedModel the selected model name
+     * @return the matched exact checkpoint name
+     */
     public String findExactCheckpointName(String selectedModel) {
         return modelResolver.findExactCheckpointName(selectedModel);
     }
 
+    /**
+     * Resolves the appropriate CLIP type string based on the given clip model and selected model.
+     *
+     * @param clipModel     the clip model name
+     * @param selectedModel the selected model name
+     * @return the resolved CLIP type string
+     */
     public String resolveClipType(String clipModel, String selectedModel) {
         return modelResolver.resolveClipType(clipModel, selectedModel);
     }
 
+    /**
+     * Checks whether two model names refer to the same logical model file.
+     *
+     * @param modelA the first model name
+     * @param modelB the second model name
+     * @return true if the models match
+     */
     public boolean modelsMatch(String modelA, String modelB) {
         return modelResolver.modelsMatch(modelA, modelB);
     }
 
+    /**
+     * Resolves the appropriate CLIP model filename for the given selected model.
+     *
+     * @param selectedModel the selected model name
+     * @return the resolved CLIP model filename
+     */
     public String resolveClipForModel(String selectedModel) {
         return modelResolver.resolveClipForModel(selectedModel);
     }
 
+    /**
+     * Resolves the appropriate VAE model filename for the given selected model.
+     *
+     * @param modelName the selected model name
+     * @return the resolved VAE model filename
+     */
     public String resolveVaeForModel(String modelName) {
         return modelResolver.resolveVaeForModel(modelName);
     }
 
+    /**
+     * Determines if a model is a standard diffusion model based on its name.
+     *
+     * @param modelName the model name
+     * @return true if it is a diffusion model
+     */
     public boolean isDiffusionModel(String modelName) {
         return modelResolver.isDiffusionModel(modelName);
     }
 
+    /**
+     * Updates the internal sets of available models by parsing the ComfyUI object info.
+     *
+     * @param info the JSON object containing node information
+     */
     public void updateComfyModelSets(JSONObject info) {
         modelResolver.updateComfyModelSets(info);
     }
 
+    /**
+     * Derives the actual model name required by the blueprint from the combo box selection.
+     *
+     * @param comboSelection the selected combo box item
+     * @return the actual model name
+     */
     public String getActualModelForPromptLab(String comboSelection) {
         if (comboSelection == null) return null;
         if (blueprintGalleryTab != null) {
@@ -221,6 +313,12 @@ public class PromptLabController implements PromptLabView.PromptLabController {
         return comboSelection;
     }
 
+    /**
+     * Finds the blueprint name corresponding to a given model name.
+     *
+     * @param modelName the model name
+     * @return the matching blueprint name, or the model name if not found
+     */
     public String getBlueprintNameForModel(String modelName) {
         if (modelName == null) return null;
         if (blueprintGalleryTab != null) {
@@ -542,6 +640,10 @@ public class PromptLabController implements PromptLabView.PromptLabController {
         }
     }
 
+    /**
+     * Refreshes the models available for selection in the Prompt Lab combo box.
+     * Starts a background task to fetch models from blueprints and the ComfyUI API.
+     */
     public void refreshPromptLabModels() {
         Runnable task = () -> {
             List<String> itemsToAdd = new ArrayList<>();
@@ -633,10 +735,16 @@ public class PromptLabController implements PromptLabView.PromptLabController {
         }
     }
 
+    /**
+     * Persists the current state of the Prompt Lab UI to settings.
+     */
     public void savePromptLabSession() {
         sessionManager.saveSession(view);
     }
 
+    /**
+     * Restores the Prompt Lab UI state from persisted settings.
+     */
     public void loadPromptLabSession() {
         sessionManager.loadSession(view);
     }

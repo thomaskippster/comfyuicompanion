@@ -26,6 +26,13 @@ public class PromptLabPresetManager {
     private final IComfyTemplateService comfyTemplateService;
     private final PromptLabModelResolver modelResolver;
 
+    /**
+     * Constructs a new PromptLabPresetManager.
+     *
+     * @param modelArchitectureService Service to detect model architecture.
+     * @param comfyTemplateService     Service to resolve workflow templates based on model architecture.
+     * @param modelResolver            Resolver used to inject model paths into templates.
+     */
     public PromptLabPresetManager(IModelArchitectureService modelArchitectureService,
                                   IComfyTemplateService comfyTemplateService,
                                   PromptLabModelResolver modelResolver) {
@@ -34,6 +41,16 @@ public class PromptLabPresetManager {
         this.modelResolver = modelResolver;
     }
 
+    /**
+     * Applies default settings to the Prompt Lab UI based on the selected model.
+     * Injects the model into the workflow template if provided.
+     *
+     * @param view                    The UI view containing the input controls.
+     * @param modelNameRaw            The raw model name selected (may contain path separators).
+     * @param modelName               The clean model name.
+     * @param currentBlueprintGuiJson The current workflow JSON string, if any.
+     * @param onJsonUpdated           Callback to handle the updated injected workflow JSON.
+     */
     public void applyModelPreset(PromptLabView view, String modelNameRaw, String modelName,
                                  String currentBlueprintGuiJson, Consumer<String> onJsonUpdated) {
         if (view == null || modelNameRaw == null || modelNameRaw.isEmpty() || modelName == null) return;
@@ -215,6 +232,12 @@ public class PromptLabPresetManager {
         populateUiFromWorkflow(view, currentBlueprintGuiJson);
     }
 
+    /**
+     * Parses the workflow JSON to extract parameters (e.g. width, height, steps) and populates the UI.
+     *
+     * @param view    The PromptLabView to update.
+     * @param jsonStr The JSON string representing the workflow.
+     */
     public void populateUiFromWorkflow(PromptLabView view, String jsonStr) {
         if (jsonStr == null || jsonStr.trim().isEmpty() || view == null) return;
         try {
@@ -431,6 +454,12 @@ public class PromptLabPresetManager {
         }
     }
 
+    /**
+     * Collects all nodes from a workflow graph, including nodes inside subgraphs/groups.
+     *
+     * @param root The root JSONObject representing the workflow.
+     * @return A list of all JSON objects representing nodes.
+     */
     public List<JSONObject> collectAllNodes(JSONObject root) {
         List<JSONObject> allNodes = new ArrayList<>();
         if (root == null) return allNodes;
@@ -462,6 +491,12 @@ public class PromptLabPresetManager {
         return allNodes;
     }
 
+    /**
+     * Selects an item in a JComboBox if it exists, otherwise adds it and then selects it.
+     *
+     * @param combo  The JComboBox to manipulate.
+     * @param target The target string item to select or add.
+     */
     public void selectOrAddComboItem(JComboBox<String> combo, String target) {
         if (combo == null || target == null || target.isBlank()) return;
         String cleanTarget = target.trim();

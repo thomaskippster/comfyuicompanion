@@ -22,6 +22,9 @@ import java.util.regex.Pattern;
 import org.springframework.beans.factory.annotation.Autowired;
 
 @Service
+/**
+ * Represents the comfy process controller class.
+ */
 public class ComfyProcessController {
     private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(ComfyProcessController.class);
     @org.springframework.beans.factory.annotation.Autowired
@@ -49,14 +52,30 @@ public class ComfyProcessController {
         this.processTracker = processTracker;
     }
 
+    /**
+     * Handles the get detected url operation.
+     * @return the String result
+     */
     public String getDetectedUrl() {
         return detectedUrl.get();
     }
     
+    /**
+     * Handles the is gui line shown operation.
+     * @return the boolean result
+     */
     public boolean isGuiLineShown() {
         return guiLineShown.get();
     }
 
+    /**
+     * Handles the start operation.
+     * @param profile the profile
+     * @param comfyDir the comfyDir
+     * @param globalPythonPath the globalPythonPath
+     * @param logConsumer the logConsumer
+     * @return the CompletableFuture<Integer> result
+     */
     public CompletableFuture<Integer> start(LaunchProfile profile, Path comfyDir, String globalPythonPath, Consumer<String> logConsumer) {
         if (isRunning()) {
             logConsumer.accept("⚠️ ComfyUI is already running. Spawning duplicate process blocked.");
@@ -294,6 +313,9 @@ public class ComfyProcessController {
         thread.start();
     }
 
+    /**
+     * Handles the stop operation.
+     */
     public void stop() {
         if (stopping.getAndSet(true)) {
             return;
@@ -322,10 +344,18 @@ public class ComfyProcessController {
         }
     }
 
+    /**
+     * Handles the is process alive operation.
+     * @return the boolean result
+     */
     public boolean isProcessAlive() {
         return currentProcess != null && currentProcess.isAlive();
     }
 
+    /**
+     * Handles the is running operation.
+     * @return the boolean result
+     */
     public boolean isRunning() {
         return isProcessAlive() || lifecycleService.isProcessAlive() || lifecycleService.isHealthy();
     }

@@ -24,6 +24,9 @@ import de.tki.comfyuicompanion.service.IComfyLifecycleService;
 import de.tki.comfyuicompanion.service.impl.HardwareMonitorService;
 
 @Service
+/**
+ * Represents the local tts service class.
+ */
 public class LocalTTSService {
     private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(LocalTTSService.class);
 
@@ -80,6 +83,12 @@ public class LocalTTSService {
             logger.error("[LocalTTSService] Auto-select failed: " + ex.getMessage());
         }
     }
+    /**
+     * Handles the generate speech operation.
+     * @param text the text
+     * @param outputPath the outputPath
+     * @throws Exception if an error occurs
+     */
     public void generateSpeech(String text, String outputPath) throws Exception {
         if (text == null || text.trim().isEmpty()) {
             throw new IllegalArgumentException("Text cannot be empty for TTS generation");
@@ -182,7 +191,7 @@ public class LocalTTSService {
                             if (comfyPath != null && !comfyPath.trim().isEmpty()) {
                                 java.nio.file.Path comfyDir = java.nio.file.Paths.get(comfyPath);
                                 java.nio.file.Path pythonExe = (pythonPath != null && !pythonPath.trim().isEmpty()) ? java.nio.file.Paths.get(pythonPath) : null;
-                                bootstrapper.ensureKokoroTtsInstalled(comfyDir, pythonExe, System.out::println);
+                                bootstrapper.ensureKokoroTtsInstalled(comfyDir, pythonExe, msg -> logger.info("[Bootstrap] {}", msg));
                             }
                             
                             logger.info("🔄 [LocalTTSService] Restarting ComfyUI server after installation...");
@@ -244,7 +253,7 @@ public class LocalTTSService {
                             if (comfyPathQ != null && !comfyPathQ.trim().isEmpty()) {
                                 java.nio.file.Path comfyDirQ = java.nio.file.Paths.get(comfyPathQ);
                                 java.nio.file.Path pythonExeQ = (pythonPathQ != null && !pythonPathQ.trim().isEmpty()) ? java.nio.file.Paths.get(pythonPathQ) : null;
-                                bootstrapper.ensureQwenTtsInstalled(comfyDirQ, pythonExeQ, System.out::println);
+                                bootstrapper.ensureQwenTtsInstalled(comfyDirQ, pythonExeQ, msg -> logger.info("[Bootstrap] {}", msg));
                             }
                             logger.info("[LocalTTSService] Restarting ComfyUI server after Qwen-TTS installation...");
                             lifecycleService.start();

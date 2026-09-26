@@ -15,6 +15,11 @@ public class PromptLabSessionManager {
 
     private final ConfigService configService;
 
+    /**
+     * Constructs a new PromptLabSessionManager.
+     *
+     * @param configService the configuration service used to persist session data
+     */
     public PromptLabSessionManager(ConfigService configService) {
         this.configService = configService;
     }

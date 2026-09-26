@@ -17,6 +17,9 @@ import java.security.spec.KeySpec;
 import java.util.Base64;
 
 @Component
+/**
+ * Represents the encryption utils class.
+ */
 public class EncryptionUtils {
     private static final String GCM_PREFIX = "$GCM$v1$";
     private static final int ITERATIONS = 65536;

@@ -16,6 +16,9 @@ import java.util.*;
  * (standard UI graph format and headless API execution format) into neutral visual graph models.
  */
 @Service
+/**
+ * Represents the workflow graph parser class.
+ */
 public class WorkflowGraphParser {
 
     private static final Logger logger = LoggerFactory.getLogger(WorkflowGraphParser.class);

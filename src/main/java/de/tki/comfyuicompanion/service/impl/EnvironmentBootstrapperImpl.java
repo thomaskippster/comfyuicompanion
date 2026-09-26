@@ -16,6 +16,9 @@ import java.util.function.Consumer;
 import org.springframework.beans.factory.annotation.Autowired;
 
 @Service
+/**
+ * Represents the environment bootstrapper impl class.
+ */
 public class EnvironmentBootstrapperImpl {
     private static final String COMFY_REPO_URL = "https://github.com/comfyanonymous/ComfyUI.git";
     private final HttpClient httpClient = HttpClient.newBuilder()
@@ -51,6 +54,12 @@ public class EnvironmentBootstrapperImpl {
                  : new GitRepositoryManager(processTracker);
      }
 
+    /**
+     * Handles the clone comfy ui operation.
+     * @param targetDir the targetDir
+     * @param progressCallback the progressCallback
+     * @return the CompletableFuture<Void> result
+     */
     public CompletableFuture<Void> cloneComfyUI(Path targetDir, Consumer<String> progressCallback) {
         return CompletableFuture.runAsync(() -> {
             boolean success = gitRepositoryManager.cloneOrUpdateRepository(COMFY_REPO_URL, targetDir, "master", progressCallback);
@@ -416,6 +425,12 @@ public class EnvironmentBootstrapperImpl {
         }
     }
 
+    /**
+     * Handles the ensure video helper suite installed operation.
+     * @param comfyDir the comfyDir
+     * @param pythonExe the pythonExe
+     * @param progressCallback the progressCallback
+     */
     public void ensureVideoHelperSuiteInstalled(Path comfyDir, Path pythonExe, Consumer<String> progressCallback) {
         Path videoHelperSuiteDir = comfyDir.resolve("custom_nodes").resolve("ComfyUI-Video-Helper-Suite");
         boolean ok = gitRepositoryManager.cloneOrUpdateRepository(
@@ -451,6 +466,12 @@ public class EnvironmentBootstrapperImpl {
         }
     }
 
+    /**
+     * Handles the ensure kokoro tts installed operation.
+     * @param comfyDir the comfyDir
+     * @param pythonExe the pythonExe
+     * @param progressCallback the progressCallback
+     */
     public void ensureKokoroTtsInstalled(Path comfyDir, Path pythonExe, Consumer<String> progressCallback) {
         Path kokoroTtsDir = comfyDir.resolve("custom_nodes").resolve("ComfyUI-KokoroTTS");
         boolean ok = gitRepositoryManager.cloneOrUpdateRepository(
@@ -488,6 +509,12 @@ public class EnvironmentBootstrapperImpl {
         }
     }
 
+    /**
+     * Handles the ensure qwen tts installed operation.
+     * @param comfyDir the comfyDir
+     * @param pythonExe the pythonExe
+     * @param progressCallback the progressCallback
+     */
     public void ensureQwenTtsInstalled(Path comfyDir, Path pythonExe, Consumer<String> progressCallback) {
         Path qwenTtsDir = comfyDir.resolve("custom_nodes").resolve("ComfyUI-Qwen-TTS");
         boolean ok = gitRepositoryManager.cloneOrUpdateRepository(
@@ -519,6 +546,11 @@ public class EnvironmentBootstrapperImpl {
             }
         }
     }
+    /**
+     * Handles the fix wsl dependencies operation.
+     * @param comfyDir the comfyDir
+     * @param progressCallback the progressCallback
+     */
     public void fixWslDependencies(Path comfyDir, Consumer<String> progressCallback) {
         if (!isWslAvailable()) {
             progressCallback.accept("❌ WSL is not available or not enabled on this system.\n");

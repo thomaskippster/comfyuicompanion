@@ -4,7 +4,7 @@
 
     <groupId>de.tki</groupId>
     <artifactId>comfyuicompanion</artifactId>
-    <version>1.1.0</version>
+    <version>1.1.1</version>
 
     <scm>
         <connection>scm:git:https://github.com/thomaskippster/comfyuicompanion.git</connection>
@@ -96,6 +96,12 @@
             <groupId>org.assertj</groupId>
             <artifactId>assertj-swing</artifactId>
             <version>3.17.1</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.awaitility</groupId>
+            <artifactId>awaitility</artifactId>
+            <version>4.2.2</version>
             <scope>test</scope>
         </dependency>
         <dependency>

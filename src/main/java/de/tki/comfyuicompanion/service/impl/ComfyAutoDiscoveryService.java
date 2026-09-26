@@ -15,6 +15,9 @@ import java.util.List;
  * virtual environments, Python interpreters, and generating default launch commands.
  */
 @Component
+/**
+ * Represents the comfy auto discovery service class.
+ */
 public class ComfyAutoDiscoveryService {
     private static final Logger logger = LoggerFactory.getLogger(ComfyAutoDiscoveryService.class);
 

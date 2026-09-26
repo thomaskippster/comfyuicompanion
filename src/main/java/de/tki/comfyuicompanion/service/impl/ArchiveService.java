@@ -24,6 +24,9 @@ import java.util.function.LongConsumer;
 import java.util.stream.Stream;
 
 @Service
+/**
+ * Represents the archive service class.
+ */
 public class ArchiveService {
     private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(ArchiveService.class);
 
@@ -36,6 +39,11 @@ public class ArchiveService {
         this.pathResolver = pathResolver;
     }
 
+    /**
+     * Handles the normalize folder operation.
+     * @param folder the folder
+     * @return the String result
+     */
     public String normalizeFolder(String folder) {
         return pathResolver.stripRedundantPrefixes(folder);
     }
@@ -158,6 +166,12 @@ public class ArchiveService {
         }
     }
 
+    /**
+     * Handles the move to archive with progress operation.
+     * @param relativePath the relativePath
+     * @param progressUpdate the progressUpdate
+     * @throws IOException if an error occurs
+     */
     public void moveToArchiveWithProgress(String relativePath, LongConsumer progressUpdate) throws IOException {
         Path p = Paths.get(relativePath);
         String filename = p.getFileName().toString();
@@ -165,14 +179,32 @@ public class ArchiveService {
         moveToArchiveWithProgress(folder, filename, progressUpdate);
     }
 
+    /**
+     * Handles the move to archive operation.
+     * @param relativePath the relativePath
+     * @throws IOException if an error occurs
+     */
     public void moveToArchive(String relativePath) throws IOException {
         moveToArchiveWithProgress(relativePath, null);
     }
 
+    /**
+     * Handles the move to archive operation.
+     * @param folder the folder
+     * @param filename the filename
+     * @throws IOException if an error occurs
+     */
     public void moveToArchive(String folder, String filename) throws IOException {
         moveToArchiveWithProgress(folder, filename, null);
     }
 
+    /**
+     * Handles the move to archive with progress operation.
+     * @param folder the folder
+     * @param filename the filename
+     * @param progressUpdate the progressUpdate
+     * @throws IOException if an error occurs
+     */
     public void moveToArchiveWithProgress(String folder, String filename, LongConsumer progressUpdate) throws IOException {
         String archivePathStr = configService.getArchivePath();
         if (archivePathStr == null) throw new IOException("Archive path not configured");
@@ -219,6 +251,13 @@ public class ArchiveService {
         return null;
     }
 
+    /**
+     * Handles the restore from archive with progress operation.
+     * @param folder the folder
+     * @param filename the filename
+     * @param progressUpdate the progressUpdate
+     * @return the boolean result
+     */
     public boolean restoreFromArchiveWithProgress(String folder, String filename, LongConsumer progressUpdate) {
         String modelsPathStr = configService.getModelsPath();
         String archivePathStr = configService.getArchivePath();
@@ -288,6 +327,12 @@ public class ArchiveService {
         return false;
     }
 
+    /**
+     * Handles the restore from archive operation.
+     * @param folder the folder
+     * @param filename the filename
+     * @return the boolean result
+     */
     public boolean restoreFromArchive(String folder, String filename) {
         return restoreFromArchiveWithProgress(folder, filename, null);
     }

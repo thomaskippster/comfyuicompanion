@@ -29,6 +29,9 @@ import java.util.function.BiConsumer;
 import jakarta.annotation.PreDestroy;
 
 @Service
+/**
+ * Represents the local gemma service class.
+ */
 public class LocalGemmaService {
     private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(LocalGemmaService.class);
 

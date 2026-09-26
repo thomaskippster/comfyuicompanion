@@ -18,6 +18,9 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
 @Service
+/**
+ * Represents the hugging face service class.
+ */
 public class HuggingFaceService {
     private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(HuggingFaceService.class);
     private final HttpClient httpClient = HttpClient.newBuilder()
@@ -26,6 +29,11 @@ public class HuggingFaceService {
             .build();
     private final ObjectMapper mapper = new ObjectMapper();
 
+    /**
+     * Handles the search models operation.
+     * @param query the query
+     * @return the CompletableFuture<List<ModelInfo>> result
+     */
     public CompletableFuture<List<ModelInfo>> searchModels(String query) {
         // HF Search API: https://huggingface.co/api/models?search=...&limit=20&full=full
         String url = "https://huggingface.co/api/models?limit=20&full=full&search=" + java.net.URLEncoder.encode(query, java.nio.charset.StandardCharsets.UTF_8);

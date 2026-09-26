@@ -56,6 +56,7 @@ public class DownloadManagerController implements DownloadManagerView.DownloadMa
     private final ComfyDiagnosticService diagnosticService;
     private final BackgroundExecutor backgroundExecutor;
     private final CivitaiService civitaiService;
+    private final DownloadModelResolutionHelper resolutionHelper;
 
     private DownloadManagerView view;
     private List<ModelInfo> modelsToDownload = new ArrayList<>();
@@ -63,6 +64,23 @@ public class DownloadManagerController implements DownloadManagerView.DownloadMa
     private String currentFileName = "input.json";
     private Runnable postOperationCallback;
 
+    /**
+     * Constructs a new DownloadManagerController.
+     *
+     * @param configService      the configuration service
+     * @param downloadManager    the download manager core service
+     * @param analyzer           the model analyzer service
+     * @param searchService      the model search service
+     * @param modelValidator     the model validator
+     * @param workflowService    the workflow parsing service
+     * @param modelListService   the model list service
+     * @param archiveService     the archive management service
+     * @param localScanner       the local model scanner
+     * @param hashRegistry       the hash registry for duplicate detection
+     * @param diagnosticService  the diagnostic service for checking ComfyUI model visibility
+     * @param backgroundExecutor the executor for background tasks
+     * @param civitaiService     the service for Civitai API integration
+     */
     public DownloadManagerController(ConfigService configService,
                                      IDownloadManager downloadManager,
                                      IModelAnalyzer analyzer,
@@ -89,8 +107,14 @@ public class DownloadManagerController implements DownloadManagerView.DownloadMa
         this.diagnosticService = diagnosticService;
         this.backgroundExecutor = backgroundExecutor != null ? backgroundExecutor : new BackgroundExecutor();
         this.civitaiService = civitaiService;
+        this.resolutionHelper = new DownloadModelResolutionHelper(configService, archiveService, localScanner, searchService, this.backgroundExecutor);
     }
 
+    /**
+     * Sets the view and registers this controller as its listener.
+     *
+     * @param view the view to manage
+     */
     public void setView(DownloadManagerView view) {
         this.view = view;
         if (this.view != null) {
@@ -103,23 +127,39 @@ public class DownloadManagerController implements DownloadManagerView.DownloadMa
      * Use this when an external listener (e.g. Main's anonymous listener)
      * should remain the active listener but the controller still needs
      * access to the view's UI components (table, buttons, etc.).
+     *
+     * @param view the view to manage
      */
     public void setViewReference(DownloadManagerView view) {
         this.view = view;
     }
 
+    /**
+     * @return the associated view
+     */
     public DownloadManagerView getView() {
         return view;
     }
 
+    /**
+     * @return the list of models currently staged for download
+     */
     public List<ModelInfo> getModelsToDownload() {
         return modelsToDownload;
     }
 
+    /**
+     * @return true if a download queue is currently executing, false otherwise
+     */
     public boolean isDownloading() {
         return isDownloading;
     }
 
+    /**
+     * Sets a callback to be executed after a download queue operation completes.
+     *
+     * @param postOperationCallback the callback to run
+     */
     public void setPostOperationCallback(Runnable postOperationCallback) {
         this.postOperationCallback = postOperationCallback;
     }
@@ -195,6 +235,11 @@ public class DownloadManagerController implements DownloadManagerView.DownloadMa
 
     // --- Core Operations ---
 
+    /**
+     * Loads a workflow JSON file, extracts its content, and triggers analysis.
+     *
+     * @param file the workflow file to load
+     */
     public void loadFile(File file) {
         try {
             currentFileName = file.getName();
@@ -207,6 +252,14 @@ public class DownloadManagerController implements DownloadManagerView.DownloadMa
         }
     }
 
+    /**
+     * Imports a workflow file from external drag-and-drop or other sources,
+     * switches to the download manager tab, and loads it.
+     *
+     * @param file                 the workflow file to import
+     * @param mainTabs             the main tabbed pane to switch context
+     * @param downloadManagerPanel the panel representing the download manager tab
+     */
     public void importWorkflow(File file, JTabbedPane mainTabs, JPanel downloadManagerPanel) {
         if (mainTabs != null && downloadManagerPanel != null) {
             int index = mainTabs.indexOfComponent(downloadManagerPanel);
@@ -217,6 +270,11 @@ public class DownloadManagerController implements DownloadManagerView.DownloadMa
         loadFile(file);
     }
 
+    /**
+     * Imports a custom model list JSON file and re-runs the analysis.
+     *
+     * @param file the model list JSON file
+     */
     public void importModelListFile(File file) {
         try {
             modelListService.importJson(file);
@@ -227,6 +285,10 @@ public class DownloadManagerController implements DownloadManagerView.DownloadMa
         }
     }
 
+    /**
+     * Analyzes the currently loaded JSON content to identify required models,
+     * checks their local presence, archive presence, and populates the UI table.
+     */
     public void analyzeJsonContent() {
         if (view == null) return;
         String text = view.getJsonInputArea().getText();
@@ -354,6 +416,10 @@ public class DownloadManagerController implements DownloadManagerView.DownloadMa
         fetchMissingRemoteSizes();
     }
 
+    /**
+     * Initiates the download queue for all selected models in the table.
+     * Starts by extracting models from the archive if available, then falls back to network download.
+     */
     public void startDownloadQueue() {
         if (view == null) return;
         DefaultTableModel tableModel = view.getTableModel();
@@ -486,10 +552,18 @@ public class DownloadManagerController implements DownloadManagerView.DownloadMa
         }
     }
 
+    /**
+     * Automatically searches for missing models online without user prompting.
+     */
     public void searchMissingOnline() {
         searchMissingOnline(false);
     }
 
+    /**
+     * Searches for missing models online using the configured ModelSearchService.
+     *
+     * @param manual true if the search was manually triggered by the user
+     */
     public void searchMissingOnline(boolean manual) {
         if (modelsToDownload == null || view == null) return;
         DefaultTableModel tableModel = view.getTableModel();
@@ -563,99 +637,7 @@ public class DownloadManagerController implements DownloadManagerView.DownloadMa
     }
 
     private void fetchMissingRemoteSizes() {
-        if (modelsToDownload == null || view == null) return;
-        DefaultTableModel tableModel = view.getTableModel();
-        backgroundExecutor.execute(() -> {
-            for (int i = 0; i < modelsToDownload.size(); i++) {
-                final int idx = i;
-                ModelInfo info = modelsToDownload.get(idx);
-                
-                String status = (idx < tableModel.getRowCount()) ? (String) tableModel.getValueAt(idx, 7) : "";
-                boolean needsCheck = "Unknown".equals(info.getSize()) || "🔄 Size Mismatch".equals(status);
-
-                if (!info.getUrl().equals("MISSING") && needsCheck) {
-                    long size = searchService.getRemoteSize(info.getUrl());
-                    if (size > 0) {
-                        info.setByteSize(size);
-                        String formatted = searchService.formatSize(size);
-                        info.setSize(formatted);
-                        SwingUtilities.invokeLater(() -> {
-                            if (idx < tableModel.getRowCount()) {
-                                tableModel.setValueAt(formatted, idx, 3);
-                                
-                                String currentStatus = (String) tableModel.getValueAt(idx, 7);
-                                if (currentStatus.contains("Already exists") || "🔄 Size Mismatch".equals(currentStatus) || "📦 Archived".equals(currentStatus)) {
-                                    String type = info.getType() != null ? info.getType() : de.tki.comfyuicompanion.domain.ModelFolder.CHECKPOINTS.getDefaultFolderName();
-                                    String folder = info.getSave_path() != null ? info.getSave_path() : type;
-                                    String base = configService.getModelsPath();
-                                    String archive = configService.getArchivePath();
-                                    
-                                    Path local = Paths.get(base, archiveService.normalizeFolder(folder), info.getName());
-                                    if (!Files.exists(local)) {
-                                        local = Paths.get(base, type, info.getName());
-                                    }
-                                    
-                                    if (!Files.exists(local)) {
-                                        Optional<Path> recursiveLocal = localScanner.findModelWithPrefSize(Paths.get(base), info.getName(), size);
-                                        if (recursiveLocal.isPresent()) local = recursiveLocal.get();
-                                    }
-
-                                    boolean localExists = Files.exists(local);
-                                    boolean localSizeMatch = false;
-                                    if (localExists) {
-                                        try {
-                                            localSizeMatch = (Files.size(local) == size);
-                                        } catch (IOException ignored) {}
-                                    }
-
-                                    boolean inArchive = false;
-                                    if (archive != null && !archive.isEmpty()) {
-                                        Path archived = Paths.get(archive, archiveService.normalizeFolder(folder), info.getName());
-                                        try {
-                                            if (Files.exists(archived) && Files.size(archived) == size) {
-                                                inArchive = true;
-                                            } else {
-                                                inArchive = localScanner.findModelWithPrefSize(Paths.get(archive), info.getName(), size).isPresent();
-                                            }
-                                        } catch (IOException ignored) {}
-                                    }
-
-                                    String newStatus;
-                                    boolean shouldSelect = false;
-
-                                    if (localSizeMatch) {
-                                        newStatus = "✅ Already exists";
-                                        shouldSelect = false;
-                                    } else if (localExists) {
-                                        newStatus = "🔄 Size Mismatch";
-                                        shouldSelect = true;
-                                    } else if (inArchive) {
-                                        newStatus = "📦 Archived";
-                                        shouldSelect = true;
-                                    } else if (info.getArchivedPath() != null) {
-                                        // archivedPath was recorded during analysis — keep the
-                                        // badge even if the live size-based check above could
-                                        // not re-confirm it (e.g. byteSize was 0 initially).
-                                        newStatus = "📦 Archived";
-                                        shouldSelect = true;
-                                    } else {
-                                        newStatus = "✅ Known Good";
-                                        shouldSelect = true;
-                                    }
-
-                                    final String finalStatus = newStatus;
-                                    final boolean finalSelect = shouldSelect;
-                                    SwingUtilities.invokeLater(() -> {
-                                        tableModel.setValueAt(finalStatus, idx, 7);
-                                        tableModel.setValueAt(finalSelect, idx, 0);
-                                    });
-                                }
-                            }
-                        });
-                    }
-                }
-            }
-        });
+        resolutionHelper.fetchMissingRemoteSizes(modelsToDownload, view);
     }
 
     public void runDiagnostics(JTabbedPane tabs) {
@@ -694,170 +676,11 @@ public class DownloadManagerController implements DownloadManagerView.DownloadMa
     }
 
     public void focusDownloadTabAndSelectModels(List<ModelInfo> missingModels) {
-        if (missingModels == null || missingModels.isEmpty()) return;
         if (modelsToDownload == null) {
             modelsToDownload = new ArrayList<>();
         }
-
-        String base = configService.getModelsPath();
-        String archive = configService.getArchivePath();
-
-        for (ModelInfo req : missingModels) {
-            String name = req.getName();
-            String url = req.getUrl();
-            if (name == null || name.isBlank()) continue;
-
-            String type = req.getType() != null ? req.getType() : de.tki.comfyuicompanion.domain.ModelFolder.CHECKPOINTS.getDefaultFolderName();
-            String folder = req.getSave_path() != null ? req.getSave_path() : type;
-            String normalizedFolder = archiveService.normalizeFolder(folder);
-            String sizeStr = req.getSize() != null ? req.getSize() : "Unknown";
-            String pop = req.getPopularity() != null ? req.getPopularity() : "📂 BLUEPRINT REQUIRED";
-            String dlUrl = (url != null) ? url : "MISSING";
-            long byteSize = req.getByteSize();
-
-            boolean exists = false;
-            Path local = null;
-            if (base != null && !base.isEmpty()) {
-                local = "root".equals(normalizedFolder) ? Paths.get(base, name) : Paths.get(base, normalizedFolder, name);
-                exists = Files.exists(local) && Files.isRegularFile(local);
-            }
-
-            boolean inArchive = false;
-            Path archivedPath = null;
-            if (archive != null && !archive.trim().isEmpty()) {
-                archivedPath = "root".equals(normalizedFolder) ? Paths.get(archive, name) : Paths.get(archive, normalizedFolder, name);
-                inArchive = Files.exists(archivedPath) && Files.isRegularFile(archivedPath);
-            }
-
-            boolean sizeMismatch = false;
-
-            if (archive != null && !archive.isEmpty()) {
-                try {
-                    Path absArchive = Paths.get(archive).toAbsolutePath().normalize();
-                    if (exists && local != null && local.toAbsolutePath().normalize().startsWith(absArchive)) {
-                        exists = false;
-                        inArchive = true;
-                    }
-                    if (inArchive && byteSize > 0 && archivedPath != null) {
-                        if (Files.size(archivedPath) != byteSize) {
-                            inArchive = false;
-                        }
-                    }
-                } catch (Exception ignored) {}
-            }
-
-            if (!inArchive && archive != null && !archive.isEmpty()) {
-                Optional<Path> foundInArchive = localScanner.findModelWithPrefSize(Paths.get(archive), name, byteSize);
-                if (foundInArchive.isPresent()) {
-                    archivedPath = foundInArchive.get();
-                    inArchive = true;
-                }
-            }
-
-            if ((!exists || sizeMismatch) && base != null && !base.isEmpty()) {
-                Optional<Path> foundLocally = localScanner.findModelWithPrefSizeAndType(Paths.get(base), name, byteSize, type);
-                if (foundLocally.isPresent()) {
-                    Path potentialLocal = foundLocally.get();
-                    try {
-                        long potSize = Files.size(potentialLocal);
-                        if (byteSize <= 0 || potSize == byteSize) {
-                            local = potentialLocal;
-                            exists = true;
-                            sizeMismatch = false;
-
-                            Path root = Paths.get(base).toAbsolutePath().normalize();
-                            Path absPotential = potentialLocal.toAbsolutePath().normalize();
-
-                            if (absPotential.startsWith(root)) {
-                                Path rel = root.relativize(absPotential);
-                                normalizedFolder = (rel.getParent() != null) ? rel.getParent().toString().replace("\\", "/") : "root";
-                            } else {
-                                normalizedFolder = "extra/" + potentialLocal.getParent().getFileName();
-                            }
-                            req.setSave_path(normalizedFolder);
-                        }
-                    } catch (Exception ignored) {}
-                }
-            }
-
-            String status;
-            boolean isSelected;
-            if (exists) {
-                status = "✅ Already exists";
-                isSelected = false;
-            } else if (inArchive) {
-                status = "📦 Archived";
-                isSelected = true;
-            } else if (sizeMismatch) {
-                status = "🔄 Size Mismatch";
-                isSelected = true;
-            } else if (dlUrl == null || dlUrl.equals("MISSING") || dlUrl.isBlank()) {
-                status = "Queued";
-                isSelected = true;
-            } else {
-                status = "✅ Known Good";
-                isSelected = true;
-            }
-
-            DefaultTableModel tableModel = (view != null) ? view.getTableModel() : null;
-            int foundRow = -1;
-            if (tableModel != null) {
-                for (int i = 0; i < tableModel.getRowCount(); i++) {
-                    String rowName = (String) tableModel.getValueAt(i, 2);
-                    if (name.equalsIgnoreCase(rowName)) {
-                        foundRow = i;
-                        break;
-                    }
-                }
-
-                if (foundRow != -1) {
-                    tableModel.setValueAt(isSelected, foundRow, 0);
-                    if (url != null && !url.equals("MISSING")) {
-                        tableModel.setValueAt(url, foundRow, 6);
-                    }
-                    tableModel.setValueAt("models/" + normalizedFolder, foundRow, 5);
-                    tableModel.setValueAt(status, foundRow, 7);
-
-                    if (foundRow < modelsToDownload.size()) {
-                        ModelInfo existingInfo = modelsToDownload.get(foundRow);
-                        existingInfo.setSave_path(normalizedFolder);
-                        if (url != null && !url.equals("MISSING")) {
-                            existingInfo.setUrl(url);
-                        }
-                    }
-                } else {
-                    tableModel.addRow(new Object[]{
-                            isSelected,
-                            req.getType(),
-                            name,
-                            sizeStr,
-                            pop,
-                            "models/" + normalizedFolder,
-                            dlUrl,
-                            status
-                    });
-
-                    ModelInfo newInfo = new ModelInfo();
-                    newInfo.setName(name);
-                    newInfo.setType(req.getType());
-                    newInfo.setSize(sizeStr);
-                    newInfo.setUrl(dlUrl);
-                    newInfo.setPopularity(pop);
-                    newInfo.setSave_path(normalizedFolder);
-                    newInfo.setByteSize(byteSize);
-                    modelsToDownload.add(newInfo);
-                }
-            }
-        }
-
-        updateDownloadManagerSelection();
-        updateDownloadButtonsState();
-
-        JOptionPane.showMessageDialog(view,
-                "Added " + missingModels.size() + " missing model(s) to the Download Manager queue.\n" +
-                        "Please click 'Start queue' to start.",
-                "Downloads Queued",
-                JOptionPane.INFORMATION_MESSAGE);
+        resolutionHelper.focusDownloadTabAndSelectModels(missingModels, modelsToDownload, view,
+                this::updateDownloadManagerSelection, this::updateDownloadButtonsState);
     }
 }
 

@@ -19,6 +19,9 @@ import java.util.function.Consumer;
  * and dispatches statistics to registered UI callbacks.
  */
 @Service
+/**
+ * Represents the hardware monitor service class.
+ */
 public class HardwareMonitorService {
 
     private static final Logger logger = LoggerFactory.getLogger(HardwareMonitorService.class);
@@ -61,6 +64,10 @@ public class HardwareMonitorService {
         this.processTracker = processTracker;
     }
 
+    /**
+     * Handles the start operation.
+     * @param callback the callback
+     */
     public void start(Consumer<HardwareStats> callback) {
         scheduler.scheduleAtFixedRate(() -> {
             try {
@@ -84,6 +91,9 @@ public class HardwareMonitorService {
         }, 0, 2, TimeUnit.SECONDS);
     }
 
+    /**
+     * Handles the stop operation.
+     */
     public void stop() {
         scheduler.shutdown();
     }

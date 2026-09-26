@@ -2,6 +2,9 @@ package de.tki.comfyuicompanion.service;
 
 import de.tki.comfyuicompanion.domain.ModelArchitecture;
 
+/**
+ * Represents the i model architecture service interface.
+ */
 public interface IModelArchitectureService {
     ModelArchitecture detectArchitecture(String modelName);
     void reloadMappings();

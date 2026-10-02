@@ -3,10 +3,17 @@ package de.tki.comfyuicompanion.ui;
 import javax.swing.*;
 import java.awt.*;
 
+/**
+ * A custom JPanel that renders with a frosted glass-like translucent appearance,
+ * featuring rounded corners and a subtle border.
+ */
 public class GlassPanel extends JPanel {
 
     private int cornerRadius = 15;
 
+    /**
+     * Constructs a new GlassPanel and registers it for theme updates.
+     */
     public GlassPanel() {
         setOpaque(false); // Sehr wichtig für Transparenz in Swing
         
@@ -14,11 +21,19 @@ public class GlassPanel extends JPanel {
         ThemeManager.registerObserver(this::repaint);
     }
 
+    /**
+     * Sets the corner radius for the panel's rounded corners.
+     * 
+     * @param radius the corner radius in pixels
+     */
     public void setCornerRadius(int radius) {
         this.cornerRadius = radius;
         repaint();
     }
 
+    /**
+     * Updates the UI and repaints the component to reflect any theme changes.
+     */
     @Override
     public void updateUI() {
         super.updateUI();

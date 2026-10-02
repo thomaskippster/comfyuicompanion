@@ -12,6 +12,9 @@ import java.nio.file.Paths;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
+/**
+ * Dialog for installing environments.
+ */
 public class EnvironmentInstallerDialog extends StandardDialog {
     private final EnvironmentBootstrapperImpl bootstrapper;
     private final ConfigService configService;
@@ -23,6 +26,14 @@ public class EnvironmentInstallerDialog extends StandardDialog {
     private JButton startBtn;
     private JButton closeBtn;
 
+    /**
+     * Constructs a new EnvironmentInstallerDialog.
+     * @param parent the parent frame
+     * @param bootstrapper the bootstrapper
+     * @param configService the config service
+     * @param profileManager the profile manager
+     * @param onSuccess callback on success
+     */
     public EnvironmentInstallerDialog(JFrame parent, EnvironmentBootstrapperImpl bootstrapper, ConfigService configService, ProfileManager profileManager, Runnable onSuccess) {
         super(parent, "1-Click Environment Setup");
         this.setModal(true);
@@ -108,7 +119,7 @@ public class EnvironmentInstallerDialog extends StandardDialog {
             try {
                 java.nio.file.Files.createDirectories(appRoot);
                 return null;
-            } catch (Exception e) {
+            } catch (java.io.IOException | RuntimeException e) {
                 throw new RuntimeException("Failed to create directories: " + e.getMessage());
             }
         }).thenCompose(v -> {
@@ -161,7 +172,7 @@ public class EnvironmentInstallerDialog extends StandardDialog {
                     if (onSuccess != null) {
                         onSuccess.run();
                     }
-                } catch (Exception ex) {
+                } catch (java.io.IOException | RuntimeException ex) {
                     log("❌ Error finalizing profile: " + ex.getMessage());
                     enableCloseBtn();
                 }

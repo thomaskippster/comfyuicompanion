@@ -1,4 +1,6 @@
 package de.tki.comfyuicompanion.ui;
+import org.json.JSONObject;
+import org.json.JSONArray;
 
 import de.tki.comfyuicompanion.service.impl.ConfigService;
 import de.tki.comfyuicompanion.ui.icons.AppIcon;
@@ -82,6 +84,9 @@ class ScrollablePanel extends JPanel implements Scrollable {
     }
 }
 
+/**
+ * Panel for displaying output gallery.
+ */
 public class OutputGalleryPanel extends JPanel {
     private final ConfigService configService;
     private final JPanel galleryPanel;
@@ -97,10 +102,19 @@ public class OutputGalleryPanel extends JPanel {
     private JButton selectAllBtn;
     private JButton clearBtn;
 
+    /**
+     * Constructs a new OutputGalleryPanel.
+     * @param configService config service
+     */
     public OutputGalleryPanel(ConfigService configService) {
         this(configService, new de.tki.comfyuicompanion.service.SafePathValidator());
     }
 
+    /**
+     * Constructs a new OutputGalleryPanel with safe path validator.
+     * @param configService config service
+     * @param safePathValidator path validator
+     */
     public OutputGalleryPanel(ConfigService configService, de.tki.comfyuicompanion.service.SafePathValidator safePathValidator) {
         this.configService = configService;
         this.safePathValidator = safePathValidator != null ? safePathValidator : new de.tki.comfyuicompanion.service.SafePathValidator();
@@ -158,6 +172,9 @@ public class OutputGalleryPanel extends JPanel {
         refresh();
     }
 
+    /**
+     * Refreshes the gallery panel.
+     */
     public void refresh() {
         galleryPanel.removeAll();
         tileMap.clear();
@@ -247,7 +264,7 @@ public class OutputGalleryPanel extends JPanel {
                 }
                 Files.deleteIfExists(file);
                 deletedCount++;
-            } catch (Exception ex) {
+            } catch (java.io.IOException | RuntimeException ex) {
                 failedCount++;
                 failedFiles.append(file.getFileName().toString()).append("\n");
             }
@@ -292,7 +309,7 @@ public class OutputGalleryPanel extends JPanel {
                     galleryPanel.add(tile);
                 }
             }
-        } catch (Exception e) {
+        } catch (java.io.IOException | RuntimeException e) {
             galleryPanel.add(new JLabel("Error loading files: " + e.getMessage()));
         }
     }
@@ -365,7 +382,7 @@ public class OutputGalleryPanel extends JPanel {
                             imageLabel.setIcon(icon);
                         });
                     }
-                } catch (Exception ignored) {}
+                } catch (RuntimeException ignored) {}
             });
             
             JLabel nameLabel = new JLabel(name, SwingConstants.CENTER);
@@ -402,7 +419,7 @@ public class OutputGalleryPanel extends JPanel {
     private void showMediaViewer(Path file) {
         try {
             Desktop.getDesktop().open(file.toFile());
-        } catch (Exception ex) {
+        } catch (java.io.IOException | RuntimeException ex) {
             JOptionPane.showMessageDialog(this, "Failed to open file in external viewer: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
         }
     }

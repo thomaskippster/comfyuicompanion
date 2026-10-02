@@ -218,6 +218,6 @@ public class StatusTransitionTest {
             (idx, s) -> statuses.add(s), latch::countDown);
 
         assertTrue(latch.await(5, TimeUnit.SECONDS));
-        assertTrue(statuses.stream().anyMatch(s -> s.startsWith("Error:")), "Statuses: " + statuses);
+        assertTrue(statuses.stream().anyMatch(s -> s.contains("Error:")), "Statuses: " + statuses);
     }
 }

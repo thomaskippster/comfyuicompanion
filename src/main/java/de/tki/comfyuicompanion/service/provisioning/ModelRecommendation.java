@@ -1,41 +1,59 @@
 package de.tki.comfyuicompanion.service.provisioning;
 
+/**
+ * Represents a recommended model for provisioning.
+ */
 public class ModelRecommendation {
-
     private String repositoryId;
     private String name;
     private String downloadUrl;
     private int downloads;
 
-    public String getRepositoryId() {
-        return repositoryId;
-    }
+    /**
+     * Gets the repository ID.
+     * @return The repository ID.
+     */
+    public String getRepositoryId() { return repositoryId; }
 
-    public void setRepositoryId(String repositoryId) {
-        this.repositoryId = repositoryId;
-    }
+    /**
+     * Sets the repository ID.
+     * @param repositoryId The repository ID.
+     */
+    public void setRepositoryId(String repositoryId) { this.repositoryId = repositoryId; }
 
-    public String getName() {
-        return name;
-    }
+    /**
+     * Gets the model name.
+     * @return The name.
+     */
+    public String getName() { return name; }
 
-    public void setName(String name) {
-        this.name = name;
-    }
+    /**
+     * Sets the model name.
+     * @param name The name.
+     */
+    public void setName(String name) { this.name = name; }
 
-    public String getDownloadUrl() {
-        return downloadUrl;
-    }
+    /**
+     * Gets the download URL for the model.
+     * @return The download URL.
+     */
+    public String getDownloadUrl() { return downloadUrl; }
 
-    public void setDownloadUrl(String downloadUrl) {
-        this.downloadUrl = downloadUrl;
-    }
+    /**
+     * Sets the download URL for the model.
+     * @param downloadUrl The download URL.
+     */
+    public void setDownloadUrl(String downloadUrl) { this.downloadUrl = downloadUrl; }
 
-    public int getDownloads() {
-        return downloads;
-    }
+    /**
+     * Gets the number of downloads.
+     * @return The download count.
+     */
+    public int getDownloads() { return downloads; }
 
-    public void setDownloads(int downloads) {
-        this.downloads = downloads;
-    }
+    /**
+     * Sets the number of downloads.
+     * @param downloads The download count.
+     */
+    public void setDownloads(int downloads) { this.downloads = downloads; }
 }

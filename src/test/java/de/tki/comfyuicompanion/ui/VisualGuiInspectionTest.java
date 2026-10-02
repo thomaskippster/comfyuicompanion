@@ -25,6 +25,9 @@ public class VisualGuiInspectionTest {
         Main mainFrame = context.getBean(Main.class);
         assertNotNull(mainFrame, "Main frame bean must not be null");
 
+        de.tki.comfyuicompanion.service.impl.ConfigService configService = context.getBean(de.tki.comfyuicompanion.service.impl.ConfigService.class);
+        configService.setBlueprintGalleryEnabled(true);
+
         // Initialize UI components on EDT
         SwingUtilities.invokeAndWait(() -> {
             mainFrame.launch(new String[]{});
@@ -79,6 +82,51 @@ public class VisualGuiInspectionTest {
         }
         assertTrue(totalTabs >= 3, "Mindestens 3 Tabs erwartet!");
 
+        // Select Dashboard tab for dashboard inspection
+        for (int i = 0; i < totalTabs; i++) {
+            if ("Dashboard".equals(tabbedPane.getTitleAt(i))) {
+                final int idx = i;
+                SwingUtilities.invokeAndWait(() -> {
+                    tabbedPane.setSelectedIndex(idx);
+                    mainFrame.validate();
+                    mainFrame.doLayout();
+                    mainFrame.repaint();
+                });
+                Thread.sleep(1000);
+                break;
+            }
+        }
+
+        // Render Dashboard screenshot
+        BufferedImage dashScreenshot = new BufferedImage(1400, 900, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g2dDash = dashScreenshot.createGraphics();
+        g2dDash.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        g2dDash.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+        mainFrame.printAll(g2dDash);
+        g2dDash.dispose();
+
+        File dashOut = new File("target/comfyuicompanion_dashboard_gui.png");
+        dashOut.getParentFile().mkdirs();
+        ImageIO.write(dashScreenshot, "png", dashOut);
+
+        // Select Blueprint Gallery tab for inspection
+        for (int i = 0; i < totalTabs; i++) {
+            if ("Blueprint Gallery".equals(tabbedPane.getTitleAt(i))) {
+                final int idx = i;
+                SwingUtilities.invokeAndWait(() -> {
+                    tabbedPane.setSelectedIndex(idx);
+                    mainFrame.validate();
+                    mainFrame.doLayout();
+                });
+                Thread.sleep(3000);
+                SwingUtilities.invokeAndWait(() -> {
+                    mainFrame.validate();
+                    mainFrame.repaint();
+                });
+                break;
+            }
+        }
+
         // 3. Render GUI to BufferedImage
         BufferedImage screenshot = new BufferedImage(1400, 900, BufferedImage.TYPE_INT_ARGB);
         Graphics2D g2d = screenshot.createGraphics();
@@ -96,7 +144,8 @@ public class VisualGuiInspectionTest {
         ImageIO.write(screenshot, "png", targetOut);
         ImageIO.write(screenshot, "png", toolsOut);
 
-        System.out.println("\n📸 Screenshot erfolgreich gerendert & gespeichert:");
+        System.out.println("\n📸 Screenshots erfolgreich gerendert & gespeichert:");
+        System.out.println("   -> Dashboard: target/comfyuicompanion_dashboard_gui.png");
         System.out.println("   -> " + targetOut.getAbsolutePath());
         System.out.println("   -> " + toolsOut.getAbsolutePath());
         System.out.println("=======================================================\n");

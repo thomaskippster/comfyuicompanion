@@ -17,6 +17,9 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Dialog for checking model updates.
+ */
 public class ModelUpdateCheckerDialog extends JDialog {
     private final ConfigService configService;
     private final ModelHashRegistry hashRegistry;
@@ -176,8 +179,10 @@ public class ModelUpdateCheckerDialog extends JDialog {
                         }
                     }
                 }
-                updateLog("✅ Completed scanning. Found " + tableModel.getRowCount() + " upgradable models.");
-            } catch (Exception ex) {
+            } catch (InterruptedException ex) {
+                Thread.currentThread().interrupt();
+                updateLog("⚠️ Scanning interrupted: " + ex.getMessage());
+            } catch (RuntimeException ex) {
                 updateLog("❌ Scanning failed: " + ex.getMessage());
             } finally {
                 SwingUtilities.invokeLater(() -> {
@@ -232,7 +237,7 @@ public class ModelUpdateCheckerDialog extends JDialog {
                             downloadBtn.setEnabled(true);
                         })
                 );
-            } catch (Exception ex) {
+            } catch (RuntimeException ex) {
                 updateLog("❌ Failed to start downloads: " + ex.getMessage());
                 SwingUtilities.invokeLater(() -> {
                     scanBtn.setEnabled(true);
@@ -263,7 +268,7 @@ public class ModelUpdateCheckerDialog extends JDialog {
             if (relative == null || relative.isEmpty()) return "checkpoints";
             String firstSegment = relative.split("/")[0];
             return firstSegment;
-        } catch (Exception e) {
+        } catch (RuntimeException e) {
             return "checkpoints";
         }
     }

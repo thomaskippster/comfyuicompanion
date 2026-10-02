@@ -1,4 +1,6 @@
 package de.tki.comfyuicompanion.ui;
+import org.json.JSONObject;
+import org.json.JSONArray;
 
 import de.tki.comfyuicompanion.service.IModelValidator;
 import de.tki.comfyuicompanion.service.impl.ConfigService;
@@ -16,6 +18,9 @@ import java.util.*;
 import java.util.List;
 import java.util.stream.Collectors;
 
+/**
+ * Dialog for deduplicating models.
+ */
 public class DeduplicationDialog extends JDialog {
     private final ConfigService configService;
     private final IModelValidator modelValidator;
@@ -26,6 +31,13 @@ public class DeduplicationDialog extends JDialog {
     private final JButton deduplicateBtn;
     private final Map<String, List<Path>> duplicateGroups = new HashMap<>();
     
+    /**
+     * Constructs a new DeduplicationDialog.
+     * @param owner the owner frame
+     * @param configService configuration service
+     * @param modelValidator validator service
+     * @param hashRegistry hash registry
+     */
     public DeduplicationDialog(Frame owner, ConfigService configService, IModelValidator modelValidator, ModelHashRegistry hashRegistry) {
         super(owner, "SHA-256 Deduplication Finder & Storage Optimizer", true);
         this.configService = configService;
@@ -155,7 +167,7 @@ public class DeduplicationDialog extends JDialog {
                         }
                         for (Map.Entry<String, List<Path>> fullEntry : fullHashGroups.entrySet()) {
                             if (fullEntry.getValue().size() > 1) {
-                                exactDuplicates.put(fullEntry.getKey(), fullEntry.getValue());
+                                ((JSONObject) exactDuplicates).put(fullEntry.getKey(), fullEntry.getValue());
                             }
                         }
                     }
@@ -185,7 +197,7 @@ public class DeduplicationDialog extends JDialog {
                     SwingUtilities.invokeLater(() -> deduplicateBtn.setEnabled(true));
                 }
 
-            } catch (Exception ex) {
+            } catch (java.io.IOException | RuntimeException ex) {
                 updateLog("❌ Error: " + ex.getMessage());
             } finally {
                 configService.setFastHashEnabled(wasFastHashEnabled);
@@ -233,7 +245,7 @@ public class DeduplicationDialog extends JDialog {
                     }
                 }
                 updateLog(String.format("\n✅ Success! Deduplicated %d files.\nSaved %.2f GB of SSD storage!", count, totalSaved / (1024.0 * 1024.0 * 1024.0)));
-            } catch (Exception ex) {
+            } catch (java.io.IOException | RuntimeException ex) {
                 updateLog("❌ Error during deduplication: " + ex.getMessage());
             } finally {
                 SwingUtilities.invokeLater(() -> scanBtn.setEnabled(true));

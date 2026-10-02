@@ -12,6 +12,9 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Dialog for managing automatic updates.
+ */
 public class AutoUpdaterDialog extends JDialog {
     private final UpdaterService updaterService;
     private final JTable table;
@@ -21,6 +24,11 @@ public class AutoUpdaterDialog extends JDialog {
     private final JButton updateBtn;
     private List<RepoStatus> repoList = new ArrayList<>();
 
+    /**
+     * Constructs a new AutoUpdaterDialog.
+     * @param owner the owner frame
+     * @param updaterService the service for updates
+     */
     public AutoUpdaterDialog(Frame owner, UpdaterService updaterService) {
         super(owner, "ComfyUI & Custom Nodes Auto-Updater", true);
         this.updaterService = updaterService;
@@ -131,7 +139,7 @@ public class AutoUpdaterDialog extends JDialog {
                     scanBtn.setEnabled(true);
                     updateBtn.setEnabled(!repos.isEmpty());
                 });
-            } catch (Exception ex) {
+            } catch (RuntimeException ex) {
                 SwingUtilities.invokeLater(() -> {
                     logArea.append("❌ Scan failed: " + ex.getMessage() + "\n");
                     scanBtn.setEnabled(true);
@@ -171,7 +179,7 @@ public class AutoUpdaterDialog extends JDialog {
                     scanBtn.setEnabled(true);
                     updateBtn.setEnabled(true);
                 });
-            } catch (Exception ex) {
+            } catch (RuntimeException ex) {
                 SwingUtilities.invokeLater(() -> {
                     logArea.append("❌ Update process error: " + ex.getMessage() + "\n");
                     scanBtn.setEnabled(true);

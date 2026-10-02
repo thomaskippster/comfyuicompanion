@@ -91,7 +91,8 @@ public class StabilityEdgeCaseTest {
                 return (HttpResponse<T>) new MockHttpResponse<InputStream>(206, new ByteArrayInputStream(remainingData), 20000);
             }
         };
-        ReflectionTestUtils.setField(downloadManager, "httpClient", mockClient);
+        Object engine = ReflectionTestUtils.getField(downloadManager, "segmentedEngine");
+        ReflectionTestUtils.setField(engine, "httpClient", mockClient);
 
         ModelInfo model = new ModelInfo("checkpoints", "resume.safetensors", "http://example.com/resume.safetensors");
         AtomicReference<String> lastStatus = new AtomicReference<>("");
@@ -117,7 +118,8 @@ public class StabilityEdgeCaseTest {
                 return (HttpResponse<T>) new MockHttpResponse<Void>(200, null, 1000L * 1024 * 1024 * 1024 * 1024);
             }
         };
-        ReflectionTestUtils.setField(downloadManager, "httpClient", mockClient);
+        Object engine = ReflectionTestUtils.getField(downloadManager, "segmentedEngine");
+        ReflectionTestUtils.setField(engine, "httpClient", mockClient);
 
         ModelInfo model = new ModelInfo("checkpoints", "huge_model.safetensors", "http://example.com/huge.safetensors");
         AtomicReference<String> lastStatus = new AtomicReference<>("");
@@ -161,7 +163,8 @@ public class StabilityEdgeCaseTest {
                 return (HttpResponse<T>) new MockHttpResponse<InputStream>(200, pin, 10000);
             }
         };
-        ReflectionTestUtils.setField(downloadManager, "httpClient", mockClient);
+        Object engine = ReflectionTestUtils.getField(downloadManager, "segmentedEngine");
+        ReflectionTestUtils.setField(engine, "httpClient", mockClient);
 
         ModelInfo model = new ModelInfo("checkpoints", "concurrent.safetensors", "http://example.com/concurrent.safetensors");
         AtomicReference<String> lastStatus = new AtomicReference<>("");

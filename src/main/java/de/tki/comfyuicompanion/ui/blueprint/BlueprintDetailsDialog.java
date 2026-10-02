@@ -394,39 +394,78 @@ public class BlueprintDetailsDialog extends JDialog {
                             SwingUtilities.invokeLater(() -> btnSendToComfy.setText("Sending..."));
                             String jsonContent = java.nio.file.Files.readString(file.toPath());
                             boolean isUIFormatDetected = false;
-                            String payloadToSend = jsonContent;
+                            org.json.JSONObject parsedObj = null;
                             try {
-                                org.json.JSONObject obj = new org.json.JSONObject(jsonContent);
-                                if (obj.has("nodes") || obj.has("last_node_id")) {
+                                parsedObj = new org.json.JSONObject(jsonContent);
+                                if (parsedObj.has("nodes") || parsedObj.has("last_node_id")) {
                                     isUIFormatDetected = true;
-                                } else if (!obj.has("prompt")) {
-                                    payloadToSend = new org.json.JSONObject().put("prompt", obj).toString();
                                 }
                             } catch (Exception ignored) {}
-                            final boolean isUIFormat = isUIFormatDetected;
 
                             String comfyUrl = configService.getComfyUIUrl();
                             if (comfyUrl.endsWith("/")) {
                                 comfyUrl = comfyUrl.substring(0, comfyUrl.length() - 1);
                             }
-                            String targetEndpoint = isUIFormat ? comfyUrl + "/bridge/load-workflow" : comfyUrl + "/prompt";
-
-                            HttpRequest request = HttpRequest.newBuilder()
-                                    .uri(URI.create(targetEndpoint))
-                                    .header("Content-Type", "application/json")
-                                    .POST(HttpRequest.BodyPublishers.ofString(payloadToSend))
-                                    .build();
 
                             HttpClient client = HttpClient.newHttpClient();
-                            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+                            HttpResponse<String> response = null;
+                            boolean loadedViaBridge = false;
+
+                            if (isUIFormatDetected && parsedObj != null) {
+                                // 1. Attempt sending to ComfyUI Bridge to load into canvas UI
+                                try {
+                                    org.json.JSONObject bridgePayload = new org.json.JSONObject();
+                                    bridgePayload.put("workflow", parsedObj);
+
+                                    HttpRequest bridgeRequest = HttpRequest.newBuilder()
+                                            .uri(URI.create(comfyUrl + "/cmfc/load-workflow"))
+                                            .header("Content-Type", "application/json")
+                                            .POST(HttpRequest.BodyPublishers.ofString(bridgePayload.toString()))
+                                            .build();
+                                    response = client.send(bridgeRequest, HttpResponse.BodyHandlers.ofString());
+                                    if (response.statusCode() >= 200 && response.statusCode() < 300) {
+                                        loadedViaBridge = true;
+                                    }
+                                } catch (Exception bridgeEx) {
+                                    logger.warn("ComfyUI bridge request failed, attempting direct prompt queue fallback: {}", bridgeEx.getMessage());
+                                }
+                            }
+
+                            // 2. If not loaded via bridge or was API format, send directly to /prompt
+                            if (!loadedViaBridge && (response == null || response.statusCode() == 404 || response.statusCode() == 405 || !isUIFormatDetected)) {
+                                org.json.JSONObject promptPayload = new org.json.JSONObject();
+                                if (parsedObj != null) {
+                                    if (parsedObj.has("nodes")) {
+                                        org.json.JSONObject flattened = de.tki.comfyuicompanion.service.impl.ComfyPipelineService.flattenWorkflow(parsedObj);
+                                        org.json.JSONObject apiPayload = de.tki.comfyuicompanion.service.impl.ComfyPipelineService.convertUiToApi(flattened);
+                                        promptPayload.put("prompt", apiPayload.getJSONObject("prompt"));
+                                    } else if (parsedObj.has("prompt")) {
+                                        promptPayload.put("prompt", parsedObj.get("prompt"));
+                                    } else {
+                                        promptPayload.put("prompt", parsedObj);
+                                    }
+                                } else {
+                                    promptPayload.put("prompt", new org.json.JSONObject(jsonContent));
+                                }
+
+                                HttpRequest promptRequest = HttpRequest.newBuilder()
+                                        .uri(URI.create(comfyUrl + "/prompt"))
+                                        .header("Content-Type", "application/json")
+                                        .POST(HttpRequest.BodyPublishers.ofString(promptPayload.toString()))
+                                        .build();
+                                response = client.send(promptRequest, HttpResponse.BodyHandlers.ofString());
+                            }
+
+                            final HttpResponse<String> finalResponse = response;
+                            final boolean finalLoadedViaBridge = loadedViaBridge;
 
                             SwingUtilities.invokeLater(() -> {
                                 btnSendToComfy.setEnabled(true);
                                 btnSendToComfy.setText("Send to ComfyUI");
                                 btnSendToComfy.setIcon(SvgIconFactory.get(AppIcon.SEND));
 
-                                if (response.statusCode() >= 200 && response.statusCode() < 300) {
-                                    if (isUIFormat) {
+                                if (finalResponse != null && finalResponse.statusCode() >= 200 && finalResponse.statusCode() < 300) {
+                                    if (finalLoadedViaBridge) {
                                         JOptionPane.showMessageDialog(this,
                                                 "Workflow successfully loaded into ComfyUI browser tab!",
                                                 "Success", JOptionPane.INFORMATION_MESSAGE);
@@ -437,16 +476,11 @@ public class BlueprintDetailsDialog extends JDialog {
                                     }
                                     dispose();
                                 } else {
-                                    if (isUIFormat && response.statusCode() == 404) {
-                                        JOptionPane.showMessageDialog(this,
-                                                "ComfyUI Bridge is not installed or outdated.\n" +
-                                                        "Please install/update the ComfyUI Bridge in Settings -> Install ComfyUI Bridge.",
-                                                "Bridge Not Found", JOptionPane.WARNING_MESSAGE);
-                                    } else {
-                                        JOptionPane.showMessageDialog(this,
-                                                "Failed to send to ComfyUI.\nStatus: " + response.statusCode() + "\nResponse: " + response.body(),
-                                                "Error", JOptionPane.ERROR_MESSAGE);
-                                    }
+                                    int code = finalResponse != null ? finalResponse.statusCode() : 0;
+                                    String respBody = finalResponse != null ? finalResponse.body() : "No response";
+                                    JOptionPane.showMessageDialog(this,
+                                            "Failed to send to ComfyUI.\nStatus: " + code + "\nResponse: " + respBody,
+                                            "Error", JOptionPane.ERROR_MESSAGE);
                                 }
                             });
                         } catch (Exception ex) {

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import de.tki.comfyuicompanion.domain.CivitaiGenerationResult;
 import de.tki.comfyuicompanion.domain.CivitaiModelEntry;
 import de.tki.comfyuicompanion.domain.ModelArchitecture;
 import de.tki.comfyuicompanion.domain.ModelFolder;
@@ -461,7 +462,7 @@ public class CivitaiOperationalModelService implements ICivitaiOperationalModelS
     }
 
     @Override
-    public CompletableFuture<Boolean> sendToComfyUIAndGenerate(CivitaiModelEntry entry, List<ModelInfo> requiredModels, String userPrompt) {
+    public CompletableFuture<CivitaiGenerationResult> sendToComfyUIAndGenerate(CivitaiModelEntry entry, List<ModelInfo> requiredModels, String userPrompt) {
         return CompletableFuture.supplyAsync(() -> {
             try {
                 // Fail-fast verification: Ensure all required models are physically present on disk
@@ -517,14 +518,34 @@ public class CivitaiOperationalModelService implements ICivitaiOperationalModelS
 
                 // 3. Submit directly to /prompt queue
                 HttpResponse<String> promptResponse = comfyApiClient.postPrompt(comfyUrl, workflowJson);
-                if (promptResponse != null && promptResponse.statusCode() >= 200 && promptResponse.statusCode() < 300) {
-                    log.info("Successfully queued Civitai generation in ComfyUI for {}", entry.name());
-                    return true;
-                } else {
+                if (promptResponse == null || promptResponse.statusCode() < 200 || promptResponse.statusCode() >= 300) {
                     int status = promptResponse != null ? promptResponse.statusCode() : 0;
                     String body = promptResponse != null ? promptResponse.body() : "No response";
                     throw new IOException("ComfyUI /prompt rejected submission (HTTP " + status + "): " + body);
                 }
+
+                JsonNode resNode = objectMapper.readTree(promptResponse.body());
+                String promptId = resNode.path("prompt_id").asText("");
+                log.info("Successfully queued Civitai generation with prompt_id {} for {}", promptId, entry.name());
+
+                // 4. Poll ComfyUI for generation completion (up to 90 seconds)
+                ComfyApiClient.ImageOutput imgOutput = null;
+                int maxAttempts = 180; // 180 * 500ms = 90s
+                for (int i = 0; i < maxAttempts; i++) {
+                    imgOutput = comfyApiClient.fetchPromptHistoryImage(comfyUrl, promptId);
+                    if (imgOutput != null) {
+                        break;
+                    }
+                    Thread.sleep(500);
+                }
+
+                if (imgOutput != null) {
+                    String imgUrl = comfyUrl + "/view?filename=" + imgOutput.filename() + "&subfolder=" + imgOutput.subfolder() + "&type=" + imgOutput.type();
+                    log.info("Civitai generation finished successfully: {}", imgOutput.filename());
+                    return CivitaiGenerationResult.success(promptId, imgOutput.filename(), imgOutput.subfolder(), imgOutput.type(), imgUrl);
+                }
+
+                return CivitaiGenerationResult.success(promptId, null, null, null, null);
 
             } catch (Exception e) {
                 log.error("Failed sending workflow to ComfyUI: {}", e.getMessage(), e);

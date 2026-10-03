@@ -9,7 +9,7 @@ import java.util.concurrent.CompletableFuture;
 
 /**
  * Service managing operational model dependency resolution, workflow synthesis,
- * and direct generation dispatching to ComfyUI for models browsed in the Model Hub.
+ * and LiteGraph GUI workflow dispatching to ComfyUI for models browsed in the Model Hub.
  */
 public interface ICivitaiOperationalModelService {
 
@@ -47,6 +47,26 @@ public interface ICivitaiOperationalModelService {
     List<ModelInfo> getMissingModels(List<ModelInfo> requiredModels);
 
     /**
+     * Generates a LiteGraph-compatible GUI workflow JSON for the given model.
+     * Ready to be loaded onto the ComfyUI canvas so the user can enter their prompt manually.
+     *
+     * @param entry          the model entry
+     * @param requiredModels the list of operational models
+     * @return LiteGraph workflow JSON string ready for ComfyUI canvas display
+     */
+    String generateGuiWorkflowJson(CivitaiModelEntry entry, List<ModelInfo> requiredModels);
+
+    /**
+     * Sends the synthesized GUI workflow to ComfyUI canvas via {@code /cmfc/load-workflow},
+     * ensuring models are refreshed so the target model is selected and ready for prompt entry.
+     *
+     * @param entry          the model entry
+     * @param requiredModels the list of operational models
+     * @return a {@link CompletableFuture} completing with {@code true} on successful transmission
+     */
+    CompletableFuture<Boolean> sendWorkflowToComfyUI(CivitaiModelEntry entry, List<ModelInfo> requiredModels);
+
+    /**
      * Generates a fully configured, runnable ComfyUI API workflow JSON for the given model.
      * Supports both checkpoint and LoRA injection into architecture-specific templates.
      *
@@ -58,8 +78,7 @@ public interface ICivitaiOperationalModelService {
     String generateWorkflowJson(CivitaiModelEntry entry, List<ModelInfo> requiredModels, String userPrompt);
 
     /**
-     * Sends the synthesized workflow to ComfyUI (ensuring the server is started if offline),
-     * loads it into the canvas UI via the bridge, queues the generation prompt, and awaits image completion.
+     * Sends the synthesized workflow to ComfyUI, queues generation, and awaits image completion.
      *
      * @param entry          the model entry
      * @param requiredModels the list of operational models

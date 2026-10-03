@@ -1,5 +1,6 @@
 package de.tki.comfyuicompanion.service;
 
+import de.tki.comfyuicompanion.domain.CivitaiGenerationResult;
 import de.tki.comfyuicompanion.domain.CivitaiModelEntry;
 import de.tki.comfyuicompanion.domain.ModelInfo;
 
@@ -58,12 +59,12 @@ public interface ICivitaiOperationalModelService {
 
     /**
      * Sends the synthesized workflow to ComfyUI (ensuring the server is started if offline),
-     * loads it into the canvas UI via the bridge, and queues the generation prompt.
+     * loads it into the canvas UI via the bridge, queues the generation prompt, and awaits image completion.
      *
      * @param entry          the model entry
      * @param requiredModels the list of operational models
      * @param userPrompt     optional custom positive prompt text
-     * @return a {@link CompletableFuture} completing with {@code true} on successful queueing
+     * @return a {@link CompletableFuture} completing with {@link CivitaiGenerationResult}
      */
-    CompletableFuture<Boolean> sendToComfyUIAndGenerate(CivitaiModelEntry entry, List<ModelInfo> requiredModels, String userPrompt);
+    CompletableFuture<CivitaiGenerationResult> sendToComfyUIAndGenerate(CivitaiModelEntry entry, List<ModelInfo> requiredModels, String userPrompt);
 }

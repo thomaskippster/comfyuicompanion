@@ -1,5 +1,6 @@
 package de.tki.comfyuicompanion.ui.civitai;
 
+import de.tki.comfyuicompanion.domain.CivitaiGenerationResult;
 import de.tki.comfyuicompanion.domain.CivitaiModelEntry;
 import de.tki.comfyuicompanion.domain.ModelFolder;
 import de.tki.comfyuicompanion.domain.ModelInfo;
@@ -52,6 +53,7 @@ public class CivitaiModelDetailsDialog extends JDialog {
     private List<ModelInfo> requiredModels = new ArrayList<>();
     private DefaultTableModel tableModel;
     private JLabel summaryLabel;
+    private JLabel previewLabel;
     private JButton btnDownloadMissing;
     private JButton btnSendToComfy;
     private JTextArea promptArea;
@@ -160,7 +162,7 @@ public class CivitaiModelDetailsDialog extends JDialog {
         bodyPanel.setBorder(new EmptyBorder(0, 20, 10, 20));
 
         // Left Preview Image
-        JLabel previewLabel = new JLabel();
+        previewLabel = new JLabel();
         previewLabel.setPreferredSize(new Dimension(280, 380));
         previewLabel.setHorizontalAlignment(SwingConstants.CENTER);
         previewLabel.setBorder(BorderFactory.createLineBorder(darkMode ? new Color(50, 54, 68) : new Color(210, 215, 225)));
@@ -479,21 +481,43 @@ public class CivitaiModelDetailsDialog extends JDialog {
         }
 
         btnSendToComfy.setEnabled(false);
-        btnSendToComfy.setText("Starting & Sending to ComfyUI...");
+        btnSendToComfy.setText("Generating in ComfyUI... ⏳");
         btnSendToComfy.setIcon(SvgIconFactory.get(AppIcon.REFRESH, 14));
 
         String customPrompt = promptArea != null ? promptArea.getText().trim() : null;
 
         operationalModelService.sendToComfyUIAndGenerate(entry, requiredModels, customPrompt)
-                .thenAccept(success -> SwingUtilities.invokeLater(() -> {
+                .thenAccept(result -> SwingUtilities.invokeLater(() -> {
                     btnSendToComfy.setEnabled(true);
-                    btnSendToComfy.setText("Send to ComfyUI & Generate");
+                    btnSendToComfy.setText("Regenerate Image");
                     btnSendToComfy.setIcon(SvgIconFactory.get(AppIcon.LAUNCH, 14));
 
-                    JOptionPane.showMessageDialog(this,
-                            "Workflow for '" + entry.name() + "' successfully loaded into ComfyUI!\nGeneration prompt queued and running.",
-                            "ComfyUI Generation Started", JOptionPane.INFORMATION_MESSAGE);
-                    dispose();
+                    if (result != null && result.filename() != null && !result.filename().isBlank()) {
+                        // Load and display generated image in preview
+                        loadAsyncPreview(result.imageUrl(), previewLabel);
+
+                        String[] options = {"Open Image", "Open ComfyUI Browser", "Close"};
+                        int choice = JOptionPane.showOptionDialog(
+                                this,
+                                "Image successfully generated with '" + entry.name() + "'!\n\nFile: " + result.filename() + "\n(Preview updated in dialog)",
+                                "Generation Completed! ✅",
+                                JOptionPane.DEFAULT_OPTION,
+                                JOptionPane.INFORMATION_MESSAGE,
+                                SvgIconFactory.get(AppIcon.CHECK, 28),
+                                options,
+                                options[0]
+                        );
+
+                        if (choice == 0) {
+                            openGeneratedImage(result.filename());
+                        } else if (choice == 1) {
+                            openComfyUIBrowser();
+                        }
+                    } else {
+                        JOptionPane.showMessageDialog(this,
+                                "Workflow successfully queued in ComfyUI!\nPrompt ID: " + (result != null ? result.promptId() : "N/A"),
+                                "ComfyUI Queued", JOptionPane.INFORMATION_MESSAGE);
+                    }
                 }))
                 .exceptionally(ex -> {
                     SwingUtilities.invokeLater(() -> {
@@ -508,6 +532,28 @@ public class CivitaiModelDetailsDialog extends JDialog {
                     });
                     return null;
                 });
+    }
+
+    private void openGeneratedImage(String filename) {
+        try {
+            String comfyUrl = configService != null ? configService.getComfyUIUrl() : "http://127.0.0.1:8188";
+            if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
+                Desktop.getDesktop().browse(new URI(comfyUrl + "/view?filename=" + filename + "&type=output"));
+            }
+        } catch (Exception ex) {
+            logger.warn("Could not open generated image: {}", ex.getMessage());
+        }
+    }
+
+    private void openComfyUIBrowser() {
+        try {
+            String comfyUrl = configService != null ? configService.getComfyUIUrl() : "http://127.0.0.1:8188";
+            if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
+                Desktop.getDesktop().browse(new URI(comfyUrl));
+            }
+        } catch (Exception ex) {
+            logger.warn("Could not open ComfyUI browser: {}", ex.getMessage());
+        }
     }
 
     private void openCivitaiWebPage() {

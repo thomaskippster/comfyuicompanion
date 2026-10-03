@@ -25,6 +25,7 @@ import java.util.concurrent.CompletableFuture;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -235,7 +236,10 @@ class CivitaiOperationalModelServiceTest {
 
         HttpResponse<String> mockResponse = mock(HttpResponse.class);
         when(mockResponse.statusCode()).thenReturn(200);
+        when(mockResponse.body()).thenReturn("{\"prompt_id\": \"test-prompt-123\"}");
         when(comfyApiClient.postPrompt(anyString(), anyString())).thenReturn(mockResponse);
+        when(comfyApiClient.fetchPromptHistoryImage(anyString(), eq("test-prompt-123")))
+                .thenReturn(new ComfyApiClient.ImageOutput("landscape_001.png", "", "output"));
 
         CivitaiModelEntry entry = new CivitaiModelEntry(
                 404L,
@@ -255,9 +259,11 @@ class CivitaiOperationalModelServiceTest {
                 false
         );
 
-        CompletableFuture<Boolean> future = service.sendToComfyUIAndGenerate(entry, List.of(), "alpine mountains, majestic peaks");
-        Boolean success = future.get();
+        CompletableFuture<de.tki.comfyuicompanion.domain.CivitaiGenerationResult> future = service.sendToComfyUIAndGenerate(entry, List.of(), "alpine mountains, majestic peaks");
+        de.tki.comfyuicompanion.domain.CivitaiGenerationResult result = future.get();
 
-        assertThat(success).isTrue();
+        assertThat(result.success()).isTrue();
+        assertThat(result.promptId()).isEqualTo("test-prompt-123");
+        assertThat(result.filename()).isEqualTo("landscape_001.png");
     }
 }

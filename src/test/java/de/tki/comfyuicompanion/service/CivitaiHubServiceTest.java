@@ -13,6 +13,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.io.File;
 import java.io.IOException;
+import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -151,5 +152,90 @@ class CivitaiHubServiceTest {
         assertThat(installed).isFalse();
 
         Files.deleteIfExists(tempDir);
+    }
+
+    @Test
+    void shouldOmitPageParam_whenQueryIsPresent() {
+        URI uri = hubService.buildQueryUri("flux", "Checkpoint", "Flux.1 D", "Most Downloaded", 30, 2, false);
+
+        assertThat(uri.getQuery()).contains("query=flux");
+        assertThat(uri.getQuery()).doesNotContain("page=");
+        assertThat(uri.getQuery()).contains("types=Checkpoint");
+        assertThat(uri.getQuery()).contains("baseModels=Flux.1+D");
+        assertThat(uri.getQuery()).contains("sort=Most+Downloaded");
+        assertThat(uri.getQuery()).contains("nsfw=false");
+    }
+
+    @Test
+    void shouldIncludePageParam_whenQueryIsBlank() {
+        URI uri = hubService.buildQueryUri("", "All Types", "All Bases", "Highest Rated", 20, 3, true);
+
+        assertThat(uri.getQuery()).contains("page=3");
+        assertThat(uri.getQuery()).doesNotContain("query=");
+        assertThat(uri.getQuery()).doesNotContain("types=");
+        assertThat(uri.getQuery()).doesNotContain("baseModels=");
+        assertThat(uri.getQuery()).doesNotContain("nsfw=false");
+    }
+
+    @Test
+    void shouldCalculateThumbsRatingFallback_whenRatingIsZero() throws Exception {
+        String json = """
+                {
+                    "id": 55555,
+                    "name": "Thumbs Model",
+                    "type": "LORA",
+                    "stats": {
+                        "downloadCount": 120,
+                        "rating": 0.0,
+                        "thumbsUpCount": 9,
+                        "thumbsDownCount": 1
+                    },
+                    "modelVersions": [
+                        {
+                            "id": 111,
+                            "baseModel": "SDXL 1.0",
+                            "downloadUrl": "https://civitai.com/download/111",
+                            "files": [
+                                { "name": "thumbs_lora.safetensors", "sizeKB": 51200.0 }
+                            ]
+                        }
+                    ]
+                }
+                """;
+
+        CivitaiModelEntry entry = hubService.parseModelEntry(objectMapper.readTree(json));
+
+        assertThat(entry).isNotNull();
+        assertThat(entry.rating()).isEqualTo(4.5);
+    }
+
+    @Test
+    void shouldFallbackToRootImages_whenVersionImagesAreMissing() throws Exception {
+        String json = """
+                {
+                    "id": 77777,
+                    "name": "Root Image Model",
+                    "type": "Checkpoint",
+                    "images": [
+                        { "url": "https://image.civitai.com/root_preview.jpg" }
+                    ],
+                    "modelVersions": [
+                        {
+                            "id": 222,
+                            "baseModel": "Flux.1 D",
+                            "downloadUrl": "https://civitai.com/download/222",
+                            "images": [],
+                            "files": [
+                                { "name": "root_img.safetensors", "sizeKB": 102400.0 }
+                            ]
+                        }
+                    ]
+                }
+                """;
+
+        CivitaiModelEntry entry = hubService.parseModelEntry(objectMapper.readTree(json));
+
+        assertThat(entry).isNotNull();
+        assertThat(entry.thumbnailUrl()).isEqualTo("https://image.civitai.com/root_preview.jpg");
     }
 }

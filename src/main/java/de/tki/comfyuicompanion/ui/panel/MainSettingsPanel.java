@@ -266,7 +266,7 @@ public class MainSettingsPanel {
         aiHeader.putClientProperty("FlatLaf.styleClass", "h3");
         aiHeader.setAlignmentX(Component.LEFT_ALIGNMENT);
 
-        JButton apiBtn = new JButton("Audio & TTS Settings...", SvgIconFactory.get(AppIcon.AUDIO));
+        JButton apiBtn = new JButton("API Keys & Services...", SvgIconFactory.get(AppIcon.AI));
         apiBtn.setFont(btnFont);
         apiBtn.setAlignmentX(Component.LEFT_ALIGNMENT);
         apiBtn.setMaximumSize(new Dimension(360, 40));

@@ -70,38 +70,10 @@ public class CivitaiHubService implements ICivitaiHubService {
             int page,
             boolean allowNsfw) {
 
-        StringBuilder urlBuilder = new StringBuilder(API_BASE);
-        urlBuilder.append("?limit=").append(Math.clamp(limit, 1, 100));
-        urlBuilder.append("&page=").append(Math.max(1, page));
-
-        if (query != null && !query.trim().isEmpty()) {
-            urlBuilder.append("&query=").append(URLEncoder.encode(query.trim(), StandardCharsets.UTF_8));
-        }
-
-        if (type != null && !type.trim().isEmpty() && !type.equalsIgnoreCase("All") && !type.equalsIgnoreCase("All Types")) {
-            urlBuilder.append("&types=").append(URLEncoder.encode(mapApiType(type.trim()), StandardCharsets.UTF_8));
-        }
-
-        if (baseModel != null && !baseModel.trim().isEmpty() && !baseModel.equalsIgnoreCase("All") && !baseModel.equalsIgnoreCase("All Bases")) {
-            urlBuilder.append("&baseModels=").append(URLEncoder.encode(baseModel.trim(), StandardCharsets.UTF_8));
-        }
-
-        if (sort != null && !sort.trim().isEmpty()) {
-            String apiSort = switch (sort.trim().toLowerCase()) {
-                case "most downloaded", "downloads" -> "Most Downloaded";
-                case "highest rated", "rating" -> "Highest Rated";
-                case "newest", "latest" -> "Newest";
-                default -> "Highest Rated";
-            };
-            urlBuilder.append("&sort=").append(URLEncoder.encode(apiSort, StandardCharsets.UTF_8));
-        }
-
-        if (!allowNsfw) {
-            urlBuilder.append("&nsfw=false");
-        }
+        URI uri = buildQueryUri(query, type, baseModel, sort, limit, page, allowNsfw);
 
         HttpRequest.Builder reqBuilder = HttpRequest.newBuilder()
-                .uri(URI.create(urlBuilder.toString()))
+                .uri(uri)
                 .header("Accept", "application/json")
                 .header("User-Agent", "ComfyUI-Companion/1.1.1 (Desktop)")
                 .timeout(Duration.ofSeconds(20))
@@ -135,6 +107,64 @@ public class CivitaiHubService implements ICivitaiHubService {
                     }
                     return entries;
                 });
+    }
+
+    /**
+     * Constructs the target Civitai API URI with sanitized query parameters.
+     * Civitai's API disallows combining the 'page' parameter with 'query' (which requires cursor-based pagination
+     * and otherwise responds with HTTP 400). Hence, 'page' is only included when 'query' is blank.
+     *
+     * @param query     Civitai search query text
+     * @param type      model category filter
+     * @param baseModel target base model architecture
+     * @param sort      sorting order
+     * @param limit     maximum number of items to return
+     * @param page      page number (used only when browsing without a query)
+     * @param allowNsfw whether NSFW content is permitted
+     * @return constructed URI
+     */
+    public URI buildQueryUri(
+            String query,
+            String type,
+            String baseModel,
+            String sort,
+            int limit,
+            int page,
+            boolean allowNsfw) {
+
+        StringBuilder urlBuilder = new StringBuilder(API_BASE);
+        urlBuilder.append("?limit=").append(Math.clamp(limit, 1, 100));
+
+        boolean hasQuery = query != null && !query.trim().isEmpty();
+        if (hasQuery) {
+            urlBuilder.append("&query=").append(URLEncoder.encode(query.trim(), StandardCharsets.UTF_8));
+        } else {
+            urlBuilder.append("&page=").append(Math.max(1, page));
+        }
+
+        if (type != null && !type.trim().isEmpty() && !type.equalsIgnoreCase("All") && !type.equalsIgnoreCase("All Types")) {
+            urlBuilder.append("&types=").append(URLEncoder.encode(mapApiType(type.trim()), StandardCharsets.UTF_8));
+        }
+
+        if (baseModel != null && !baseModel.trim().isEmpty() && !baseModel.equalsIgnoreCase("All") && !baseModel.equalsIgnoreCase("All Bases")) {
+            urlBuilder.append("&baseModels=").append(URLEncoder.encode(baseModel.trim(), StandardCharsets.UTF_8));
+        }
+
+        if (sort != null && !sort.trim().isEmpty()) {
+            String apiSort = switch (sort.trim().toLowerCase()) {
+                case "most downloaded", "downloads" -> "Most Downloaded";
+                case "highest rated", "rating" -> "Highest Rated";
+                case "newest", "latest" -> "Newest";
+                default -> "Highest Rated";
+            };
+            urlBuilder.append("&sort=").append(URLEncoder.encode(apiSort, StandardCharsets.UTF_8));
+        }
+
+        if (!allowNsfw) {
+            urlBuilder.append("&nsfw=false");
+        }
+
+        return URI.create(urlBuilder.toString());
     }
 
     @Override
@@ -189,7 +219,14 @@ public class CivitaiHubService implements ICivitaiHubService {
         return info;
     }
 
-    private CivitaiModelEntry parseModelEntry(JsonNode item) {
+    /**
+     * Parses a single Civitai model JSON node into a domain {@link CivitaiModelEntry}.
+     * Handles thumbs-based rating fallback and resolves thumbnails and file metadata.
+     *
+     * @param item the raw JSON node from the Civitai API models list or item response
+     * @return the parsed model entry, or {@code null} if the item cannot be converted
+     */
+    public CivitaiModelEntry parseModelEntry(JsonNode item) {
         try {
             long id = item.path("id").asLong(0);
             String name = item.path("name").asText("Unnamed Model");
@@ -199,6 +236,14 @@ public class CivitaiHubService implements ICivitaiHubService {
             boolean nsfw = item.path("nsfw").asBoolean(false);
             int downloadCount = item.path("stats").path("downloadCount").asInt(0);
             double rating = item.path("stats").path("rating").asDouble(0.0);
+            if (rating <= 0.0) {
+                int thumbsUp = item.path("stats").path("thumbsUpCount").asInt(0);
+                int thumbsDown = item.path("stats").path("thumbsDownCount").asInt(0);
+                int totalThumbs = thumbsUp + thumbsDown;
+                if (totalThumbs > 0) {
+                    rating = Math.round((5.0 * thumbsUp / (double) totalThumbs) * 10.0) / 10.0;
+                }
+            }
 
             JsonNode versions = item.path("modelVersions");
             if (!versions.isArray() || versions.isEmpty()) {
@@ -223,6 +268,9 @@ public class CivitaiHubService implements ICivitaiHubService {
             JsonNode images = primaryVersion.path("images");
             if (images.isArray() && !images.isEmpty()) {
                 thumbnailUrl = images.get(0).path("url").asText(null);
+            }
+            if (thumbnailUrl == null && item.path("images").isArray() && !item.path("images").isEmpty()) {
+                thumbnailUrl = item.path("images").get(0).path("url").asText(null);
             }
 
             String filename = name.replaceAll("[^a-zA-Z0-9_.-]", "_") + ".safetensors";

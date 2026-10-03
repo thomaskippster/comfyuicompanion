@@ -47,24 +47,50 @@ public interface ICivitaiOperationalModelService {
     List<ModelInfo> getMissingModels(List<ModelInfo> requiredModels);
 
     /**
-     * Generates a LiteGraph-compatible GUI workflow JSON for the given model.
+     * Generates a LiteGraph-compatible GUI workflow JSON for the given model with default trigger words.
      * Ready to be loaded onto the ComfyUI canvas so the user can enter their prompt manually.
      *
      * @param entry          the model entry
      * @param requiredModels the list of operational models
      * @return LiteGraph workflow JSON string ready for ComfyUI canvas display
      */
-    String generateGuiWorkflowJson(CivitaiModelEntry entry, List<ModelInfo> requiredModels);
+    default String generateGuiWorkflowJson(CivitaiModelEntry entry, List<ModelInfo> requiredModels) {
+        return generateGuiWorkflowJson(entry, requiredModels, null);
+    }
+
+    /**
+     * Generates a LiteGraph-compatible GUI workflow JSON for the given model, pre-populating
+     * the positive prompt node with the specified user prompt.
+     *
+     * @param entry          the model entry
+     * @param requiredModels the list of operational models
+     * @param userPrompt     optional custom positive prompt text
+     * @return LiteGraph workflow JSON string ready for ComfyUI canvas display
+     */
+    String generateGuiWorkflowJson(CivitaiModelEntry entry, List<ModelInfo> requiredModels, String userPrompt);
 
     /**
      * Sends the synthesized GUI workflow to ComfyUI canvas via {@code /cmfc/load-workflow},
-     * ensuring models are refreshed so the target model is selected and ready for prompt entry.
+     * using default prompt/trigger words.
      *
      * @param entry          the model entry
      * @param requiredModels the list of operational models
      * @return a {@link CompletableFuture} completing with {@code true} on successful transmission
      */
-    CompletableFuture<Boolean> sendWorkflowToComfyUI(CivitaiModelEntry entry, List<ModelInfo> requiredModels);
+    default CompletableFuture<Boolean> sendWorkflowToComfyUI(CivitaiModelEntry entry, List<ModelInfo> requiredModels) {
+        return sendWorkflowToComfyUI(entry, requiredModels, null);
+    }
+
+    /**
+     * Sends the synthesized GUI workflow to ComfyUI canvas via {@code /cmfc/load-workflow},
+     * embedding the custom user prompt into the positive prompt node on the canvas.
+     *
+     * @param entry          the model entry
+     * @param requiredModels the list of operational models
+     * @param userPrompt     optional custom positive prompt text
+     * @return a {@link CompletableFuture} completing with {@code true} on successful transmission
+     */
+    CompletableFuture<Boolean> sendWorkflowToComfyUI(CivitaiModelEntry entry, List<ModelInfo> requiredModels, String userPrompt);
 
     /**
      * Generates a fully configured, runnable ComfyUI API workflow JSON for the given model.

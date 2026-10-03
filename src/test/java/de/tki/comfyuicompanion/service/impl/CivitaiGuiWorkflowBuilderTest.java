@@ -141,6 +141,35 @@ class CivitaiGuiWorkflowBuilderTest {
         assertThat(links.size()).isEqualTo(11);
     }
 
+    @Test
+    @DisplayName("Should inject custom user prompt into Positive Prompt node widgets_values")
+    void shouldInjectCustomUserPrompt_whenSpecified() {
+        CivitaiModelEntry entry = new CivitaiModelEntry(
+                3003L,
+                "Anime Character",
+                "Checkpoint",
+                "ArtistC",
+                "SD 1.5",
+                "Anime style",
+                "https://example.com/thumb.jpg",
+                "https://example.com/dl",
+                "anime_char.safetensors",
+                "2.0 GB",
+                2000000000L,
+                800,
+                4.9,
+                List.of("default trigger"),
+                false
+        );
+
+        String customPrompt = "1girl, silver hair, blue eyes, magical aura, detailed anime portrait";
+        ObjectNode workflow = builder.buildGuiWorkflow(entry, List.of(), customPrompt);
+
+        JsonNode posNode = findNodeById(workflow.get("nodes"), 6);
+        assertThat(posNode).isNotNull();
+        assertThat(posNode.path("widgets_values").get(0).asText()).isEqualTo(customPrompt);
+    }
+
     private JsonNode findNodeById(JsonNode nodes, int id) {
         for (JsonNode n : nodes) {
             if (n.path("id").asInt() == id) {

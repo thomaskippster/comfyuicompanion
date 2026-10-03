@@ -10,6 +10,7 @@ import de.tki.comfyuicompanion.domain.ModelInfo;
 import de.tki.comfyuicompanion.service.*;
 import de.tki.comfyuicompanion.service.impl.*;
 import de.tki.comfyuicompanion.ui.*;
+import de.tki.comfyuicompanion.ui.civitai.CivitaiGalleryTab;
 import de.tki.comfyuicompanion.ui.dialog.MainDialogCoordinator;
 import de.tki.comfyuicompanion.util.BackgroundExecutor;
 import de.tki.comfyuicompanion.util.PlatformUtils;
@@ -71,6 +72,7 @@ public class Main extends JFrame {
     private UpdaterService updaterService;
     private VideoArchitectTab videoArchitectTab;
     private BlueprintGalleryTab blueprintGalleryTab;
+    private CivitaiGalleryTab civitaiGalleryTab;
     private DependencyService dependencyService;
     private BackgroundExecutor backgroundExecutor;
     private ProcessTracker processTracker;
@@ -126,7 +128,7 @@ public class Main extends JFrame {
         this(analyzer, downloadManager, workflowService, searchService, modelValidator, restBridge,
              archiveService, lifecycleService, diagnosticService, profileManager, bootstrapper, processController,
              civitaiService, huggingFaceService,
-             null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
+             null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
     }
 
     @Autowired
@@ -148,6 +150,7 @@ public class Main extends JFrame {
                 @Autowired(required = false) UpdaterService updaterService,
                 @Autowired(required = false) VideoArchitectTab videoArchitectTab,
                 @Autowired(required = false) BlueprintGalleryTab blueprintGalleryTab,
+                @Autowired(required = false) CivitaiGalleryTab civitaiGalleryTab,
                 @Autowired(required = false) DependencyService dependencyService,
                 @Autowired(required = false) BackgroundExecutor backgroundExecutor,
                 @Autowired(required = false) ProcessTracker processTracker,
@@ -189,6 +192,7 @@ public class Main extends JFrame {
         this.updaterService = updaterService;
         this.videoArchitectTab = videoArchitectTab;
         this.blueprintGalleryTab = blueprintGalleryTab;
+        this.civitaiGalleryTab = civitaiGalleryTab;
         this.dependencyService = dependencyService;
         this.backgroundExecutor = backgroundExecutor;
         this.processTracker = processTracker;
@@ -299,7 +303,7 @@ public class Main extends JFrame {
         MainWindowBuilder builder = new MainWindowBuilder(this, configService, profileManager, lifecycleService,
                 updaterService, hashRegistry, modelValidator, civitaiService, downloadManager,
                 modelArchitectureService, processController, backgroundExecutor, localAIService,
-                comfyApiClient, blueprintGalleryTab, videoArchitectTab, promptLabView,
+                comfyApiClient, blueprintGalleryTab, civitaiGalleryTab, videoArchitectTab, promptLabView,
                 promptLabController, downloadManagerView, downloadManagerController);
         
         builder.buildUI(uiComponents, 
@@ -327,7 +331,7 @@ public class Main extends JFrame {
 
     public void setupTheme(boolean darkMode) {
         if (uiComponents != null) {
-            MainWindowBuilder.setupTheme(darkMode, uiComponents, this, videoArchitectTab, blueprintGalleryTab, downloadManagerView, promptLabView);
+            MainWindowBuilder.setupTheme(darkMode, uiComponents, this, videoArchitectTab, blueprintGalleryTab, civitaiGalleryTab, downloadManagerView, promptLabView);
         } else {
             try {
                 ThemeManager.applyTheme(darkMode);
@@ -389,6 +393,8 @@ public class Main extends JFrame {
             uiComponents.mainTabs.addTab("Gallery", de.tki.comfyuicompanion.ui.icons.SvgIconFactory.get(de.tki.comfyuicompanion.ui.icons.AppIcon.GALLERY, 16), uiComponents.galleryPanel);
         if (configService.isBlueprintGalleryEnabled() && uiComponents.blueprintGalleryWrapper != null)
             uiComponents.mainTabs.addTab("Blueprint Gallery", de.tki.comfyuicompanion.ui.icons.SvgIconFactory.get(de.tki.comfyuicompanion.ui.icons.AppIcon.BLUEPRINT_GALLERY, 16), uiComponents.blueprintGalleryWrapper);
+        if (configService.isCivitaiGalleryEnabled() && uiComponents.civitaiHubWrapper != null)
+            uiComponents.mainTabs.addTab("Model Hub", de.tki.comfyuicompanion.ui.icons.SvgIconFactory.get(de.tki.comfyuicompanion.ui.icons.AppIcon.MODEL_HUB, 16), uiComponents.civitaiHubWrapper);
         if (configService.isPromptLabEnabled() && uiComponents.promptLabPanel != null)
             uiComponents.mainTabs.addTab("Image Lab", de.tki.comfyuicompanion.ui.icons.SvgIconFactory.get(de.tki.comfyuicompanion.ui.icons.AppIcon.IMAGE_LAB, 16), uiComponents.promptLabPanel);
         if (configService.isVideoArchitectEnabled() && uiComponents.videoArchitectWrapper != null)

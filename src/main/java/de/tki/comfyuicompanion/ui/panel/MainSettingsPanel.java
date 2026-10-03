@@ -31,6 +31,7 @@ public class MainSettingsPanel {
     private JCheckBox promptLabCheck;
     private JCheckBox videoArchitectCheck;
     private JCheckBox blueprintGalleryCheck;
+    private JCheckBox civitaiHubCheck;
 
     private JPanel blueprintPanel;
     private JLabel blueprintStatusLabel;
@@ -208,6 +209,16 @@ public class MainSettingsPanel {
             }
         });
 
+        civitaiHubCheck = new JCheckBox("Enable Civitai Model Hub");
+        civitaiHubCheck.setFont(checkFont);
+        civitaiHubCheck.setAlignmentX(Component.LEFT_ALIGNMENT);
+        civitaiHubCheck.addActionListener(e -> {
+            configService.setCivitaiGalleryEnabled(civitaiHubCheck.isSelected());
+            if (onTabVisibilityChanged != null) {
+                onTabVisibilityChanged.run();
+            }
+        });
+
         checksPanel.add(backgroundCheck);
         checksPanel.add(Box.createVerticalStrut(8));
         checksPanel.add(shutdownCheck);
@@ -225,6 +236,8 @@ public class MainSettingsPanel {
         checksPanel.add(videoArchitectCheck);
         checksPanel.add(Box.createVerticalStrut(8));
         checksPanel.add(blueprintGalleryCheck);
+        checksPanel.add(Box.createVerticalStrut(8));
+        checksPanel.add(civitaiHubCheck);
 
         left.add(pathsHeader);
         left.add(Box.createVerticalStrut(20));
@@ -390,6 +403,7 @@ public class MainSettingsPanel {
         if (promptLabCheck != null) promptLabCheck.setSelected(configService.isPromptLabEnabled());
         if (videoArchitectCheck != null) videoArchitectCheck.setSelected(configService.isVideoArchitectEnabled());
         if (blueprintGalleryCheck != null) blueprintGalleryCheck.setSelected(configService.isBlueprintGalleryEnabled());
+        if (civitaiHubCheck != null) civitaiHubCheck.setSelected(configService.isCivitaiGalleryEnabled());
     }
 
     public JCheckBox getBackgroundCheck() { return backgroundCheck; }
@@ -402,6 +416,7 @@ public class MainSettingsPanel {
     public JCheckBox getPromptLabCheck() { return promptLabCheck; }
     public JCheckBox getVideoArchitectCheck() { return videoArchitectCheck; }
     public JCheckBox getBlueprintGalleryCheck() { return blueprintGalleryCheck; }
+    public JCheckBox getCivitaiHubCheck() { return civitaiHubCheck; }
     public JPanel getBlueprintPanel() { return blueprintPanel; }
     public JLabel getBlueprintStatusLabel() { return blueprintStatusLabel; }
     public JProgressBar getBlueprintBar() { return blueprintBar; }

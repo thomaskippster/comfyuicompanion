@@ -121,6 +121,20 @@ public interface IConfigService {
     boolean isBlueprintGalleryEnabled();
     void setBlueprintGalleryEnabled(boolean enabled);
     
+    /**
+     * Checks if the Civitai Model Hub gallery tab is enabled.
+     *
+     * @return true if enabled, false otherwise
+     */
+    boolean isCivitaiGalleryEnabled();
+
+    /**
+     * Configures whether the Civitai Model Hub gallery tab is enabled.
+     *
+     * @param enabled true to enable, false to disable
+     */
+    void setCivitaiGalleryEnabled(boolean enabled);
+    
     boolean isHideComfyUI();
     void setHideComfyUI(boolean enabled);
     

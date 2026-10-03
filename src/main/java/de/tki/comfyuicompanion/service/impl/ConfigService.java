@@ -500,11 +500,11 @@ public class ConfigService implements IConfigService {
     }
 
     /**
-     * Checks if the Civitai Model Hub gallery tab is enabled. Defaults to true.
+     * Checks if the Civitai Model Hub gallery tab is enabled. Defaults to false.
      *
      * @return true if enabled, false otherwise
      */
-    public synchronized boolean isCivitaiGalleryEnabled() { return persistentSettings.optBoolean("enable_civitai_gallery", true); }
+    public synchronized boolean isCivitaiGalleryEnabled() { return persistentSettings.optBoolean("enable_civitai_gallery", false); }
 
     /**
      * Updates persistent configuration for the Civitai Model Hub gallery tab.

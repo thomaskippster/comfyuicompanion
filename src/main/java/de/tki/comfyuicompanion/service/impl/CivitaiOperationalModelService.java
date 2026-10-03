@@ -291,12 +291,12 @@ public class CivitaiOperationalModelService implements ICivitaiOperationalModelS
     }
 
     @Override
-    public String generateGuiWorkflowJson(CivitaiModelEntry entry, List<ModelInfo> requiredModels) {
-        return guiWorkflowBuilder.buildGuiWorkflowJson(entry, requiredModels);
+    public String generateGuiWorkflowJson(CivitaiModelEntry entry, List<ModelInfo> requiredModels, String userPrompt) {
+        return guiWorkflowBuilder.buildGuiWorkflowJson(entry, requiredModels, userPrompt);
     }
 
     @Override
-    public CompletableFuture<Boolean> sendWorkflowToComfyUI(CivitaiModelEntry entry, List<ModelInfo> requiredModels) {
+    public CompletableFuture<Boolean> sendWorkflowToComfyUI(CivitaiModelEntry entry, List<ModelInfo> requiredModels, String userPrompt) {
         return CompletableFuture.supplyAsync(() -> {
             try {
                 // 1. Fail-fast verification: Ensure all required models are physically present on disk
@@ -330,8 +330,8 @@ public class CivitaiOperationalModelService implements ICivitaiOperationalModelS
                     log.debug("ComfyUI model refresh notification skipped: {}", ex.getMessage());
                 }
 
-                // 4. Synthesize GUI LiteGraph workflow
-                ObjectNode guiGraphNode = guiWorkflowBuilder.buildGuiWorkflow(entry, requiredModels);
+                // 4. Synthesize GUI LiteGraph workflow with custom user prompt
+                ObjectNode guiGraphNode = guiWorkflowBuilder.buildGuiWorkflow(entry, requiredModels, userPrompt);
 
                 // 5. Save copy to user_workflows directory for persistence
                 saveWorkflowToUserWorkflows(entry, guiGraphNode);

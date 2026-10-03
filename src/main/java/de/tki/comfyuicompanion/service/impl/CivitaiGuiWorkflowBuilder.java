@@ -47,7 +47,28 @@ public class CivitaiGuiWorkflowBuilder {
      * @param requiredModels the list of operational models resolved for this entry
      * @return an {@link ObjectNode} representing the complete LiteGraph diagram
      */
+    /**
+     * Builds a LiteGraph-compatible GUI workflow {@link ObjectNode} for the specified Civitai model entry,
+     * using the default trigger words or fallback prompt.
+     *
+     * @param entry          the Civitai model entry
+     * @param requiredModels the list of operational models resolved for this entry
+     * @return an {@link ObjectNode} representing the complete LiteGraph diagram
+     */
     public ObjectNode buildGuiWorkflow(CivitaiModelEntry entry, List<ModelInfo> requiredModels) {
+        return buildGuiWorkflow(entry, requiredModels, null);
+    }
+
+    /**
+     * Builds a LiteGraph-compatible GUI workflow {@link ObjectNode} for the specified Civitai model entry,
+     * embedding the provided user prompt into the positive prompt node.
+     *
+     * @param entry          the Civitai model entry
+     * @param requiredModels the list of operational models resolved for this entry
+     * @param userPrompt     optional custom positive prompt text to inject into the canvas graph
+     * @return an {@link ObjectNode} representing the complete LiteGraph diagram
+     */
+    public ObjectNode buildGuiWorkflow(CivitaiModelEntry entry, List<ModelInfo> requiredModels, String userPrompt) {
         String typeLower = entry != null && entry.type() != null ? entry.type().toLowerCase(Locale.ROOT) : "checkpoint";
         String baseLower = entry != null && entry.baseModel() != null ? entry.baseModel().toLowerCase(Locale.ROOT) : "";
         boolean isLora = typeLower.contains("lora") || typeLower.contains("locon");
@@ -98,10 +119,14 @@ public class CivitaiGuiWorkflowBuilder {
             cfg = 6.0;
         }
 
-        // Positive prompt starter (pre-fill trigger words if present)
-        String starterPrompt = "";
-        if (entry != null && entry.triggerWords() != null && !entry.triggerWords().isEmpty()) {
-            starterPrompt = String.join(", ", entry.triggerWords());
+        // Positive prompt resolution: custom prompt -> trigger words -> empty string
+        String effectivePrompt;
+        if (userPrompt != null && !userPrompt.isBlank()) {
+            effectivePrompt = userPrompt.trim();
+        } else if (entry != null && entry.triggerWords() != null && !entry.triggerWords().isEmpty()) {
+            effectivePrompt = String.join(", ", entry.triggerWords());
+        } else {
+            effectivePrompt = "";
         }
 
         ObjectNode root = objectMapper.createObjectNode();
@@ -111,11 +136,11 @@ public class CivitaiGuiWorkflowBuilder {
         long seed = Math.abs(ThreadLocalRandom.current().nextLong(1000000000L, 999999999999999L));
 
         if (!isLora) {
-            buildCheckpointGraph(nodes, links, baseModelFilename, starterPrompt, width, height, steps, cfg, samplerName, scheduler, seed);
+            buildCheckpointGraph(nodes, links, baseModelFilename, effectivePrompt, width, height, steps, cfg, samplerName, scheduler, seed);
             root.put("last_node_id", 9);
             root.put("last_link_id", 9);
         } else {
-            buildLoraGraph(nodes, links, baseModelFilename, primaryFilename, starterPrompt, width, height, steps, cfg, samplerName, scheduler, seed);
+            buildLoraGraph(nodes, links, baseModelFilename, primaryFilename, effectivePrompt, width, height, steps, cfg, samplerName, scheduler, seed);
             root.put("last_node_id", 10);
             root.put("last_link_id", 12);
         }
@@ -149,8 +174,21 @@ public class CivitaiGuiWorkflowBuilder {
      * @return pretty-printed JSON string of the LiteGraph diagram
      */
     public String buildGuiWorkflowJson(CivitaiModelEntry entry, List<ModelInfo> requiredModels) {
+        return buildGuiWorkflowJson(entry, requiredModels, null);
+    }
+
+    /**
+     * Builds and serializes the LiteGraph GUI workflow into pretty-printed JSON string format,
+     * including custom user prompt text.
+     *
+     * @param entry          the Civitai model entry
+     * @param requiredModels the list of operational models
+     * @param userPrompt     optional custom positive prompt text
+     * @return pretty-printed JSON string of the LiteGraph diagram
+     */
+    public String buildGuiWorkflowJson(CivitaiModelEntry entry, List<ModelInfo> requiredModels, String userPrompt) {
         try {
-            ObjectNode root = buildGuiWorkflow(entry, requiredModels);
+            ObjectNode root = buildGuiWorkflow(entry, requiredModels, userPrompt);
             return objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(root);
         } catch (Exception e) {
             log.error("Failed to serialize GUI workflow JSON: {}", e.getMessage(), e);

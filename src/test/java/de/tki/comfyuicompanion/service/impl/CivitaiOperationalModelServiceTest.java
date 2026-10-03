@@ -257,6 +257,20 @@ class CivitaiOperationalModelServiceTest {
         assertThat(root.has("links")).isTrue();
         assertThat(root.get("nodes").size()).isEqualTo(7);
         assertThat(root.path("last_node_id").asInt()).isEqualTo(9);
+
+        // Test with custom user prompt
+        String customPrompt = "cyberpunk street at night, neon reflections";
+        String guiJsonWithPrompt = service.generateGuiWorkflowJson(entry, List.of(), customPrompt);
+        JsonNode rootWithPrompt = objectMapper.readTree(guiJsonWithPrompt);
+        JsonNode promptNode = null;
+        for (JsonNode n : rootWithPrompt.get("nodes")) {
+            if (n.path("id").asInt() == 6) {
+                promptNode = n;
+                break;
+            }
+        }
+        assertThat(promptNode).isNotNull();
+        assertThat(promptNode.path("widgets_values").get(0).asText()).isEqualTo(customPrompt);
     }
 
     @Test

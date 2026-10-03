@@ -1,6 +1,5 @@
 package de.tki.comfyuicompanion.ui.civitai;
 
-import de.tki.comfyuicompanion.domain.CivitaiGenerationResult;
 import de.tki.comfyuicompanion.domain.CivitaiModelEntry;
 import de.tki.comfyuicompanion.domain.ModelFolder;
 import de.tki.comfyuicompanion.domain.ModelInfo;
@@ -34,7 +33,8 @@ import java.util.function.Consumer;
  * Enterprise modal inspection dialog for Civitai models, analogous to the Blueprint Details dialog.
  * Resolves all models required for operational execution (base models, VAE, CLIP, LoRAs),
  * displays a live dependency status table, enables one-click batch downloading of missing models,
- * and allows immediate "Send to ComfyUI" execution and prompt queueing.
+ * and allows immediate "Send to ComfyUI" GUI workflow canvas dispatching so the user can enter
+ * their prompt and adjust generation parameters directly inside the ComfyUI web interface.
  */
 public class CivitaiModelDetailsDialog extends JDialog {
 
@@ -56,7 +56,6 @@ public class CivitaiModelDetailsDialog extends JDialog {
     private JLabel previewLabel;
     private JButton btnDownloadMissing;
     private JButton btnSendToComfy;
-    private JTextArea promptArea;
 
     /**
      * Full-featured constructor with operational dependency resolution and ComfyUI generation dispatching.
@@ -105,8 +104,8 @@ public class CivitaiModelDetailsDialog extends JDialog {
     }
 
     private void initDialog() {
-        setSize(1080, 780);
-        setMinimumSize(new Dimension(850, 600));
+        setSize(1040, 720);
+        setMinimumSize(new Dimension(850, 560));
         setLocationRelativeTo(getOwner());
         setLayout(new BorderLayout(10, 10));
 
@@ -171,37 +170,16 @@ public class CivitaiModelDetailsDialog extends JDialog {
         loadAsyncPreview(entry.thumbnailUrl(), previewLabel);
         bodyPanel.add(previewLabel, BorderLayout.WEST);
 
-        // Right Workspace (Tabs / Dependency Table / Inputs)
+        // Right Workspace (Dependency Table / Trigger Words)
         JPanel rightCol = new JPanel();
         rightCol.setLayout(new BoxLayout(rightCol, BoxLayout.Y_AXIS));
         rightCol.setOpaque(false);
 
-        // Generation Prompt Area
-        JPanel promptBox = new JPanel(new BorderLayout(6, 4));
-        promptBox.setOpaque(false);
-        promptBox.setBorder(BorderFactory.createTitledBorder("Generation Prompt (Sent to ComfyUI)"));
-
-        String initialPrompt;
-        if (entry.triggerWords() != null && !entry.triggerWords().isEmpty()) {
-            initialPrompt = String.join(", ", entry.triggerWords()) + ", masterpiece, high quality, highly detailed";
-        } else {
-            initialPrompt = entry.name() + ", masterpiece, 8k resolution, best quality";
-        }
-        promptArea = new JTextArea(initialPrompt, 2, 40);
-        promptArea.setFont(new Font("SansSerif", Font.PLAIN, 12));
-        promptArea.setLineWrap(true);
-        promptArea.setWrapStyleWord(true);
-        JScrollPane promptScroll = new JScrollPane(promptArea);
-        promptScroll.setPreferredSize(new Dimension(500, 55));
-        promptBox.add(promptScroll, BorderLayout.CENTER);
-        rightCol.add(promptBox);
-        rightCol.add(Box.createVerticalStrut(8));
-
-        // Trigger words (if LoRA)
+        // Trigger words (if model provides them)
         if (entry.triggerWords() != null && !entry.triggerWords().isEmpty()) {
             JPanel triggerBox = new JPanel(new BorderLayout(8, 4));
             triggerBox.setOpaque(false);
-            triggerBox.setBorder(BorderFactory.createTitledBorder("Trigger Words (LoRA)"));
+            triggerBox.setBorder(BorderFactory.createTitledBorder("Trigger Words (LoRA / Concept)"));
 
             String joined = String.join(", ", entry.triggerWords());
             JTextField txtTriggers = new JTextField(joined);
@@ -219,7 +197,7 @@ public class CivitaiModelDetailsDialog extends JDialog {
             });
             triggerBox.add(copyBtn, BorderLayout.EAST);
             rightCol.add(triggerBox);
-            rightCol.add(Box.createVerticalStrut(8));
+            rightCol.add(Box.createVerticalStrut(10));
         }
 
         // Operational Models Status Table
@@ -273,7 +251,7 @@ public class CivitaiModelDetailsDialog extends JDialog {
         });
 
         JScrollPane tableScroll = new JScrollPane(table);
-        tableScroll.setPreferredSize(new Dimension(500, 160));
+        tableScroll.setPreferredSize(new Dimension(500, 220));
         tablePanel.add(tableScroll, BorderLayout.CENTER);
 
         summaryLabel = new JLabel(" ");
@@ -310,7 +288,7 @@ public class CivitaiModelDetailsDialog extends JDialog {
         btnDownloadMissing.addActionListener(e -> startMissingModelsDownload());
         buttonGroup.add(btnDownloadMissing);
 
-        btnSendToComfy = new JButton("Send to ComfyUI & Generate", SvgIconFactory.get(AppIcon.LAUNCH, 14));
+        btnSendToComfy = new JButton("Send to ComfyUI", SvgIconFactory.get(AppIcon.SEND, 14));
         btnSendToComfy.setFont(new Font("SansSerif", Font.BOLD, 12));
         btnSendToComfy.putClientProperty("JButton.buttonType", "accent");
         btnSendToComfy.addActionListener(e -> dispatchToComfyUI());
@@ -357,7 +335,7 @@ public class CivitaiModelDetailsDialog extends JDialog {
             btnDownloadMissing.setIcon(SvgIconFactory.get(AppIcon.CHECK, 14));
 
             btnSendToComfy.setEnabled(true);
-            btnSendToComfy.setToolTipText("Launch generation workflow directly into ComfyUI");
+            btnSendToComfy.setToolTipText("Load GUI workflow into ComfyUI canvas");
         } else {
             btnDownloadMissing.setEnabled(true);
             btnDownloadMissing.setText("Download Required Models (" + missingCount + " missing)");
@@ -466,7 +444,7 @@ public class CivitaiModelDetailsDialog extends JDialog {
             return;
         }
 
-        // Pre-flight check: ensure all required models are actually present on disk
+        // Pre-flight check: ensure all required models are physically present on disk
         List<ModelInfo> stillMissing = operationalModelService.getMissingModels(requiredModels);
         if (!stillMissing.isEmpty()) {
             StringBuilder sb = new StringBuilder("Cannot send workflow to ComfyUI. The following required models are missing on disk:\n\n");
@@ -481,49 +459,31 @@ public class CivitaiModelDetailsDialog extends JDialog {
         }
 
         btnSendToComfy.setEnabled(false);
-        btnSendToComfy.setText("Generating in ComfyUI... ⏳");
+        btnSendToComfy.setText("Sending to ComfyUI... ⏳");
         btnSendToComfy.setIcon(SvgIconFactory.get(AppIcon.REFRESH, 14));
 
-        String customPrompt = promptArea != null ? promptArea.getText().trim() : null;
-
-        operationalModelService.sendToComfyUIAndGenerate(entry, requiredModels, customPrompt)
-                .thenAccept(result -> SwingUtilities.invokeLater(() -> {
+        operationalModelService.sendWorkflowToComfyUI(entry, requiredModels)
+                .thenAccept(success -> SwingUtilities.invokeLater(() -> {
                     btnSendToComfy.setEnabled(true);
-                    btnSendToComfy.setText("Regenerate Image");
-                    btnSendToComfy.setIcon(SvgIconFactory.get(AppIcon.LAUNCH, 14));
+                    btnSendToComfy.setText("Send to ComfyUI");
+                    btnSendToComfy.setIcon(SvgIconFactory.get(AppIcon.SEND, 14));
 
-                    if (result != null && result.filename() != null && !result.filename().isBlank()) {
-                        // Load and display generated image in preview
-                        loadAsyncPreview(result.imageUrl(), previewLabel);
+                    openComfyUIBrowser();
 
-                        String[] options = {"Open Image", "Open ComfyUI Browser", "Close"};
-                        int choice = JOptionPane.showOptionDialog(
-                                this,
-                                "Image successfully generated with '" + entry.name() + "'!\n\nFile: " + result.filename() + "\n(Preview updated in dialog)",
-                                "Generation Completed! ✅",
-                                JOptionPane.DEFAULT_OPTION,
-                                JOptionPane.INFORMATION_MESSAGE,
-                                SvgIconFactory.get(AppIcon.CHECK, 28),
-                                options,
-                                options[0]
-                        );
-
-                        if (choice == 0) {
-                            openGeneratedImage(result.filename());
-                        } else if (choice == 1) {
-                            openComfyUIBrowser();
-                        }
-                    } else {
-                        JOptionPane.showMessageDialog(this,
-                                "Workflow successfully queued in ComfyUI!\nPrompt ID: " + (result != null ? result.promptId() : "N/A"),
-                                "ComfyUI Queued", JOptionPane.INFORMATION_MESSAGE);
-                    }
+                    JOptionPane.showMessageDialog(
+                            this,
+                            "Workflow for '" + entry.name() + "' has been loaded into ComfyUI!\n\n" +
+                            "You can now enter your prompt and generate directly in ComfyUI.",
+                            "Workflow Loaded ✅",
+                            JOptionPane.INFORMATION_MESSAGE
+                    );
+                    dispose();
                 }))
                 .exceptionally(ex -> {
                     SwingUtilities.invokeLater(() -> {
                         btnSendToComfy.setEnabled(true);
-                        btnSendToComfy.setText("Send to ComfyUI & Generate");
-                        btnSendToComfy.setIcon(SvgIconFactory.get(AppIcon.LAUNCH, 14));
+                        btnSendToComfy.setText("Send to ComfyUI");
+                        btnSendToComfy.setIcon(SvgIconFactory.get(AppIcon.SEND, 14));
 
                         String msg = ex.getCause() != null ? ex.getCause().getMessage() : ex.getMessage();
                         JOptionPane.showMessageDialog(this,
@@ -532,17 +492,6 @@ public class CivitaiModelDetailsDialog extends JDialog {
                     });
                     return null;
                 });
-    }
-
-    private void openGeneratedImage(String filename) {
-        try {
-            String comfyUrl = configService != null ? configService.getComfyUIUrl() : "http://127.0.0.1:8188";
-            if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
-                Desktop.getDesktop().browse(new URI(comfyUrl + "/view?filename=" + filename + "&type=output"));
-            }
-        } catch (Exception ex) {
-            logger.warn("Could not open generated image: {}", ex.getMessage());
-        }
     }
 
     private void openComfyUIBrowser() {

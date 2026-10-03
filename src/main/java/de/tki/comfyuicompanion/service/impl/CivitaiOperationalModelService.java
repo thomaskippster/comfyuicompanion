@@ -6,8 +6,6 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import de.tki.comfyuicompanion.domain.CivitaiGenerationResult;
 import de.tki.comfyuicompanion.domain.CivitaiModelEntry;
-import de.tki.comfyuicompanion.domain.ModelArchitecture;
-import de.tki.comfyuicompanion.domain.ModelFolder;
 import de.tki.comfyuicompanion.domain.ModelInfo;
 import de.tki.comfyuicompanion.service.ICivitaiHubService;
 import de.tki.comfyuicompanion.service.ICivitaiOperationalModelService;
@@ -18,7 +16,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import java.io.File;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -49,6 +46,7 @@ public class CivitaiOperationalModelService implements ICivitaiOperationalModelS
     private final ComfyApiClient comfyApiClient;
     private final IComfyLifecycleService lifecycleService;
     private final ObjectMapper objectMapper;
+    private final CivitaiGuiWorkflowBuilder guiWorkflowBuilder;
     private final HttpClient httpClient;
 
     /**
@@ -60,6 +58,7 @@ public class CivitaiOperationalModelService implements ICivitaiOperationalModelS
      * @param comfyApiClient      API client for ComfyUI communication
      * @param lifecycleService    optional lifecycle service for auto-booting ComfyUI
      * @param objectMapper        Jackson object mapper for JSON operations
+     * @param guiWorkflowBuilder  builder for synthesizing LiteGraph GUI format workflows
      */
     @Autowired
     public CivitaiOperationalModelService(
@@ -68,13 +67,15 @@ public class CivitaiOperationalModelService implements ICivitaiOperationalModelS
             IModelArchitectureService architectureService,
             ComfyApiClient comfyApiClient,
             @Autowired(required = false) IComfyLifecycleService lifecycleService,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            @Autowired(required = false) CivitaiGuiWorkflowBuilder guiWorkflowBuilder) {
         this.configService = configService;
         this.civitaiHubService = civitaiHubService;
         this.architectureService = architectureService;
         this.comfyApiClient = comfyApiClient;
         this.lifecycleService = lifecycleService;
         this.objectMapper = objectMapper != null ? objectMapper : new ObjectMapper();
+        this.guiWorkflowBuilder = guiWorkflowBuilder != null ? guiWorkflowBuilder : new CivitaiGuiWorkflowBuilder(this.objectMapper);
         this.httpClient = HttpClient.newBuilder()
                 .followRedirects(HttpClient.Redirect.ALWAYS)
                 .connectTimeout(Duration.ofSeconds(10))
@@ -290,6 +291,96 @@ public class CivitaiOperationalModelService implements ICivitaiOperationalModelS
     }
 
     @Override
+    public String generateGuiWorkflowJson(CivitaiModelEntry entry, List<ModelInfo> requiredModels) {
+        return guiWorkflowBuilder.buildGuiWorkflowJson(entry, requiredModels);
+    }
+
+    @Override
+    public CompletableFuture<Boolean> sendWorkflowToComfyUI(CivitaiModelEntry entry, List<ModelInfo> requiredModels) {
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                // 1. Fail-fast verification: Ensure all required models are physically present on disk
+                List<ModelInfo> missing = getMissingModels(requiredModels);
+                if (!missing.isEmpty()) {
+                    List<String> missingNames = missing.stream()
+                            .map(m -> m.getFilename() != null && !m.getFilename().isBlank() ? m.getFilename() : m.getName())
+                            .toList();
+                    throw new IllegalStateException("Cannot send workflow because required model files are missing on disk: " + missingNames);
+                }
+
+                // 2. Ensure ComfyUI server is alive; start lifecycle service if needed
+                ensureComfyUiHealthy();
+
+                String comfyUrl = configService != null ? configService.getComfyUIUrl() : "http://localhost:8188";
+                if (comfyUrl.endsWith("/")) {
+                    comfyUrl = comfyUrl.substring(0, comfyUrl.length() - 1);
+                }
+
+                // 3. Trigger model cache refresh in ComfyUI
+                try {
+                    HttpRequest refreshReq = HttpRequest.newBuilder()
+                            .uri(URI.create(comfyUrl + "/cmfc/refresh-models"))
+                            .header("Content-Type", "application/json")
+                            .POST(HttpRequest.BodyPublishers.ofString("{\"force_reload\":false}"))
+                            .timeout(Duration.ofSeconds(5))
+                            .build();
+                    httpClient.send(refreshReq, HttpResponse.BodyHandlers.discarding());
+                    log.debug("Notified ComfyUI bridge to refresh model list before loading workflow.");
+                } catch (Exception ex) {
+                    log.debug("ComfyUI model refresh notification skipped: {}", ex.getMessage());
+                }
+
+                // 4. Synthesize GUI LiteGraph workflow
+                ObjectNode guiGraphNode = guiWorkflowBuilder.buildGuiWorkflow(entry, requiredModels);
+
+                // 5. Save copy to user_workflows directory for persistence
+                saveWorkflowToUserWorkflows(entry, guiGraphNode);
+
+                // 6. Post workflow to /cmfc/load-workflow
+                ObjectNode bridgePayload = objectMapper.createObjectNode();
+                bridgePayload.set("workflow", guiGraphNode);
+
+                HttpRequest bridgeReq = HttpRequest.newBuilder()
+                        .uri(URI.create(comfyUrl + "/cmfc/load-workflow"))
+                        .header("Content-Type", "application/json")
+                        .POST(HttpRequest.BodyPublishers.ofString(bridgePayload.toString()))
+                        .timeout(Duration.ofSeconds(10))
+                        .build();
+
+                HttpResponse<String> response = httpClient.send(bridgeReq, HttpResponse.BodyHandlers.ofString());
+                if (response.statusCode() >= 200 && response.statusCode() < 300) {
+                    log.info("Successfully loaded GUI workflow for '{}' into ComfyUI canvas via bridge.", entry.name());
+                    return true;
+                } else {
+                    log.warn("ComfyUI bridge rejected /cmfc/load-workflow (HTTP {}): {}", response.statusCode(), response.body());
+                    throw new IOException("ComfyUI bridge returned HTTP " + response.statusCode() + ": " + response.body());
+                }
+            } catch (Exception e) {
+                log.error("Failed sending GUI workflow to ComfyUI: {}", e.getMessage(), e);
+                throw new RuntimeException(e);
+            }
+        }, runnable -> Thread.ofVirtual().name("Civitai-SendWorkflowWorker").start(runnable));
+    }
+
+    private void saveWorkflowToUserWorkflows(CivitaiModelEntry entry, ObjectNode workflow) {
+        try {
+            Path userWorkflowsDir = Path.of("user_workflows");
+            if (!Files.exists(userWorkflowsDir)) {
+                Files.createDirectories(userWorkflowsDir);
+            }
+            String safeName = entry.name()
+                    .toLowerCase(Locale.ROOT)
+                    .replaceAll("[^a-z0-9_-]+", "_")
+                    .replaceAll("_+", "_");
+            Path targetFile = userWorkflowsDir.resolve("model_" + safeName + ".json");
+            Files.writeString(targetFile, objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(workflow));
+            log.debug("Saved synthesized GUI workflow copy to {}", targetFile);
+        } catch (Exception ex) {
+            log.warn("Could not save workflow backup copy to user_workflows: {}", ex.getMessage());
+        }
+    }
+
+    @Override
     public String generateWorkflowJson(CivitaiModelEntry entry, List<ModelInfo> requiredModels, String userPrompt) {
         String baseLower = entry.baseModel() != null ? entry.baseModel().toLowerCase(Locale.ROOT) : "";
         String typeLower = entry.type() != null ? entry.type().toLowerCase(Locale.ROOT) : "checkpoint";
@@ -461,6 +552,25 @@ public class CivitaiOperationalModelService implements ICivitaiOperationalModelS
         });
     }
 
+    private void ensureComfyUiHealthy() throws IOException, InterruptedException {
+        if (lifecycleService != null && !lifecycleService.isHealthy()) {
+            log.info("ComfyUI server is offline. Triggering lifecycle start...");
+            lifecycleService.start();
+            int maxWaitSec = 90;
+            boolean online = false;
+            for (int i = 0; i < maxWaitSec; i++) {
+                if (lifecycleService.isHealthy()) {
+                    online = true;
+                    break;
+                }
+                Thread.sleep(1000);
+            }
+            if (!online) {
+                throw new IOException("ComfyUI server did not start within 90 seconds.");
+            }
+        }
+    }
+
     @Override
     public CompletableFuture<CivitaiGenerationResult> sendToComfyUIAndGenerate(CivitaiModelEntry entry, List<ModelInfo> requiredModels, String userPrompt) {
         return CompletableFuture.supplyAsync(() -> {
@@ -474,23 +584,8 @@ public class CivitaiOperationalModelService implements ICivitaiOperationalModelS
                     throw new IllegalStateException("Cannot queue ComfyUI generation because required model files are missing on disk: " + missingNames);
                 }
 
-                // 1. Ensure ComfyUI server is alive; start lifecycle service if needed
-                if (lifecycleService != null && !lifecycleService.isHealthy()) {
-                    log.info("ComfyUI server is offline. Triggering lifecycle start...");
-                    lifecycleService.start();
-                    int maxWaitSec = 90;
-                    boolean online = false;
-                    for (int i = 0; i < maxWaitSec; i++) {
-                        if (lifecycleService.isHealthy()) {
-                            online = true;
-                            break;
-                        }
-                        Thread.sleep(1000);
-                    }
-                    if (!online) {
-                        throw new IOException("ComfyUI server did not start within 90 seconds.");
-                    }
-                }
+                // 1. Ensure ComfyUI server is alive
+                ensureComfyUiHealthy();
 
                 String comfyUrl = configService != null ? configService.getComfyUIUrl() : "http://localhost:8188";
                 if (comfyUrl.endsWith("/")) {

@@ -67,7 +67,8 @@ class CivitaiOperationalModelServiceTest {
                 architectureService,
                 comfyApiClient,
                 lifecycleService,
-                objectMapper
+                objectMapper,
+                new CivitaiGuiWorkflowBuilder(objectMapper)
         );
     }
 
@@ -225,6 +226,37 @@ class CivitaiOperationalModelServiceTest {
         }
         assertThat(hasLoraLoader).isTrue();
         assertThat(injectedLoraName).isEqualTo("flat_anime_v2.safetensors");
+    }
+
+    @Test
+    @DisplayName("Should generate valid LiteGraph GUI workflow JSON")
+    void shouldGenerateGuiWorkflowJson_usingGuiWorkflowBuilder() throws Exception {
+        CivitaiModelEntry entry = new CivitaiModelEntry(
+                505L,
+                "AnimErge v5.0",
+                "Checkpoint",
+                "AnimeAuthor",
+                "SD 1.5",
+                "Top anime checkpoint",
+                "https://example.com/thumb.jpg",
+                "https://example.com/download/505",
+                "animerge_v50.safetensors",
+                "2.0 GB",
+                2000000000L,
+                1500,
+                4.9,
+                List.of("masterpiece", "anime style"),
+                false
+        );
+
+        String guiJson = service.generateGuiWorkflowJson(entry, List.of());
+        assertThat(guiJson).isNotBlank();
+
+        JsonNode root = objectMapper.readTree(guiJson);
+        assertThat(root.has("nodes")).isTrue();
+        assertThat(root.has("links")).isTrue();
+        assertThat(root.get("nodes").size()).isEqualTo(7);
+        assertThat(root.path("last_node_id").asInt()).isEqualTo(9);
     }
 
     @Test

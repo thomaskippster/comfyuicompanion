@@ -122,7 +122,7 @@ public interface IConfigService {
     void setBlueprintGalleryEnabled(boolean enabled);
     
     /**
-     * Checks if the Civitai Model Hub gallery tab is enabled.
+     * Checks if the Civitai Model Hub gallery tab is enabled. Defaults to false.
      *
      * @return true if enabled, false otherwise
      */

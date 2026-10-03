@@ -39,6 +39,7 @@ class ConfigServiceTest {
         assertThat(configService.getComfyUIPath()).isNotNull();
         assertThat(configService.getMaxParallelDownloads()).isEqualTo(3);
         assertThat(configService.isHideComfyUI()).isTrue();
+        assertThat(configService.isCivitaiGalleryEnabled()).isFalse();
     }
 
     @Test

@@ -410,6 +410,7 @@ public class CivitaiModelDetailsDialog extends JDialog {
                 (index, status) -> SwingUtilities.invokeLater(() -> {
                     if (index >= 0 && index < missing.size()) {
                         ModelInfo currentInfo = missing.get(index);
+                        currentInfo.setDescription(status);
                         for (int r = 0; r < tableModel.getRowCount(); r++) {
                             if (tableModel.getValueAt(r, 0).equals(currentInfo.getFilename()) ||
                                 tableModel.getValueAt(r, 0).equals(currentInfo.getName())) {
@@ -420,23 +421,60 @@ public class CivitaiModelDetailsDialog extends JDialog {
                     }
                 }),
                 () -> SwingUtilities.invokeLater(() -> {
+                    boolean allInstalled = true;
+                    boolean authFailure = false;
                     for (ModelInfo m : missing) {
-                        m.setPopularity("installed");
-                        m.setDescription("✅ Installed");
+                        boolean present = operationalModelService != null && operationalModelService.isModelFilePresent(m);
+                        if (present) {
+                            m.setPopularity("installed");
+                            m.setDescription("✅ Installed");
+                        } else {
+                            allInstalled = false;
+                            String desc = m.getDescription();
+                            if (desc != null && (desc.contains("Auth") || desc.contains("Token") || desc.contains("401") || desc.contains("API Key"))) {
+                                authFailure = true;
+                            }
+                        }
                     }
                     populateTableModel();
                     updateSummaryText();
                     updateButtonsState();
-                    downloadManager.notifyComfyUI(true);
-                    JOptionPane.showMessageDialog(this,
-                            "All operational models successfully downloaded!\nYou can now send the workflow to ComfyUI.",
-                            "Download Finished", JOptionPane.INFORMATION_MESSAGE);
+                    if (allInstalled) {
+                        downloadManager.notifyComfyUI(true);
+                        JOptionPane.showMessageDialog(this,
+                                "All operational models successfully downloaded!\nYou can now send the workflow to ComfyUI.",
+                                "Download Finished", JOptionPane.INFORMATION_MESSAGE);
+                    } else if (authFailure) {
+                        JOptionPane.showMessageDialog(this,
+                                "One or more models require authentication (Civitai API Key or HuggingFace Token)!\n\n" +
+                                "The creator requires you to be logged in to download this model.\n" +
+                                "Please configure your API key in Settings -> API Keys & Services and try again.",
+                                "Authentication Required", JOptionPane.WARNING_MESSAGE);
+                    } else {
+                        JOptionPane.showMessageDialog(this,
+                                "Some models could not be downloaded. Please check the status column and try again.",
+                                "Download Incomplete", JOptionPane.WARNING_MESSAGE);
+                    }
                 })
         );
     }
 
     private void dispatchToComfyUI() {
         if (operationalModelService == null) {
+            return;
+        }
+
+        // Pre-flight check: ensure all required models are actually present on disk
+        List<ModelInfo> stillMissing = operationalModelService.getMissingModels(requiredModels);
+        if (!stillMissing.isEmpty()) {
+            StringBuilder sb = new StringBuilder("Cannot send workflow to ComfyUI. The following required models are missing on disk:\n\n");
+            for (ModelInfo m : stillMissing) {
+                String fname = m.getFilename() != null && !m.getFilename().isBlank() ? m.getFilename() : m.getName();
+                sb.append(" • ").append(fname).append("\n");
+            }
+            sb.append("\nPlease download the required models before sending the workflow to ComfyUI.");
+            JOptionPane.showMessageDialog(this, sb.toString(), "Missing Models", JOptionPane.WARNING_MESSAGE);
+            updateButtonsState();
             return;
         }
 

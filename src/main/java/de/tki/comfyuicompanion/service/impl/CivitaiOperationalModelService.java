@@ -464,6 +464,15 @@ public class CivitaiOperationalModelService implements ICivitaiOperationalModelS
     public CompletableFuture<Boolean> sendToComfyUIAndGenerate(CivitaiModelEntry entry, List<ModelInfo> requiredModels, String userPrompt) {
         return CompletableFuture.supplyAsync(() -> {
             try {
+                // Fail-fast verification: Ensure all required models are physically present on disk
+                List<ModelInfo> missing = getMissingModels(requiredModels);
+                if (!missing.isEmpty()) {
+                    List<String> missingNames = missing.stream()
+                            .map(m -> m.getFilename() != null && !m.getFilename().isBlank() ? m.getFilename() : m.getName())
+                            .toList();
+                    throw new IllegalStateException("Cannot queue ComfyUI generation because required model files are missing on disk: " + missingNames);
+                }
+
                 // 1. Ensure ComfyUI server is alive; start lifecycle service if needed
                 if (lifecycleService != null && !lifecycleService.isHealthy()) {
                     log.info("ComfyUI server is offline. Triggering lifecycle start...");
@@ -530,7 +539,8 @@ public class CivitaiOperationalModelService implements ICivitaiOperationalModelS
         info.setDescription(present ? "✅ Already exists" : "Missing");
     }
 
-    private boolean isModelFilePresent(ModelInfo info) {
+    @Override
+    public boolean isModelFilePresent(ModelInfo info) {
         if (info == null) return false;
         String baseDir = configService != null ? configService.getModelsPath() : "models";
         String folder = info.getSave_path() != null ? info.getSave_path() : (info.getType() != null ? info.getType() : "checkpoints");

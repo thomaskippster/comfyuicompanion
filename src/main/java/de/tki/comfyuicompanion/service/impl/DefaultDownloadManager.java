@@ -103,7 +103,8 @@ public class DefaultDownloadManager implements IDownloadManager {
             String sub = (info.getSave_path() == null || info.getSave_path().isEmpty() || "default".equalsIgnoreCase(info.getSave_path())) ?
                     ModelFolder.fromString(info.getType()).getDefaultFolderName() : info.getSave_path();
             Path base = (baseDir != null && !baseDir.isEmpty()) ? pathResolver.resolve(baseDir) : pathResolver.resolve(configService != null ? configService.getModelsPath() : null);
-            Path targetFile = base.resolve(sub).resolve(info.getName());
+            String fileName = (info.getFilename() != null && !info.getFilename().isBlank()) ? info.getFilename() : info.getName();
+            Path targetFile = base.resolve(sub).resolve(fileName);
             if (safePathValidator != null) safePathValidator.validateWithinBase(base, targetFile);
             Files.createDirectories(targetFile.getParent());
             downloadWithResume(info, targetFile, index, statusUpdater, 0);
@@ -125,7 +126,16 @@ public class DefaultDownloadManager implements IDownloadManager {
             if (waitForPauseAndCheckSelection(index, statusUpdater)) return;
 
             long totalRemoteSize = segmentedEngine.probeRemoteSize(url);
-            if (totalRemoteSize == -1) { safeUpdateStatus(index, "❌ Auth Required (Token?)", statusUpdater); return; }
+            if (totalRemoteSize == -1) {
+                if (url.contains("civitai.com")) {
+                    safeUpdateStatus(index, "❌ Civitai API Key Required (Auth Error)", statusUpdater);
+                } else if (url.contains("huggingface.co")) {
+                    safeUpdateStatus(index, "❌ HuggingFace Token Required (Auth Error)", statusUpdater);
+                } else {
+                    safeUpdateStatus(index, "❌ Auth Required (Token?)", statusUpdater);
+                }
+                return;
+            }
             if (checkDiskSpace(targetFile, totalRemoteSize, index, statusUpdater)) return;
 
             if (existingSize > 0 && totalRemoteSize > 0 && existingSize == totalRemoteSize) {
@@ -138,7 +148,8 @@ public class DefaultDownloadManager implements IDownloadManager {
 
             if (waitForPauseAndCheckSelection(index, statusUpdater)) return;
             int segments = configService != null ? configService.getSegmentsPerFile() : 1;
-            if (segmentedEngine.download(info.getName(), url, targetFile, totalRemoteSize, segments, ctrl(index), s -> safeUpdateStatus(index, s, statusUpdater))) {
+            String fileName = (info.getFilename() != null && !info.getFilename().isBlank()) ? info.getFilename() : info.getName();
+            if (segmentedEngine.download(fileName, url, targetFile, totalRemoteSize, segments, ctrl(index), s -> safeUpdateStatus(index, s, statusUpdater))) {
                 if (modelValidator != null) {
                     var val = modelValidator.validateFile(targetFile.toFile());
                     if (!val.ok) { targetFile.toFile().delete(); safeUpdateStatus(index, "❌ Validation failed: " + val.message, statusUpdater); return; }

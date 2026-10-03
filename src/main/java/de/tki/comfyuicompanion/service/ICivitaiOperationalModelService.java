@@ -30,6 +30,14 @@ public interface ICivitaiOperationalModelService {
     boolean areAllModelsInstalled(List<ModelInfo> requiredModels);
 
     /**
+     * Checks if a single model file physically exists on local storage.
+     *
+     * @param info the model info to check
+     * @return {@code true} if the file exists, {@code false} otherwise
+     */
+    boolean isModelFilePresent(ModelInfo info);
+
+    /**
      * Filters the required models list and returns only those missing from local storage.
      *
      * @param requiredModels list of required models

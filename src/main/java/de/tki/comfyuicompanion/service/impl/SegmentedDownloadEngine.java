@@ -57,8 +57,7 @@ public class SegmentedDownloadEngine {
     public long probeRemoteSize(String url) throws Exception {
         HttpRequest.Builder b = HttpRequest.newBuilder().uri(URI.create(url)).header("User-Agent", USER_AGENT)
                 .method("HEAD", HttpRequest.BodyPublishers.noBody()).timeout(Duration.ofSeconds(60));
-        String hf = configService != null ? configService.getHfToken() : null;
-        if (url.contains("huggingface.co") && hf != null && !hf.isEmpty()) b.header("Authorization", "Bearer " + hf);
+        applyAuthHeaders(b, url);
         HttpResponse<Void> res = httpClient.send(b.build(), HttpResponse.BodyHandlers.discarding());
         if (res.statusCode() == 401 || res.statusCode() == 403) return -1;
         return res.headers().firstValueAsLong("Content-Length").orElse(0L);
@@ -81,10 +80,7 @@ public class SegmentedDownloadEngine {
         long existingSize = pFile.exists() ? pFile.length() : 0;
 
         HttpRequest.Builder builder = HttpRequest.newBuilder().uri(URI.create(downloadUrl)).header("User-Agent", USER_AGENT);
-        String hfToken = configService != null ? configService.getHfToken() : null;
-        if (downloadUrl.contains("huggingface.co") && hfToken != null && !hfToken.isEmpty()) {
-            builder.header("Authorization", "Bearer " + hfToken);
-        }
+        applyAuthHeaders(builder, downloadUrl);
         if (existingSize > 0) builder.header("Range", "bytes=" + existingSize + "-");
 
         HttpResponse<InputStream> response = httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofInputStream());
@@ -98,7 +94,8 @@ public class SegmentedDownloadEngine {
             return false;
         }
         if (code == 401 || code == 403) {
-            statusUpdater.accept("❌ Auth Required (Token?)");
+            String msg = downloadUrl.contains("civitai.com") ? "❌ Civitai API Key Required" : "❌ Auth Required (Token?)";
+            statusUpdater.accept(msg);
             return false;
         }
 
@@ -155,7 +152,6 @@ public class SegmentedDownloadEngine {
         var total = new AtomicLong(initialDownloaded);
         var failed = new AtomicBoolean(false);
         var errorMsg = new AtomicReference<>("");
-        String hfToken = configService != null ? configService.getHfToken() : null;
         long limitSec = (configService != null ? configService.getDownloadSpeedLimit() : 0) * 1024L / numSegments;
 
         for (int i = 0; i < numSegments; i++) {
@@ -169,7 +165,7 @@ public class SegmentedDownloadEngine {
                     if (existing >= end - start + 1 || control.isStopped() || failed.get()) return;
                     HttpRequest.Builder b = HttpRequest.newBuilder().uri(URI.create(downloadUrl)).header("User-Agent", USER_AGENT)
                             .header("Range", "bytes=" + (start + existing) + "-" + end);
-                    if (downloadUrl.contains("huggingface.co") && hfToken != null && !hfToken.isEmpty()) b.header("Authorization", "Bearer " + hfToken);
+                    applyAuthHeaders(b, downloadUrl);
                     HttpResponse<InputStream> res = httpClient.send(b.build(), HttpResponse.BodyHandlers.ofInputStream());
                     if (res.statusCode() != 206 && (res.statusCode() != 200 || existing != 0)) {
                         throw new IOException("Unexpected status " + res.statusCode() + " for segment " + segIdx);
@@ -277,6 +273,24 @@ public class SegmentedDownloadEngine {
         if (s > 3600) return " (ETA: " + (s / 3600) + "h " + ((s % 3600) / 60) + "m)";
         if (s > 60) return " (ETA: " + (s / 60) + "m " + (s % 60) + "s)";
         return " (ETA: " + s + "s)";
+    }
+
+    /**
+     * Injects appropriate authorization headers (Civitai API key or HuggingFace token) into the request builder.
+     *
+     * @param builder the HTTP request builder
+     * @param url     the destination URL
+     */
+    private void applyAuthHeaders(HttpRequest.Builder builder, String url) {
+        if (configService == null || url == null) return;
+        String hfToken = configService.getHfToken();
+        if (url.contains("huggingface.co") && hfToken != null && !hfToken.isBlank()) {
+            builder.header("Authorization", "Bearer " + hfToken.trim());
+        }
+        String civitaiKey = configService.getCivitaiApiKey();
+        if (url.contains("civitai.com") && civitaiKey != null && !civitaiKey.isBlank()) {
+            builder.header("Authorization", "Bearer " + civitaiKey.trim());
+        }
     }
 
     /** Shuts down the segment executor pool. */

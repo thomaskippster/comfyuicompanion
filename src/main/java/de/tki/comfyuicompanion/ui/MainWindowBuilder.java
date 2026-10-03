@@ -15,6 +15,7 @@ import de.tki.comfyuicompanion.service.impl.CivitaiService;
 import de.tki.comfyuicompanion.service.impl.ComfyProcessController;
 import de.tki.comfyuicompanion.service.impl.LocalAIService;
 import de.tki.comfyuicompanion.service.impl.ComfyApiClient;
+import de.tki.comfyuicompanion.ui.civitai.CivitaiGalleryTab;
 import de.tki.comfyuicompanion.ui.icons.AppIcon;
 import de.tki.comfyuicompanion.ui.icons.SvgIconFactory;
 import de.tki.comfyuicompanion.ui.panel.MainDashboardPanel;
@@ -52,6 +53,7 @@ public class MainWindowBuilder {
     
     // Controllers and Views
     private final BlueprintGalleryTab blueprintGalleryTab;
+    private final CivitaiGalleryTab civitaiGalleryTab;
     private final VideoArchitectTab videoArchitectTab;
     private final PromptLabView promptLabView;
     private final PromptLabController promptLabController;
@@ -65,6 +67,23 @@ public class MainWindowBuilder {
                              IModelArchitectureService modelArchitectureService, ComfyProcessController processController,
                              BackgroundExecutor backgroundExecutor, LocalAIService localAIService,
                              ComfyApiClient comfyApiClient, BlueprintGalleryTab blueprintGalleryTab,
+                             VideoArchitectTab videoArchitectTab, PromptLabView promptLabView,
+                             PromptLabController promptLabController, DownloadManagerView downloadManagerView,
+                             DownloadManagerController downloadManagerController) {
+        this(main, configService, profileManager, lifecycleService, updaterService, hashRegistry, modelValidator,
+             civitaiService, downloadManager, modelArchitectureService, processController, backgroundExecutor,
+             localAIService, comfyApiClient, blueprintGalleryTab, null, videoArchitectTab, promptLabView,
+             promptLabController, downloadManagerView, downloadManagerController);
+    }
+
+    public MainWindowBuilder(Main main, ConfigService configService, ProfileManager profileManager,
+                             IComfyLifecycleService lifecycleService, UpdaterService updaterService,
+                             ModelHashRegistry hashRegistry, IModelValidator modelValidator,
+                             CivitaiService civitaiService, IDownloadManager downloadManager,
+                             IModelArchitectureService modelArchitectureService, ComfyProcessController processController,
+                             BackgroundExecutor backgroundExecutor, LocalAIService localAIService,
+                             ComfyApiClient comfyApiClient, BlueprintGalleryTab blueprintGalleryTab,
+                             CivitaiGalleryTab civitaiGalleryTab,
                              VideoArchitectTab videoArchitectTab, PromptLabView promptLabView,
                              PromptLabController promptLabController, DownloadManagerView downloadManagerView,
                              DownloadManagerController downloadManagerController) {
@@ -83,6 +102,7 @@ public class MainWindowBuilder {
         this.localAIService = localAIService;
         this.comfyApiClient = comfyApiClient;
         this.blueprintGalleryTab = blueprintGalleryTab;
+        this.civitaiGalleryTab = civitaiGalleryTab;
         this.videoArchitectTab = videoArchitectTab;
         this.promptLabView = promptLabView;
         this.promptLabController = promptLabController;
@@ -167,6 +187,16 @@ public class MainWindowBuilder {
             components.blueprintGalleryWrapper.add(new JPanel(), BorderLayout.CENTER);
         }
 
+        // Civitai Model Hub
+        components.civitaiHubWrapper = new JPanel(new BorderLayout());
+        components.civitaiHubWrapper.setName("civitaiHubWrapper");
+        components.civitaiHubWrapper.setOpaque(true);
+        if (civitaiGalleryTab != null) {
+            components.civitaiHubWrapper.add(civitaiGalleryTab, BorderLayout.CENTER);
+        } else {
+            components.civitaiHubWrapper.add(new JPanel(), BorderLayout.CENTER);
+        }
+
         // Prompt Lab
         components.promptLabExecutionHandler = new PromptLabExecutionHandler(configService, localAIService,
                 lifecycleService, comfyApiClient, profileManager, promptLabController,
@@ -240,6 +270,13 @@ public class MainWindowBuilder {
     public static void setupTheme(boolean darkMode, MainWindowComponents components, Main main,
                                   VideoArchitectTab videoArchitectTab, BlueprintGalleryTab blueprintGalleryTab,
                                   DownloadManagerView downloadManagerView, PromptLabView promptLabView) {
+        setupTheme(darkMode, components, main, videoArchitectTab, blueprintGalleryTab, null, downloadManagerView, promptLabView);
+    }
+
+    public static void setupTheme(boolean darkMode, MainWindowComponents components, Main main,
+                                  VideoArchitectTab videoArchitectTab, BlueprintGalleryTab blueprintGalleryTab,
+                                  CivitaiGalleryTab civitaiGalleryTab,
+                                  DownloadManagerView downloadManagerView, PromptLabView promptLabView) {
         try {
             ThemeManager.applyTheme(darkMode);
 
@@ -262,6 +299,10 @@ public class MainWindowBuilder {
             if (blueprintGalleryTab != null) {
                 SwingUtilities.updateComponentTreeUI(blueprintGalleryTab);
                 blueprintGalleryTab.updateTheme(darkMode);
+            }
+            if (civitaiGalleryTab != null) {
+                SwingUtilities.updateComponentTreeUI(civitaiGalleryTab);
+                civitaiGalleryTab.updateTheme(darkMode);
             }
             if (downloadManagerView != null) SwingUtilities.updateComponentTreeUI(downloadManagerView);
             if (components.downloadManagerPanel != null) SwingUtilities.updateComponentTreeUI(components.downloadManagerPanel);
@@ -301,6 +342,7 @@ public class MainWindowBuilder {
         public JPanel downloadManagerPanel;
         public OutputGalleryPanel galleryPanel;
         public JPanel blueprintGalleryWrapper;
+        public JPanel civitaiHubWrapper;
         public PromptLabExecutionHandler promptLabExecutionHandler;
         public JPanel promptLabPanel;
         public JPanel videoArchitectWrapper;

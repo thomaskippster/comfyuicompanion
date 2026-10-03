@@ -176,7 +176,7 @@ public class MainSettingsDialogs {
 
     public static void showDownloadSettingsDialog(JFrame parent, ConfigService configService, Runnable onSaved) {
         StandardDialog dialog = new StandardDialog(parent, "Download Settings");
-        dialog.setSize(600, 480);
+        dialog.setSize(600, 560);
         dialog.setLocationRelativeTo(parent);
 
         JPanel panel = dialog.createContentPanel();
@@ -211,6 +211,22 @@ public class MainSettingsDialogs {
         SpinnerNumberModel segmentModel = new SpinnerNumberModel(configService.getSegmentsPerFile(), 1, 8, 1);
         JSpinner segmentSpinner = new JSpinner(segmentModel);
         panel.add(segmentSpinner, gbc);
+
+        gbc.gridy++;
+        gbc.insets = new Insets(0, 0, 5, 0);
+        panel.add(new JLabel("Civitai API Key (for gated models, member access & high-speed downloads):"), gbc);
+
+        gbc.gridy++;
+        gbc.insets = new Insets(0, 0, 5, 0);
+        JTextField civitaiApiKeyField = new JTextField(configService.getCivitaiApiKey());
+        panel.add(civitaiApiKeyField, gbc);
+
+        gbc.gridy++;
+        gbc.insets = new Insets(0, 0, 15, 0);
+        JLabel civitaiHint = new JLabel("<html><i>Get your key on civitai.com -> Account Settings -> API Keys. Stored securely in AES-256 vault.</i></html>");
+        civitaiHint.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        civitaiHint.setForeground(Color.GRAY);
+        panel.add(civitaiHint, gbc);
 
         gbc.gridy++;
         gbc.insets = new Insets(0, 0, 5, 0);
@@ -251,6 +267,7 @@ public class MainSettingsDialogs {
                 configService.setMaxParallelDownloads(threads);
                 configService.setDownloadSpeedLimit(speedLimit);
                 configService.setSegmentsPerFile(segments);
+                configService.setCivitaiApiKey(civitaiApiKeyField.getText().trim());
                 configService.setHfToken(hfTokenField.getText().trim());
 
                 if (onSaved != null) onSaved.run();

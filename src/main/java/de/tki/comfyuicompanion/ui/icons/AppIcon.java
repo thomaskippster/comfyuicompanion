@@ -12,6 +12,7 @@ public enum AppIcon {
     BLUEPRINT_GALLERY("icons/svg/blueprint.svg"),
     IMAGE_LAB("icons/svg/wand.svg"),
     VIDEO_ARCHITECT("icons/svg/video.svg"),
+    MODEL_HUB("icons/svg/globe.svg"),
     SETTINGS("icons/svg/settings.svg"),
 
     // Storage Tools

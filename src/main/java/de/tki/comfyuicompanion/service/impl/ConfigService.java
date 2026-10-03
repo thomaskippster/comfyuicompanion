@@ -499,6 +499,23 @@ public class ConfigService implements IConfigService {
         savePersistentSettings();
     }
 
+    /**
+     * Checks if the Civitai Model Hub gallery tab is enabled. Defaults to true.
+     *
+     * @return true if enabled, false otherwise
+     */
+    public synchronized boolean isCivitaiGalleryEnabled() { return persistentSettings.optBoolean("enable_civitai_gallery", true); }
+
+    /**
+     * Updates persistent configuration for the Civitai Model Hub gallery tab.
+     *
+     * @param enabled true to enable, false to disable
+     */
+    public synchronized void setCivitaiGalleryEnabled(boolean enabled) {
+        persistentSettings.put("enable_civitai_gallery", enabled);
+        savePersistentSettings();
+    }
+
     public synchronized void savePromptLabSession(JSONObject data) {
         persistentSettings.put("prompt_lab_session", data);
         savePersistentSettings();

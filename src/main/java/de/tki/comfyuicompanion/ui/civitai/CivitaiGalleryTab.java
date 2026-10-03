@@ -3,6 +3,7 @@ package de.tki.comfyuicompanion.ui.civitai;
 import de.tki.comfyuicompanion.domain.CivitaiModelEntry;
 import de.tki.comfyuicompanion.domain.ModelInfo;
 import de.tki.comfyuicompanion.service.ICivitaiHubService;
+import de.tki.comfyuicompanion.service.ICivitaiOperationalModelService;
 import de.tki.comfyuicompanion.service.IDownloadManager;
 import de.tki.comfyuicompanion.service.impl.ConfigService;
 import org.slf4j.Logger;
@@ -30,6 +31,7 @@ public class CivitaiGalleryTab extends JPanel {
     private final ICivitaiHubService civitaiHubService;
     private final IDownloadManager downloadManager;
     private final ConfigService configService;
+    private final ICivitaiOperationalModelService operationalModelService;
 
     private final CivitaiHeaderToolbar headerToolbar;
     private final CivitaiGridRenderer gridRenderer;
@@ -40,18 +42,21 @@ public class CivitaiGalleryTab extends JPanel {
     /**
      * Constructs a new CivitaiGalleryTab with injected dependencies.
      *
-     * @param civitaiHubService the Civitai API service
-     * @param downloadManager   the download manager service
-     * @param configService     the application configuration service
+     * @param civitaiHubService       the Civitai API service
+     * @param downloadManager         the download manager service
+     * @param configService           the application configuration service
+     * @param operationalModelService service for operational dependency resolution and workflow generation
      */
     @Autowired
     public CivitaiGalleryTab(ICivitaiHubService civitaiHubService,
                              IDownloadManager downloadManager,
-                             ConfigService configService) {
+                             ConfigService configService,
+                             @Autowired(required = false) ICivitaiOperationalModelService operationalModelService) {
         super(new BorderLayout());
         this.civitaiHubService = civitaiHubService;
         this.downloadManager = downloadManager;
         this.configService = configService;
+        this.operationalModelService = operationalModelService;
 
         headerToolbar = new CivitaiHeaderToolbar();
         gridRenderer = new CivitaiGridRenderer();
@@ -67,6 +72,19 @@ public class CivitaiGalleryTab extends JPanel {
                 }
             }
         });
+    }
+
+    /**
+     * Convenience constructor for backwards compatibility or tests.
+     *
+     * @param civitaiHubService the Civitai API service
+     * @param downloadManager   the download manager service
+     * @param configService     the application configuration service
+     */
+    public CivitaiGalleryTab(ICivitaiHubService civitaiHubService,
+                             IDownloadManager downloadManager,
+                             ConfigService configService) {
+        this(civitaiHubService, downloadManager, configService, null);
     }
 
     private void buildUi() {
@@ -106,7 +124,13 @@ public class CivitaiGalleryTab extends JPanel {
                 SwingUtilities.invokeLater(() -> {
                     gridRenderer.renderEntries(
                             results,
-                            civitaiHubService::isModelInstalled,
+                            entry -> {
+                                if (operationalModelService != null) {
+                                    List<ModelInfo> req = operationalModelService.resolveRequiredModels(entry);
+                                    return operationalModelService.areAllModelsInstalled(req);
+                                }
+                                return civitaiHubService.isModelInstalled(entry);
+                            },
                             this::handleDownload,
                             this::handleDetails
                     );
@@ -127,43 +151,36 @@ public class CivitaiGalleryTab extends JPanel {
     }
 
     /**
-     * Initiates downloading a Civitai model through the download manager.
+     * Initiates downloading a Civitai model along with its operational dependencies.
+     * Delegates to the operational details dialog to ensure users have full visibility
+     * into complementary models and direct generation dispatching.
      *
-     * @param entry the model entry to download
+     * @param entry the model entry to download and prepare
      */
     public void handleDownload(CivitaiModelEntry entry) {
         if (entry == null) return;
-
-        ModelInfo modelInfo = civitaiHubService.createModelInfoForDownload(entry);
-        String modelsBaseDir = configService != null ? configService.getModelsPath() : "models";
-
-        logger.info("Initiating download for Civitai model: {} to {}", entry.name(), modelInfo.getSave_path());
-        gridRenderer.updateDownloadStatus(entry.id(), "Starting...");
-
-        downloadManager.startQueue(
-                List.of(modelInfo),
-                new boolean[]{true},
-                modelsBaseDir,
-                (index, status) -> SwingUtilities.invokeLater(() -> gridRenderer.updateDownloadStatus(entry.id(), status)),
-                () -> SwingUtilities.invokeLater(() -> {
-                    gridRenderer.updateDownloadStatus(entry.id(), "✅ Finished");
-                    downloadManager.notifyComfyUI(true);
-                    headerToolbar.setStatusText("Downloaded " + entry.name());
-                })
-        );
+        handleDetails(entry);
     }
 
     /**
-     * Opens the detailed inspection dialog for a selected model.
+     * Opens the detailed inspection dialog for a selected model, resolving all complementary
+     * operational dependencies (base checkpoint, VAE, CLIP) and enabling ComfyUI dispatch.
      *
      * @param entry the model entry to inspect
      */
     public void handleDetails(CivitaiModelEntry entry) {
         if (entry == null) return;
-        boolean installed = civitaiHubService.isModelInstalled(entry);
         Window owner = SwingUtilities.getWindowAncestor(this);
-        CivitaiModelDetailsDialog dialog = new CivitaiModelDetailsDialog(owner, entry, installed, this::handleDownload);
+        CivitaiModelDetailsDialog dialog = new CivitaiModelDetailsDialog(
+                owner,
+                entry,
+                operationalModelService,
+                downloadManager,
+                configService
+        );
         dialog.setVisible(true);
+        // Refresh statuses to reflect newly downloaded models
+        performSearch();
     }
 
     /**

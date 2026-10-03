@@ -183,17 +183,18 @@ public class CivitaiCardBuilder {
             actionBtn.setEnabled(false);
             actionBtn.setFont(new Font("SansSerif", Font.PLAIN, 11));
         } else if (isInstalled) {
-            actionBtn = new JButton("Installed", SvgIconFactory.get(AppIcon.CHECK, 14));
+            actionBtn = new JButton("Ready / Run", SvgIconFactory.get(AppIcon.CHECK, 14));
             actionBtn.setForeground(COLOR_INSTALLED);
             actionBtn.setFont(new Font("SansSerif", Font.BOLD, 11));
-            actionBtn.setToolTipText("Already present in local models directory. Click to re-download.");
+            actionBtn.setToolTipText("All operational models installed. Click to open details and send to ComfyUI.");
             actionBtn.addActionListener(e -> {
-                if (onDownload != null) onDownload.accept(entry);
+                if (onDetails != null) onDetails.accept(entry);
             });
         } else {
-            actionBtn = new JButton("Download", SvgIconFactory.get(AppIcon.DOWNLOAD, 14));
+            actionBtn = new JButton("Download & Run", SvgIconFactory.get(AppIcon.DOWNLOAD, 14));
             actionBtn.setBackground(COLOR_PRIMARY);
             actionBtn.setFont(new Font("SansSerif", Font.BOLD, 11));
+            actionBtn.setToolTipText("Open details to download missing operational models and generate in ComfyUI");
             actionBtn.addActionListener(e -> {
                 if (onDownload != null) onDownload.accept(entry);
             });

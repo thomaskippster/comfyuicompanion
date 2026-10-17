@@ -124,7 +124,7 @@ public class BlueprintGalleryTab extends JPanel {
         };
         if (SwingUtilities.isEventDispatchThread()) uiInit.run(); else SwingUtilities.invokeLater(uiInit);
 
-        Thread thread = new Thread(() -> {
+        Thread.ofVirtual().name("BlueprintGalleryRefresh").start(() -> {
             try {
                 List<BlueprintEntry> loaded = dataCoordinator.fetchAndIndexEntries(cb -> requestFilterUpdate());
                 allEntries.clear();
@@ -144,15 +144,12 @@ public class BlueprintGalleryTab extends JPanel {
                     headerToolbar.setRefreshing(false);
                 });
             } finally { isRefreshing.set(false); }
-        }, "BlueprintGalleryRefresh");
-        thread.setDaemon(true);
-        thread.setPriority(Thread.MIN_PRIORITY);
-        thread.start();
+        });
     }
 
     private void updateStatusAsync() {
         if (!isRefreshing.compareAndSet(false, true)) return;
-        Thread t = new Thread(() -> {
+        Thread.ofVirtual().name("BlueprintGalleryStatusUpdate").start(() -> {
             try {
                 if (localModelValidator != null) localModelValidator.scanLocalModels();
                 for (BlueprintEntry e : allEntries) e.status = computeStatus(e);
@@ -160,10 +157,7 @@ public class BlueprintGalleryTab extends JPanel {
             } catch (Exception e) {
                 logger.error("❌ [BlueprintGallery] Status update failed: {}", e.getMessage());
             } finally { isRefreshing.set(false); }
-        }, "BlueprintGalleryStatusUpdate");
-        t.setDaemon(true);
-        t.setPriority(Thread.MIN_PRIORITY);
-        t.start();
+        });
     }
 
     private void applyFilter() {

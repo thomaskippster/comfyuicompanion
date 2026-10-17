@@ -16,6 +16,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.file.Files;
+import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 
@@ -26,6 +27,9 @@ import java.util.function.Consumer;
 public final class BlueprintComfySender {
 
     private static final Logger logger = LoggerFactory.getLogger(BlueprintComfySender.class);
+    private static final HttpClient SHARED_CLIENT = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(10))
+            .build();
 
     private BlueprintComfySender() {
         // Utility constructor
@@ -95,7 +99,7 @@ public final class BlueprintComfySender {
                             comfyUrl = comfyUrl.substring(0, comfyUrl.length() - 1);
                         }
 
-                        HttpClient client = HttpClient.newHttpClient();
+                        HttpClient client = SHARED_CLIENT;
                         HttpResponse<String> response = null;
                         boolean loadedViaBridge = false;
 

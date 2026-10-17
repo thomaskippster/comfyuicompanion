@@ -145,7 +145,7 @@ public class PromptLabBlueprintCoordinator {
             if (backgroundExecutor != null) {
                 backgroundExecutor.execute(fetchTask);
             } else {
-                new Thread(fetchTask).start();
+                Thread.ofVirtual().name("promptlab-fetch").start(fetchTask);
             }
         } else {
             String fallbackJson = null;

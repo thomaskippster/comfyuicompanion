@@ -140,7 +140,7 @@ public class AutoUpdaterDialog extends JDialog {
         repoList.clear();
         logArea.setText("🔍 Scanning repositories...\n");
 
-        new Thread(() -> {
+        Thread.ofVirtual().name("auto-updater-scan").start(() -> {
             try {
                 List<RepoStatus> repos = updaterService.scanRepositories();
                 SwingUtilities.invokeLater(() -> {
@@ -172,7 +172,7 @@ public class AutoUpdaterDialog extends JDialog {
                     scanBtn.setEnabled(true);
                 });
             }
-        }).start();
+        });
     }
 
     private void runUpdates() {
@@ -194,7 +194,7 @@ public class AutoUpdaterDialog extends JDialog {
         rollbackBtn.setEnabled(false);
         logArea.setText("📥 Preparing update process...\n");
 
-        new Thread(() -> {
+        Thread.ofVirtual().name("auto-updater-exec").start(() -> {
             try {
                 // Auto safety snapshot before updating
                 if (snapshotService != null) {
@@ -233,6 +233,6 @@ public class AutoUpdaterDialog extends JDialog {
                     rollbackBtn.setEnabled(true);
                 });
             }
-        }).start();
+        });
     }
 }

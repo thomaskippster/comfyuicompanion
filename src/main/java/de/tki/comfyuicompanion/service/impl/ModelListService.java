@@ -24,6 +24,10 @@ import java.util.Optional;
 public class ModelListService {
     private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(ModelListService.class);
     private static final String STORAGE_FILE = "uploaded_models.json";
+    private static final java.net.http.HttpClient SHARED_HTTP_CLIENT = java.net.http.HttpClient.newBuilder()
+            .followRedirects(java.net.http.HttpClient.Redirect.ALWAYS)
+            .connectTimeout(java.time.Duration.ofSeconds(10))
+            .build();
     private final List<ModelInfo> models = new java.util.concurrent.CopyOnWriteArrayList<>();
 
     private final ConfigService configService;
@@ -97,16 +101,12 @@ public class ModelListService {
         final String finalUrl = url.contains("github.com") && url.contains("/blob/") ? 
                                url.replace("github.com", "raw.githubusercontent.com").replace("/blob/", "/") : url;
 
-        new Thread(() -> {
+        Thread.ofVirtual().name("model-list-import").start(() -> {
             try {
-                java.net.http.HttpClient client = java.net.http.HttpClient.newBuilder()
-                        .followRedirects(java.net.http.HttpClient.Redirect.ALWAYS)
-                        .connectTimeout(java.time.Duration.ofSeconds(10))
-                        .build();
                 java.net.http.HttpRequest request = java.net.http.HttpRequest.newBuilder()
                         .uri(java.net.URI.create(finalUrl))
                         .build();
-                java.net.http.HttpResponse<String> response = client.send(request, java.net.http.HttpResponse.BodyHandlers.ofString());
+                java.net.http.HttpResponse<String> response = SHARED_HTTP_CLIENT.send(request, java.net.http.HttpResponse.BodyHandlers.ofString());
                 
                 if (response.statusCode() == 200) {
                     importJsonContent(response.body());
@@ -116,7 +116,7 @@ public class ModelListService {
                 // Silent fail as requested - no stacktrace, no dialog
                 logger.info("[Auto-Import] Optional model list update skipped (source unreachable or invalid).");
             }
-        }).start();
+        });
     }
 
     private long parseSize(String sizeStr) {

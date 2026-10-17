@@ -42,12 +42,10 @@ public class LocalModelValidator implements ILocalModelValidator {
     private final Set<String> archivedModelNames = ConcurrentHashMap.newKeySet();
 
     private final Semaphore downloadSemaphore = new Semaphore(2);
-    private final ExecutorService downloadExecutor = Executors.newFixedThreadPool(2, r -> {
-        Thread t = new Thread(r, "WorkflowDownloadValidator");
-        t.setDaemon(true);
-        t.setPriority(Thread.MIN_PRIORITY);
-        return t;
-    });
+    private final ExecutorService downloadExecutor = Executors.newFixedThreadPool(
+            2,
+            Thread.ofVirtual().name("WorkflowDownloadValidator-", 1).factory()
+    );
 
     private static final Set<String> SUPPORTED_EXTENSIONS = Set.of(
             "safetensors", "sft", "ckpt", "bin", "pt", "pth", "onnx"

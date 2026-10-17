@@ -121,7 +121,7 @@ public class ComfyLifecycleService implements IComfyLifecycleService {
                 });
 
                 // Monitor for readiness and launch browser
-                new Thread(() -> {
+                Thread.ofVirtual().name("comfy-readiness-monitor").start(() -> {
                     try { Thread.sleep(3000); } catch (InterruptedException ignored) {}
                     boolean launched = false;
                     while (!launched && isRunning()) {
@@ -268,7 +268,7 @@ public class ComfyLifecycleService implements IComfyLifecycleService {
         start();
         
         // Optional: Wait for health check in background
-        new Thread(() -> {
+        Thread.ofVirtual().name("comfy-restart-poller").start(() -> {
             status.set("Restarting (Waiting for API...)");
             for (int i = 0; i < 30; i++) { // Wait up to 30 seconds
                 if (isHealthy()) {
@@ -278,7 +278,7 @@ public class ComfyLifecycleService implements IComfyLifecycleService {
                 try { Thread.sleep(1000); } catch (InterruptedException ignored) {}
             }
             status.set("Running (Healthy Check Timeout)");
-        }).start();
+        });
     }
 
     @Override
@@ -369,7 +369,7 @@ public class ComfyLifecycleService implements IComfyLifecycleService {
     }
 
     private void triggerBrowserRefresh() {
-        new Thread(() -> {
+        Thread.ofVirtual().name("comfy-browser-refresh").start(() -> {
             try {
                 Thread.sleep(1500);
                 logger.info("🔄 [Lifecycle] Forcing browser refresh via ComfyUI bridge...");
@@ -377,6 +377,6 @@ public class ComfyLifecycleService implements IComfyLifecycleService {
             } catch (Exception e) {
                 logger.error("⚠️ [Lifecycle] Failed to force browser refresh: " + e.getMessage());
             }
-        }).start();
+        });
     }
 }

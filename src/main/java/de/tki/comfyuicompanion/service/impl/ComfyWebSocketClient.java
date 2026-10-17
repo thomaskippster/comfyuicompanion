@@ -23,7 +23,7 @@ import java.util.function.Consumer;
  * Real-time WebSocket client for ComfyUI (/ws) providing live step-by-step progress,
  * active node notifications, and binary latent preview image streaming.
  */
-@Component
+@Component("promptLabWebSocketClient")
 public class ComfyWebSocketClient {
     private static final Logger logger = LoggerFactory.getLogger(ComfyWebSocketClient.class);
 

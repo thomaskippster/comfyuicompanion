@@ -380,23 +380,25 @@ public class Main extends JFrame {
         getExecutionCoordinator().startComfyUI(selected, clearConsole, openBrowser);
     }
 
-    public void performFullServiceRestart() {
-        getExecutionCoordinator().performFullServiceRestart();
-    }
-
-    public void triggerEnvironmentRepair() {
-        getExecutionCoordinator().triggerEnvironmentRepair();
-    }
-
-    public void triggerWslDependencyFix() {
-        getExecutionCoordinator().triggerWslDependencyFix();
-    }
+    public void performFullServiceRestart() { getExecutionCoordinator().performFullServiceRestart(); }
+    public void triggerEnvironmentRepair() { getExecutionCoordinator().triggerEnvironmentRepair(); }
+    public void triggerWslDependencyFix() { getExecutionCoordinator().triggerWslDependencyFix(); }
 
     public boolean scanAndVerifyComfyUIInstallation(boolean showDialogIfFound) {
         return comfyInstallationScanner.scanAndVerifyInstallation(this, showDialogIfFound, () -> {
             syncBridgeFiles();
             if (uiComponents != null && uiComponents.dashboardPanelCoordinator != null) {
                 uiComponents.dashboardPanelCoordinator.refreshVersions(versionService, configService);
+            }
+        }, () -> {
+            if (uiComponents != null && uiComponents.dashboardPanelCoordinator != null) {
+                uiComponents.dashboardPanelCoordinator.refreshVersions(versionService, configService);
+            }
+            if (blueprintGalleryTab != null) blueprintGalleryTab.refreshAllData(true);
+            refreshPromptLabModels();
+        }, () -> {
+            if (uiComponents != null && uiComponents.mainTabs != null && blueprintGalleryTab != null) {
+                uiComponents.mainTabs.setSelectedComponent(blueprintGalleryTab);
             }
         });
     }

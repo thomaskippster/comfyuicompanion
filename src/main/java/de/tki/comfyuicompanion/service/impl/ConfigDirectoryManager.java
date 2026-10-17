@@ -199,4 +199,44 @@ public class ConfigDirectoryManager {
         }
         return path;
     }
+
+    /**
+     * Checks whether the application is running in portable mode (local configuration files in working directory).
+     *
+     * @param vaultFile  name of the vault file
+     * @param configFile name of the settings file
+     * @return {@code true} if portable mode is active
+     */
+    public boolean isPortableMode(String vaultFile, String configFile) {
+        File userDir = new File(System.getProperty("user.dir"));
+        return new File(userDir, ".portable").exists()
+                || new File(userDir, vaultFile).exists()
+                || new File(userDir, configFile).exists();
+    }
+
+    /**
+     * Resolves the application data root path, supporting test overrides, portable mode, and unified home directory.
+     *
+     * @param vaultFile  name of the vault file
+     * @param configFile name of the settings file
+     * @return absolute path to application data directory
+     */
+    public String resolveAppDataPath(String vaultFile, String configFile) {
+        String override = System.getProperty("comfyuicompanion.appdata");
+        if (override != null && !override.isEmpty()) {
+            return override;
+        }
+        String command = System.getProperty("sun.java.command", "");
+        if (command.contains("surefire") || command.contains("junit") || command.contains("testng")) {
+            return new File(System.getProperty("java.io.tmpdir"), "comfy_test_appdata_safe").getAbsolutePath();
+        }
+        if (!isPortableMode(vaultFile, configFile)) {
+            Path homeVault = Paths.get(System.getProperty("user.home"), ".comfyui-companion", vaultFile);
+            if (Files.exists(homeVault)) {
+                return homeVault.getParent().toAbsolutePath().toString();
+            }
+        }
+        return System.getProperty("user.dir");
+    }
 }
+

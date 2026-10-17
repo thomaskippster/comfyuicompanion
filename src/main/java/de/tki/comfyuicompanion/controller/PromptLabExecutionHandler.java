@@ -4,6 +4,7 @@ import de.tki.comfyuicompanion.domain.LaunchProfile;
 import de.tki.comfyuicompanion.service.IComfyLifecycleService;
 import de.tki.comfyuicompanion.service.PromptBlueprintApiService;
 import de.tki.comfyuicompanion.service.impl.ComfyApiClient;
+import de.tki.comfyuicompanion.service.impl.ComfyWebSocketClient;
 import de.tki.comfyuicompanion.service.impl.ConfigService;
 import de.tki.comfyuicompanion.service.impl.LocalAIService;
 import de.tki.comfyuicompanion.service.impl.ProfileManager;
@@ -18,13 +19,9 @@ import javax.imageio.ImageIO;
 import javax.swing.*;
 import java.awt.*;
 import java.io.File;
-import java.io.PrintWriter;
-import java.io.StringWriter;
 import java.net.URL;
 import java.net.http.HttpResponse;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.function.Consumer;
 
@@ -47,6 +44,7 @@ public class PromptLabExecutionHandler {
     private final Runnable onAiModelDisplayUpdated;
     private final PromptLabAiAssistant aiAssistant;
     private final PromptLabModelInputSanitizer modelInputSanitizer;
+    private final PromptLabStatusPoller statusPoller;
     private PromptLabView promptLabView;
     private Runnable onOpenPathsConfig;
     private java.util.function.BiConsumer<String, String> onDownloadMissingModels;
@@ -110,6 +108,7 @@ public class PromptLabExecutionHandler {
         this.onAiModelDisplayUpdated = onAiModelDisplayUpdated;
         this.aiAssistant = aiAssistant;
         this.modelInputSanitizer = modelInputSanitizer;
+        this.statusPoller = new PromptLabStatusPoller(comfyApiClient, new ComfyWebSocketClient(), backgroundExecutor, onPreviewImageChanged);
     }
 
     /**
@@ -271,6 +270,12 @@ public class PromptLabExecutionHandler {
                 apiService.injectLabInputs(promptToQueue, inputs);
                 sanitizeModelInputsInPrompt(promptToQueue, objectInfo);
 
+                List<String> missingNodes = modelInputSanitizer.validateRequiredNodesInPrompt(promptToQueue, objectInfo);
+                if (!missingNodes.isEmpty()) {
+                    SwingUtilities.invokeLater(() -> modelInputSanitizer.handleMissingNodes(parentComponent, missingNodes, console));
+                    return;
+                }
+
                 List<String> missingModels = modelInputSanitizer.validateRequiredModelsInPrompt(promptToQueue, objectInfo);
                 if (!missingModels.isEmpty()) {
                     String extraPath = configService.getExtraComfyUIPath();
@@ -284,6 +289,7 @@ public class PromptLabExecutionHandler {
 
                 JSONObject payload = new JSONObject();
                 payload.put("prompt", promptToQueue);
+                payload.put("client_id", statusPoller.getClientId());
 
                 HttpResponse<String> queueResponse = comfyApiClient.postPrompt(comfyUrl, payload.toString());
                 if (queueResponse != null && queueResponse.statusCode() == 200) {
@@ -318,80 +324,18 @@ public class PromptLabExecutionHandler {
     }
 
     /**
-     * Polls the ComfyUI API for the status of a queued prompt until completion.
+     * Polls the ComfyUI API and WebSocket for the status of a queued prompt until completion.
      *
      * @param promptId the ID of the queued prompt
      */
     public void startPollingPromptStatus(String promptId) {
         if (promptLabView == null) return;
-        String comfyUrl = configService.getComfyUIUrl();
-
-        SwingUtilities.invokeLater(() -> {
-            if (promptLabView.getPromptLabRightTabbedPane() != null) {
-                promptLabView.getPromptLabRightTabbedPane().setSelectedIndex(0);
-            }
-            if (promptLabView.getPromptLabProgressBar() != null) {
-                promptLabView.getPromptLabProgressBar().setVisible(true);
-                promptLabView.getPromptLabProgressBar().setIndeterminate(true);
-                promptLabView.getPromptLabProgressBar().setString("Queued...");
-            }
-            if (promptLabView.getPromptImagePreviewLabel() != null) {
-                promptLabView.getPromptImagePreviewLabel().setText("Generating image... Please wait.");
-                promptLabView.getPromptImagePreviewLabel().setIcon(null);
-            }
-        });
-
-        backgroundExecutor.execute(() -> {
-            boolean done = false;
-            int pollAttempts = 0;
-
-            while (!done && pollAttempts < 180) {
-                try {
-                    Thread.sleep(1000);
-                    pollAttempts++;
-
-                    ComfyApiClient.ImageOutput imgOutput = comfyApiClient.fetchPromptHistoryImage(comfyUrl, promptId);
-                    if (imgOutput != null) {
-                        final String finalFilename = imgOutput.filename();
-                        final String finalSubfolder = imgOutput.subfolder();
-                        final String finalType = imgOutput.type();
-
-                        SwingUtilities.invokeLater(() -> {
-                            loadAndDisplayImage(finalFilename, finalSubfolder, finalType);
-                            if (promptLabView.getPromptLabProgressBar() != null) promptLabView.getPromptLabProgressBar().setVisible(false);
-                            if (promptLabView.getPromptLabConsole() != null) promptLabView.getPromptLabConsole().append("Image generated and loaded successfully!\n\n");
-                        });
-                        done = true;
-                        break;
-                    }
-
-                    if (!done) {
-                        ComfyApiClient.QueueInfo qInfo = comfyApiClient.fetchQueueStatus(comfyUrl, promptId);
-                        if (qInfo.state() == ComfyApiClient.QueueState.RUNNING) {
-                            SwingUtilities.invokeLater(() -> {
-                                if (promptLabView.getPromptLabProgressBar() != null) promptLabView.getPromptLabProgressBar().setString("Generating...");
-                            });
-                        } else if (qInfo.state() == ComfyApiClient.QueueState.PENDING) {
-                            final int pos = qInfo.position();
-                            SwingUtilities.invokeLater(() -> {
-                                if (promptLabView.getPromptLabProgressBar() != null) promptLabView.getPromptLabProgressBar().setString("Queued (Position: " + pos + ")");
-                            });
-                        }
-                    }
-
-                } catch (Exception e) {
-                    logger.error("Error polling ComfyUI status: " + e.getMessage());
-                }
-            }
-
-            if (!done) {
-                SwingUtilities.invokeLater(() -> {
-                    if (promptLabView.getPromptLabProgressBar() != null) promptLabView.getPromptLabProgressBar().setVisible(false);
-                    if (promptLabView.getPromptImagePreviewLabel() != null) promptLabView.getPromptImagePreviewLabel().setText("Generation timed out or failed.");
-                    if (promptLabView.getPromptLabConsole() != null) promptLabView.getPromptLabConsole().append("❌ Generation timed out or failed to load image.\n\n");
-                });
-            }
-        });
+        statusPoller.pollPromptStatus(
+                configService.getComfyUIUrl(),
+                promptId,
+                promptLabView,
+                imgOut -> loadAndDisplayImage(imgOut.filename(), imgOut.subfolder(), imgOut.type())
+        );
     }
 
     /**

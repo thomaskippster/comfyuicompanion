@@ -146,14 +146,23 @@ class ComfyCompanionControllerTest {
                         "ImpactPack", "https://github.com/ltdrdata/ComfyUI-Impact-Pack", java.util.List.of("FaceDetailer")
                 ))
         );
-        when(customNodeResolverService.analyzeWorkflowNodes(workflow)).thenReturn(Mono.just(report));
+        var aclRequest = de.tki.comfyuicompanion.dto.acl.WorkflowAnalysisAclRequest.fromString(workflow);
+        when(customNodeResolverService.analyzeWorkflowNodes(aclRequest.toDomainWorkflowJson())).thenReturn(Mono.just(report));
 
-        var result = controller.analyzeWorkflowNodes(workflow).block();
+        var result = controller.analyzeWorkflowNodes(aclRequest).block();
 
         assertThat(result).isNotNull();
         assertThat(result.missingNodeTypes()).contains("FaceDetailer");
         assertThat(result.recommendedPackages()).hasSize(1);
         assertThat(result.recommendedPackages().get(0).packageName()).isEqualTo("ImpactPack");
+    }
+
+    @Test
+    @DisplayName("analyzeWorkflowNodes: should reject null request")
+    void shouldRejectNullWorkflowAnalysisRequest() {
+        assertThatThrownBy(() -> controller.analyzeWorkflowNodes(null).block())
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Workflow analysis request must not be null");
     }
 
     @Test

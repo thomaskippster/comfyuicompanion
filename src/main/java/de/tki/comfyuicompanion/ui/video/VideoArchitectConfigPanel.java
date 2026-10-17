@@ -67,7 +67,7 @@ public class VideoArchitectConfigPanel extends CardPanel {
         this.configService = configService;
         this.presetCoordinator = presetCoordinator;
         this.consoleLogger = consoleLogger != null ? consoleLogger : msg -> {};
-        this.samplingParamsPanel = new VideoSamplingParamsPanel();
+        this.samplingParamsPanel = new VideoSamplingParamsPanel(configService);
         initUI();
     }
 
@@ -81,7 +81,7 @@ public class VideoArchitectConfigPanel extends CardPanel {
         hwHeaderRow.setAlignmentX(Component.LEFT_ALIGNMENT);
         hwHeaderRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 30));
 
-        hardwareProfileBadge = new JLabel("⚡ Hardware: Erkennung...", SwingConstants.LEFT);
+        hardwareProfileBadge = new JLabel("⚡ Hardware: Detecting...", SwingConstants.LEFT);
         hardwareProfileBadge.setFont(new Font("SansSerif", Font.BOLD, 11));
         hardwareProfileBadge.setOpaque(true);
         hardwareProfileBadge.setBackground(new Color(59, 130, 246, 30));
@@ -93,7 +93,7 @@ public class VideoArchitectConfigPanel extends CardPanel {
         hwHeaderRow.add(hardwareProfileBadge, BorderLayout.CENTER);
 
         btnReapplyHwPreset = new JButton(SvgIconFactory.get(AppIcon.SUGGEST, 12));
-        btnReapplyHwPreset.setToolTipText("Hardware-Empfehlungen automatisch anwenden");
+        btnReapplyHwPreset.setToolTipText("Apply hardware recommendations automatically");
         btnReapplyHwPreset.addActionListener(e -> applyHardwarePreset(true));
         hwHeaderRow.add(btnReapplyHwPreset, BorderLayout.EAST);
 

@@ -35,9 +35,20 @@ public class VideoWorkflowBuilder {
     private final PromptBlueprintApiService promptBlueprintApiService;
     private final IComfyTemplateService comfyTemplateService;
     private final WorkflowTransformationService workflowTransformationService;
+    private final de.tki.comfyuicompanion.service.IVideoVramOptimizer vramOptimizer;
 
     public VideoWorkflowBuilder(ComfyNodeInspectionClient inspectionClient) {
-        this(inspectionClient, null, null, null, null, null);
+        this(inspectionClient, null, null, null, null, null, null);
+    }
+
+    public VideoWorkflowBuilder(
+            ComfyNodeInspectionClient inspectionClient,
+            IModelArchitectureService modelArchitectureService,
+            IHardwareProfileService hardwareProfileService,
+            PromptBlueprintApiService promptBlueprintApiService,
+            IComfyTemplateService comfyTemplateService,
+            WorkflowTransformationService workflowTransformationService) {
+        this(inspectionClient, modelArchitectureService, hardwareProfileService, promptBlueprintApiService, comfyTemplateService, workflowTransformationService, null);
     }
 
     @Autowired
@@ -47,7 +58,8 @@ public class VideoWorkflowBuilder {
             @Autowired(required = false) IHardwareProfileService hardwareProfileService,
             @Autowired(required = false) PromptBlueprintApiService promptBlueprintApiService,
             @Autowired(required = false) IComfyTemplateService comfyTemplateService,
-            @Autowired(required = false) WorkflowTransformationService workflowTransformationService) {
+            @Autowired(required = false) WorkflowTransformationService workflowTransformationService,
+            @Autowired(required = false) de.tki.comfyuicompanion.service.IVideoVramOptimizer vramOptimizer) {
         this.inspectionClient = inspectionClient != null ? inspectionClient : new ComfyNodeInspectionClient();
         this.modelArchitectureService = modelArchitectureService;
         this.hardwareProfileService = hardwareProfileService;
@@ -55,6 +67,7 @@ public class VideoWorkflowBuilder {
         this.comfyTemplateService = comfyTemplateService;
         this.workflowTransformationService = workflowTransformationService != null ? workflowTransformationService
                 : new WorkflowTransformationService(null);
+        this.vramOptimizer = vramOptimizer != null ? vramOptimizer : new VideoVramOptimizer();
     }
 
     public static JSONObject makeNode(String classType, JSONObject inputs) {
@@ -214,6 +227,10 @@ public class VideoWorkflowBuilder {
         workflowJson.put("129:87", makeNode("VAEDecode", new JSONObject().put("samples", link("129:85", 0)).put("vae", link("129:90", 0))));
         workflowJson.put("129:94", makeNode("CreateVideo", new JSONObject().put("fps", link("129:162", 0)).put("images", link("129:87", 0))));
         workflowJson.put("108", makeNode("SaveVideo", new JSONObject().put("filename_prefix", "video/" + filenamePrefix).put("format", "auto").put("codec", "auto").put("video", link("129:94", 0))));
+
+        if (vramOptimizer != null && vramOptimizer.is16GbOptimizationActive()) {
+            vramOptimizer.optimizeWorkflowFor16Gb(workflowJson);
+        }
 
         return workflowJson;
     }
@@ -402,6 +419,10 @@ public class VideoWorkflowBuilder {
                     }
                 }
             }
+        }
+
+        if (vramOptimizer != null && vramOptimizer.is16GbOptimizationActive()) {
+            vramOptimizer.optimizeWorkflowFor16Gb(workflowJson);
         }
     }
 }

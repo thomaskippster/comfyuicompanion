@@ -117,6 +117,18 @@ public interface IConfigService {
     
     boolean isVideoArchitectEnabled();
     void setVideoArchitectEnabled(boolean enabled);
+
+    boolean is16GbVramOptimizationEnabled();
+    void set16GbVramOptimizationEnabled(boolean enabled);
+
+    boolean isLastFrameChainingEnabled();
+    void setLastFrameChainingEnabled(boolean enabled);
+
+    boolean isTwoPhaseRenderingEnabled();
+    void setTwoPhaseRenderingEnabled(boolean enabled);
+
+    String getLocalLlmModel();
+    void setLocalLlmModel(String model);
     
     boolean isBlueprintGalleryEnabled();
     void setBlueprintGalleryEnabled(boolean enabled);

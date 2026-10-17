@@ -59,40 +59,47 @@ public class RestBridgeController {
 
     /**
      * Imports a workflow JSON payload directly from the floating Rocket button.
+     * Uses Anti-Corruption Layer (ACL) request and response records for type safety and insulation.
      *
-     * @param workflowJson The workflow JSON to import.
-     * @param authHeader   The authorization header to validate the request.
-     * @return A ResponseEntity indicating success or failure.
+     * @param request    The validated ACL request containing the workflow payload.
+     * @param authHeader The authorization header to validate the request.
+     * @return A ResponseEntity containing the BridgeActionAclResponse indicating success or failure.
      */
     @PostMapping(value = "/import", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<String> importWorkflow(@RequestBody String workflowJson,
-                                                 @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authHeader) {
+    public ResponseEntity<de.tki.comfyuicompanion.dto.acl.BridgeActionAclResponse> importWorkflow(
+            @RequestBody de.tki.comfyuicompanion.dto.acl.WorkflowImportAclRequest request,
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authHeader) {
         if (!isAuthorized(authHeader)) {
             logger.warn("REST Bridge /import: Unauthorized request.");
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("{\"status\": \"error\", \"message\": \"Unauthorized\"}");
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(de.tki.comfyuicompanion.dto.acl.BridgeActionAclResponse.error("Unauthorized"));
         }
 
-        boolean accepted = restBridgeService.consumeWorkflow(workflowJson);
+        boolean accepted = restBridgeService.consumeWorkflow(request.toDomainWorkflowJson());
         if (accepted) {
-            return ResponseEntity.ok("{\"status\": \"success\", \"message\": \"Workflow received\"}");
+            return ResponseEntity.ok(de.tki.comfyuicompanion.dto.acl.BridgeActionAclResponse.success("Workflow received"));
         } else {
-            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body("{\"status\": \"error\", \"message\": \"App not ready\"}");
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                    .body(de.tki.comfyuicompanion.dto.acl.BridgeActionAclResponse.error("App not ready"));
         }
     }
 
     /**
      * Handles the callback for browser graphToPrompt conversion.
+     * Uses Anti-Corruption Layer (ACL) request and response records for type safety and domain isolation.
      *
-     * @param convertedApiJson The converted API JSON payload from the workflow graph.
-     * @return A ResponseEntity indicating whether the conversion was accepted.
+     * @param request The validated ACL request containing the converted graph prompt payload.
+     * @return A ResponseEntity containing the BridgeActionAclResponse indicating whether the conversion was accepted.
      */
     @PostMapping(value = "/api/workflow-ready", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<String> workflowReady(@RequestBody String convertedApiJson) {
-        boolean accepted = restBridgeService.consumeWorkflowReady(convertedApiJson);
+    public ResponseEntity<de.tki.comfyuicompanion.dto.acl.BridgeActionAclResponse> workflowReady(
+            @RequestBody de.tki.comfyuicompanion.dto.acl.WorkflowReadyAclRequest request) {
+        boolean accepted = restBridgeService.consumeWorkflowReady(request.toDomainPromptJson());
         if (accepted) {
-            return ResponseEntity.ok("{\"status\": \"accepted\"}");
+            return ResponseEntity.ok(de.tki.comfyuicompanion.dto.acl.BridgeActionAclResponse.accepted());
         } else {
-            return ResponseEntity.status(HttpStatus.CONFLICT).body("{\"status\": \"error\", \"message\": \"No pending conversion request\"}");
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body(de.tki.comfyuicompanion.dto.acl.BridgeActionAclResponse.error("No pending conversion request"));
         }
     }
 

@@ -107,14 +107,18 @@ public class ComfyCompanionController {
 
     /**
      * Analyzes a workflow to detect missing Custom Nodes and returns recommended community packages.
+     * Insulated via WorkflowAnalysisAclRequest to safely ingest arbitrary workflow graph formats.
      *
-     * @param workflowJson The JSON string representing the workflow to analyze.
+     * @param request The validated ACL request containing the workflow payload.
      * @return A Mono emitting the resolution report detailing missing nodes and recommended packages.
      */
     @PostMapping(value = "/workflow/nodes/analyze", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
     public Mono<de.tki.comfyuicompanion.service.provisioning.CustomNodeResolverService.NodeResolutionReport> analyzeWorkflowNodes(
-            @RequestBody String workflowJson) {
-        return customNodeResolverService.analyzeWorkflowNodes(workflowJson);
+            @RequestBody de.tki.comfyuicompanion.dto.acl.WorkflowAnalysisAclRequest request) {
+        if (request == null) {
+            return Mono.error(new IllegalArgumentException("Workflow analysis request must not be null."));
+        }
+        return customNodeResolverService.analyzeWorkflowNodes(request.toDomainWorkflowJson());
     }
 
     /**

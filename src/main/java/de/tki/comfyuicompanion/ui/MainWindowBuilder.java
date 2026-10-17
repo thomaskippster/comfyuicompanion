@@ -204,6 +204,8 @@ public class MainWindowBuilder {
                 startComfyHandler,
                 img -> { if (promptLabView != null) promptLabView.scaleAndSetImage(img); },
                 main::updateAiModelDisplay);
+        components.promptLabExecutionHandler.setOnOpenPathsConfig(pathsDialogHandler);
+        components.promptLabExecutionHandler.setOnDownloadMissingModels(main::loadWorkflowExternal);
         components.promptLabPanel = createPromptLabPanel(components);
 
         // Video Architect

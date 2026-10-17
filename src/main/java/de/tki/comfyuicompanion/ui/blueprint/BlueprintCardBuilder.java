@@ -134,7 +134,10 @@ public class BlueprintCardBuilder {
         int totalReqs = entry.requiredModels.size();
         String reqText;
         Color reqColor;
-        if (totalReqs == 0) {
+        if (!entry.hasBeenValidated && totalReqs == 0) {
+            reqText  = "⏳  Checking required models...";
+            reqColor = textDim;
+        } else if (totalReqs == 0) {
             reqText  = "✔  No external models needed";
             reqColor = GREEN_READY;
         } else if (status.missingCount == 0) {
@@ -240,7 +243,10 @@ public class BlueprintCardBuilder {
                 // Status badge
                 String badgeText = null;
                 Color badgeColor = null;
-                if (status.missingCount == 0) {
+                if (!entry.hasBeenValidated && entry.requiredModels.isEmpty()) {
+                    badgeText  = "⏳  Checking";
+                    badgeColor = new Color(100, 116, 139, 220);
+                } else if (status.missingCount == 0 && status.presentCount > 0) {
                     badgeText  = "✅  Ready";
                     badgeColor = new Color(34, 197, 130, 220);
                 } else if (status.missingCount > 0) {

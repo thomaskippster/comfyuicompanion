@@ -143,8 +143,9 @@ public class BlueprintFilterController {
             if (!matchesSearch) continue;
 
             BlueprintStatus status = statusProvider.apply(e);
+            boolean isReady = e.hasBeenValidated && status.missingCount == 0 && status.presentCount > 0;
 
-            if (readyOnly && status.missingCount > 0) {
+            if (readyOnly && !isReady) {
                 continue;
             }
 
@@ -174,8 +175,8 @@ public class BlueprintFilterController {
             BlueprintStatus s1 = statusProvider.apply(e1);
             BlueprintStatus s2 = statusProvider.apply(e2);
 
-            boolean run1 = s1.missingCount == 0;
-            boolean run2 = s2.missingCount == 0;
+            boolean run1 = e1.hasBeenValidated && s1.missingCount == 0 && s1.presentCount > 0;
+            boolean run2 = e2.hasBeenValidated && s2.missingCount == 0 && s2.presentCount > 0;
             if (run1 != run2) return run1 ? -1 : 1;
 
             double pop1 = e1.registryWorkflow != null ? e1.registryWorkflow.getPopularScore() : 0.0;
@@ -223,7 +224,7 @@ public class BlueprintFilterController {
         List<BlueprintEntry> list = new ArrayList<>();
         for (BlueprintEntry e : allEntries) {
             BlueprintStatus s = e.status;
-            if (s != null && s.missingCount == 0) {
+            if (e.hasBeenValidated && s != null && s.missingCount == 0 && s.presentCount > 0) {
                 if (e.registryWorkflow != null && e.registryWorkflow.isCloudOnly()) {
                     continue;
                 }

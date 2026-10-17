@@ -100,39 +100,12 @@ public class PromptLabModelDiscovery {
                     }
                 }
             }
-        }
-
-        if (itemsToAdd.isEmpty()) {
-            Set<String> apiModels = new TreeSet<>();
-            if (comfyApiClient != null && configService != null) {
-                String comfyUrl = configService.getComfyUIUrl();
-                try {
-                    JSONObject info = comfyApiClient.getObjectInfo(comfyUrl);
-                    if (modelResolver != null) {
-                        modelResolver.updateComfyModelSets(info);
-                        for (String ckpt : modelResolver.getComfyCheckpoints()) apiModels.add(ckpt.replace("\\", "/"));
-                        for (String unet : modelResolver.getComfyUnetModels()) apiModels.add(unet.replace("\\", "/"));
-                    }
-                } catch (Exception ignored) {}
-            }
-
-            for (String m : apiModels) {
-                String mLower = m.toLowerCase(Locale.ROOT);
-                if (!isVideoModel(m) && !mLower.contains("cloud") && !itemsToAdd.contains(m)) {
-                    itemsToAdd.add(m);
-                }
-            }
-
-            if (itemsToAdd.isEmpty() && configService != null) {
-                String comfyPath = configService.getComfyUIPath();
-                if (comfyPath != null && !comfyPath.isEmpty()) {
-                    File comfyModels = new File(comfyPath, "models");
-                    if (comfyModels.exists() && comfyModels.isDirectory()) {
-                        File checkpointsDir = new File(comfyModels, "checkpoints");
-                        if (checkpointsDir.exists()) scanModelsRecursively(checkpointsDir, "", itemsToAdd);
-                        File unetDir = new File(comfyModels, "unet");
-                        if (unetDir.exists()) scanModelsRecursively(unetDir, "", itemsToAdd);
-                    }
+        } else if (configService != null) {
+            String modelsPath = configService.getModelsPath();
+            if (modelsPath != null && !modelsPath.isEmpty()) {
+                File checkpointsDir = new File(modelsPath, "checkpoints");
+                if (checkpointsDir.exists() && checkpointsDir.isDirectory()) {
+                    scanModelsRecursively(checkpointsDir, "", itemsToAdd);
                 }
             }
         }
@@ -244,13 +217,41 @@ public class PromptLabModelDiscovery {
         }
         try {
             String selected = (String) view.getPromptModelCombo().getSelectedItem();
+            if ((selected == null || "No ready offline blueprints available".equals(selected)) && configService != null) {
+                JSONObject session = configService.getPromptLabSession();
+                if (session != null && session.has("model")) {
+                    selected = session.optString("model", null);
+                }
+            }
             view.getPromptModelCombo().removeAllItems();
 
             if (itemsToAdd.isEmpty()) {
                 view.getPromptModelCombo().addItem("No ready offline blueprints available");
                 view.getPromptModelCombo().setEnabled(false);
+                if (view.getBtnSendToComfy() != null) {
+                    view.getBtnSendToComfy().setEnabled(false);
+                    view.getBtnSendToComfy().setToolTipText("No ready blueprints or local models available. Download models or configure paths first.");
+                }
+                if (view.getPromptPresetLabel() != null) {
+                    view.getPromptPresetLabel().setText("⚠️ No ready blueprints or local models detected");
+                }
+                if (view.getPromptJsonArea() != null) {
+                    view.getPromptJsonArea().setText("{\n  \"prompt\": {}\n}");
+                }
+                if (view.getPromptLabConsole() != null) {
+                    view.getPromptLabConsole().setText(
+                            "⚠️ System: No ready blueprints or local models detected.\n"
+                            + "💡 Blueprint selection and image generation are disabled until required models are downloaded or model paths are configured in Settings.\n");
+                }
             } else {
                 view.getPromptModelCombo().setEnabled(true);
+                if (view.getBtnSendToComfy() != null) {
+                    view.getBtnSendToComfy().setEnabled(true);
+                    view.getBtnSendToComfy().setToolTipText("Send workflow prompt to ComfyUI");
+                }
+                if (view.getPromptLabConsole() != null && view.getPromptLabConsole().getText().contains("No ready blueprints")) {
+                    view.getPromptLabConsole().setText("System: Prompt Lab ready.\n");
+                }
                 for (String name : itemsToAdd) {
                     view.getPromptModelCombo().addItem(name);
                 }

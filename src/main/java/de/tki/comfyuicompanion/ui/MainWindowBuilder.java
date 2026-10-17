@@ -248,6 +248,7 @@ public class MainWindowBuilder {
             promptLabController.setSuggestSubjectHandler(components.promptLabExecutionHandler::suggestSubjectCompletions);
             components.promptLabExecutionHandler.setPromptLabView(promptLabView);
             promptLabController.loadPromptLabSession();
+            promptLabController.refreshPromptLabModels();
             promptLabController.updatePromptLabJson();
             return promptLabView;
         }

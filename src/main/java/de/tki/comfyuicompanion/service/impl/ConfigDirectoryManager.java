@@ -37,89 +37,9 @@ public class ConfigDirectoryManager {
             if (envPath != null && !envPath.isBlank()) {
                 return envPath.trim();
             }
-            String discovered = discoverExistingExtraComfyUIPath(settings);
-            if (discovered != null && !discovered.isBlank()) {
-                settings.put("extra_comfyui_path", discovered);
-                return discovered;
-            }
             return Paths.get(System.getProperty("user.home"), "comfyuidata").toAbsolutePath().toString();
         }
         return path;
-    }
-
-    /**
-     * Discovers an existing extra ComfyUI data directory from {@code extra_model_paths.yaml}
-     * or common installation paths when no path is explicitly configured in settings.
-     *
-     * @param settings the current settings JSON object
-     * @return the discovered directory path, or null if none found
-     */
-    private String discoverExistingExtraComfyUIPath(JSONObject settings) {
-        try {
-            String comfyRoot = resolveComfyUIPath(settings, false);
-            if (comfyRoot != null && !comfyRoot.isBlank()) {
-                Path yamlFile = Paths.get(comfyRoot, "extra_model_paths.yaml");
-                if (Files.exists(yamlFile)) {
-                    org.yaml.snakeyaml.Yaml yaml = new org.yaml.snakeyaml.Yaml();
-                    try (java.io.InputStream is = Files.newInputStream(yamlFile)) {
-                        java.util.Map<String, Object> data = yaml.load(is);
-                        if (data != null) {
-                            for (Object val : data.values()) {
-                                if (val instanceof java.util.Map<?, ?> section) {
-                                    Object bpObj = section.get("base_path");
-                                    if (bpObj instanceof String bp && !bp.isBlank()) {
-                                        Path bpPath = Paths.get(bp.trim());
-                                        if (Files.exists(bpPath) && Files.isDirectory(bpPath)) {
-                                            Path candidate = (bpPath.getFileName() != null
-                                                    && bpPath.getFileName().toString().equalsIgnoreCase("models")
-                                                    && bpPath.getParent() != null)
-                                                    ? bpPath.getParent()
-                                                    : bpPath;
-                                            if (hasModelFiles(bpPath)) {
-                                                return candidate.toAbsolutePath().toString();
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            Path defaultHomeModels = Paths.get(System.getProperty("user.home"), "comfyuidata", "models");
-            if (hasModelFiles(defaultHomeModels)) {
-                return defaultHomeModels.getParent().toAbsolutePath().toString();
-            }
-
-            String[] commonCandidates = {
-                    "C:\\AI\\comfyuidata", "D:\\AI\\comfyuidata", "E:\\AI\\comfyuidata",
-                    "C:\\comfyuidata", "D:\\comfyuidata"
-            };
-            for (String candidate : commonCandidates) {
-                Path p = Paths.get(candidate);
-                if (Files.exists(p) && Files.isDirectory(p) && hasModelFiles(p.resolve("models"))) {
-                    return p.toAbsolutePath().toString();
-                }
-            }
-        } catch (Exception e) {
-            logger.debug("Could not auto-discover existing extra ComfyUI path: {}", e.getMessage());
-        }
-        return null;
-    }
-
-    private boolean hasModelFiles(Path modelsDir) {
-        if (modelsDir == null || !Files.exists(modelsDir) || !Files.isDirectory(modelsDir)) {
-            return false;
-        }
-        try (java.util.stream.Stream<Path> walk = Files.walk(modelsDir, 3)) {
-            return walk.filter(Files::isRegularFile).anyMatch(p -> {
-                String n = p.getFileName().toString().toLowerCase(java.util.Locale.ROOT);
-                return n.endsWith(".safetensors") || n.endsWith(".ckpt") || n.endsWith(".sft") || n.endsWith(".gguf");
-            });
-        } catch (Exception ignored) {
-            return false;
-        }
     }
 
     /**

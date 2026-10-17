@@ -21,6 +21,17 @@ public class StandardDialog extends JDialog {
     }
 
     /**
+     * Constructs a new StandardDialog with a generic Window owner.
+     * 
+     * @param owner the owner window
+     * @param title the dialog title
+     */
+    public StandardDialog(Window owner, String title) {
+        super(owner, title, ModalityType.APPLICATION_MODAL);
+        setLayout(new BorderLayout());
+    }
+
+    /**
      * Creates and returns a consistently padded content panel using GridBagLayout.
      * 
      * @return a new JPanel for dialog content

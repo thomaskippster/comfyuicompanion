@@ -22,13 +22,11 @@ public class HuggingFaceClient {
     }
 
     /**
-     * Sucht auf Hugging Face nach qualitativ hochwertigen Modellen, die das Keyword
-     * und die Zielarchitektur abdecken, und liefert fertige Download-URLs.
+     * Searches Hugging Face for high-quality models matching the keyword
+     * and target architecture, providing ready-to-use download URLs.
      *
-     * @param keyword Das vom LLM vorgeschlagene Schlagwort (z. B. "juggernaut")
-     * @param architecture Die Zielarchitektur (z. B. "SDXL")
-    /**
-     * Sucht reaktiv und non-blocking auf Hugging Face nach Modellen.
+     * @param keyword The keyword suggested by the LLM (e.g. "juggernaut")
+     * @param architecture The target architecture (e.g. "SDXL")
      */
     public reactor.core.publisher.Mono<List<ModelRecommendation>> searchModelsReactive(String keyword, String architecture) {
         String archTag = "";
@@ -44,7 +42,7 @@ public class HuggingFaceClient {
         }
         final String finalFilter = tempFilter;
 
-        logger.info("Suche Modelle auf Hugging Face mit Keyword: '{}' und Tags: '{}'", keyword, finalFilter);
+        logger.info("Searching models on Hugging Face with keyword: '{}' and tags: '{}'", keyword, finalFilter);
 
         return webClient.get()
                 .uri(uriBuilder -> uriBuilder
@@ -53,7 +51,7 @@ public class HuggingFaceClient {
                         .queryParam("filter", finalFilter)
                         .queryParam("sort", "downloads")
                         .queryParam("direction", "-1")
-                        .queryParam("limit", 5)
+                        .queryParam("limit", 20) // Increased limit to compensate for potential NSFW filtering
                         .build())
                 .retrieve()
                 .bodyToMono(JsonNode.class)
@@ -65,7 +63,7 @@ public class HuggingFaceClient {
     }
 
     /**
-     * Synchrone Convenience-Methode für bestehende nicht-reaktive Aufrufer.
+     * Synchronous convenience method for existing non-reactive callers.
      */
     public List<ModelRecommendation> searchModels(String keyword, String architecture) {
         List<ModelRecommendation> result = searchModelsReactive(keyword, architecture).block();
@@ -76,6 +74,21 @@ public class HuggingFaceClient {
         List<ModelRecommendation> recommendations = new ArrayList<>();
         if (responseArray != null && responseArray.isArray()) {
             for (JsonNode node : responseArray) {
+                // Check for NSFW tag to enforce youth protection
+                boolean isNsfw = false;
+                if (node.has("tags") && node.get("tags").isArray()) {
+                    for (JsonNode tagNode : node.get("tags")) {
+                        if ("nsfw".equalsIgnoreCase(tagNode.asText())) {
+                            isNsfw = true;
+                            break;
+                        }
+                    }
+                }
+                
+                if (isNsfw) {
+                    continue; // Skip NSFW models
+                }
+
                 String repoId = node.has("id") ? node.get("id").asText() : "";
                 int downloads = node.has("downloads") ? node.get("downloads").asInt() : 0;
 
@@ -92,6 +105,10 @@ public class HuggingFaceClient {
                     rec.setDownloadUrl(downloadUrl);
 
                     recommendations.add(rec);
+                    
+                    if (recommendations.size() >= 5) {
+                        break; // Keep the original limit of 5 results
+                    }
                 }
             }
         }

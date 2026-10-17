@@ -13,7 +13,6 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.regex.Matcher;
@@ -24,6 +23,7 @@ import java.util.regex.Pattern;
  * <p>
  * Handles executable validation, process management via {@link ProcessTracker},
  * video trimming, audio merging, motion filter generation for static images, and format probing.
+ * Command-line construction is delegated to {@link FfmpegCommandBuilder}.
  */
 @Component
 public class FfmpegProcessRunner {
@@ -143,30 +143,8 @@ public class FfmpegProcessRunner {
         logger.info("🖼️ [FfmpegProcessRunner] Converting static image {} to MP4 video with Ken Burns motion (Duration: {}s)",
                 imageFile.getName(), duration);
         try {
-            int fps = 24;
-            String motionFilter = String.format(Locale.US,
-                "scale=trunc(iw/2)*2:trunc(ih/2)*2,zoompan=z='min(zoom+0.0008,1.12)':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':fps=%d", fps);
-            ProcessBuilder pb = new ProcessBuilder(
-                configService.getFfmpegPath(), "-y",
-                "-loop", "1",
-                "-i", imageFile.getAbsolutePath(),
-                "-c:v", "libx264",
-                "-t", String.valueOf(duration),
-                "-pix_fmt", "yuv420p",
-                "-r", String.valueOf(fps),
-                "-vf", motionFilter,
-                destVideo.getAbsolutePath()
-            );
-            pb.redirectErrorStream(true);
-            Process process = startProcess(pb, tracker);
-
-            try (BufferedReader r = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
-                String line;
-                while ((line = r.readLine()) != null) {
-                    logger.info("   [FFmpeg Img2Vid] {}", line);
-                }
-            }
-            int exitCode = process.waitFor();
+            List<String> cmd = FfmpegCommandBuilder.imageToVideo(configService.getFfmpegPath(), imageFile, destVideo, duration, 24);
+            int exitCode = runLogged(cmd, tracker, "   [FFmpeg Img2Vid] {}");
             if (exitCode == 0 && destVideo.exists() && destVideo.length() > 1024) {
                 logger.info("✅ [FfmpegProcessRunner] Successfully converted image to video: {}", destVideo.getAbsolutePath());
                 return true;
@@ -189,7 +167,7 @@ public class FfmpegProcessRunner {
     public double probeFps(String videoPath, ProcessTracker tracker) {
         double fps = 30.0;
         try {
-            ProcessBuilder probePb = new ProcessBuilder(configService.getFfmpegPath(), "-i", videoPath);
+            ProcessBuilder probePb = new ProcessBuilder(FfmpegCommandBuilder.probe(configService.getFfmpegPath(), videoPath));
             probePb.redirectErrorStream(true);
             Process probeProcess = startProcess(probePb, tracker);
             try (BufferedReader r = new BufferedReader(new InputStreamReader(probeProcess.getInputStream(), StandardCharsets.UTF_8))) {
@@ -221,7 +199,8 @@ public class FfmpegProcessRunner {
             return null;
         }
         try {
-            ProcessBuilder probePb = new ProcessBuilder(configService.getFfmpegPath(), "-i", videoFile.getAbsolutePath());
+            ProcessBuilder probePb = new ProcessBuilder(
+                    FfmpegCommandBuilder.probe(configService.getFfmpegPath(), videoFile.getAbsolutePath()));
             probePb.redirectErrorStream(true);
             Process probeProcess = startProcess(probePb, tracker);
             int w = 0;
@@ -365,75 +344,18 @@ public class FfmpegProcessRunner {
             logger.info("   -> Trimming: startTime={}s, duration={}s (FPS: {})",
                     String.format(Locale.US, "%.2f", startTime), String.format(Locale.US, "%.2f", duration), fps);
 
-            List<String> command = new ArrayList<>();
-            command.add(configService.getFfmpegPath());
-            command.add("-y");
-            command.add("-ss");
-            command.add(String.format(Locale.US, "%.3f", startTime));
-            command.add("-i");
-            command.add(videoPath);
-            command.add("-t");
-            command.add(String.format(Locale.US, "%.3f", duration));
-
-            List<String> vfFilters = new ArrayList<>();
-            if (Math.abs(scene.getContrast() - 1.0) > 0.01 || Math.abs(scene.getBrightness()) > 0.01) {
-                vfFilters.add(String.format(Locale.US, "eq=contrast=%.2f:brightness=%.2f",
-                        scene.getContrast(), scene.getBrightness() / 100.0));
-            }
-            if (!vfFilters.isEmpty()) {
-                command.add("-vf");
-                command.add(String.join(",", vfFilters));
-            }
-
-            command.add("-c:v");
-            command.add("libx264");
-            command.add("-preset");
-            command.add("medium");
-            command.add("-crf");
-            command.add("18");
-            command.add("-pix_fmt");
-            command.add("yuv420p");
-            command.add("-an");
-            command.add(tempFile.getAbsolutePath());
-
-            ProcessBuilder pb = new ProcessBuilder(command);
-            pb.redirectErrorStream(true);
-            Process process = startProcess(pb, tracker);
-
-            try (BufferedReader r = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
-                String line;
-                while ((line = r.readLine()) != null) {
-                    logger.info("   [FFmpeg Trim] {}", line);
-                }
-            }
-
-            int exitCode = process.waitFor();
+            String ffmpegPath = configService.getFfmpegPath();
+            String colorFilter = FfmpegCommandBuilder.buildColorFilter(scene);
+            int exitCode = runLogged(
+                    FfmpegCommandBuilder.trim(ffmpegPath, videoPath, startTime, duration, colorFilter, tempFile),
+                    tracker, "   [FFmpeg Trim] {}");
             if (exitCode != 0 || !tempFile.exists() || tempFile.length() < 1024) {
-                if (!vfFilters.isEmpty()) {
+                if (colorFilter != null) {
                     logger.warn("⚠️ [FfmpegProcessRunner] Trimming with filters failed (exit code {}) for Scene {}. Retrying trimming without video filters as fallback...",
                             exitCode, scene.getSceneId());
-                    List<String> fallbackCmd = List.of(
-                        configService.getFfmpegPath(), "-y",
-                        "-ss", String.format(Locale.US, "%.3f", startTime),
-                        "-i", videoPath,
-                        "-t", String.format(Locale.US, "%.3f", duration),
-                        "-c:v", "libx264",
-                        "-preset", "medium",
-                        "-crf", "18",
-                        "-pix_fmt", "yuv420p",
-                        "-an",
-                        tempFile.getAbsolutePath()
-                    );
-                    ProcessBuilder fbPb = new ProcessBuilder(fallbackCmd);
-                    fbPb.redirectErrorStream(true);
-                    Process fbProcess = startProcess(fbPb, tracker);
-                    try (BufferedReader r = new BufferedReader(new InputStreamReader(fbProcess.getInputStream(), StandardCharsets.UTF_8))) {
-                        String line;
-                        while ((line = r.readLine()) != null) {
-                            logger.info("   [FFmpeg Trim Fallback] {}", line);
-                        }
-                    }
-                    int fbExit = fbProcess.waitFor();
+                    int fbExit = runLogged(
+                            FfmpegCommandBuilder.trim(ffmpegPath, videoPath, startTime, duration, null, tempFile),
+                            tracker, "   [FFmpeg Trim Fallback] {}");
                     if (fbExit != 0 || !tempFile.exists() || tempFile.length() < 1024) {
                         throw new IOException("FFmpeg trimming failed with exit code: " + fbExit + " for Scene " + scene.getSceneId());
                     }
@@ -458,14 +380,7 @@ public class FfmpegProcessRunner {
      * @return the command argument list
      */
     public static List<String> buildDummyWavCommand(String ffmpegPath, int duration, File dest) {
-        List<String> cmd = new ArrayList<>();
-        cmd.add(ffmpegPath);
-        cmd.add("-y");
-        cmd.add("-f"); cmd.add("lavfi");
-        cmd.add("-i"); cmd.add("anullsrc=r=16000:cl=mono");
-        cmd.add("-t"); cmd.add(String.valueOf(duration));
-        cmd.add(dest.getAbsolutePath());
-        return cmd;
+        return FfmpegCommandBuilder.dummyWav(ffmpegPath, duration, dest);
     }
 
     /**
@@ -487,14 +402,7 @@ public class FfmpegProcessRunner {
 
         logger.info("🎵 [FfmpegProcessRunner] Generating silence WAV fallback for Scene {} (Duration: {}s) to: {}",
                 scene.getSceneId(), duration, dest.getAbsolutePath());
-        ProcessBuilder pb = new ProcessBuilder(buildDummyWavCommand(configService.getFfmpegPath(), duration, dest));
-        pb.redirectErrorStream(true);
-        Process process = startProcess(pb, tracker);
-
-        try (BufferedReader r = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
-            while (r.readLine() != null) {}
-        }
-        int exitCode = process.waitFor();
+        int exitCode = runLogged(buildDummyWavCommand(configService.getFfmpegPath(), duration, dest), tracker, null);
         if (exitCode != 0) {
             throw new IOException("FFmpeg silent WAV generator exited with code: " + exitCode);
         }
@@ -516,37 +424,11 @@ public class FfmpegProcessRunner {
     public void mergeVideoAndAudioSegment(File trimmedVideo, File audioFile, double audioDuration,
                                           int targetWidth, int targetHeight, File mergedSegment,
                                           ProcessTracker tracker) throws IOException, InterruptedException {
-        String ffmpegPath = configService.getFfmpegPath();
-        List<String> mergeCmd = List.of(
-            ffmpegPath, "-y",
-            "-i", trimmedVideo.getAbsolutePath(),
-            "-i", audioFile.getAbsolutePath(),
-            "-t", String.format(Locale.US, "%.3f", audioDuration),
-            "-vf", String.format(Locale.US, "scale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-ih)/2,fps=30",
-                    targetWidth, targetHeight, targetWidth, targetHeight),
-            "-c:v", "libx264",
-            "-preset", "medium",
-            "-crf", "18",
-            "-pix_fmt", "yuv420p",
-            "-c:a", "aac",
-            "-b:a", "192k",
-            "-ar", "44100",
-            "-ac", "2",
-            "-shortest",
-            mergedSegment.getAbsolutePath()
-        );
+        List<String> mergeCmd = FfmpegCommandBuilder.mergeSegment(configService.getFfmpegPath(), trimmedVideo,
+                audioFile, audioDuration, targetWidth, targetHeight, mergedSegment);
 
         logger.info("   -> Merge cmd: {}", String.join(" ", mergeCmd));
-        ProcessBuilder mergePb = new ProcessBuilder(mergeCmd);
-        mergePb.redirectErrorStream(true);
-        Process mergeProcess = startProcess(mergePb, tracker);
-        try (BufferedReader r = new BufferedReader(new InputStreamReader(mergeProcess.getInputStream(), StandardCharsets.UTF_8))) {
-            String line;
-            while ((line = r.readLine()) != null) {
-                logger.info("   [FFmpeg Merge] {}", line);
-            }
-        }
-        int mergeExit = mergeProcess.waitFor();
+        int mergeExit = runLogged(mergeCmd, tracker, "   [FFmpeg Merge] {}");
         if (mergeExit != 0 || !mergedSegment.exists() || mergedSegment.length() < 1024) {
             throw new IOException("FFmpeg segment merge failed (exit code: " + mergeExit + ")");
         }
@@ -562,31 +444,36 @@ public class FfmpegProcessRunner {
      * @throws InterruptedException if interrupted during execution
      */
     public void executeConcatDemuxer(File concatList, File exportFile, ProcessTracker tracker) throws IOException, InterruptedException {
-        String ffmpegPath = configService.getFfmpegPath();
-        List<String> concatCmd = List.of(
-            ffmpegPath, "-y",
-            "-f", "concat",
-            "-safe", "0",
-            "-i", concatList.getAbsolutePath(),
-            "-c", "copy",
-            exportFile.getAbsolutePath()
-        );
+        List<String> concatCmd = FfmpegCommandBuilder.concatDemuxer(configService.getFfmpegPath(), concatList, exportFile);
 
         logger.info("🎬 [FfmpegProcessRunner] Running concat: {}", String.join(" ", concatCmd));
-        ProcessBuilder pb = new ProcessBuilder(concatCmd);
-        pb.redirectErrorStream(true);
-        Process process = startProcess(pb, tracker);
-
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                logger.info("[FFmpeg Render] {}", line);
-            }
-        }
-
-        int exitCode = process.waitFor();
+        int exitCode = runLogged(concatCmd, tracker, "[FFmpeg Render] {}");
         if (exitCode != 0 || !exportFile.exists() || exportFile.length() < 1024) {
             throw new IOException("FFmpeg concat exited with error code: " + exitCode);
         }
+    }
+
+    /**
+     * Runs a command with merged stdout/stderr, drains its output (logging each line when a format is given)
+     * and waits for termination.
+     *
+     * @param command   the command argument list
+     * @param tracker   optional process tracker override
+     * @param logFormat SLF4J format with one placeholder for each output line, or {@code null} to discard output
+     * @return the process exit code
+     */
+    private int runLogged(List<String> command, ProcessTracker tracker, String logFormat) throws IOException, InterruptedException {
+        ProcessBuilder pb = new ProcessBuilder(command);
+        pb.redirectErrorStream(true);
+        Process process = startProcess(pb, tracker);
+        try (BufferedReader r = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = r.readLine()) != null) {
+                if (logFormat != null) {
+                    logger.info(logFormat, line);
+                }
+            }
+        }
+        return process.waitFor();
     }
 }

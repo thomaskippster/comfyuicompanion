@@ -32,6 +32,7 @@ public class CivitaiGalleryTab extends JPanel {
     private final IDownloadManager downloadManager;
     private final ConfigService configService;
     private final ICivitaiOperationalModelService operationalModelService;
+    private final de.tki.comfyuicompanion.service.IAbortedDownloadService abortedDownloadService;
 
     private final CivitaiHeaderToolbar headerToolbar;
     private final CivitaiGridRenderer gridRenderer;
@@ -46,17 +47,20 @@ public class CivitaiGalleryTab extends JPanel {
      * @param downloadManager         the download manager service
      * @param configService           the application configuration service
      * @param operationalModelService service for operational dependency resolution and workflow generation
+     * @param abortedDownloadService  service for scanning, resuming, and cleaning incomplete downloads
      */
     @Autowired
     public CivitaiGalleryTab(ICivitaiHubService civitaiHubService,
                              IDownloadManager downloadManager,
                              ConfigService configService,
-                             @Autowired(required = false) ICivitaiOperationalModelService operationalModelService) {
+                             @Autowired(required = false) ICivitaiOperationalModelService operationalModelService,
+                             @Autowired(required = false) de.tki.comfyuicompanion.service.IAbortedDownloadService abortedDownloadService) {
         super(new BorderLayout());
         this.civitaiHubService = civitaiHubService;
         this.downloadManager = downloadManager;
         this.configService = configService;
         this.operationalModelService = operationalModelService;
+        this.abortedDownloadService = abortedDownloadService;
 
         headerToolbar = new CivitaiHeaderToolbar();
         gridRenderer = new CivitaiGridRenderer();
@@ -75,6 +79,21 @@ public class CivitaiGalleryTab extends JPanel {
     }
 
     /**
+     * Convenience constructor supporting operationalModelService without abortedDownloadService.
+     *
+     * @param civitaiHubService       the Civitai API service
+     * @param downloadManager         the download manager service
+     * @param configService           the application configuration service
+     * @param operationalModelService operational model service
+     */
+    public CivitaiGalleryTab(ICivitaiHubService civitaiHubService,
+                             IDownloadManager downloadManager,
+                             ConfigService configService,
+                             ICivitaiOperationalModelService operationalModelService) {
+        this(civitaiHubService, downloadManager, configService, operationalModelService, null);
+    }
+
+    /**
      * Convenience constructor for backwards compatibility or tests.
      *
      * @param civitaiHubService the Civitai API service
@@ -84,13 +103,14 @@ public class CivitaiGalleryTab extends JPanel {
     public CivitaiGalleryTab(ICivitaiHubService civitaiHubService,
                              IDownloadManager downloadManager,
                              ConfigService configService) {
-        this(civitaiHubService, downloadManager, configService, null);
+        this(civitaiHubService, downloadManager, configService, null, null);
     }
 
     private void buildUi() {
         setOpaque(true);
 
         headerToolbar.setOnFilterChanged(this::performSearch);
+        headerToolbar.setOnIncompleteDownloadsClicked(this::handleIncompleteDownloads);
         add(headerToolbar, BorderLayout.NORTH);
         add(gridRenderer.getScrollPane(), BorderLayout.CENTER);
 
@@ -181,6 +201,22 @@ public class CivitaiGalleryTab extends JPanel {
         dialog.setVisible(true);
         // Refresh statuses to reflect newly downloaded models
         performSearch();
+    }
+
+    /**
+     * Opens the incomplete downloads dialog allowing users to inspect, resume,
+     * or purge aborted and partial download files to reclaim disk space.
+     */
+    public void handleIncompleteDownloads() {
+        if (abortedDownloadService == null) return;
+        Window owner = SwingUtilities.getWindowAncestor(this);
+        CivitaiAbortedDownloadsDialog dialog = new CivitaiAbortedDownloadsDialog(
+                owner,
+                abortedDownloadService,
+                configService,
+                this::performSearch
+        );
+        dialog.setVisible(true);
     }
 
     /**

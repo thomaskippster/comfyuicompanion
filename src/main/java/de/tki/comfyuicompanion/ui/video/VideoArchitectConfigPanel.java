@@ -51,12 +51,7 @@ public class VideoArchitectConfigPanel extends CardPanel {
     private JTextField speakerImageField;
     private JButton browseSpeaker;
     private JButton clearSpeaker;
-    private JSpinner videoWidthSpinner;
-    private JSpinner videoHeightSpinner;
-    private JSpinner videoDurationSpinner;
-    private JSpinner videoStepsSpinner;
-    private JSpinner videoCfgSpinner;
-    private JSpinner videoMotionSpinner;
+    private final VideoSamplingParamsPanel samplingParamsPanel;
     private JButton btnAutoPilot;
 
     /**
@@ -72,6 +67,7 @@ public class VideoArchitectConfigPanel extends CardPanel {
         this.configService = configService;
         this.presetCoordinator = presetCoordinator;
         this.consoleLogger = consoleLogger != null ? consoleLogger : msg -> {};
+        this.samplingParamsPanel = new VideoSamplingParamsPanel();
         initUI();
     }
 
@@ -182,6 +178,26 @@ public class VideoArchitectConfigPanel extends CardPanel {
         add(Box.createVerticalStrut(10));
 
         // 3. Consistency / Start Image
+        initStartImageRow(subLabelFont);
+
+        // 4 & 5. Sampling Parameters Panel
+        add(samplingParamsPanel);
+        add(Box.createVerticalStrut(18));
+
+        // 6. Autonomous Action
+        btnAutoPilot = new JButton("Agent: Auto-Pilot (End-to-End)", SvgIconFactory.get(AppIcon.AGENT));
+        btnAutoPilot.setFont(new Font("SansSerif", Font.BOLD, 13));
+        btnAutoPilot.putClientProperty("Button.background", new Color(255, 204, 0));
+        btnAutoPilot.putClientProperty("Button.foreground", Color.BLACK);
+        btnAutoPilot.setAlignmentX(Component.LEFT_ALIGNMENT);
+        btnAutoPilot.setMaximumSize(new Dimension(Integer.MAX_VALUE, 40));
+        btnAutoPilot.setToolTipText("Deconstruct script, generate narration TTS, render ComfyUI scene videos, and stitch into master_export.mp4 automatically.");
+        add(btnAutoPilot);
+
+        add(Box.createVerticalGlue());
+    }
+
+    private void initStartImageRow(Font subLabelFont) {
         JLabel lblStartImage = new JLabel("Start Image (Consistency)");
         lblStartImage.setFont(subLabelFont);
         lblStartImage.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -201,100 +217,37 @@ public class VideoArchitectConfigPanel extends CardPanel {
         speakerBtnGroup.setOpaque(false);
 
         browseSpeaker = new JButton("Browse...");
-        browseSpeaker.addActionListener(e -> {
-            JFileChooser chooser = new JFileChooser();
-            chooser.setDialogTitle("Select Start Image");
-            chooser.setFileFilter(new FileNameExtensionFilter("Images", "png", "jpg", "jpeg", "webp"));
-            if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
-                File f = chooser.getSelectedFile();
-                speakerImageField.setText(f.getAbsolutePath());
-                if (configService != null) {
-                    configService.setSpeakerImagePath(f.getAbsolutePath());
-                }
-            }
-        });
+        browseSpeaker.addActionListener(e -> onBrowseSpeakerImage());
 
         clearSpeaker = new JButton(SvgIconFactory.get(AppIcon.CLOSE, 12));
         clearSpeaker.setToolTipText("Clear Start Image (Pure Text-to-Video)");
-        clearSpeaker.addActionListener(e -> {
-            speakerImageField.setText("");
-            if (configService != null) {
-                configService.setSpeakerImagePath("");
-            }
-        });
+        clearSpeaker.addActionListener(e -> onClearSpeakerImage());
 
         speakerBtnGroup.add(browseSpeaker);
         speakerBtnGroup.add(clearSpeaker);
         speakerRow.add(speakerBtnGroup, BorderLayout.EAST);
         add(speakerRow);
         add(Box.createVerticalStrut(16));
-
-        // 4. Output Dimensions & Duration
-        JLabel lblDimensions = new JLabel("Output Dimensions & Duration");
-        lblDimensions.putClientProperty("FlatLaf.styleClass", "h4");
-        lblDimensions.setAlignmentX(Component.LEFT_ALIGNMENT);
-        add(lblDimensions);
-        add(Box.createVerticalStrut(5));
-
-        JPanel sizeRow = new JPanel(new GridLayout(1, 3, 8, 0));
-        sizeRow.setOpaque(false);
-        sizeRow.setAlignmentX(Component.LEFT_ALIGNMENT);
-        sizeRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 50));
-
-        videoWidthSpinner = new JSpinner(new SpinnerNumberModel(832, 256, 3840, 16));
-        videoHeightSpinner = new JSpinner(new SpinnerNumberModel(480, 256, 2160, 16));
-        videoDurationSpinner = new JSpinner(new SpinnerNumberModel(5, 1, 60, 1));
-        sizeRow.add(createSpinnerPanel("Width", videoWidthSpinner));
-        sizeRow.add(createSpinnerPanel("Height", videoHeightSpinner));
-        sizeRow.add(createSpinnerPanel("Scene Sec", videoDurationSpinner));
-        add(sizeRow);
-        add(Box.createVerticalStrut(16));
-
-        // 5. Generation & Sampling Parameters
-        JLabel lblSampler = new JLabel("Generation & Sampling Parameters");
-        lblSampler.putClientProperty("FlatLaf.styleClass", "h4");
-        lblSampler.setAlignmentX(Component.LEFT_ALIGNMENT);
-        add(lblSampler);
-        add(Box.createVerticalStrut(5));
-
-        JPanel samplerRow = new JPanel(new GridLayout(1, 3, 8, 0));
-        samplerRow.setOpaque(false);
-        samplerRow.setAlignmentX(Component.LEFT_ALIGNMENT);
-        samplerRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 50));
-
-        videoStepsSpinner = new JSpinner(new SpinnerNumberModel(20, 1, 100, 1));
-        videoCfgSpinner = new JSpinner(new SpinnerNumberModel(3.0, 0.5, 20.0, 0.5));
-        videoMotionSpinner = new JSpinner(new SpinnerNumberModel(127, 1, 255, 1));
-        samplerRow.add(createSpinnerPanel("Steps", videoStepsSpinner));
-        samplerRow.add(createSpinnerPanel("CFG Scale", videoCfgSpinner));
-        samplerRow.add(createSpinnerPanel("Motion Bucket", videoMotionSpinner));
-        add(samplerRow);
-        add(Box.createVerticalStrut(18));
-
-        // 6. Autonomous Action
-        btnAutoPilot = new JButton("Agent: Auto-Pilot (End-to-End)", SvgIconFactory.get(AppIcon.AGENT));
-        btnAutoPilot.setFont(new Font("SansSerif", Font.BOLD, 13));
-        btnAutoPilot.putClientProperty("Button.background", new Color(255, 204, 0));
-        btnAutoPilot.putClientProperty("Button.foreground", Color.BLACK);
-        btnAutoPilot.setAlignmentX(Component.LEFT_ALIGNMENT);
-        btnAutoPilot.setMaximumSize(new Dimension(Integer.MAX_VALUE, 40));
-        btnAutoPilot.setToolTipText("Deconstruct script, generate narration TTS, render ComfyUI scene videos, and stitch into master_export.mp4 automatically.");
-        add(btnAutoPilot);
-
-        add(Box.createVerticalGlue());
     }
 
-    private JPanel createSpinnerPanel(String label, JSpinner spinner) {
-        JPanel panel = new JPanel(new BorderLayout(0, 2));
-        panel.setOpaque(false);
-        JLabel lbl = new JLabel(label);
-        lbl.setFont(new Font("SansSerif", Font.PLAIN, 11));
-        if (spinner.getEditor() instanceof JSpinner.NumberEditor ne) {
-            ne.getFormat().setGroupingUsed(false);
+    private void onBrowseSpeakerImage() {
+        JFileChooser chooser = new JFileChooser();
+        chooser.setDialogTitle("Select Start Image");
+        chooser.setFileFilter(new FileNameExtensionFilter("Images", "png", "jpg", "jpeg", "webp"));
+        if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
+            File f = chooser.getSelectedFile();
+            speakerImageField.setText(f.getAbsolutePath());
+            if (configService != null) {
+                configService.setSpeakerImagePath(f.getAbsolutePath());
+            }
         }
-        panel.add(lbl, BorderLayout.NORTH);
-        panel.add(spinner, BorderLayout.CENTER);
-        return panel;
+    }
+
+    private void onClearSpeakerImage() {
+        speakerImageField.setText("");
+        if (configService != null) {
+            configService.setSpeakerImagePath("");
+        }
     }
 
     /**
@@ -305,7 +258,8 @@ public class VideoArchitectConfigPanel extends CardPanel {
     public void applyHardwarePreset(boolean logMessage) {
         if (presetCoordinator != null) {
             presetCoordinator.applyHardwarePreset(logMessage, hardwareProfileBadge, videoModelCombo,
-                    videoWidthSpinner, videoHeightSpinner, videoStepsSpinner, videoCfgSpinner,
+                    samplingParamsPanel.getVideoWidthSpinner(), samplingParamsPanel.getVideoHeightSpinner(),
+                    samplingParamsPanel.getVideoStepsSpinner(), samplingParamsPanel.getVideoCfgSpinner(),
                     videoPresetLabel, consoleLogger);
         }
     }
@@ -317,7 +271,8 @@ public class VideoArchitectConfigPanel extends CardPanel {
         if (presetCoordinator != null) {
             String selected = (String) videoModelCombo.getSelectedItem();
             presetCoordinator.updateModelPreset(selected, videoPresetLabel,
-                    videoWidthSpinner, videoHeightSpinner, videoStepsSpinner, videoCfgSpinner,
+                    samplingParamsPanel.getVideoWidthSpinner(), samplingParamsPanel.getVideoHeightSpinner(),
+                    samplingParamsPanel.getVideoStepsSpinner(), samplingParamsPanel.getVideoCfgSpinner(),
                     consoleLogger);
         }
     }
@@ -395,160 +350,24 @@ public class VideoArchitectConfigPanel extends CardPanel {
      *
      * @return the suggest button
      */
-    public JButton getBtnSuggestSubject() {
-        return btnSuggestSubject;
-    }
+    public JButton getBtnSuggestSubject() { return btnSuggestSubject; }
+    public JTextField getSpeakerImageField() { return speakerImageField; }
+    public JSpinner getVideoWidthSpinner() { return samplingParamsPanel.getVideoWidthSpinner(); }
+    public JSpinner getVideoHeightSpinner() { return samplingParamsPanel.getVideoHeightSpinner(); }
+    public JSpinner getVideoDurationSpinner() { return samplingParamsPanel.getVideoDurationSpinner(); }
+    public JSpinner getVideoStepsSpinner() { return samplingParamsPanel.getVideoStepsSpinner(); }
+    public JSpinner getVideoCfgSpinner() { return samplingParamsPanel.getVideoCfgSpinner(); }
+    public JSpinner getVideoMotionSpinner() { return samplingParamsPanel.getVideoMotionSpinner(); }
+    public JButton getBtnAutoPilot() { return btnAutoPilot; }
 
-    /**
-     * Returns the speaker image path text field.
-     *
-     * @return the speaker image text field
-     */
-    public JTextField getSpeakerImageField() {
-        return speakerImageField;
-    }
+    public String getPromptSubject() { return promptSubjectField != null ? promptSubjectField.getText().trim() : ""; }
+    public String getSelectedModel() { return videoModelCombo != null ? (String) videoModelCombo.getSelectedItem() : ""; }
+    public String getSpeakerImagePath() { return speakerImageField != null ? speakerImageField.getText().trim() : ""; }
 
-    /**
-     * Returns the video width spinner.
-     *
-     * @return the width spinner
-     */
-    public JSpinner getVideoWidthSpinner() {
-        return videoWidthSpinner;
-    }
-
-    /**
-     * Returns the video height spinner.
-     *
-     * @return the height spinner
-     */
-    public JSpinner getVideoHeightSpinner() {
-        return videoHeightSpinner;
-    }
-
-    /**
-     * Returns the video duration spinner.
-     *
-     * @return the duration spinner
-     */
-    public JSpinner getVideoDurationSpinner() {
-        return videoDurationSpinner;
-    }
-
-    /**
-     * Returns the video sampling steps spinner.
-     *
-     * @return the steps spinner
-     */
-    public JSpinner getVideoStepsSpinner() {
-        return videoStepsSpinner;
-    }
-
-    /**
-     * Returns the CFG scale spinner.
-     *
-     * @return the CFG spinner
-     */
-    public JSpinner getVideoCfgSpinner() {
-        return videoCfgSpinner;
-    }
-
-    /**
-     * Returns the motion bucket spinner.
-     *
-     * @return the motion spinner
-     */
-    public JSpinner getVideoMotionSpinner() {
-        return videoMotionSpinner;
-    }
-
-    /**
-     * Returns the autopilot button.
-     *
-     * @return the autopilot button
-     */
-    public JButton getBtnAutoPilot() {
-        return btnAutoPilot;
-    }
-
-    /**
-     * Returns the trimmed prompt subject text.
-     *
-     * @return the prompt subject
-     */
-    public String getPromptSubject() {
-        return promptSubjectField != null ? promptSubjectField.getText().trim() : "";
-    }
-
-    /**
-     * Returns the currently selected video model.
-     *
-     * @return the selected model name
-     */
-    public String getSelectedModel() {
-        return videoModelCombo != null ? (String) videoModelCombo.getSelectedItem() : "";
-    }
-
-    /**
-     * Returns the trimmed speaker image path.
-     *
-     * @return the speaker image path
-     */
-    public String getSpeakerImagePath() {
-        return speakerImageField != null ? speakerImageField.getText().trim() : "";
-    }
-
-    /**
-     * Returns the target video width in pixels.
-     *
-     * @return video width
-     */
-    public int getVideoWidth() {
-        return videoWidthSpinner != null ? (Integer) videoWidthSpinner.getValue() : 832;
-    }
-
-    /**
-     * Returns the target video height in pixels.
-     *
-     * @return video height
-     */
-    public int getVideoHeight() {
-        return videoHeightSpinner != null ? (Integer) videoHeightSpinner.getValue() : 480;
-    }
-
-    /**
-     * Returns the target video duration in seconds.
-     *
-     * @return video duration
-     */
-    public int getVideoDuration() {
-        return videoDurationSpinner != null ? (Integer) videoDurationSpinner.getValue() : 5;
-    }
-
-    /**
-     * Returns the generation sampling steps.
-     *
-     * @return sampling steps
-     */
-    public int getVideoSteps() {
-        return videoStepsSpinner != null ? (Integer) videoStepsSpinner.getValue() : 20;
-    }
-
-    /**
-     * Returns the CFG scale value.
-     *
-     * @return CFG scale
-     */
-    public double getVideoCfg() {
-        return videoCfgSpinner != null ? ((Number) videoCfgSpinner.getValue()).doubleValue() : 3.0;
-    }
-
-    /**
-     * Returns the motion bucket ID parameter.
-     *
-     * @return motion bucket ID
-     */
-    public int getVideoMotion() {
-        return videoMotionSpinner != null ? (Integer) videoMotionSpinner.getValue() : 127;
-    }
+    public int getVideoWidth() { return samplingParamsPanel.getVideoWidth(); }
+    public int getVideoHeight() { return samplingParamsPanel.getVideoHeight(); }
+    public int getVideoDuration() { return samplingParamsPanel.getVideoDuration(); }
+    public int getVideoSteps() { return samplingParamsPanel.getVideoSteps(); }
+    public double getVideoCfg() { return samplingParamsPanel.getVideoCfg(); }
+    public int getVideoMotion() { return samplingParamsPanel.getVideoMotion(); }
 }

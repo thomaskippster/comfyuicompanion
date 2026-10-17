@@ -4,24 +4,17 @@ import de.tki.comfyuicompanion.domain.ComfyTemplate;
 import de.tki.comfyuicompanion.service.IComfyTemplateService;
 import de.tki.comfyuicompanion.service.IWorkflowDownloader;
 import de.tki.comfyuicompanion.service.impl.ComfyApiClient;
-import de.tki.comfyuicompanion.service.impl.ComfyPipelineService;
 import de.tki.comfyuicompanion.service.impl.ConfigService;
 import de.tki.comfyuicompanion.ui.BlueprintGalleryTab;
 import de.tki.comfyuicompanion.ui.PromptLabView;
 import de.tki.comfyuicompanion.util.BackgroundExecutor;
-import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.swing.SwingUtilities;
 import java.io.File;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
-import java.util.Set;
-import java.util.TreeSet;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
@@ -38,9 +31,11 @@ public class PromptLabBlueprintCoordinator {
     private final IWorkflowDownloader workflowDownloader;
     private final BackgroundExecutor backgroundExecutor;
     private final PromptLabModelResolver modelResolver;
+    private final PromptLabWorkflowResolver workflowResolver;
+    private final PromptLabModelDiscovery modelDiscovery;
 
     /**
-     * Constructs a new PromptLabBlueprintCoordinator with the required services and resolvers.
+     * Constructs a new PromptLabBlueprintCoordinator with default helper components.
      *
      * @param configService        configuration service for file paths and ComfyUI URLs
      * @param comfyTemplateService service to determine workflow templates for models
@@ -53,11 +48,36 @@ public class PromptLabBlueprintCoordinator {
                                          IWorkflowDownloader workflowDownloader,
                                          BackgroundExecutor backgroundExecutor,
                                          PromptLabModelResolver modelResolver) {
+        this(configService, comfyTemplateService, workflowDownloader, backgroundExecutor, modelResolver,
+                new PromptLabWorkflowResolver(configService, comfyTemplateService, workflowDownloader, modelResolver),
+                new PromptLabModelDiscovery(configService, modelResolver, backgroundExecutor));
+    }
+
+    /**
+     * Constructs a new PromptLabBlueprintCoordinator with injected helper components.
+     *
+     * @param configService        configuration service for file paths and ComfyUI URLs
+     * @param comfyTemplateService service to determine workflow templates for models
+     * @param workflowDownloader   service to download remote workflow files when needed
+     * @param backgroundExecutor   executor for running asynchronous fetch tasks
+     * @param modelResolver        resolver for model injection and checkpoint/unet sets
+     * @param workflowResolver     resolver for loading and converting workflow JSONs
+     * @param modelDiscovery       component discovering models from ComfyUI and local directories
+     */
+    public PromptLabBlueprintCoordinator(ConfigService configService,
+                                         IComfyTemplateService comfyTemplateService,
+                                         IWorkflowDownloader workflowDownloader,
+                                         BackgroundExecutor backgroundExecutor,
+                                         PromptLabModelResolver modelResolver,
+                                         PromptLabWorkflowResolver workflowResolver,
+                                         PromptLabModelDiscovery modelDiscovery) {
         this.configService = configService;
         this.comfyTemplateService = comfyTemplateService;
         this.workflowDownloader = workflowDownloader;
         this.backgroundExecutor = backgroundExecutor;
         this.modelResolver = modelResolver;
+        this.workflowResolver = workflowResolver;
+        this.modelDiscovery = modelDiscovery;
     }
 
     /**
@@ -151,103 +171,13 @@ public class PromptLabBlueprintCoordinator {
     }
 
     /**
-     * Resolves the workflow JSON content for a target blueprint from local disks,
-     * remote registry download, or template generation.
+     * Resolves the workflow JSON content for a target blueprint.
      *
      * @param targetEntry the blueprint entry to resolve
      * @return the resolved JSON content string, or null if unresolvable
      */
     public String resolveBlueprintWorkflowJson(BlueprintGalleryTab.BlueprintEntry targetEntry) {
-        if (targetEntry == null) {
-            return null;
-        }
-        try {
-            String jsonContent = null;
-            if (targetEntry.filePath != null) {
-                File localFile = new File(targetEntry.filePath);
-                if (localFile.exists()) {
-                    jsonContent = Files.readString(localFile.toPath(), StandardCharsets.UTF_8).trim();
-                }
-            }
-
-            // 1. Local-First: Check user workflows first, then fallback to shipped workflows folder
-            if (jsonContent == null) {
-                List<File> searchDirs = new ArrayList<>();
-                if (configService != null) {
-                    searchDirs.add(configService.getUserWorkflowsDir());
-                    searchDirs.add(configService.getShippedWorkflowsDir());
-                } else {
-                    searchDirs.add(new File("user_workflows"));
-                    searchDirs.add(new File("workflows"));
-                }
-
-                for (File dir : searchDirs) {
-                    if (dir != null && dir.exists() && dir.isDirectory()) {
-                        if (targetEntry.registryWorkflow != null) {
-                            if (targetEntry.registryWorkflow.getId() != null) {
-                                File registryFile = new File(dir, targetEntry.registryWorkflow.getId() + ".json");
-                                if (registryFile.exists()) {
-                                    jsonContent = Files.readString(registryFile.toPath(), StandardCharsets.UTF_8).trim();
-                                    break;
-                                }
-                            }
-                            if (jsonContent == null && targetEntry.registryWorkflow.getTitle() != null) {
-                                String sanitized = targetEntry.registryWorkflow.getTitle()
-                                        .replaceAll("[^a-zA-Z0-9\\-_\\s]", "")
-                                        .trim()
-                                        .replaceAll("\\s+", "_")
-                                        .toLowerCase(Locale.ROOT);
-                                File titleFile = new File(dir, sanitized + ".json");
-                                if (titleFile.exists()) {
-                                    jsonContent = Files.readString(titleFile.toPath(), StandardCharsets.UTF_8).trim();
-                                    break;
-                                }
-                            }
-                        }
-                        if (jsonContent == null) {
-                            File[] files = dir.listFiles((d, n) -> n.toLowerCase().endsWith(".json"));
-                            if (files != null) {
-                                for (File f : files) {
-                                    if (isBlueprintNameMatch(targetEntry.name, f.getName().replace(".json", ""))
-                                            || (targetEntry.filename != null && f.getName().equalsIgnoreCase(targetEntry.filename))) {
-                                        jsonContent = Files.readString(f.toPath(), StandardCharsets.UTF_8).trim();
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-                        if (jsonContent != null) {
-                            break;
-                        }
-                    }
-                }
-            }
-
-            // 2. Remote Download fallback if not available on disk
-            if (jsonContent == null && targetEntry.registryWorkflow != null && workflowDownloader != null) {
-                try {
-                    File downloaded = workflowDownloader.downloadWorkflowAsync(targetEntry.registryWorkflow).get();
-                    if (downloaded != null && downloaded.exists()) {
-                        jsonContent = Files.readString(downloaded.toPath(), StandardCharsets.UTF_8).trim();
-                    }
-                } catch (Exception dlEx) {
-                    logger.warn("Failed to download workflow for blueprint {}: {}", targetEntry.name, dlEx.getMessage());
-                }
-            }
-
-            // 3. Fallback to template generator if workflow cannot be found
-            if (jsonContent == null && comfyTemplateService != null && modelResolver != null) {
-                ComfyTemplate template = comfyTemplateService.determineTemplateForModel(targetEntry.name);
-                if (template != null) {
-                    jsonContent = modelResolver.injectModelsIntoTemplate(template.getContent(), targetEntry.name);
-                }
-            }
-
-            return jsonContent;
-        } catch (Exception ex) {
-            logger.error("Error resolving workflow JSON for blueprint: " + targetEntry.name, ex);
-            return null;
-        }
+        return workflowResolver.resolveBlueprintWorkflowJson(targetEntry);
     }
 
     /**
@@ -257,20 +187,7 @@ public class PromptLabBlueprintCoordinator {
      * @return the API-formatted JSON string or original string if already formatted
      */
     public String convertUiToApiIfNeeded(String jsonContent) {
-        if (jsonContent == null) {
-            return null;
-        }
-        try {
-            JSONObject rawObj = new JSONObject(jsonContent);
-            if (rawObj.has("nodes")) {
-                JSONObject flattened = ComfyPipelineService.flattenWorkflow(rawObj);
-                JSONObject apiPayload = ComfyPipelineService.convertUiToApi(flattened);
-                return apiPayload.toString(2);
-            }
-        } catch (Exception ignored) {
-            // Keep raw content if JSON parse fails
-        }
-        return jsonContent;
+        return workflowResolver.convertUiToApiIfNeeded(jsonContent);
     }
 
     /**
@@ -359,24 +276,7 @@ public class PromptLabBlueprintCoordinator {
      * @return true if both names refer to the same blueprint
      */
     public boolean isBlueprintNameMatch(String name1, String name2) {
-        if (name1 == null || name2 == null) return false;
-        String clean1 = name1.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]", "");
-        String clean2 = name2.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]", "");
-        if (clean1.equals(clean2) || clean1.contains(clean2) || clean2.contains(clean1)) return true;
-
-        String[] words1 = name1.toLowerCase(Locale.ROOT).replaceAll("[^a-zA-Z0-9]", " ").trim().split("\\s+");
-        String[] words2 = name2.toLowerCase(Locale.ROOT).replaceAll("[^a-zA-Z0-9]", " ").trim().split("\\s+");
-        int matchCount = 0;
-        for (String w1 : words1) {
-            if (w1.length() < 3) continue;
-            for (String w2 : words2) {
-                if (w1.equals(w2)) {
-                    matchCount++;
-                    break;
-                }
-            }
-        }
-        return matchCount >= Math.min(words1.length, words2.length);
+        return workflowResolver.isBlueprintNameMatch(name1, name2);
     }
 
     /**
@@ -386,19 +286,7 @@ public class PromptLabBlueprintCoordinator {
      * @return true if the blueprint is supported in Prompt Lab
      */
     public boolean isSupportedPromptLabBlueprint(BlueprintGalleryTab.BlueprintEntry e) {
-        if (e == null || e.category == null) return false;
-        String cat = e.category.toLowerCase(Locale.ROOT);
-        String name = e.name != null ? e.name.toLowerCase(Locale.ROOT) : "";
-        String desc = e.description != null ? e.description.toLowerCase(Locale.ROOT) : "";
-
-        if (cat.contains("cloud") || name.contains("cloud") || desc.contains("cloud api")
-                || name.contains("replicate") || name.contains("fal.ai") || name.contains("dall-e") || name.contains("openai")) {
-            return false;
-        }
-
-        return cat.contains("text-to-image") || cat.contains("image lab") || cat.contains("flux") || cat.contains("sdxl") || cat.contains("sd 1.5")
-                || name.contains("text to image") || name.contains("t2i") || name.contains("sdxl") || name.contains("flux") || name.contains("lumina")
-                || name.contains("img2img") || name.contains("i2i") || name.contains("inpaint") || name.contains("image edit");
+        return modelDiscovery.isSupportedPromptLabBlueprint(e);
     }
 
     /**
@@ -422,10 +310,7 @@ public class PromptLabBlueprintCoordinator {
      * @return true if it is a video model
      */
     public boolean isVideoModel(String modelName) {
-        if (modelName == null) return false;
-        String lower = modelName.toLowerCase(Locale.ROOT);
-        return lower.contains("video") || lower.contains("animatediff") || lower.contains("svd")
-                || lower.contains("wan") || lower.contains("cogvideo") || lower.contains("ltx");
+        return modelDiscovery.isVideoModel(modelName);
     }
 
     /**
@@ -436,22 +321,7 @@ public class PromptLabBlueprintCoordinator {
      * @param result output list to append discovered relative paths to
      */
     public void scanModelsRecursively(File dir, String prefix, List<String> result) {
-        if (!dir.exists() || !dir.isDirectory()) return;
-        File[] files = dir.listFiles();
-        if (files == null) return;
-        for (File f : files) {
-            if (f.isDirectory()) {
-                scanModelsRecursively(f, prefix.isEmpty() ? f.getName() : prefix + "/" + f.getName(), result);
-            } else {
-                String name = f.getName().toLowerCase(Locale.ROOT);
-                if (name.endsWith(".safetensors") || name.endsWith(".ckpt") || name.endsWith(".pt")) {
-                    String relPath = prefix.isEmpty() ? f.getName() : prefix + "/" + f.getName();
-                    if (!result.contains(relPath)) {
-                        result.add(relPath);
-                    }
-                }
-            }
-        }
+        modelDiscovery.scanModelsRecursively(dir, prefix, result);
     }
 
     /**
@@ -462,17 +332,7 @@ public class PromptLabBlueprintCoordinator {
      * @return the actual model name
      */
     public String getActualModelForPromptLab(String comboSelection, BlueprintGalleryTab blueprintGalleryTab) {
-        if (comboSelection == null) return null;
-        if (blueprintGalleryTab != null) {
-            for (BlueprintGalleryTab.BlueprintEntry e : blueprintGalleryTab.getAvailableBlueprints()) {
-                if (e.name.equals(comboSelection)) {
-                    if (!e.requiredModels.isEmpty()) {
-                        return e.requiredModels.get(0).getName();
-                    }
-                }
-            }
-        }
-        return comboSelection;
+        return modelDiscovery.getActualModelForPromptLab(comboSelection, blueprintGalleryTab);
     }
 
     /**
@@ -483,15 +343,7 @@ public class PromptLabBlueprintCoordinator {
      * @return the matching blueprint name, or the model name if not found
      */
     public String getBlueprintNameForModel(String modelName, BlueprintGalleryTab blueprintGalleryTab) {
-        if (modelName == null) return null;
-        if (blueprintGalleryTab != null) {
-            for (BlueprintGalleryTab.BlueprintEntry e : blueprintGalleryTab.getAvailableBlueprints()) {
-                if (!e.requiredModels.isEmpty() && e.requiredModels.get(0).getName().equals(modelName)) {
-                    return e.name;
-                }
-            }
-        }
-        return modelName;
+        return modelDiscovery.getBlueprintNameForModel(modelName, blueprintGalleryTab);
     }
 
     /**
@@ -502,60 +354,7 @@ public class PromptLabBlueprintCoordinator {
      * @return list of discovered model and blueprint names
      */
     public List<String> discoverPromptLabModels(BlueprintGalleryTab blueprintGalleryTab, ComfyApiClient comfyApiClient) {
-        List<String> itemsToAdd = new ArrayList<>();
-        if (blueprintGalleryTab != null) {
-            List<BlueprintGalleryTab.BlueprintEntry> readyBlueprints = blueprintGalleryTab.getAvailableBlueprints();
-            for (BlueprintGalleryTab.BlueprintEntry e : readyBlueprints) {
-                if (isSupportedPromptLabBlueprint(e)) {
-                    if (e.name != null && !e.name.isBlank() && !itemsToAdd.contains(e.name)) {
-                        itemsToAdd.add(e.name);
-                    }
-                }
-            }
-        }
-
-        if (itemsToAdd.isEmpty()) {
-            Set<String> apiModels = new TreeSet<>();
-            if (comfyApiClient != null && configService != null) {
-                String comfyUrl = configService.getComfyUIUrl();
-                try {
-                    JSONObject info = comfyApiClient.getObjectInfo(comfyUrl);
-                    if (modelResolver != null) {
-                        modelResolver.updateComfyModelSets(info);
-                        for (String ckpt : modelResolver.getComfyCheckpoints()) apiModels.add(ckpt.replace("\\", "/"));
-                        for (String unet : modelResolver.getComfyUnetModels()) apiModels.add(unet.replace("\\", "/"));
-                    }
-                } catch (Exception ignored) {}
-            }
-
-            for (String m : apiModels) {
-                String mLower = m.toLowerCase(Locale.ROOT);
-                if (!isVideoModel(m) && !mLower.contains("cloud") && !itemsToAdd.contains(m)) {
-                    itemsToAdd.add(m);
-                }
-            }
-
-            if (itemsToAdd.isEmpty() && configService != null) {
-                String comfyPath = configService.getComfyUIPath();
-                if (comfyPath != null && !comfyPath.isEmpty()) {
-                    File comfyModels = new File(comfyPath, "models");
-                    if (comfyModels.exists() && comfyModels.isDirectory()) {
-                        File checkpointsDir = new File(comfyModels, "checkpoints");
-                        if (checkpointsDir.exists()) scanModelsRecursively(checkpointsDir, "", itemsToAdd);
-                        File unetDir = new File(comfyModels, "unet");
-                        if (unetDir.exists()) scanModelsRecursively(unetDir, "", itemsToAdd);
-                    }
-                }
-            }
-        }
-
-        itemsToAdd.removeIf(item -> {
-            String lower = item.toLowerCase(Locale.ROOT);
-            return lower.contains("cloud") || lower.contains("replicate") || lower.contains("fal.ai")
-                    || lower.contains("dall-e") || lower.contains("openai");
-        });
-
-        return itemsToAdd;
+        return modelDiscovery.discoverPromptLabModels(blueprintGalleryTab, comfyApiClient);
     }
 
     /**
@@ -572,55 +371,6 @@ public class PromptLabBlueprintCoordinator {
                                        ComfyApiClient comfyApiClient,
                                        AtomicBoolean isUpdatingCombo,
                                        Consumer<String> onSelectedCallback) {
-        Runnable task = () -> {
-            List<String> itemsToAdd = discoverPromptLabModels(blueprintGalleryTab, comfyApiClient);
-            SwingUtilities.invokeLater(() -> updateModelCombo(view, itemsToAdd, isUpdatingCombo, onSelectedCallback));
-        };
-        if (backgroundExecutor != null) {
-            backgroundExecutor.execute(task);
-        } else {
-            new Thread(task).start();
-        }
-    }
-
-    private void updateModelCombo(PromptLabView view,
-                                  List<String> itemsToAdd,
-                                  AtomicBoolean isUpdatingCombo,
-                                  Consumer<String> onSelectedCallback) {
-        if (view == null || view.getPromptModelCombo() == null) {
-            return;
-        }
-        if (isUpdatingCombo != null) {
-            isUpdatingCombo.set(true);
-        }
-        try {
-            String selected = (String) view.getPromptModelCombo().getSelectedItem();
-            view.getPromptModelCombo().removeAllItems();
-
-            if (itemsToAdd.isEmpty()) {
-                view.getPromptModelCombo().addItem("No ready offline blueprints available");
-                view.getPromptModelCombo().setEnabled(false);
-            } else {
-                view.getPromptModelCombo().setEnabled(true);
-                for (String name : itemsToAdd) {
-                    view.getPromptModelCombo().addItem(name);
-                }
-
-                if (selected != null && itemsToAdd.contains(selected)) {
-                    view.getPromptModelCombo().setSelectedItem(selected);
-                } else {
-                    view.getPromptModelCombo().setSelectedIndex(0);
-                }
-            }
-        } finally {
-            if (isUpdatingCombo != null) {
-                isUpdatingCombo.set(false);
-            }
-        }
-
-        String current = (String) view.getPromptModelCombo().getSelectedItem();
-        if (current != null && !current.equals("No ready offline blueprints available") && onSelectedCallback != null) {
-            onSelectedCallback.accept(current);
-        }
+        modelDiscovery.refreshPromptLabModels(view, blueprintGalleryTab, comfyApiClient, isUpdatingCombo, onSelectedCallback);
     }
 }

@@ -207,9 +207,8 @@ public class AgenticWorkflowOrchestrator {
         ComfyWorkflow workflow = builder.build();
         String clientId = UUID.randomUUID().toString();
         
-        logger.info("Übergabe an Auto-Provisioning Engine... (ClientID: {})", clientId);
-        // Wir nutzen den ResourceGapAnalyzer, der fehlende Modelle ggf. herunterlädt 
-        // und erst danach den Graphen asynchron ausführt.
+        logger.info("Passing execution to Auto-Provisioning Engine... (ClientID: {})", clientId);
+        // Delegate to ResourceGapAnalyzer which provisions missing models before async execution
         return gapAnalyzer.resolveGapAndExecute(intent, workflow, clientId);
     }
 }

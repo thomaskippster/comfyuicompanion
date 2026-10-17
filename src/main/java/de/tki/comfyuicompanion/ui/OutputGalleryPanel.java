@@ -142,6 +142,11 @@ public class OutputGalleryPanel extends JPanel {
         deleteBtn.setEnabled(false);
         deleteBtn.addActionListener(e -> deleteSelectedFiles());
         buttonPanel.add(deleteBtn);
+
+        JButton aiActBtn = new JButton("EU AI Act Compliance", SvgIconFactory.get(AppIcon.CHECK, 14));
+        aiActBtn.setToolTipText("Export selected images with machine-readable Art. 50 EU AI Act metadata and compliance markings");
+        aiActBtn.addActionListener(e -> openAiActExportDialog());
+        buttonPanel.add(aiActBtn);
         
         JButton refreshBtn = new JButton("Refresh", SvgIconFactory.get(AppIcon.REFRESH));
         refreshBtn.addActionListener(e -> refresh());
@@ -280,6 +285,17 @@ public class OutputGalleryPanel extends JPanel {
         } else {
             JOptionPane.showMessageDialog(this, "Successfully deleted " + deletedCount + " file(s).", "Success", JOptionPane.INFORMATION_MESSAGE);
         }
+    }
+
+    private void openAiActExportDialog() {
+        List<Path> targets = selectedFiles.isEmpty() ? new ArrayList<>(loadedFiles) : new ArrayList<>(selectedFiles);
+        if (targets.isEmpty()) {
+            JOptionPane.showMessageDialog(this, "No images available for compliance export.", "Notice", JOptionPane.INFORMATION_MESSAGE);
+            return;
+        }
+        Window owner = SwingUtilities.getWindowAncestor(this);
+        GalleryComplianceExportDialog dlg = new GalleryComplianceExportDialog(owner, targets, new de.tki.comfyuicompanion.service.impl.AiActComplianceService(), configService);
+        dlg.setVisible(true);
     }
 
     private void loadFiles(String outputDir) {

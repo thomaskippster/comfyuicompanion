@@ -6,6 +6,7 @@ dependency-reduced-pom.xml
 
 # IDE files
 .idea/
+.vscode/
 *.iml
 .settings/
 .project
@@ -24,6 +25,7 @@ settings.vault
 gemini.bat
 boot.key
 .env
+opencode.json
 
 # User Model List (internal DB) & Local Caches
 uploaded_models.json
@@ -33,6 +35,9 @@ object_info*.json
 cache/
 checkpoints/
 templates/comfyui/*_cache.json
+templates/comfyui/blueprint_scan_results.json
+templates/comfyui/model_resolved_defaults.json
+templates/comfyui/model_architectures.json
 user_workflows/
 
 # Local config & assets
@@ -41,14 +46,13 @@ workflow.json
 !pom.xml
 !src/**
 *.png
-!assets/**
-!workflows/*.png
-!workflows/*.jpg
-!workflows/*.webp
+!assets/icon.png
+workflows/*.png
+workflows/*.jpg
+workflows/*.webp
 env/
 *.bat
 !build_and_run.bat
-!antigravity_admin.bat
 *.zip
 config.json
 !src/main/resources/known_good_urls.json
@@ -70,9 +74,7 @@ hs_err_pid*.log
 
 # Video / Output files
 *.mp4
-!assets/*.mp4
 *.gif
-!assets/*.gif
 *.wav
 output/
 

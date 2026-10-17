@@ -312,4 +312,95 @@ class CivitaiOperationalModelServiceTest {
         assertThat(result.promptId()).isEqualTo("test-prompt-123");
         assertThat(result.filename()).isEqualTo("landscape_001.png");
     }
+
+    @Test
+    @DisplayName("Should resolve fallback checkpoint for LoRA with exotic architecture (e.g. ZImageTurbo) using existing local checkpoint")
+    void shouldResolveFallbackCheckpointForExoticArchitecture_suchAsZImageTurbo() throws IOException {
+        // Place local checkpoint on disk
+        Path checkpointsDir = tempModelsDir.resolve("checkpoints");
+        Files.createDirectories(checkpointsDir);
+        Files.writeString(checkpointsDir.resolve("v1-5-pruned-emaonly.safetensors"), "dummy weights");
+
+        CivitaiModelEntry loraEntry = new CivitaiModelEntry(
+                999L,
+                "Cyberpunk Anime Style",
+                "LORA",
+                "AnimeCreator",
+                "ZImageTurbo",
+                "LoRA style trained on ZImageTurbo",
+                "https://example.com/thumb.jpg",
+                "https://example.com/download/999",
+                "ZIT_CPA_FREE.safetensors",
+                "324.4 MB",
+                340000000L,
+                4200,
+                4.92,
+                List.of("cyberpunk anime", "neon glow"),
+                false
+        );
+
+        ModelInfo primary = new ModelInfo("loras", "ZIT_CPA_FREE.safetensors", "https://example.com/download/999");
+        primary.setFilename("ZIT_CPA_FREE.safetensors");
+        when(civitaiHubService.createModelInfoForDownload(loraEntry)).thenReturn(primary);
+
+        List<ModelInfo> required = service.resolveRequiredModels(loraEntry);
+
+        // Expect: 1 primary LoRA + 1 resolved base checkpoint = 2
+        assertThat(required).hasSize(2);
+        assertThat(required.get(0).getFilename()).isEqualTo("ZIT_CPA_FREE.safetensors");
+        assertThat(required.get(1).getFilename()).isEqualTo("v1-5-pruned-emaonly.safetensors");
+        assertThat(required.get(1).getDescription()).contains("Already exists");
+        assertThat(required.get(1).getPopularity()).isEqualTo("installed");
+    }
+
+    @Test
+    @DisplayName("Should never inject LoRA filename into CheckpointLoaderSimple even if requiredModels is empty")
+    void shouldNeverInjectLoraFilenameIntoCheckpointLoaderSimple() throws Exception {
+        // Place local checkpoint on disk
+        Path checkpointsDir = tempModelsDir.resolve("checkpoints");
+        Files.createDirectories(checkpointsDir);
+        Files.writeString(checkpointsDir.resolve("v1-5-pruned-emaonly.safetensors"), "dummy weights");
+
+        CivitaiModelEntry loraEntry = new CivitaiModelEntry(
+                999L,
+                "Cyberpunk Anime Style",
+                "LORA",
+                "AnimeCreator",
+                "ZImageTurbo",
+                "LoRA style trained on ZImageTurbo",
+                "https://example.com/thumb.jpg",
+                "https://example.com/download/999",
+                "ZIT_CPA_FREE.safetensors",
+                "324.4 MB",
+                340000000L,
+                4200,
+                4.92,
+                List.of("cyberpunk anime"),
+                false
+        );
+
+        // Synthesize API workflow without pre-resolved requiredModels
+        String workflowJson = service.generateWorkflowJson(loraEntry, List.of(), "masterpiece, cyberpunk anime girl");
+        assertThat(workflowJson).isNotBlank();
+
+        JsonNode root = objectMapper.readTree(workflowJson);
+        JsonNode prompt = root.get("prompt");
+
+        // Verify CheckpointLoaderSimple ckpt_name is NEVER the LoRA filename
+        String ckptName = null;
+        String loraName = null;
+        for (JsonNode node : prompt) {
+            String classType = node.path("class_type").asText();
+            if ("CheckpointLoaderSimple".equals(classType)) {
+                ckptName = node.path("inputs").path("ckpt_name").asText();
+            } else if ("LoraLoader".equals(classType)) {
+                loraName = node.path("inputs").path("lora_name").asText();
+            }
+        }
+
+        assertThat(ckptName).isNotNull();
+        assertThat(ckptName).isNotEqualTo("ZIT_CPA_FREE.safetensors");
+        assertThat(ckptName).isEqualTo("v1-5-pruned-emaonly.safetensors");
+        assertThat(loraName).isEqualTo("ZIT_CPA_FREE.safetensors");
+    }
 }

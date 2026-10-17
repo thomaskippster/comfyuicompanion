@@ -170,6 +170,39 @@ class CivitaiGuiWorkflowBuilderTest {
         assertThat(posNode.path("widgets_values").get(0).asText()).isEqualTo(customPrompt);
     }
 
+    @Test
+    @DisplayName("Should use fallback checkpoint for LoRA when requiredModels contains no checkpoint")
+    void shouldFallbackToValidCheckpointForLora_whenRequiredModelsIsEmpty() {
+        CivitaiModelEntry loraEntry = new CivitaiModelEntry(
+                4004L,
+                "Cyberpunk Anime Style",
+                "LORA",
+                "AnimeCreator",
+                "ZImageTurbo",
+                "LoRA style",
+                "https://example.com/thumb.jpg",
+                "https://example.com/dl",
+                "ZIT_CPA_FREE.safetensors",
+                "324.4 MB",
+                340000000L,
+                4200,
+                4.92,
+                List.of("cyberpunk anime"),
+                false
+        );
+
+        ObjectNode workflow = builder.buildGuiWorkflow(loraEntry, List.of());
+
+        JsonNode ckptNode = findNodeById(workflow.get("nodes"), 4);
+        assertThat(ckptNode).isNotNull();
+        assertThat(ckptNode.path("widgets_values").get(0).asText()).isNotEqualTo("ZIT_CPA_FREE.safetensors");
+        assertThat(ckptNode.path("widgets_values").get(0).asText()).isEqualTo("v1-5-pruned-emaonly.safetensors");
+
+        JsonNode loraNode = findNodeById(workflow.get("nodes"), 10);
+        assertThat(loraNode).isNotNull();
+        assertThat(loraNode.path("widgets_values").get(0).asText()).isEqualTo("ZIT_CPA_FREE.safetensors");
+    }
+
     private JsonNode findNodeById(JsonNode nodes, int id) {
         for (JsonNode n : nodes) {
             if (n.path("id").asInt() == id) {

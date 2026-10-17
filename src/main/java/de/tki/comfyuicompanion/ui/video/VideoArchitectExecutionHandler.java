@@ -37,6 +37,7 @@ public class VideoArchitectExecutionHandler {
     private final IComfyLifecycleService lifecycleService;
     private final VideoScriptParser scriptParser;
     private final IVideoPromptOptimizer promptOptimizer;
+    private final VideoBatchRenderCoordinator renderCoordinator;
 
     public VideoArchitectExecutionHandler(ConfigService configService,
                                          ComfyPipelineService comfyPipelineService,
@@ -46,6 +47,20 @@ public class VideoArchitectExecutionHandler {
                                          IComfyLifecycleService lifecycleService,
                                          VideoScriptParser scriptParser,
                                          IVideoPromptOptimizer promptOptimizer) {
+        this(configService, comfyPipelineService, video4jEditorService, ttsService, gemma4Service,
+                lifecycleService, scriptParser, promptOptimizer,
+                new VideoBatchRenderCoordinator(configService, comfyPipelineService, video4jEditorService, lifecycleService));
+    }
+
+    public VideoArchitectExecutionHandler(ConfigService configService,
+                                         ComfyPipelineService comfyPipelineService,
+                                         Video4jEditorService video4jEditorService,
+                                         LocalTTSService ttsService,
+                                         Gemma4Service gemma4Service,
+                                         IComfyLifecycleService lifecycleService,
+                                         VideoScriptParser scriptParser,
+                                         IVideoPromptOptimizer promptOptimizer,
+                                         VideoBatchRenderCoordinator renderCoordinator) {
         this.configService = configService;
         this.comfyPipelineService = comfyPipelineService;
         this.video4jEditorService = video4jEditorService;
@@ -54,6 +69,7 @@ public class VideoArchitectExecutionHandler {
         this.lifecycleService = lifecycleService;
         this.scriptParser = scriptParser;
         this.promptOptimizer = promptOptimizer;
+        this.renderCoordinator = renderCoordinator;
     }
 
     public void deconstructScript(Component parent,
@@ -405,83 +421,8 @@ public class VideoArchitectExecutionHandler {
                                        Consumer<Boolean> buttonsDisabledSetter,
                                        Consumer<String> consoleLogger,
                                        Consumer<Scene> previewUpdater) {
-        if (scenes == null || scenes.isEmpty()) {
-            consoleLogger.accept("Timeline is empty! Add scenes first.");
-            return;
-        }
-
-        for (Scene sc : scenes) {
-            sc.setWidth(width);
-            sc.setHeight(height);
-            sc.setSpeakerImagePath(speakerPath != null && !speakerPath.trim().isEmpty() ? speakerPath.trim() : null);
-        }
-
-        buttonsDisabledSetter.accept(true);
-        progressBar.setValue(0);
-        progressBar.setVisible(true);
-
-        Thread.ofVirtual().start(() -> {
-            try {
-                consoleLogger.accept("Checking ComfyUI server status...");
-                ensureComfyUiHealthy();
-
-                for (int i = 0; i < scenes.size(); i++) {
-                    Scene scene = scenes.get(i);
-                    final int currentIdx = i + 1;
-                    final int totalScenes = scenes.size();
-
-                    File output = null;
-                    int maxRetries = 3;
-                    boolean success = false;
-
-                    for (int attempt = 1; attempt <= maxRetries; attempt++) {
-                        final int att = attempt;
-                        SwingUtilities.invokeLater(() -> {
-                            progressBar.setValue((int) (((double) currentIdx / totalScenes) * 100));
-                        });
-                        consoleLogger.accept("Generating Scene " + currentIdx + "/" + totalScenes + ": " + scene.getSceneId() + (att > 1 ? " (Attempt " + att + ")" : ""));
-
-                        try {
-                            output = comfyPipelineService.generateSceneStrict(scene).join();
-                            if (output != null && output.exists() && output.length() > 1024) {
-                                success = true;
-                                break;
-                            } else {
-                                Thread.sleep(2000);
-                            }
-                        } catch (Exception e) {
-                            Thread.sleep(2000);
-                        }
-                    }
-
-                    if (!success) {
-                        throw new Exception("Could not generate video for Scene " + scene.getSceneId() + " after " + maxRetries + " attempts.");
-                    }
-
-                    if (output != null && output.exists()) {
-                        scene.setVideoPath(output.getAbsolutePath());
-                    }
-                    SwingUtilities.invokeLater(() -> {
-                        timelineListView.repaint();
-                        previewUpdater.accept(scene);
-                    });
-                }
-
-                SwingUtilities.invokeLater(() -> {
-                    progressBar.setVisible(false);
-                    buttonsDisabledSetter.accept(false);
-                    consoleLogger.accept("All " + scenes.size() + " scene videos generated! Click 'Stitch Videos' to combine.");
-                });
-            } catch (Exception ex) {
-                logger.error("Video generation failed", ex);
-                SwingUtilities.invokeLater(() -> {
-                    progressBar.setVisible(false);
-                    buttonsDisabledSetter.accept(false);
-                    consoleLogger.accept("Generation failed: " + ex.getMessage());
-                    JOptionPane.showMessageDialog(parent, "Video generation failed:\n" + ex.getMessage(), "Generation Error", JOptionPane.ERROR_MESSAGE);
-                });
-            }
-        });
+        renderCoordinator.executeVideoGeneration(parent, scenes, speakerPath, width, height,
+                timelineListView, progressBar, buttonsDisabledSetter, consoleLogger, previewUpdater);
     }
 
     public void executeMasterRender(Component parent,
@@ -489,87 +430,7 @@ public class VideoArchitectExecutionHandler {
                                     JProgressBar progressBar,
                                     Consumer<Boolean> buttonsDisabledSetter,
                                     Consumer<String> consoleLogger) {
-        if (scenes == null || scenes.isEmpty()) {
-            consoleLogger.accept("Timeline is empty!");
-            return;
-        }
-
-        buttonsDisabledSetter.accept(true);
-        progressBar.setValue(50);
-        progressBar.setVisible(true);
-
-        Thread.ofVirtual().start(() -> {
-            try {
-                consoleLogger.accept("Checking scene videos...");
-
-                List<Scene> needsRegen = new ArrayList<>();
-                for (Scene scene : scenes) {
-                    File vf = scene.getVideoPath() == null ? null : new File(scene.getVideoPath());
-                    if (vf == null || !vf.exists() || vf.length() < 1024) {
-                        File[] roots = new File[]{
-                                new File(System.getProperty("user.dir")),
-                                new File(new File("").getAbsolutePath()),
-                                new File(configService != null ? configService.getResolvedOutputDir() : "output"),
-                                new File(new File(configService != null ? configService.getResolvedOutputDir() : "output"), "video")
-                        };
-                        String[] patterns = new String[]{
-                                "scene_" + scene.getSceneId() + "_final.mp4",
-                                "scene_" + scene.getSceneId() + "_simulated.mp4",
-                                "videoarchitect_" + scene.getSceneId() + "_00001_.mp4",
-                                "videoarchitect_" + scene.getSceneId() + ".mp4"
-                        };
-                        File found = null;
-                        outer:
-                        for (File r : roots) {
-                            if (r == null || !r.isDirectory()) continue;
-                            for (String p : patterns) {
-                                File candidate = new File(r, p);
-                                if (candidate.exists() && candidate.length() >= 1024) { found = candidate; break outer; }
-                            }
-                        }
-                        if (found != null) {
-                            logger.info("[VideoArchitect] Re-attached scene {} video: {}", scene.getSceneId(), found.getAbsolutePath());
-                            scene.setVideoPath(found.getAbsolutePath());
-                        } else {
-                            needsRegen.add(scene);
-                        }
-                    }
-                }
-
-                if (!needsRegen.isEmpty()) {
-                    consoleLogger.accept("Regenerating " + needsRegen.size() + " missing scene(s)...");
-                    for (int ri = 0; ri < needsRegen.size(); ri++) {
-                        Scene s = needsRegen.get(ri);
-                        final int currRi = ri + 1;
-                        consoleLogger.accept("Regenerating scene " + currRi + "/" + needsRegen.size() + ": " + s.getSceneId() + "...");
-                        File regen = comfyPipelineService.generateSceneStrict(s).join();
-                        if (regen != null && regen.exists() && regen.length() > 1024) {
-                            s.setVideoPath(regen.getAbsolutePath());
-                        } else {
-                            throw new Exception("Could not regenerate video for scene: " + s.getSceneId());
-                        }
-                    }
-                }
-
-                consoleLogger.accept("Stitching video segments via FFmpeg...");
-                File exportFile = video4jEditorService.executeMasterRender(scenes);
-
-                SwingUtilities.invokeLater(() -> {
-                    progressBar.setVisible(false);
-                    buttonsDisabledSetter.accept(false);
-                    consoleLogger.accept("Stitching Complete! Saved as " + exportFile.getName());
-                    JOptionPane.showMessageDialog(parent, "Master render completed successfully!\nSaved to: " + exportFile.getAbsolutePath(), "Master Render Complete", JOptionPane.INFORMATION_MESSAGE);
-                });
-            } catch (Exception ex) {
-                logger.error("Master render task failed", ex);
-                SwingUtilities.invokeLater(() -> {
-                    progressBar.setVisible(false);
-                    buttonsDisabledSetter.accept(false);
-                    consoleLogger.accept("Render Failed: " + ex.getMessage());
-                    JOptionPane.showMessageDialog(parent, "Master render failed:\n" + ex.getMessage(), "Render Error", JOptionPane.ERROR_MESSAGE);
-                });
-            }
-        });
+        renderCoordinator.executeMasterRender(parent, scenes, progressBar, buttonsDisabledSetter, consoleLogger);
     }
 
     public boolean generateNarrationAudio(Scene scene, File outputDir) {
@@ -599,20 +460,6 @@ public class VideoArchitectExecutionHandler {
     }
 
     private void ensureComfyUiHealthy() throws Exception {
-        if (lifecycleService != null && !lifecycleService.isHealthy()) {
-            lifecycleService.start();
-            int maxWait = 90;
-            boolean healthy = false;
-            for (int w = 0; w < maxWait; w++) {
-                if (lifecycleService.isHealthy()) {
-                    healthy = true;
-                    break;
-                }
-                Thread.sleep(1000);
-            }
-            if (!healthy) {
-                throw new Exception("ComfyUI server could not be started or is not healthy.");
-            }
-        }
+        renderCoordinator.ensureComfyUiHealthy();
     }
 }

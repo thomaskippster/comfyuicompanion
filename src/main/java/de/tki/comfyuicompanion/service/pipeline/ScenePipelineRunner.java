@@ -2,7 +2,6 @@ package de.tki.comfyuicompanion.service.pipeline;
 
 import de.tki.comfyuicompanion.domain.Scene;
 import de.tki.comfyuicompanion.service.IComfyLifecycleService;
-import de.tki.comfyuicompanion.service.PromptBlueprintApiService;
 import de.tki.comfyuicompanion.service.impl.ConfigService;
 import de.tki.comfyuicompanion.service.impl.EnvironmentBootstrapperImpl;
 import de.tki.comfyuicompanion.service.impl.ProcessTracker;
@@ -13,16 +12,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 
-import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
-import java.io.InputStreamReader;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.nio.file.StandardCopyOption;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 import java.util.Set;
@@ -51,17 +44,9 @@ public class ScenePipelineRunner {
     private final IComfyLifecycleService lifecycleService;
     private final ProcessTracker processTracker;
     private final WorkflowTransformationService workflowTransformationService;
+    private final SceneBlueprintInjector blueprintInjector;
+    private final SceneMediaPostProcessor mediaPostProcessor;
 
-    /**
-     * Minimal constructor for programmatic initialization.
-     *
-     * @param configService          the system configuration service
-     * @param simulationService      the FFmpeg scene simulation service
-     * @param mediaTranscodingService the media transcoding service
-     * @param workflowBuilder        the workflow generator service
-     * @param jobPollingService      the ComfyUI job polling and artifact retrieval service
-     * @param inspectionClient       the ComfyUI node inspection client
-     */
     public ScenePipelineRunner(
             ConfigService configService,
             SceneSimulationService simulationService,
@@ -70,22 +55,9 @@ public class ScenePipelineRunner {
             ComfyJobPollingService jobPollingService,
             ComfyNodeInspectionClient inspectionClient) {
         this(configService, simulationService, mediaTranscodingService, workflowBuilder,
-                jobPollingService, inspectionClient, null, null, null, null);
+                jobPollingService, inspectionClient, null, null, null, null, null, null);
     }
 
-    /**
-     * Programmatic constructor including lifecycle and bootstrapping dependencies.
-     *
-     * @param configService          the system configuration service
-     * @param simulationService      the FFmpeg scene simulation service
-     * @param mediaTranscodingService the media transcoding service
-     * @param workflowBuilder        the workflow generator service
-     * @param jobPollingService      the ComfyUI job polling and artifact retrieval service
-     * @param inspectionClient       the ComfyUI node inspection client
-     * @param bootstrapper           the optional environment bootstrapper
-     * @param lifecycleService       the optional ComfyUI lifecycle service
-     * @param processTracker         the optional process tracker
-     */
     public ScenePipelineRunner(
             ConfigService configService,
             SceneSimulationService simulationService,
@@ -97,23 +69,25 @@ public class ScenePipelineRunner {
             IComfyLifecycleService lifecycleService,
             ProcessTracker processTracker) {
         this(configService, simulationService, mediaTranscodingService, workflowBuilder,
-                jobPollingService, inspectionClient, bootstrapper, lifecycleService, processTracker, null);
+                jobPollingService, inspectionClient, bootstrapper, lifecycleService, processTracker, null, null, null);
     }
 
-    /**
-     * Primary constructor with Spring dependency injection support.
-     *
-     * @param configService                  the system configuration service
-     * @param simulationService              the FFmpeg scene simulation service
-     * @param mediaTranscodingService        the media transcoding service
-     * @param workflowBuilder                the workflow generator service
-     * @param jobPollingService              the ComfyUI job polling and artifact retrieval service
-     * @param inspectionClient               the ComfyUI node inspection client
-     * @param bootstrapper                   the optional environment bootstrapper
-     * @param lifecycleService               the optional ComfyUI lifecycle service
-     * @param processTracker                 the optional process tracker
-     * @param workflowTransformationService  the workflow transformation service
-     */
+    public ScenePipelineRunner(
+            ConfigService configService,
+            SceneSimulationService simulationService,
+            MediaTranscodingService mediaTranscodingService,
+            VideoWorkflowBuilder workflowBuilder,
+            ComfyJobPollingService jobPollingService,
+            ComfyNodeInspectionClient inspectionClient,
+            EnvironmentBootstrapperImpl bootstrapper,
+            IComfyLifecycleService lifecycleService,
+            ProcessTracker processTracker,
+            WorkflowTransformationService workflowTransformationService) {
+        this(configService, simulationService, mediaTranscodingService, workflowBuilder,
+                jobPollingService, inspectionClient, bootstrapper, lifecycleService, processTracker,
+                workflowTransformationService, null, null);
+    }
+
     @Autowired
     public ScenePipelineRunner(
             ConfigService configService,
@@ -125,7 +99,9 @@ public class ScenePipelineRunner {
             @Autowired(required = false) EnvironmentBootstrapperImpl bootstrapper,
             @Autowired(required = false) @Lazy IComfyLifecycleService lifecycleService,
             @Autowired(required = false) ProcessTracker processTracker,
-            @Autowired(required = false) WorkflowTransformationService workflowTransformationService) {
+            @Autowired(required = false) WorkflowTransformationService workflowTransformationService,
+            @Autowired(required = false) SceneBlueprintInjector blueprintInjector,
+            @Autowired(required = false) SceneMediaPostProcessor mediaPostProcessor) {
         this.configService = configService;
         this.simulationService = simulationService != null ? simulationService : new SceneSimulationService(processTracker);
         this.mediaTranscodingService = mediaTranscodingService != null ? mediaTranscodingService : new MediaTranscodingService(configService, processTracker);
@@ -136,12 +112,18 @@ public class ScenePipelineRunner {
         this.lifecycleService = lifecycleService;
         this.processTracker = processTracker;
         this.workflowTransformationService = workflowTransformationService != null ? workflowTransformationService : new WorkflowTransformationService(null);
+        this.blueprintInjector = blueprintInjector != null
+                ? blueprintInjector
+                : new SceneBlueprintInjector(this.workflowTransformationService);
+        this.mediaPostProcessor = mediaPostProcessor != null
+                ? mediaPostProcessor
+                : new SceneMediaPostProcessor(configService, this.simulationService, this.mediaTranscodingService, processTracker);
     }
 
     /**
      * Executes scene generation in standard or strict mode asynchronously.
      *
-     * @param scene      the scene domain object containing generation parameters
+     * @param scene the scene domain object containing generation parameters
      * @param strictMode true to fail fast without fallback simulation; false to allow fallback
      * @return a CompletableFuture resolving to the generated video file
      */
@@ -152,10 +134,10 @@ public class ScenePipelineRunner {
     /**
      * Executes scene generation with explicit lifecycle service and process tracker overrides.
      *
-     * @param scene             the scene domain object containing generation parameters
-     * @param strictMode        true to fail fast without fallback simulation; false to allow fallback
+     * @param scene the scene domain object containing generation parameters
+     * @param strictMode true to fail fast without fallback simulation; false to allow fallback
      * @param overrideLifecycle optional lifecycle service override
-     * @param overrideTracker   optional process tracker override
+     * @param overrideTracker optional process tracker override
      * @return a CompletableFuture resolving to the generated video file
      */
     public CompletableFuture<File> executeScene(
@@ -239,14 +221,14 @@ public class ScenePipelineRunner {
                 float fps = 24.0f;
 
                 if (rawOutputFile != null && rawOutputFile.exists()) {
-                    postProcessMedia(rawOutputFile, scene, finalVideoFile, duration, fps, overrideTracker);
+                    mediaPostProcessor.postProcessMedia(rawOutputFile, scene, finalVideoFile, duration, fps, overrideTracker);
                     scene.setVideoPath(finalVideoFile.getAbsolutePath());
                     return finalVideoFile;
                 } else {
                     if (strictMode) {
                         throw new RuntimeException("Strict mode enabled: ComfyUI finished generation, but no output video or image file was found.");
                     }
-                    return generateSimulationFallback(scene, finalVideoFile);
+                    return mediaPostProcessor.generateSimulationFallback(scene, finalVideoFile);
                 }
 
             } catch (Exception e) {
@@ -257,7 +239,7 @@ public class ScenePipelineRunner {
                 logger.error("🔴 [ScenePipelineRunner] Failed generating scene: {}. Generating simulated fallback video.", e.getMessage());
                 try {
                     File finalVideoFile = new File(new File("").getAbsoluteFile(), "scene_" + scene.getSceneId() + "_final.mp4");
-                    return generateSimulationFallback(scene, finalVideoFile);
+                    return mediaPostProcessor.generateSimulationFallback(scene, finalVideoFile);
                 } catch (Exception fe) {
                     throw new RuntimeException("Failed generating scene and fallback also failed: " + fe.getMessage(), fe);
                 }
@@ -268,17 +250,17 @@ public class ScenePipelineRunner {
     /**
      * Determines the appropriate workflow graph to execute based on available models and scene specifications.
      *
-     * @param serverUrl          the ComfyUI server address
-     * @param scene              the scene domain model
-     * @param speakerImage       uploaded speaker image reference name, if present
-     * @param seed               the generation seed
-     * @param filenamePrefix     prefix for generated files
-     * @param availableUnets     available diffusion models
+     * @param serverUrl the ComfyUI server address
+     * @param scene the scene domain model
+     * @param speakerImage uploaded speaker image reference name, if present
+     * @param seed the generation seed
+     * @param filenamePrefix prefix for generated files
+     * @param availableUnets available diffusion models
      * @param availableCheckpoints available full checkpoints
-     * @param availableClips     available CLIP text encoders
-     * @param availableVaes      available VAE decoders
-     * @param wanNodesAvailable  whether Wan native nodes are present
-     * @param hasWanModels       whether Wan weights are found
+     * @param availableClips available CLIP text encoders
+     * @param availableVaes available VAE decoders
+     * @param wanNodesAvailable whether Wan native nodes are present
+     * @param hasWanModels whether Wan weights are found
      * @return the assembled workflow JSON
      */
     public JSONObject determineWorkflow(
@@ -299,12 +281,12 @@ public class ScenePipelineRunner {
             logger.info("🎬 [ScenePipelineRunner] Generating Wan 2.2 native video workflow...");
             workflowJson = workflowBuilder.generateWanWorkflowJson(serverUrl, scene, speakerImage, seed, filenamePrefix);
         } else if (speakerImage != null && !speakerImage.trim().isEmpty() && hasWanModels) {
-            JSONObject blueprintJson = loadBlueprintWorkflow("Text to Video (Wan 2.2).json");
+            JSONObject blueprintJson = blueprintInjector.loadBlueprintWorkflow("Text to Video (Wan 2.2).json", configService.getComfyUIPath());
             if (blueprintJson != null) {
                 logger.info("📄 [ScenePipelineRunner] Using Wan 2.2 blueprint workflow with start image.");
-                injectPrompt(blueprintJson, scene.getPrompt());
-                injectParamsIntoBlueprint(blueprintJson, seed, filenamePrefix, scene);
-                injectSpeakerImage(blueprintJson, speakerImage);
+                blueprintInjector.injectPrompt(blueprintJson, scene.getPrompt());
+                blueprintInjector.injectParamsIntoBlueprint(blueprintJson, seed, filenamePrefix, scene);
+                blueprintInjector.injectSpeakerImage(blueprintJson, speakerImage);
                 workflowJson = blueprintJson;
             }
         }
@@ -414,297 +396,45 @@ public class ScenePipelineRunner {
         return null;
     }
 
-    private void postProcessMedia(
-            File rawOutputFile,
-            Scene scene,
-            File finalVideoFile,
-            float duration,
-            float fps,
-            ProcessTracker overrideTracker) throws Exception {
-        boolean isImage = rawOutputFile.getName().toLowerCase().matches(".*\\.(png|jpg|jpeg|webp)$");
-        String audioPath = scene.getAudioPath();
-        File audioFile = (audioPath != null && !audioPath.trim().isEmpty()) ? new File(audioPath) : null;
-
-        if (isImage) {
-            logger.info("🖼️ [ScenePipelineRunner] Raw output is an image. Converting to MP4 scene video...");
-            mediaTranscodingService.convertImageToVideo(rawOutputFile, audioFile, duration, fps, finalVideoFile, scene.getWidth(), scene.getHeight());
-        } else if (audioFile != null && audioFile.exists()) {
-            muxAudio(rawOutputFile, audioFile, finalVideoFile, overrideTracker);
-            if (rawOutputFile.exists() && !rawOutputFile.getAbsolutePath().equals(finalVideoFile.getAbsolutePath())) {
-                rawOutputFile.delete();
-            }
-        } else {
-            logger.info("ℹ️ [ScenePipelineRunner] No audio file specified. Copying raw video to: {}", finalVideoFile.getAbsolutePath());
-            Files.copy(rawOutputFile.toPath(), finalVideoFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
-        }
-    }
-
-    private void muxAudio(File rawOutputFile, File audioFile, File finalVideoFile, ProcessTracker overrideTracker) throws IOException, InterruptedException {
-        String ffmpegPath = configService.getFfmpegPath();
-        List<String> cmd = List.of(
-                ffmpegPath,
-                "-y",
-                "-i", rawOutputFile.getAbsolutePath(),
-                "-i", audioFile.getAbsolutePath(),
-                "-c:v", "copy",
-                "-c:a", "aac",
-                "-shortest",
-                finalVideoFile.getAbsolutePath()
-        );
-
-        logger.info("🎬 [ScenePipelineRunner] Running FFmpeg audio muxing command: {}", String.join(" ", cmd));
-        ProcessBuilder pb = new ProcessBuilder(cmd);
-        pb.redirectOutput(ProcessBuilder.Redirect.DISCARD);
-        Process process = startProcess(pb, overrideTracker);
-
-        Thread errorReaderThread = new Thread(() -> {
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getErrorStream(), StandardCharsets.UTF_8))) {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    logger.info("[FFmpeg-Mux] {}", line);
-                }
-            } catch (IOException e) {
-                logger.error("Error reading FFmpeg error stream: {}", e.getMessage());
-            }
-        });
-        errorReaderThread.start();
-
-        int exitCode = process.waitFor();
-        errorReaderThread.join();
-
-        if (exitCode != 0) {
-            throw new IOException("FFmpeg audio muxing failed with exit code: " + exitCode);
-        }
-    }
-
-    private File generateSimulationFallback(Scene scene, File finalVideoFile) throws Exception {
-        File fallbackVideo = simulationService.generateSimulatedVideo(scene, configService.getFfmpegPath());
-        Files.copy(fallbackVideo.toPath(), finalVideoFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
-        fallbackVideo.delete();
-        scene.setVideoPath(finalVideoFile.getAbsolutePath());
-        return finalVideoFile;
-    }
-
-    private Process startProcess(ProcessBuilder pb, ProcessTracker tracker) throws IOException {
-        ProcessTracker effectiveTracker = tracker != null ? tracker : this.processTracker;
-        return effectiveTracker != null ? effectiveTracker.start(pb) : pb.start();
-    }
-
     /**
      * Injects narration audio file reference into LoadAudio nodes in a workflow graph.
      *
      * @param workflowJson the workflow prompt JSON
-     * @param filename     the uploaded audio filename
+     * @param filename the uploaded audio filename
      */
     public void injectAudio(JSONObject workflowJson, String filename) {
-        JSONObject promptObj = workflowJson.has("prompt") ? workflowJson.getJSONObject("prompt") : workflowJson;
-        boolean injected = false;
-        for (String key : promptObj.keySet()) {
-            JSONObject node = promptObj.optJSONObject(key);
-            if (node == null) continue;
-            String classType = node.optString("class_type", "");
-            if ("LoadAudio".equals(classType) || "VHS_LoadAudio".equals(classType)) {
-                JSONObject inputs = node.optJSONObject("inputs");
-                if (inputs != null) {
-                    inputs.put("audio", filename);
-                    injected = true;
-                    logger.info("🎵 [ScenePipelineRunner] Injected audio '{}' into node ID: {}", filename, key);
-                }
-            }
-        }
-        if (!injected) {
-            logger.info("ℹ️ [ScenePipelineRunner] No LoadAudio/VHS_LoadAudio node found in workflow to inject audio.");
-        }
+        blueprintInjector.injectAudio(workflowJson, filename);
     }
 
     /**
      * Injects speaker image reference into LoadImage nodes in a workflow graph.
      *
      * @param workflowJson the workflow prompt JSON
-     * @param filename     the uploaded speaker image filename
+     * @param filename the uploaded speaker image filename
      */
     public void injectSpeakerImage(JSONObject workflowJson, String filename) {
-        JSONObject promptObj = workflowJson.has("prompt") ? workflowJson.getJSONObject("prompt") : workflowJson;
-        boolean injected = false;
-        for (String key : promptObj.keySet()) {
-            JSONObject node = promptObj.optJSONObject(key);
-            if (node == null) continue;
-            String classType = node.optString("class_type", "");
-            if ("LoadImage".equals(classType)) {
-                JSONObject inputs = node.optJSONObject("inputs");
-                if (inputs != null) {
-                    inputs.put("image", filename);
-                    injected = true;
-                    logger.info("📥 [ScenePipelineRunner] Injected speaker image '{}' into LoadImage node ID: {}", filename, key);
-                }
-            }
-        }
-        if (!injected) {
-            logger.info("ℹ️ [ScenePipelineRunner] No LoadImage node found in workflow to inject speaker image.");
-        }
+        blueprintInjector.injectSpeakerImage(workflowJson, filename);
     }
 
     /**
      * Injects textual prompt into text encoding nodes in a workflow graph.
      *
      * @param workflowJson the workflow prompt JSON
-     * @param promptText   the visual prompt description
+     * @param promptText the visual prompt description
      */
     public void injectPrompt(JSONObject workflowJson, String promptText) {
-        JSONObject promptObj = workflowJson.has("prompt") ? workflowJson.getJSONObject("prompt") : workflowJson;
-        boolean injected = false;
-
-        for (String key : promptObj.keySet()) {
-            JSONObject node = promptObj.optJSONObject(key);
-            if (node == null) continue;
-
-            String classType = node.optString("class_type", "");
-            JSONObject inputs = node.optJSONObject("inputs");
-            if (inputs == null) continue;
-
-            if ("CLIPTextEncode".equals(classType)) {
-                String text = inputs.optString("text", "");
-                if (!text.toLowerCase().contains("blurry") && !text.toLowerCase().contains("bad hands")
-                        && !text.toLowerCase().contains("worst quality") && !text.toLowerCase().contains("low quality")
-                        && !text.toLowerCase().contains("静止") && !text.toLowerCase().contains("最差质量")) {
-                    inputs.put("text", promptText);
-                    injected = true;
-                    logger.info("📥 [ScenePipelineRunner] Injected visual_prompt into CLIPTextEncode node ID: {}", key);
-                }
-            } else if ("98ee9e5b-467b-40aa-a534-36033f27d0b4".equals(classType)
-                    || "84e2cf3f-de93-40ef-ab22-b9375296917b".equals(classType)) {
-                if (inputs.has("text")) {
-                    inputs.put("text", promptText);
-                } else {
-                    inputs.put("value", promptText);
-                }
-                injected = true;
-                logger.info("📥 [ScenePipelineRunner] Injected visual_prompt into Video Gen Subgraph node ID: {}", key);
-            } else if ("PrimitiveStringMultiline".equals(classType)) {
-                inputs.put("value", promptText);
-                injected = true;
-                logger.info("📥 [ScenePipelineRunner] Injected visual_prompt into PrimitiveStringMultiline node ID: {}", key);
-            }
-        }
-
-        if (!injected) {
-            throw new RuntimeException("Could not find suitable prompt input node in workflow template!");
-        }
+        blueprintInjector.injectPrompt(workflowJson, promptText);
     }
 
     /**
      * Injects generation parameters (seeds, steps, cfg, duration) into a loaded blueprint workflow.
      *
-     * @param workflowJson   the blueprint workflow JSON
-     * @param seed           the random generation seed
+     * @param workflowJson the blueprint workflow JSON
+     * @param seed the random generation seed
      * @param filenamePrefix output filename prefix
-     * @param scene          the scene domain model
+     * @param scene the scene domain model
      */
     public void injectParamsIntoBlueprint(JSONObject workflowJson, long seed, String filenamePrefix, Scene scene) {
-        JSONObject promptObj = workflowJson.has("prompt") ? workflowJson.getJSONObject("prompt") : workflowJson;
-        double sceneDuration = (scene.getEndFrame() - scene.getStartFrame()) / 30.0;
-        if (sceneDuration <= 0) {
-            sceneDuration = 5.0;
-        }
-
-        for (String key : promptObj.keySet()) {
-            JSONObject node = promptObj.optJSONObject(key);
-            if (node == null) continue;
-
-            String classType = node.optString("class_type", "");
-            JSONObject inputs = node.optJSONObject("inputs");
-            if (inputs == null) continue;
-
-            if ("84e2cf3f-de93-40ef-ab22-b9375296917b".equals(classType)
-                    || "98ee9e5b-467b-40aa-a534-36033f27d0b4".equals(classType)) {
-                if (inputs.has("value_1")) {
-                    inputs.put("value_1", sceneDuration);
-                    logger.info("📥 [ScenePipelineRunner] Injected scene duration {}s into video subgraph node ID: {}", sceneDuration, key);
-                }
-            }
-
-            long clampedSeed = PromptBlueprintApiService.clampSeedForNode(classType, seed);
-            if (inputs.has("seed")) {
-                inputs.put("seed", clampedSeed);
-            }
-            if (inputs.has("noise_seed")) {
-                inputs.put("noise_seed", clampedSeed);
-            }
-
-            if ("KSampler".equals(classType) || "KSamplerAdvanced".equals(classType)) {
-                int wanSteps = scene.getSteps() > 0 ? scene.getSteps() : 4;
-                if (wanSteps > 8) {
-                    wanSteps = 4;
-                }
-                if (inputs.has("steps")) {
-                    inputs.put("steps", wanSteps);
-                }
-                double wanCfg = scene.getCfgScale() > 0 ? scene.getCfgScale() : 2.0;
-                if (wanCfg > 4.0) {
-                    wanCfg = 3.0;
-                }
-                if (inputs.has("cfg")) {
-                    inputs.put("cfg", wanCfg);
-                }
-            }
-
-            if ("VHS_VideoCombine".equals(classType) || "SaveVideo".equals(classType)) {
-                inputs.put("filename_prefix", filenamePrefix);
-                if ("VHS_VideoCombine".equals(classType)) {
-                    inputs.put("save_output", true);
-                }
-            }
-        }
-        PromptBlueprintApiService.sanitizeAllSeedsInPrompt(promptObj);
-    }
-
-    private JSONObject loadBlueprintWorkflow(String filename) {
-        List<File> candidateDirs = new ArrayList<>();
-        String comfyPath = configService.getComfyUIPath();
-        if (comfyPath != null && !comfyPath.trim().isEmpty()) {
-            candidateDirs.add(new File(comfyPath, "companion_blueprints"));
-            candidateDirs.add(new File(comfyPath, "resources/ComfyUI/companion_blueprints"));
-        }
-        candidateDirs.add(new File("companion_blueprints"));
-        candidateDirs.add(new File(System.getProperty("user.dir"), "companion_blueprints"));
-
-        for (File blueprintsDir : candidateDirs) {
-            if (blueprintsDir == null || !blueprintsDir.exists() || !blueprintsDir.isDirectory()) {
-                continue;
-            }
-            File blueprintFile = new File(blueprintsDir, filename);
-            JSONObject parsed = parseBlueprintFile(blueprintFile);
-            if (parsed != null) {
-                return parsed;
-            }
-        }
-        return null;
-    }
-
-    private JSONObject parseBlueprintFile(File blueprintFile) {
-        if (!blueprintFile.exists() || !blueprintFile.isFile()) {
-            return null;
-        }
-        try {
-            String content = Files.readString(blueprintFile.toPath(), StandardCharsets.UTF_8);
-            JSONObject json = new JSONObject(content);
-            if (json.has("prompt") || json.keySet().stream().anyMatch(key -> {
-                JSONObject node = json.optJSONObject(key);
-                return node != null && node.has("class_type");
-            })) {
-                return json;
-            }
-            if (json.has("nodes")) {
-                JSONObject flattened = workflowTransformationService != null
-                        ? workflowTransformationService.flattenWorkflow(json)
-                        : new WorkflowTransformationService(null).flattenWorkflow(json);
-                return workflowTransformationService != null
-                        ? workflowTransformationService.convertUiToApi(flattened)
-                        : new WorkflowTransformationService(null).convertUiToApi(flattened);
-            }
-        } catch (Exception e) {
-            logger.error("⚠️ [ScenePipelineRunner] Failed to load blueprint {}: {}", blueprintFile.getName(), e.getMessage());
-        }
-        return null;
+        blueprintInjector.injectParamsIntoBlueprint(workflowJson, seed, filenamePrefix, scene);
     }
 }

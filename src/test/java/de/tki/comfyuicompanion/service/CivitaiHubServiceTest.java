@@ -1,5 +1,6 @@
 package de.tki.comfyuicompanion.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import de.tki.comfyuicompanion.domain.CivitaiModelEntry;
 import de.tki.comfyuicompanion.domain.ModelInfo;
@@ -167,14 +168,29 @@ class CivitaiHubServiceTest {
     }
 
     @Test
-    void shouldIncludePageParam_whenQueryIsBlank() {
+    void shouldIncludePageParamAndEnforceSafeSearch_whenQueryIsBlank() {
         URI uri = hubService.buildQueryUri("", "All Types", "All Bases", "Highest Rated", 20, 3, true);
 
         assertThat(uri.getQuery()).contains("page=3");
         assertThat(uri.getQuery()).doesNotContain("query=");
         assertThat(uri.getQuery()).doesNotContain("types=");
         assertThat(uri.getQuery()).doesNotContain("baseModels=");
-        assertThat(uri.getQuery()).doesNotContain("nsfw=false");
+        assertThat(uri.getQuery()).contains("nsfw=false");
+    }
+
+    @Test
+    void shouldRejectNsfwModel_inParserAndDownload() throws Exception {
+        String nsfwJson = """
+                {
+                    "id": 88888,
+                    "name": "Adult Explicit Model",
+                    "type": "LORA",
+                    "nsfw": true
+                }
+                """;
+        JsonNode node = new ObjectMapper().readTree(nsfwJson);
+        CivitaiModelEntry entry = hubService.parseModelEntry(node);
+        assertThat(entry).isNull();
     }
 
     @Test

@@ -126,14 +126,10 @@ public class ComfyTemplateService implements IComfyTemplateService {
             }
         }
 
-        File[] files = templatesDir.listFiles((dir, name) -> name.toLowerCase().endsWith(".json")
-                && !name.equalsIgnoreCase("model_template_mapping.json")
-                && !name.equalsIgnoreCase("model_architecture_mapping.json"));
+        File[] files = templatesDir.listFiles((dir, name) -> isWorkflowTemplateFile(name));
         if (files == null || files.length == 0 || needsFluxUpgrade || needsLuminaWrite) {
             writeDefaultTemplates(templatesDir);
-            files = templatesDir.listFiles((dir, name) -> name.toLowerCase().endsWith(".json")
-                    && !name.equalsIgnoreCase("model_template_mapping.json")
-                    && !name.equalsIgnoreCase("model_architecture_mapping.json"));
+            files = templatesDir.listFiles((dir, name) -> isWorkflowTemplateFile(name));
         }
 
         templateCache.clear();
@@ -151,6 +147,20 @@ public class ComfyTemplateService implements IComfyTemplateService {
                 }
             }
         }
+    }
+
+    private boolean isWorkflowTemplateFile(String name) {
+        if (name == null) {
+            return false;
+        }
+        String lower = name.toLowerCase();
+        return lower.endsWith(".json")
+                && !lower.equals("model_template_mapping.json")
+                && !lower.equals("model_architecture_mapping.json")
+                && !lower.equals("blueprint_scan_results.json")
+                && !lower.equals("model_resolved_defaults.json")
+                && !lower.equals("model_architectures.json")
+                && !lower.endsWith("_cache.json");
     }
 
     @Override

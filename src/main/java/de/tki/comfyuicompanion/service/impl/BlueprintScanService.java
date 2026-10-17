@@ -72,8 +72,9 @@ public class BlueprintScanService {
             if (resourcesBlueprints.exists() && resourcesBlueprints.isDirectory()) {
                 return resourcesBlueprints;
             }
+            return directBlueprints;
         }
-        return new File(comfyPath != null ? comfyPath : "", "companion_blueprints");
+        return new File(System.getProperty("user.dir"), "companion_blueprints");
     }
 
     /**

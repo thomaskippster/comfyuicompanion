@@ -58,26 +58,16 @@ public class PromptLabView extends JPanel {
     private JButton btnSendToComfy;
 
     // Dummy objects for backward compatibility with unused fields
-    private JTextArea promptAssembleArea = new JTextArea();
-    @SuppressWarnings("rawtypes")
-    private JComboBox promptEnvCombo = new JComboBox();
-    private JCheckBox chkPhotorealistic = new JCheckBox();
-    private JCheckBox chkOil = new JCheckBox();
-    private JCheckBox chkEngine = new JCheckBox();
-    private JCheckBox chkAnime = new JCheckBox();
-    private JCheckBox chkFantasy = new JCheckBox();
-    private JCheckBox chkSketch = new JCheckBox();
+    private final JTextArea promptAssembleArea = new JTextArea();
+    @SuppressWarnings("rawtypes") private final JComboBox promptEnvCombo = new JComboBox();
+    private final JCheckBox chkPhotorealistic = new JCheckBox(), chkOil = new JCheckBox(), chkEngine = new JCheckBox();
+    private final JCheckBox chkAnime = new JCheckBox(), chkFantasy = new JCheckBox(), chkSketch = new JCheckBox();
 
-    /**
-     * Constructs a new PromptLabView and initializes the UI components.
-     */
-    public PromptLabView() {
-        initUI();
-    }
+    /** Constructs a new PromptLabView and initializes the UI components. */
+    public PromptLabView() { initUI(); }
 
-    public void setController(PromptLabController controller) {
-        this.controller = controller;
-    }
+    public void setController(PromptLabController controller) { this.controller = controller; }
+    public PromptLabController getController() { return controller; }
 
     private void initUI() {
         setOpaque(false);
@@ -87,8 +77,7 @@ public class PromptLabView extends JPanel {
         // LEFT: Image Lab controls (Blueprint selection + Generic execution parameters)
         CardPanel leftPanel = new CardPanel();
         leftPanel.setLayout(new BoxLayout(leftPanel, BoxLayout.Y_AXIS));
-
-        // Header Title removed as it's redundant with the tab name
+        leftPanel.setMinimumSize(new Dimension(320, 200));
 
         // Blueprint / Workflow Selection
         JLabel lblBlueprint = new JLabel("Blueprint / Workflow");
@@ -100,12 +89,15 @@ public class PromptLabView extends JPanel {
         JPanel modelRow = new JPanel(new BorderLayout(5, 0));
         modelRow.setOpaque(false);
         modelRow.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        modelRow.setPreferredSize(new Dimension(100, 35));
         modelRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 35));
 
         promptModelCombo = new JComboBox<>(new String[]{"No ready offline blueprints available"});
         promptModelCombo.setEditable(false);
         promptModelCombo.setEnabled(false);
         promptModelCombo.setFont(new Font("SansSerif", Font.PLAIN, 14));
+        promptModelCombo.setMinimumSize(new Dimension(80, 32));
+        promptModelCombo.setPreferredSize(new Dimension(100, 32));
         modelRow.add(promptModelCombo, BorderLayout.CENTER);
 
         JButton btnRefreshModels = new JButton(SvgIconFactory.get(AppIcon.REFRESH));
@@ -130,6 +122,9 @@ public class PromptLabView extends JPanel {
         Color pc = UIManager.getColor("PromptLab.presetForeground");
         if (pc != null) promptPresetLabel.setForeground(pc);
         promptPresetLabel.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        promptPresetLabel.setMinimumSize(new Dimension(80, 20));
+        promptPresetLabel.setPreferredSize(new Dimension(100, 20));
+        promptPresetLabel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 20));
         leftPanel.add(promptPresetLabel);
         leftPanel.add(Box.createVerticalStrut(18));
 
@@ -141,7 +136,6 @@ public class PromptLabView extends JPanel {
         leftPanel.add(Box.createVerticalStrut(6));
 
         Font promptSubLabelFont = new Font("SansSerif", Font.PLAIN, 12);
-
         JLabel lblSubject = new JLabel("Positive Prompt");
         lblSubject.setFont(promptSubLabelFont);
         lblSubject.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
@@ -151,10 +145,13 @@ public class PromptLabView extends JPanel {
         JPanel subjectRow = new JPanel(new BorderLayout(8, 0));
         subjectRow.setOpaque(false);
         subjectRow.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        subjectRow.setPreferredSize(new Dimension(100, 38));
         subjectRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 38));
 
         promptSubjectField = new JTextField("cybernetic tiger, detailed, 8k");
         promptSubjectField.setFont(new Font("SansSerif", Font.PLAIN, 14));
+        promptSubjectField.setMinimumSize(new Dimension(80, 34));
+        promptSubjectField.setPreferredSize(new Dimension(100, 34));
         subjectRow.add(promptSubjectField, BorderLayout.CENTER);
 
         btnSuggestSubject = new JButton("Suggest", SvgIconFactory.get(AppIcon.SUGGEST));
@@ -212,7 +209,6 @@ public class PromptLabView extends JPanel {
         promptSubjectSuggestionsWrapper.add(sugScrollPane, BorderLayout.CENTER);
         promptSubjectSuggestionsWrapper.setMaximumSize(new Dimension(Integer.MAX_VALUE, 155));
         leftPanel.add(promptSubjectSuggestionsWrapper);
-
         promptLabLeftPanel = leftPanel;
 
         // Negative Prompt Field
@@ -226,6 +222,8 @@ public class PromptLabView extends JPanel {
         promptNegativeField = new JTextField("blurry, low quality, distortion, bad anatomy");
         promptNegativeField.setFont(new Font("SansSerif", Font.PLAIN, 12));
         promptNegativeField.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        promptNegativeField.setMinimumSize(new Dimension(80, 32));
+        promptNegativeField.setPreferredSize(new Dimension(100, 32));
         promptNegativeField.setMaximumSize(new Dimension(Integer.MAX_VALUE, 32));
         leftPanel.add(promptNegativeField);
         leftPanel.add(Box.createVerticalStrut(10));
@@ -296,13 +294,31 @@ public class PromptLabView extends JPanel {
         CardPanel rightPanel = new CardPanel();
         rightPanel.setLayout(new BorderLayout(10, 10));
 
-        JPanel rightTopPanel = new JPanel(new BorderLayout());
+        JPanel rightTopPanel = new JPanel(new BorderLayout(8, 0));
         rightTopPanel.setOpaque(false);
         rightTopPanel.setBorder(BorderFactory.createEmptyBorder(0, 0, 8, 0));
 
         JLabel apiHeader = new JLabel("ComfyUI API Integration (workflow_api.json)");
         apiHeader.putClientProperty("FlatLaf.styleClass", "h3");
         rightTopPanel.add(apiHeader, BorderLayout.CENTER);
+
+        JPanel rightHeaderActions = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 6, 0));
+        rightHeaderActions.setOpaque(false);
+
+        JButton btnRemixPng = new JButton("Remix PNG...", SvgIconFactory.get(AppIcon.GALLERY, 14));
+        btnRemixPng.setFont(new Font("SansSerif", Font.PLAIN, 12));
+        btnRemixPng.setToolTipText("Load prompt, seed, and workflow from a ComfyUI PNG image (or Drag & Drop a PNG onto the Image Lab)");
+        btnRemixPng.addActionListener(e -> de.tki.comfyuicompanion.controller.PromptLabImageDropHandler.promptAndImportPng(this, controller));
+        rightHeaderActions.add(btnRemixPng);
+
+        JButton btnMatrixGrid = new JButton("Matrix / XY Grid", SvgIconFactory.get(AppIcon.IMAGE_LAB, 14));
+        btnMatrixGrid.setFont(new Font("SansSerif", Font.PLAIN, 12));
+        btnMatrixGrid.setToolTipText("Open Batch / Prompt Matrix XY-Grid to compare {a|b} prompt variations and CFG sweeps side-by-side");
+        btnMatrixGrid.addActionListener(e -> {
+            if (onOpenMatrixGrid != null) onOpenMatrixGrid.run();
+        });
+        rightHeaderActions.add(btnMatrixGrid);
+        rightTopPanel.add(rightHeaderActions, BorderLayout.EAST);
 
         rightPanel.add(rightTopPanel, BorderLayout.NORTH);
 
@@ -314,11 +330,13 @@ public class PromptLabView extends JPanel {
         JPanel imagePreviewTabPanel = new JPanel(new BorderLayout(10, 10));
         imagePreviewTabPanel.setOpaque(false);
 
-        promptImagePreviewLabel = new JLabel("Your generated image will appear here", SwingConstants.CENTER);
+        promptImagePreviewLabel = new JLabel("Your generated image will appear here (or Drag & Drop a ComfyUI PNG to remix)", SwingConstants.CENTER);
         promptImagePreviewLabel.setFont(new Font("SansSerif", Font.ITALIC, 14));
         promptImagePreviewLabel.setForeground(Color.GRAY);
         promptImagePreviewLabel.putClientProperty("FlatLaf.style", "background: $TextField.background");
         promptImagePreviewLabel.setOpaque(true);
+        promptImagePreviewLabel.setMinimumSize(new Dimension(64, 64));
+        promptImagePreviewLabel.setPreferredSize(new Dimension(64, 64));
 
         promptImagePreviewLabel.addComponentListener(new ComponentAdapter() {
             @Override
@@ -328,12 +346,7 @@ public class PromptLabView extends JPanel {
                 }
             }
         });
-
-        JScrollPane previewScroll = new JScrollPane(promptImagePreviewLabel);
-        previewScroll.setOpaque(false);
-        previewScroll.getViewport().setOpaque(false);
-        previewScroll.setBorder(BorderFactory.createEmptyBorder());
-        imagePreviewTabPanel.add(previewScroll, BorderLayout.CENTER);
+        imagePreviewTabPanel.add(promptImagePreviewLabel, BorderLayout.CENTER);
 
         promptLabProgressBar = new JProgressBar();
         promptLabProgressBar.setStringPainted(true);
@@ -388,7 +401,13 @@ public class PromptLabView extends JPanel {
         splitPane.setResizeWeight(0.3);
 
         add(splitPane, BorderLayout.CENTER);
+        de.tki.comfyuicompanion.controller.PromptLabImageDropHandler.installDropTargets(this, this.controller);
     }
+
+    private Runnable onOpenMatrixGrid;
+
+    /** Sets callback for opening the Batch / Prompt Matrix XY-Grid dialog. */
+    public void setOnOpenMatrixGrid(Runnable onOpenMatrixGrid) { this.onOpenMatrixGrid = onOpenMatrixGrid; }
 
     /**
      * Scales the provided image to fit within the preview label while maintaining aspect ratio,
@@ -398,23 +417,22 @@ public class PromptLabView extends JPanel {
      */
     public void scaleAndSetImage(Image img) {
         if (img == null) return;
+        boolean sameImage = (this.currentPreviewImage == img);
         this.currentPreviewImage = img;
-        int pw = promptImagePreviewLabel.getWidth();
-        int ph = promptImagePreviewLabel.getHeight();
-        if (pw <= 0 || ph <= 0) {
-            pw = 512;
-            ph = 512;
-        }
-
+        int pw = Math.max(64, promptImagePreviewLabel.getWidth() > 8 ? promptImagePreviewLabel.getWidth() - 8 : 512);
+        int ph = Math.max(64, promptImagePreviewLabel.getHeight() > 8 ? promptImagePreviewLabel.getHeight() - 8 : 512);
         int iw = img.getWidth(null);
         int ih = img.getHeight(null);
         if (iw <= 0 || ih <= 0) return;
 
         double scale = Math.min((double) pw / iw, (double) ph / ih);
-        int nw = (int) (iw * scale);
-        int nh = (int) (ih * scale);
-
-        Image scaled = img.getScaledInstance(nw, nh, Image.SCALE_SMOOTH);
+        int tw = Math.max(1, (int) (iw * scale));
+        int th = Math.max(1, (int) (ih * scale));
+        if (sameImage && promptImagePreviewLabel.getIcon() instanceof ImageIcon existing
+                && Math.abs(existing.getIconWidth() - tw) <= 2 && Math.abs(existing.getIconHeight() - th) <= 2) {
+            return;
+        }
+        Image scaled = img.getScaledInstance(tw, th, Image.SCALE_SMOOTH);
         promptImagePreviewLabel.setIcon(new ImageIcon(scaled));
         promptImagePreviewLabel.setText("");
     }
@@ -441,7 +459,6 @@ public class PromptLabView extends JPanel {
         }
     }
 
-    // Getters & Setters
     public JComboBox<String> getPromptModelCombo() { return promptModelCombo; }
     public JLabel getPromptPresetLabel() { return promptPresetLabel; }
     public JTextField getPromptSubjectField() { return promptSubjectField; }
@@ -454,7 +471,6 @@ public class PromptLabView extends JPanel {
     public JTextField getPromptImageFileField() { return promptImageFileField; }
     public File getSelectedInputImage() { return selectedInputImage; }
     public void setSelectedInputImage(File selectedInputImage) { this.selectedInputImage = selectedInputImage; }
-
     public JSpinner getPromptWidthSpinner() { return parametersPanel.getWidthSpinner(); }
     public JSpinner getPromptHeightSpinner() { return parametersPanel.getHeightSpinner(); }
     public JSpinner getPromptBatchSizeSpinner() { return parametersPanel.getBatchSizeSpinner(); }
@@ -463,7 +479,6 @@ public class PromptLabView extends JPanel {
     public JSpinner getPromptDenoiseSpinner() { return parametersPanel.getDenoiseSpinner(); }
     public JComboBox<String> getPromptSamplerCombo() { return parametersPanel.getSamplerCombo(); }
     public JComboBox<String> getPromptSchedulerCombo() { return parametersPanel.getSchedulerCombo(); }
-
     public JTabbedPane getPromptLabRightTabbedPane() { return promptLabRightTabbedPane; }
     public JLabel getPromptImagePreviewLabel() { return promptImagePreviewLabel; }
     public JProgressBar getPromptLabProgressBar() { return promptLabProgressBar; }
@@ -472,10 +487,8 @@ public class PromptLabView extends JPanel {
     public JTextArea getPromptJsonArea() { return promptJsonArea; }
     public JTextArea getPromptLabConsole() { return promptLabConsole; }
     public JButton getBtnSendToComfy() { return btnSendToComfy; }
-
     public JTextArea getPromptAssembleArea() { return promptAssembleArea; }
-    @SuppressWarnings("rawtypes")
-    public JComboBox getPromptEnvCombo() { return promptEnvCombo; }
+    @SuppressWarnings("rawtypes") public JComboBox getPromptEnvCombo() { return promptEnvCombo; }
     public JCheckBox getChkPhotorealistic() { return chkPhotorealistic; }
     public JCheckBox getChkOil() { return chkOil; }
     public JCheckBox getChkEngine() { return chkEngine; }

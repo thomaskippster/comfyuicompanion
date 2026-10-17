@@ -248,6 +248,22 @@ public class PromptLabController implements PromptLabView.PromptLabController {
         sessionManager.saveSession(view);
     }
 
+    /**
+     * Executes the given UI action while suppressing combo box selection listeners
+     * so programmatic model updates (such as PNG Remix) do not reload blueprint templates.
+     *
+     * @param action the UI runnable to execute
+     */
+    public void runWithComboUpdateSuppressed(Runnable action) {
+        if (action == null) return;
+        boolean prev = isUpdatingCombo.getAndSet(true);
+        try {
+            action.run();
+        } finally {
+            isUpdatingCombo.set(prev);
+        }
+    }
+
     /** Restores the Prompt Lab UI state from persisted settings. */
     public void loadPromptLabSession() {
         sessionManager.loadSession(view);

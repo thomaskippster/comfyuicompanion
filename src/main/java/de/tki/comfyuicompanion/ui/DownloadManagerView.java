@@ -40,6 +40,7 @@ public class DownloadManagerView extends JPanel {
     public interface DownloadManagerListener {
         void onVerifyLocalModels(boolean deepCheck);
         void onShowArchiveDialog();
+        default void onShowStorageCleanerDialog() {}
         void onRunDiagnostics();
         void onLoadWorkflowFile(File file);
         void onImportModelListFile(File file);
@@ -102,6 +103,13 @@ public class DownloadManagerView extends JPanel {
             }
         });
 
+        JButton cleanerBtn = new JButton("Duplicate & Cold Cleaner", SvgIconFactory.get(AppIcon.STORAGE_OPTIMIZER));
+        cleanerBtn.putClientProperty("JButton.buttonType", "roundRect");
+        cleanerBtn.setToolTipText("Scan for duplicate models across folders and cold models (>30 days unused) to archive or clean up");
+        cleanerBtn.addActionListener(e -> {
+            if (listener != null) listener.onShowStorageCleanerDialog();
+        });
+
         JButton archiveBtn = new JButton("Archive...", SvgIconFactory.get(AppIcon.ARCHIVE));
         archiveBtn.putClientProperty("JButton.buttonType", "roundRect");
         archiveBtn.addActionListener(e -> {
@@ -119,6 +127,7 @@ public class DownloadManagerView extends JPanel {
         toolbar.add(toolsLabel);
         toolbar.add(verifyBtn);
         toolbar.add(optimizeBtn);
+        toolbar.add(cleanerBtn);
         toolbar.add(archiveBtn);
         
         JSeparator sep = new JSeparator(JSeparator.VERTICAL);

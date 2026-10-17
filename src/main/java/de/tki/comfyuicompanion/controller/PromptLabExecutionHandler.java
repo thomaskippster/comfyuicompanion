@@ -118,6 +118,67 @@ public class PromptLabExecutionHandler {
      */
     public void setPromptLabView(PromptLabView view) {
         this.promptLabView = view;
+        if (this.promptLabView != null) {
+            PromptLabImageDropHandler.installDropTargets(this.promptLabView, this.promptLabController);
+            this.promptLabView.setOnOpenMatrixGrid(() -> statusPoller.openMatrixDialog(
+                    this.promptLabView, this.promptLabView, configService.getComfyUIUrl(),
+                    this.promptLabController, this.modelInputSanitizer, false,
+                    statusMsg -> ensureComfyServerOnline(configService.getComfyUIUrl(), statusMsg)));
+        }
+    }
+
+    /**
+     * Ensures that the ComfyUI server is reachable at the given URL, automatically launching
+     * it with the active profile and polling up to 90 seconds if it is currently offline.
+     *
+     * @param comfyUrl     target ComfyUI base URL
+     * @param statusUpdate optional callback receiving live startup progress messages
+     * @return true if ComfyUI is online and responding with HTTP 200
+     */
+    public boolean ensureComfyServerOnline(String comfyUrl, Consumer<String> statusUpdate) {
+        if (comfyApiClient.isServerOnline(comfyUrl)) {
+            return true;
+        }
+        String activeId = configService != null ? configService.getActiveProfile() : null;
+        List<LaunchProfile> profiles = profileManager != null ? profileManager.loadProfiles() : List.of();
+        LaunchProfile activeProfile = profiles.stream()
+                .filter(p -> p.id().equals(activeId)).findFirst().orElse(null);
+        if (activeProfile == null && !profiles.isEmpty()) {
+            activeProfile = profiles.get(0);
+        }
+        if (activeProfile == null) {
+            activeProfile = new LaunchProfile("default", "Default", "nvidia", false, "--normalvram", List.of(), java.util.Map.of());
+        }
+
+        final String profileName = activeProfile.name();
+        JTextArea console = promptLabView != null ? promptLabView.getPromptLabConsole() : null;
+        if (console != null) {
+            SwingUtilities.invokeLater(() -> console.append("🔌 ComfyUI offline — auto-starting with profile: " + profileName + "\n"));
+        }
+        if (statusUpdate != null) {
+            statusUpdate.accept("🔌 Auto-starting ComfyUI (" + profileName + ")...");
+        }
+        if (startComfyAction != null) {
+            startComfyAction.accept(activeProfile);
+        }
+
+        int waitedSec = 0;
+        while (waitedSec < 90) {
+            try {
+                Thread.sleep(2000);
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+            waitedSec += 2;
+            if (comfyApiClient.isServerOnline(comfyUrl)) {
+                return true;
+            }
+            if (statusUpdate != null) {
+                statusUpdate.accept("🔌 Starting ComfyUI (" + waitedSec + "s)...");
+            }
+        }
+        return false;
     }
 
     /**
@@ -160,6 +221,12 @@ public class PromptLabExecutionHandler {
 
         final String comfyUrl = configService.getComfyUIUrl();
         final String assembledPrompt = promptLabView.getPromptSubjectField() != null ? promptLabView.getPromptSubjectField().getText().trim() : "";
+        if (PromptLabMatrixEngine.hasMatrixSyntax(assembledPrompt)) {
+            statusPoller.openMatrixDialog(parentComponent, promptLabView, comfyUrl,
+                    promptLabController, modelInputSanitizer, true,
+                    statusMsg -> ensureComfyServerOnline(comfyUrl, statusMsg));
+            return;
+        }
         final String negativePrompt  = promptLabView.getPromptNegativeField() != null ? promptLabView.getPromptNegativeField().getText().trim() : "";
         final int widthVal = promptLabView.getPromptWidthSpinner() != null ? (int) promptLabView.getPromptWidthSpinner().getValue() : 1024;
         final int heightVal = promptLabView.getPromptHeightSpinner() != null ? (int) promptLabView.getPromptHeightSpinner().getValue() : 1024;
@@ -195,39 +262,7 @@ public class PromptLabExecutionHandler {
 
         backgroundExecutor.execute(() -> {
             try {
-                boolean connected = false;
-                try {
-                    HttpResponse<String> infoResponse = comfyApiClient.fetchObjectInfoRaw(comfyUrl);
-                    connected = infoResponse != null && infoResponse.statusCode() == 200;
-                } catch (Exception ignored) {}
-
-                if (!connected) {
-                    String activeId = configService.getActiveProfile();
-                    List<LaunchProfile> profiles = profileManager.loadProfiles();
-                    LaunchProfile activeProfile = profiles.stream()
-                            .filter(p -> p.id().equals(activeId)).findFirst().orElse(null);
-                    if (activeProfile == null && !profiles.isEmpty()) activeProfile = profiles.get(0);
-
-                    if (activeProfile != null) {
-                        final LaunchProfile fp = activeProfile;
-                        if (console != null) {
-                            SwingUtilities.invokeLater(() -> console.append("🔌 ComfyUI offline — auto-starting with profile: " + fp.name() + "\n"));
-                        }
-                        if (startComfyAction != null) {
-                            startComfyAction.accept(activeProfile);
-                        }
-
-                        int waitedSec = 0;
-                        while (!connected && waitedSec < 45) {
-                            Thread.sleep(2000);
-                            waitedSec += 2;
-                            try {
-                                HttpResponse<String> check = comfyApiClient.fetchObjectInfoRaw(comfyUrl);
-                                connected = check != null && check.statusCode() == 200;
-                            } catch (Exception ignored) {}
-                        }
-                    }
-                }
+                boolean connected = ensureComfyServerOnline(comfyUrl, null);
 
                 if (!connected) {
                     SwingUtilities.invokeLater(() -> {

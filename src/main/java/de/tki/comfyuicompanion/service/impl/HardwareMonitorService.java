@@ -41,6 +41,8 @@ public class HardwareMonitorService {
     private volatile long vramUsed = 0L;
     private volatile long vramTotal = 0L;
     private volatile boolean hasNvidia = false;
+    private static volatile long lastKnownVramBytes = 0L;
+    private static volatile String lastKnownGpuName = "N/A";
 
     public static class HardwareStats {
         public double cpuLoad;
@@ -83,7 +85,9 @@ public class HardwareMonitorService {
                 stats.vramUsed = this.vramUsed;
                 stats.vramTotal = this.vramTotal;
                 stats.hasNvidia = this.hasNvidia;
-                
+                if (this.vramTotal > 0) lastKnownVramBytes = this.vramTotal;
+                if (this.gpuName != null && !"N/A".equals(this.gpuName)) lastKnownGpuName = this.gpuName;
+
                 callback.accept(stats);
             } catch (Exception e) {
                 logger.debug("Background hardware polling encountered an error: {}", e.getMessage());
@@ -220,16 +224,46 @@ public class HardwareMonitorService {
 
     /**
      * Returns the most recently observed total VRAM in bytes.
+     *
+     * @return total VRAM in bytes
      */
     public synchronized long getVramBytes() {
         if (vramTotal == 0 && !hasNvidia) {
             queryNvidiaGpu();
         }
+        if (vramTotal > 0) {
+            lastKnownVramBytes = vramTotal;
+        }
         return vramTotal;
     }
 
-    /** Returns the GPU model name as last reported by the monitor. */
+    /**
+     * Returns the GPU model name as last reported by the monitor.
+     *
+     * @return GPU model name
+     */
     public synchronized String getGpuName() {
+        if (gpuName != null && !"N/A".equals(gpuName)) {
+            lastKnownGpuName = gpuName;
+        }
         return gpuName;
+    }
+
+    /**
+     * Returns the last cached total GPU VRAM in bytes without blocking on external process calls.
+     *
+     * @return cached total GPU VRAM in bytes
+     */
+    public static long getLastKnownVramBytes() {
+        return lastKnownVramBytes;
+    }
+
+    /**
+     * Returns the last cached GPU model name without blocking on external process calls.
+     *
+     * @return cached GPU model name
+     */
+    public static String getLastKnownGpuName() {
+        return lastKnownGpuName;
     }
 }

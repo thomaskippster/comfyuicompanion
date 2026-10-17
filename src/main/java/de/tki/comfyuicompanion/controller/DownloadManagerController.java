@@ -337,6 +337,18 @@ public class DownloadManagerController implements DownloadManagerView.DownloadMa
                 .showArchiveDialog();
     }
 
+    @Override
+    public void onShowStorageCleanerDialog() {
+        java.awt.Window owner = view != null ? javax.swing.SwingUtilities.getWindowAncestor(view) : null;
+        new de.tki.comfyuicompanion.ui.dialog.StorageCleanerDialog(
+                owner, configService, archiveService, hashRegistry, backgroundExecutor,
+                () -> {
+                    analyzeJsonContent();
+                    if (postOperationCallback != null) postOperationCallback.run();
+                }
+        ).setVisible(true);
+    }
+
     public void showCivitaiSearchDialog(int row) {
         new CivitaiVersionSelectorDialog(view, civitaiService, backgroundExecutor)
                 .showDialog(row, modelsToDownload);

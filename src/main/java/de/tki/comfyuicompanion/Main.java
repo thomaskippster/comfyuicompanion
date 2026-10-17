@@ -468,6 +468,7 @@ public class Main extends JFrame {
                 if (downloadManagerController != null) {
                     downloadManagerController.analyzeJsonContent();
                     downloadManagerController.searchMissingOnline(false);
+                    downloadManagerController.onCheckMissingCustomNodes();
                 }
                 if (uiComponents.mainTabs != null) uiComponents.mainTabs.setSelectedIndex(1);
             }
@@ -480,12 +481,10 @@ public class Main extends JFrame {
 
     private PromptLabModelResolver createModelResolver() {
         PromptLabModelResolver r = new PromptLabModelResolver(modelArchitectureService);
-        r.getComfyClips().addAll(this.comfyClips); r.getComfyVaes().addAll(this.comfyVaes);
-        r.getComfyClipTypes().addAll(this.comfyClipTypes); r.getComfyCheckpoints().addAll(this.comfyCheckpoints);
-        r.getComfyUnetModels().addAll(this.comfyUnetModels); r.getComfyUnetWeightDtypes().addAll(this.comfyUnetWeightDtypes);
+        r.getComfyClips().addAll(this.comfyClips); r.getComfyVaes().addAll(this.comfyVaes); r.getComfyClipTypes().addAll(this.comfyClipTypes);
+        r.getComfyCheckpoints().addAll(this.comfyCheckpoints); r.getComfyUnetModels().addAll(this.comfyUnetModels); r.getComfyUnetWeightDtypes().addAll(this.comfyUnetWeightDtypes);
         return r;
     }
-
     private String resolveClipForModel(String selectedModel) { return createModelResolver().resolveClipForModel(selectedModel); }
     private String resolveClipType(String clipModel, String selectedModel) { return createModelResolver().resolveClipType(clipModel, selectedModel); }
     private String resolveVaeForModel(String modelName) { return createModelResolver().resolveVaeForModel(modelName); }

@@ -7,6 +7,7 @@ import de.tki.comfyuicompanion.controller.PromptLabController;
 import de.tki.comfyuicompanion.controller.PromptLabModelResolver;
 import de.tki.comfyuicompanion.domain.LaunchProfile;
 import de.tki.comfyuicompanion.domain.ModelInfo;
+import de.tki.comfyuicompanion.exception.GlobalUncaughtExceptionHandler;
 import de.tki.comfyuicompanion.service.*;
 import de.tki.comfyuicompanion.service.impl.*;
 import de.tki.comfyuicompanion.ui.*;
@@ -159,43 +160,21 @@ public class Main extends JFrame {
                 @Autowired(required = false) IDefaultCacheBootstrapper defaultCacheBootstrapper,
                 @Autowired(required = false) ComfyInstallationScanner comfyInstallationScanner) {
         
-        this.analyzer = analyzer;
-        this.downloadManager = downloadManager;
-        this.workflowService = workflowService;
-        this.searchService = searchService;
-        this.modelValidator = modelValidator;
-        this.restBridge = restBridge;
-        this.archiveService = archiveService;
-        this.lifecycleService = lifecycleService;
-        this.diagnosticService = diagnosticService;
-        this.profileManager = profileManager;
-        this.bootstrapper = bootstrapper;
-        this.processController = processController;
-        this.civitaiService = civitaiService;
-        this.huggingFaceService = huggingFaceService;
-        this.configService = configService;
-        this.comfyTemplateService = comfyTemplateService;
-        this.localAIService = localAIService;
-        this.modelListService = modelListService;
-        this.hashRegistry = hashRegistry;
-        this.localScanner = localScanner;
-        this.pathResolver = pathResolver;
-        this.versionService = versionService;
-        this.modelArchitectureService = modelArchitectureService;
-        this.hardwareMonitorService = hardwareMonitorService;
-        this.updaterService = updaterService;
-        this.videoArchitectTab = videoArchitectTab;
-        this.blueprintGalleryTab = blueprintGalleryTab;
-        this.civitaiGalleryTab = civitaiGalleryTab;
-        this.dependencyService = dependencyService;
-        this.backgroundExecutor = backgroundExecutor;
-        this.processTracker = processTracker;
-        this.promptBlueprintApiService = promptBlueprintApiService;
-        this.comfyApiClient = comfyApiClient;
-        this.promptLabView = promptLabView;
-        this.promptLabController = promptLabController;
-        this.downloadManagerView = downloadManagerView;
-        this.downloadManagerController = downloadManagerController;
+        this.analyzer = analyzer; this.downloadManager = downloadManager; this.workflowService = workflowService;
+        this.searchService = searchService; this.modelValidator = modelValidator; this.restBridge = restBridge;
+        this.archiveService = archiveService; this.lifecycleService = lifecycleService; this.diagnosticService = diagnosticService;
+        this.profileManager = profileManager; this.bootstrapper = bootstrapper; this.processController = processController;
+        this.civitaiService = civitaiService; this.huggingFaceService = huggingFaceService; this.configService = configService;
+        this.comfyTemplateService = comfyTemplateService; this.localAIService = localAIService; this.modelListService = modelListService;
+        this.hashRegistry = hashRegistry; this.localScanner = localScanner; this.pathResolver = pathResolver;
+        this.versionService = versionService; this.modelArchitectureService = modelArchitectureService;
+        this.hardwareMonitorService = hardwareMonitorService; this.updaterService = updaterService;
+        this.videoArchitectTab = videoArchitectTab; this.blueprintGalleryTab = blueprintGalleryTab;
+        this.civitaiGalleryTab = civitaiGalleryTab; this.dependencyService = dependencyService;
+        this.backgroundExecutor = backgroundExecutor; this.processTracker = processTracker;
+        this.promptBlueprintApiService = promptBlueprintApiService; this.comfyApiClient = comfyApiClient;
+        this.promptLabView = promptLabView; this.promptLabController = promptLabController;
+        this.downloadManagerView = downloadManagerView; this.downloadManagerController = downloadManagerController;
         this.workflowDownloader = workflowDownloader;
         this.appLifecycleManager = appLifecycleManager != null ? appLifecycleManager :
                 new AppLifecycleManager(configService, modelListService, processController, downloadManager, hardwareMonitorService, processTracker, defaultCacheBootstrapper);
@@ -223,6 +202,7 @@ public class Main extends JFrame {
     }
 
     public void launch(String[] args) {
+        GlobalUncaughtExceptionHandler.register();
         if (defaultCacheBootstrapper != null) defaultCacheBootstrapper.bootstrapDefaultCache();
 
         Path appData = Paths.get(System.getProperty("user.home"), ".comfyui-companion");
@@ -491,6 +471,7 @@ public class Main extends JFrame {
     private void analyzeJsonContent() { if (downloadManagerController != null) downloadManagerController.analyzeJsonContent(); }
 
     public static void main(String[] args) {
+        GlobalUncaughtExceptionHandler.register();
         FlatLaf.setUseNativeWindowDecorations(true);
         ThemeManager.applyTheme(true);
         appContext = new AnnotationConfigApplicationContext(AppConfig.class);

@@ -301,7 +301,7 @@ public class ComfyProcessController {
     }
 
     private void captureStream(java.io.InputStream is, Consumer<String> consumer) {
-        Thread thread = new Thread(() -> {
+        Thread.ofVirtual().name("comfy-stream-capture").start(() -> {
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(is))) {
                 String line;
                 while ((line = reader.readLine()) != null) {
@@ -309,8 +309,6 @@ public class ComfyProcessController {
                 }
             } catch (IOException ignored) {}
         });
-        thread.setDaemon(true);
-        thread.start();
     }
 
     /**

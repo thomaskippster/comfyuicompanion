@@ -147,14 +147,7 @@ public class ModelValidator implements IModelValidator {
                 }
             }
 
-            byte[] hash = digest.digest();
-            StringBuilder hexString = new StringBuilder();
-            for (byte b : hash) {
-                String hex = Integer.toHexString(0xff & b);
-                if (hex.length() == 1) hexString.append('0');
-                hexString.append(hex);
-            }
-            return hexString.toString();
+            return java.util.HexFormat.of().formatHex(digest.digest());
         } catch (Exception e) {
             throw new IOException("Hash computation failed on FileChannel", e);
         }

@@ -46,12 +46,10 @@ public class BlueprintPreviewCache {
             .followRedirects(HttpClient.Redirect.ALWAYS)
             .build();
 
-    private static final ExecutorService imageLoadExecutor = Executors.newFixedThreadPool(2, r -> {
-        Thread t = new Thread(r, "BlueprintPreviewLoader");
-        t.setDaemon(true);
-        t.setPriority(Thread.MIN_PRIORITY);
-        return t;
-    });
+    private static final ExecutorService imageLoadExecutor = Executors.newFixedThreadPool(
+            2,
+            Thread.ofVirtual().name("BlueprintPreviewLoader-", 1).factory()
+    );
 
     private final ConfigService configService;
     private final Map<String, Image> previewCache = new ConcurrentHashMap<>();

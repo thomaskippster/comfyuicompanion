@@ -149,10 +149,7 @@ public class ModelArchitectureService implements IModelArchitectureService {
 
     @Override
     public void runBlueprintAnalysis() {
-        Thread t = new Thread(this::analyzeBlueprintsAndSaveDefaults, "BlueprintAnalyzer");
-        t.setDaemon(true);
-        t.setPriority(Thread.MIN_PRIORITY);
-        t.start();
+        Thread.ofVirtual().name("BlueprintAnalyzer").start(this::analyzeBlueprintsAndSaveDefaults);
     }
 
     @Override

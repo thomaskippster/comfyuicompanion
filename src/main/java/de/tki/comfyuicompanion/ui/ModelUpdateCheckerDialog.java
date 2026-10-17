@@ -122,7 +122,7 @@ public class ModelUpdateCheckerDialog extends JDialog {
         updatesList.clear();
         logArea.setText("🔍 Starting model update scanning...\n");
 
-        new Thread(() -> {
+        Thread.ofVirtual().name("model-update-scan").start(() -> {
             try {
                 String baseDir = configService.getModelsPath();
                 if (baseDir == null || baseDir.isEmpty()) {
@@ -190,7 +190,7 @@ public class ModelUpdateCheckerDialog extends JDialog {
                     downloadBtn.setEnabled(tableModel.getRowCount() > 0);
                 });
             }
-        }).start();
+        });
     }
 
     private void downloadUpgrades() {
@@ -219,7 +219,7 @@ public class ModelUpdateCheckerDialog extends JDialog {
         downloadBtn.setEnabled(false);
         logArea.setText("📥 Enqueuing downloads in background...\n");
 
-        new Thread(() -> {
+        Thread.ofVirtual().name("model-update-download").start(() -> {
             try {
                 boolean[] selected = new boolean[modelsToDownload.size()];
                 java.util.Arrays.fill(selected, true);
@@ -244,7 +244,7 @@ public class ModelUpdateCheckerDialog extends JDialog {
                     downloadBtn.setEnabled(true);
                 });
             }
-        }).start();
+        });
     }
 
     private void findModelFiles(File dir, List<File> files) {

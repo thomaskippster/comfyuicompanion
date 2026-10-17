@@ -141,7 +141,7 @@ public class SnapshotRollbackDialog extends JDialog {
     private void refreshTable() {
         tableModel.setRowCount(0);
         if (snapshotService == null) return;
-        new Thread(() -> {
+        Thread.ofVirtual().name("snapshot-list").start(() -> {
             List<EnvironmentSnapshot> list = snapshotService.listSnapshots();
             SwingUtilities.invokeLater(() -> {
                 this.snapshots = list;
@@ -157,7 +157,7 @@ public class SnapshotRollbackDialog extends JDialog {
                 btnRollback.setEnabled(false);
                 btnDelete.setEnabled(false);
             });
-        }).start();
+        });
     }
 
     private void triggerCreateSnapshot() {
@@ -168,7 +168,7 @@ public class SnapshotRollbackDialog extends JDialog {
         setButtonsEnabled(false);
         logArea.append("\n📸 Starting snapshot capture...\n");
 
-        new Thread(() -> {
+        Thread.ofVirtual().name("snapshot-create").start(() -> {
             try {
                 snapshotService.captureSnapshot(finalDesc, msg -> SwingUtilities.invokeLater(() -> {
                     logArea.append(msg);
@@ -180,7 +180,7 @@ public class SnapshotRollbackDialog extends JDialog {
                     refreshTable();
                 });
             }
-        }).start();
+        });
     }
 
     private void triggerRollback() {
@@ -205,7 +205,7 @@ public class SnapshotRollbackDialog extends JDialog {
         logArea.append("Initiating Rollback to: " + sel.id() + "\n");
         logArea.append("========================================\n");
 
-        new Thread(() -> {
+        Thread.ofVirtual().name("snapshot-rollback").start(() -> {
             try {
                 var res = snapshotService.rollbackToSnapshot(sel.id(), restorePip, msg -> SwingUtilities.invokeLater(() -> {
                     logArea.append(msg);
@@ -221,7 +221,7 @@ public class SnapshotRollbackDialog extends JDialog {
             } finally {
                 SwingUtilities.invokeLater(() -> setButtonsEnabled(true));
             }
-        }).start();
+        });
     }
 
     private void triggerDelete() {

@@ -140,7 +140,7 @@ public class PromptLabModelDiscovery {
         if (backgroundExecutor != null) {
             backgroundExecutor.execute(task);
         } else {
-            new Thread(task).start();
+            Thread.ofVirtual().name("promptlab-discovery").start(task);
         }
     }
 

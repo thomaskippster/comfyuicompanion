@@ -33,6 +33,9 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import de.tki.comfyuicompanion.service.SafePathValidator;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Interactive dialog for the Intelligent Storage & Duplicate Cleaner.
@@ -40,6 +43,8 @@ import java.util.List;
  * and cold models unused for more than 30 days, allowing 1-click archiving or duplicate removal.
  */
 public class StorageCleanerDialog extends JDialog {
+
+    private static final Logger logger = LoggerFactory.getLogger(StorageCleanerDialog.class);
 
     private final ConfigService configService;
     private final ArchiveService archiveService;
@@ -232,17 +237,30 @@ public class StorageCleanerDialog extends JDialog {
         );
         if (confirm != JOptionPane.YES_OPTION) return;
 
-        int deleted = 0;
-        for (CleanupCandidate c : selected) {
-            try {
-                if (Files.deleteIfExists(c.fullPath())) {
-                    deleted++;
+        btnDeleteDuplicates.setEnabled(false);
+        backgroundExecutor.execute(() -> {
+            SafePathValidator validator = new SafePathValidator();
+            int deleted = 0;
+            for (CleanupCandidate c : selected) {
+                try {
+                    if (c.fullPath() != null && Files.isRegularFile(c.fullPath())) {
+                        validator.validateFilename(c.fileName());
+                        if (Files.deleteIfExists(c.fullPath())) {
+                            deleted++;
+                        }
+                    }
+                } catch (Exception ex) {
+                    logger.warn("Failed to delete candidate model file {}: {}", c.fullPath(), ex.getMessage());
                 }
-            } catch (Exception ignored) {}
-        }
-        JOptionPane.showMessageDialog(this, "Deleted " + deleted + " file(s).");
-        if (onCleanupCompleted != null) onCleanupCompleted.run();
-        runScan();
+            }
+            final int finalDeleted = deleted;
+            SwingUtilities.invokeLater(() -> {
+                btnDeleteDuplicates.setEnabled(true);
+                JOptionPane.showMessageDialog(this, "Deleted " + finalDeleted + " file(s).");
+                if (onCleanupCompleted != null) onCleanupCompleted.run();
+                runScan();
+            });
+        });
     }
 
     private List<CleanupCandidate> getSelectedCandidates() {

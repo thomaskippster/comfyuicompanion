@@ -97,7 +97,7 @@ public class DeduplicationDialog extends JDialog {
             return;
         }
 
-        new Thread(() -> {
+        Thread.ofVirtual().name("deduplication-scan").start(() -> {
             boolean wasFastHashEnabled = configService.isFastHashEnabled();
             try {
                 // 1. Walk files
@@ -203,7 +203,7 @@ public class DeduplicationDialog extends JDialog {
                 configService.setFastHashEnabled(wasFastHashEnabled);
                 SwingUtilities.invokeLater(() -> scanBtn.setEnabled(true));
             }
-        }).start();
+        });
     }
 
     private void runDeduplication() {
@@ -218,7 +218,7 @@ public class DeduplicationDialog extends JDialog {
         deduplicateBtn.setEnabled(false);
         logArea.setText("⚙️ Optimizing files...\n");
 
-        new Thread(() -> {
+        Thread.ofVirtual().name("deduplication-action").start(() -> {
             long totalSaved = 0;
             int count = 0;
             try {
@@ -250,7 +250,7 @@ public class DeduplicationDialog extends JDialog {
             } finally {
                 SwingUtilities.invokeLater(() -> scanBtn.setEnabled(true));
             }
-        }).start();
+        });
     }
 
     private void updateLog(String msg) {

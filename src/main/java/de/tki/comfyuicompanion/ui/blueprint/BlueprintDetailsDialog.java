@@ -39,6 +39,8 @@ import java.util.function.Function;
  */
 public class BlueprintDetailsDialog extends JDialog {
     private static final Logger logger = LoggerFactory.getLogger(BlueprintDetailsDialog.class);
+    private static final ObjectMapper SHARED_MAPPER = new ObjectMapper();
+    private static final SafePathValidator SAFE_PATH_VALIDATOR = new SafePathValidator();
 
     public BlueprintDetailsDialog(Window owner,
                                   BlueprintEntry entry,
@@ -178,10 +180,10 @@ public class BlueprintDetailsDialog extends JDialog {
                 }
                 if (json != null && !json.isBlank()) {
                     CustomNodeResolverService resolver = new CustomNodeResolverService(
-                            new ObjectMapper(),
+                            SHARED_MAPPER,
                             WebClient.builder(),
                             configService,
-                            new SafePathValidator()
+                            SAFE_PATH_VALIDATOR
                     );
                     resolver.analyzeWorkflowNodes(json).subscribe(report -> SwingUtilities.invokeLater(() -> {
                         if (report.missingNodeTypes().isEmpty()) {

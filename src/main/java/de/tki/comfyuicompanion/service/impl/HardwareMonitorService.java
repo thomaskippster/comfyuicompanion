@@ -26,11 +26,9 @@ public class HardwareMonitorService {
 
     private static final Logger logger = LoggerFactory.getLogger(HardwareMonitorService.class);
 
-    private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
-        Thread t = new Thread(r, "HardwareMonitorThread");
-        t.setDaemon(true);
-        return t;
-    });
+    private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(
+            Thread.ofVirtual().name("HardwareMonitorThread-", 1).factory()
+    );
 
     private volatile double cpuLoad = 0.0;
     private volatile long ramUsed = 0L;

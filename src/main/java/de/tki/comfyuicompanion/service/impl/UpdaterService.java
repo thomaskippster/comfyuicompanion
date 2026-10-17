@@ -49,6 +49,15 @@ public class UpdaterService {
     }
 
     /**
+     * Returns the configured ConfigService instance.
+     *
+     * @return config service
+     */
+    public ConfigService getConfigService() {
+        return configService;
+    }
+
+    /**
      * Handles the scan repositories operation.
      * @return the List<RepoStatus> result
      */

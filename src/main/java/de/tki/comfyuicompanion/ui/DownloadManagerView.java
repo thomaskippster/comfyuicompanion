@@ -32,7 +32,7 @@ import java.util.List;
 /**
  * View component for the Download Manager tab.
  * Encapsulates UI layout, toolbar, workflow graph tab, model table, progress controls,
- * and delegates user interactions to a listener/controller.
+ * missing custom node installation, and delegates user interactions to a listener/controller.
  */
 @Component
 public class DownloadManagerView extends JPanel {
@@ -45,6 +45,7 @@ public class DownloadManagerView extends JPanel {
         void onLoadWorkflowFile(File file);
         void onImportModelListFile(File file);
         void onAnalyzeJsonContent();
+        default void onCheckMissingCustomNodes() {}
         void onShowCivitaiSearchDialog(int modelRowIndex);
         void onUpdateDownloadManagerSelection();
         void onUpdateDownloadButtonsState();
@@ -66,6 +67,8 @@ public class DownloadManagerView extends JPanel {
     private JButton stopButton;
 
     public DownloadManagerView() {
+        setLayout(new BorderLayout(10, 10));
+        setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
         initUI();
     }
 
@@ -74,29 +77,25 @@ public class DownloadManagerView extends JPanel {
     }
 
     private void initUI() {
-        setOpaque(false); // Relies on APP_BG_COLOR from root
-        setLayout(new BorderLayout(10, 10));
-        setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
-
         CardPanel toolbarCard = new CardPanel();
         toolbarCard.setLayout(new BorderLayout());
-        toolbarCard.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
-
-        JPanel toolbar = new JPanel(new FlowLayout(FlowLayout.LEFT, 12, 0));
+        
+        JPanel toolbar = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
         toolbar.setOpaque(false);
 
-        JButton verifyBtn = new JButton("Quick Check", SvgIconFactory.get(AppIcon.QUICK_CHECK));
+        JButton verifyBtn = new JButton("Verify Models", SvgIconFactory.get(AppIcon.CHECK));
         verifyBtn.putClientProperty("JButton.buttonType", "roundRect");
         verifyBtn.addActionListener(e -> {
             if (listener != null) listener.onVerifyLocalModels(false);
         });
-        
-        JButton optimizeBtn = new JButton("Storage Optimizer", SvgIconFactory.get(AppIcon.STORAGE_OPTIMIZER));
+
+        JButton optimizeBtn = new JButton("Deep Check", SvgIconFactory.get(AppIcon.SETTINGS));
         optimizeBtn.putClientProperty("JButton.buttonType", "roundRect");
+        optimizeBtn.setToolTipText("Performs thorough hash-based verification of downloaded models");
         optimizeBtn.addActionListener(e -> {
-            int confirm = JOptionPane.showConfirmDialog(this, 
-                "The storage optimizer calculates SHA-256 hashes for all local models.\n" +
-                "This is EXTREMELY slow and resource-intensive for large libraries.\n\n" +
+            int confirm = JOptionPane.showConfirmDialog(this,
+                "Deep verification hashes every local model to detect corruptions.\n" +
+                "This might take several minutes depending on your disk speed.\n" +
                 "Do you want to continue?", "Performance Warning", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
             if (confirm == JOptionPane.YES_OPTION) {
                 if (listener != null) listener.onVerifyLocalModels(true);
@@ -174,6 +173,12 @@ public class DownloadManagerView extends JPanel {
             }
         });
 
+        JButton missingNodesBtn = new JButton("Missing Nodes...", SvgIconFactory.get(AppIcon.SETTINGS));
+        missingNodesBtn.setToolTipText("Check for missing custom nodes in this workflow and install via ComfyUI-Manager");
+        missingNodesBtn.addActionListener(e -> {
+            if (listener != null) listener.onCheckMissingCustomNodes();
+        });
+
         JButton analyzeBtn = new JButton("Deep Search", SvgIconFactory.get(AppIcon.SEARCH));
         analyzeBtn.putClientProperty("JButton.buttonType", "accent");
         analyzeBtn.addActionListener(e -> {
@@ -182,6 +187,7 @@ public class DownloadManagerView extends JPanel {
 
         jsonButtons.add(loadJsonBtn);
         jsonButtons.add(importModelListBtn);
+        jsonButtons.add(missingNodesBtn);
         jsonButtons.add(analyzeBtn);
         jsonPanel.add(jsonScroll, BorderLayout.CENTER);
         jsonPanel.add(jsonButtons, BorderLayout.SOUTH);
@@ -218,115 +224,94 @@ public class DownloadManagerView extends JPanel {
         TableColumn col0 = colModel.getColumn(0);
         col0.setPreferredWidth(40);
         col0.setMinWidth(40);
-        col0.setMaxWidth(60);
-        
-        colModel.getColumn(1).setPreferredWidth(115);
-        colModel.getColumn(2).setPreferredWidth(172);
-        colModel.getColumn(3).setPreferredWidth(58);
-        colModel.getColumn(4).setPreferredWidth(115);
-        colModel.getColumn(5).setPreferredWidth(115);
-        colModel.getColumn(6).setPreferredWidth(288);
-        colModel.getColumn(7).setPreferredWidth(253);
+        col0.setMaxWidth(40);
 
-        JPopupMenu modelTablePopup = new JPopupMenu();
-        JMenuItem searchCivitaiItem = new JMenuItem("Search on Civitai & select version...", SvgIconFactory.get(AppIcon.SEARCH));
-        modelTablePopup.add(searchCivitaiItem);
+        TableColumn col1 = colModel.getColumn(1);
+        col1.setPreferredWidth(85);
+        col1.setMinWidth(60);
+
+        TableColumn col2 = colModel.getColumn(2);
+        col2.setPreferredWidth(180);
+        col2.setMinWidth(120);
+
+        TableColumn col3 = colModel.getColumn(3);
+        col3.setPreferredWidth(65);
+        col3.setMinWidth(50);
+
+        TableColumn col4 = colModel.getColumn(4);
+        col4.setPreferredWidth(120);
+        col4.setMinWidth(80);
+
+        TableColumn col5 = colModel.getColumn(5);
+        col5.setPreferredWidth(120);
+        col5.setMinWidth(80);
+
+        TableColumn col6 = colModel.getColumn(6);
+        col6.setPreferredWidth(120);
+        col6.setMinWidth(80);
+
+        TableColumn col7 = colModel.getColumn(7);
+        col7.setPreferredWidth(130);
+        col7.setMinWidth(80);
 
         modelTable.addMouseListener(new MouseAdapter() {
-            @Override
-            public void mousePressed(MouseEvent e) {
-                showPopup(e);
-            }
-            @Override
-            public void mouseReleased(MouseEvent e) {
-                showPopup(e);
-            }
-            private void showPopup(MouseEvent e) {
-                if (e.isPopupTrigger()) {
-                    int row = modelTable.rowAtPoint(e.getPoint());
-                    if (row >= 0 && row < modelTable.getRowCount()) {
-                        modelTable.setRowSelectionInterval(row, row);
-                        modelTablePopup.show(e.getComponent(), e.getX(), e.getY());
-                    }
+            @Override public void mouseClicked(MouseEvent e) {
+                int row = modelTable.rowAtPoint(e.getPoint());
+                int col = modelTable.columnAtPoint(e.getPoint());
+                if (row >= 0 && col == 4) {
+                    if (listener != null) listener.onShowCivitaiSearchDialog(row);
                 }
             }
         });
 
-        searchCivitaiItem.addActionListener(e -> {
-            int selectedRow = modelTable.getSelectedRow();
-            if (selectedRow >= 0) {
-                int modelRow = modelTable.convertRowIndexToModel(selectedRow);
-                if (listener != null) listener.onShowCivitaiSearchDialog(modelRow);
-            }
-        });
-
+        CardPanel tablePanel = new CardPanel();
+        tablePanel.setLayout(new BorderLayout());
         JScrollPane tableScroll = new JScrollPane(modelTable);
         tableScroll.setOpaque(false);
         tableScroll.getViewport().setOpaque(false);
-        tableScroll.setBorder(BorderFactory.createEmptyBorder());
-        
-        JPanel tablePanel = new JPanel(new BorderLayout());
-        tablePanel.putClientProperty("FlatLaf.style", "arc: 16; background: $Card.background; border: 15,15,15,15,$Card.border,1,16");
-        tablePanel.setOpaque(false);
-        tablePanel.setBorder(BorderFactory.createTitledBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5), "Detected Models"));
         tablePanel.add(tableScroll, BorderLayout.CENTER);
 
-        JTabbedPane workflowInputTabs = new JTabbedPane();
-        workflowInputTabs.setFont(new Font("SansSerif", Font.BOLD, 12));
-        workflowInputTabs.putClientProperty("JTabbedPane.tabType", "card");
-        workflowInputTabs.setOpaque(false);
-        
-        workflowInputTabs.addTab("JSON Source", SvgIconFactory.get(AppIcon.FILE_TEXT), jsonPanel);
-        
+        JTabbedPane tabbedPane = new JTabbedPane();
+        tabbedPane.addTab("Models Table", tablePanel);
         workflowGraphPanel = new WorkflowGraphPanel();
-        workflowGraphPanel.putClientProperty("FlatLaf.style", "arc: 16; background: $Card.background; border: 15,15,15,15,$Card.border,1,16");
-        workflowGraphPanel.setOpaque(false);
-        setupDragAndDrop(workflowGraphPanel);
-        workflowInputTabs.addTab("Visual Graph", SvgIconFactory.get(AppIcon.GRAPH), workflowGraphPanel);
-        
-        splitPane.setOpaque(false);
-        splitPane.setTopComponent(workflowInputTabs);
-        splitPane.setBottomComponent(tablePanel);
-        splitPane.setDividerLocation(350);
+        tabbedPane.addTab("Workflow Graph", workflowGraphPanel);
 
-        JPanel bottomPanel = new JPanel(new BorderLayout());
-        bottomPanel.setOpaque(false);
-        statusLabel = new JLabel("Ready");
+        splitPane.setTopComponent(jsonPanel);
+        splitPane.setBottomComponent(tabbedPane);
+        splitPane.setDividerLocation(150);
+
+        CardPanel bottomPanel = new CardPanel();
+        bottomPanel.setLayout(new BorderLayout(10, 10));
         
-        JPanel progressPanel = new JPanel(new GridLayout(2, 1));
+        JPanel progressPanel = new JPanel(new GridLayout(2, 1, 5, 5));
         progressPanel.setOpaque(false);
-        activeAiModelLabel = new JLabel("Active AI: Loading...");
-        activeAiModelLabel.setFont(new Font("SansSerif", Font.ITALIC, 11));
-        activeAiModelLabel.setForeground(Color.GRAY);
+        statusLabel = new JLabel("Ready");
+        activeAiModelLabel = new JLabel("Active AI Model: None");
+        activeAiModelLabel.setForeground(ThemeManager.getTextSecondaryColor());
         progressPanel.add(statusLabel);
         progressPanel.add(activeAiModelLabel);
         
-        JPanel actionButtons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 5));
+        JPanel actionButtons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
         actionButtons.setOpaque(false);
-        downloadButton = new JButton("Start queue", SvgIconFactory.get(AppIcon.DOWNLOAD));
+        downloadButton = new JButton("Download Models", SvgIconFactory.get(AppIcon.DOWNLOAD));
         downloadButton.putClientProperty("JButton.buttonType", "accent");
-        downloadButton.setFont(new Font("SansSerif", Font.BOLD, 13));
         downloadButton.setEnabled(false);
         downloadButton.addActionListener(e -> {
             if (listener != null) listener.onStartDownloadQueue();
         });
-        
+
         pauseButton = new JButton("Pause", SvgIconFactory.get(AppIcon.PAUSE));
-        pauseButton.putClientProperty("JButton.buttonType", "roundRect");
-        pauseButton.setFont(new Font("SansSerif", Font.BOLD, 13));
         pauseButton.setEnabled(false);
         pauseButton.addActionListener(e -> {
             if (listener != null) listener.onTogglePause();
         });
-        
+
         stopButton = new JButton("Stop", SvgIconFactory.get(AppIcon.STOP));
-        stopButton.putClientProperty("JButton.buttonType", "roundRect");
-        stopButton.setFont(new Font("SansSerif", Font.BOLD, 13));
         stopButton.setEnabled(false);
         stopButton.addActionListener(e -> {
             if (listener != null) listener.onStopDownloadQueue();
         });
-        
+
         actionButtons.add(downloadButton);
         actionButtons.add(pauseButton);
         actionButtons.add(stopButton);
@@ -357,7 +342,7 @@ public class DownloadManagerView extends JPanel {
                     if (!files.isEmpty() && listener != null) {
                         listener.onLoadWorkflowFile(files.get(0));
                     }
-                } catch (Exception e) {}
+                } catch (Exception ignored) {}
             }
         });
     }

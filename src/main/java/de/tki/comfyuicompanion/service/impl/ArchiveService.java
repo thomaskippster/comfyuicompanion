@@ -32,11 +32,19 @@ public class ArchiveService {
 
     private final ConfigService configService;
     private final PathResolver pathResolver;
+    private final de.tki.comfyuicompanion.service.IFileSystemLinkService linkService;
+
+    public ArchiveService(ConfigService configService, PathResolver pathResolver) {
+        this(configService, pathResolver, new FileSystemLinkService());
+    }
 
     @Autowired
-    public ArchiveService(ConfigService configService, PathResolver pathResolver) {
+    public ArchiveService(ConfigService configService,
+                          PathResolver pathResolver,
+                          @Autowired(required = false) de.tki.comfyuicompanion.service.IFileSystemLinkService linkService) {
         this.configService = configService;
         this.pathResolver = pathResolver;
+        this.linkService = linkService != null ? linkService : new FileSystemLinkService();
     }
 
     /**
@@ -308,14 +316,13 @@ public class ArchiveService {
             if (Files.exists(archived) && Files.size(archived) > 0) {
                 Files.createDirectories(target.getParent());
                 if (configService.isUseSymlinksOnRestore()) {
-                    try {
-                        Files.deleteIfExists(target);
-                        Files.createSymbolicLink(target, archived);
-                        logger.info("🔗 Successfully created symbolic link for: " + filename);
+                    de.tki.comfyuicompanion.service.IFileSystemLinkService.LinkResult lr = linkService.createFileLink(target, archived);
+                    if (lr.success()) {
+                        logger.info("🔗 Successfully established file link ({}) for: {}", lr.linkType(), filename);
                         if (progressUpdate != null) progressUpdate.accept(Files.size(target));
                         return true;
-                    } catch (Exception se) {
-                        logger.error("⚠️ Symbolic link failed (Missing permissions/Developer Mode?): " + se.getMessage() + ". Falling back to copying.");
+                    } else {
+                        logger.warn("⚠️ Link creation failed: {}. Falling back to copying/moving.", lr.message());
                     }
                 }
                 moveWithProgress(archived, target, progressUpdate);

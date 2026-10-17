@@ -5,49 +5,29 @@ import de.tki.comfyuicompanion.service.IComfyLifecycleService;
 import de.tki.comfyuicompanion.service.ILocalModelValidator;
 import de.tki.comfyuicompanion.service.IModelSearchService;
 import de.tki.comfyuicompanion.service.IWorkflowDownloader;
+import de.tki.comfyuicompanion.service.SafePathValidator;
 import de.tki.comfyuicompanion.service.impl.ConfigService;
+import de.tki.comfyuicompanion.service.provisioning.CustomNodeResolverService;
+import de.tki.comfyuicompanion.service.provisioning.CustomNodeResolverService.CustomNodePackage;
 import de.tki.comfyuicompanion.ui.BlueprintGalleryTab.BlueprintEntry;
 import de.tki.comfyuicompanion.ui.BlueprintGalleryTab.BlueprintStatus;
+import de.tki.comfyuicompanion.ui.dialog.MissingCustomNodesDialog;
 import de.tki.comfyuicompanion.ui.icons.AppIcon;
 import de.tki.comfyuicompanion.ui.icons.SvgIconFactory;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.web.reactive.function.client.WebClient;
 
-import javax.swing.BorderFactory;
-import javax.swing.Box;
-import javax.swing.BoxLayout;
-import javax.swing.ImageIcon;
-import javax.swing.JButton;
-import javax.swing.JComponent;
-import javax.swing.JDialog;
-import javax.swing.JLabel;
-import javax.swing.JOptionPane;
-import javax.swing.JPanel;
-import javax.swing.JScrollPane;
-import javax.swing.JTable;
-import javax.swing.JTextArea;
-import javax.swing.SwingConstants;
-import javax.swing.SwingUtilities;
+import javax.swing.*;
 import javax.swing.border.EmptyBorder;
-import javax.swing.table.DefaultTableCellRenderer;
-import javax.swing.table.DefaultTableModel;
-import java.awt.BorderLayout;
-import java.awt.Color;
-import java.awt.Component;
-import java.awt.Dimension;
-import java.awt.FlowLayout;
-import java.awt.Font;
-import java.awt.Frame;
-import java.awt.Graphics2D;
-import java.awt.Image;
-import java.awt.RenderingHints;
-import java.awt.Window;
+import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.io.File;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
@@ -55,7 +35,7 @@ import java.util.function.Function;
 
 /**
  * Modal dialog for inspecting blueprint metadata, required local models,
- * downloading missing models, and launching the workflow in ComfyUI.
+ * custom nodes resolution, downloading missing models, and launching the workflow in ComfyUI.
  */
 public class BlueprintDetailsDialog extends JDialog {
     private static final Logger logger = LoggerFactory.getLogger(BlueprintDetailsDialog.class);
@@ -75,7 +55,7 @@ public class BlueprintDetailsDialog extends JDialog {
                                   Consumer<File> onWorkflowImported,
                                   BiConsumer<BlueprintEntry, BlueprintStatus> reloadDetailsAction) {
         super(owner instanceof Frame ? (Frame) owner : null, "Blueprint: " + entry.name, true);
-        setSize(1250, 720);
+        setSize(1250, 740);
         setLocationRelativeTo(owner);
 
         Color textPrimary = configService.isDarkMode() ? new Color(228, 230, 240) : new Color(30, 35, 45);
@@ -144,7 +124,7 @@ public class BlueprintDetailsDialog extends JDialog {
                 imgPanel.setBorder(new EmptyBorder(0, 0, 14, 0));
                 imgPanel.add(imgLabel);
                 body.add(imgPanel);
-                setSize(1250, 860);
+                setSize(1250, 880);
             }
         }
 
@@ -175,6 +155,61 @@ public class BlueprintDetailsDialog extends JDialog {
                 BlueprintHardwareAdvisor.evaluate(entry, status, configService, null, modelSizeResolver);
         addRow(body, "Hardware Check", hwReport.badgeText() + " — " + hwReport.detailSummary(),
                 textSecondary, hwReport.level().getBadgeColor());
+
+        // Custom Nodes Verification & 1-Click Installation Row
+        JPanel customNodesPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+        customNodesPanel.setOpaque(false);
+        JLabel customNodeStatusLbl = new JLabel("Checking custom nodes...");
+        customNodeStatusLbl.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        customNodeStatusLbl.setForeground(textSecondary);
+        JButton btnInstallCustomNodes = new JButton("Install Missing Nodes", SvgIconFactory.get(AppIcon.DOWNLOAD, 12));
+        btnInstallCustomNodes.setFont(new Font("SansSerif", Font.BOLD, 10));
+        btnInstallCustomNodes.putClientProperty("Button.arc", 999);
+        btnInstallCustomNodes.setVisible(false);
+        customNodesPanel.add(customNodeStatusLbl);
+        customNodesPanel.add(btnInstallCustomNodes);
+        addRowWithComponent(body, "Custom Nodes", customNodesPanel, textSecondary);
+
+        CompletableFuture.runAsync(() -> {
+            try {
+                String json = null;
+                if (entry.filePath != null && new File(entry.filePath).exists()) {
+                    json = Files.readString(Path.of(entry.filePath));
+                }
+                if (json != null && !json.isBlank()) {
+                    CustomNodeResolverService resolver = new CustomNodeResolverService(
+                            new ObjectMapper(),
+                            WebClient.builder(),
+                            configService,
+                            new SafePathValidator()
+                    );
+                    resolver.analyzeWorkflowNodes(json).subscribe(report -> SwingUtilities.invokeLater(() -> {
+                        if (report.missingNodeTypes().isEmpty()) {
+                            customNodeStatusLbl.setText("All required custom nodes installed ✅");
+                            customNodeStatusLbl.setForeground(new Color(34, 197, 130));
+                        } else {
+                            customNodeStatusLbl.setText("⚠️ " + report.missingNodeTypes().size() + " missing custom node(s)");
+                            customNodeStatusLbl.setForeground(new Color(244, 67, 54));
+                            btnInstallCustomNodes.setVisible(true);
+                            btnInstallCustomNodes.addActionListener(evt -> {
+                                Map<CustomNodePackage, List<String>> pkgMap = resolver.getManagerBridgeService() != null
+                                        ? resolver.getManagerBridgeService().resolvePackagesForNodes(report.missingNodeTypes())
+                                        : Map.of();
+                                new MissingCustomNodesDialog(this, pkgMap, resolver.getManagerBridgeService(), () -> {
+                                    customNodeStatusLbl.setText("Installed ✅");
+                                    customNodeStatusLbl.setForeground(new Color(34, 197, 130));
+                                    btnInstallCustomNodes.setVisible(false);
+                                }).setVisible(true);
+                            });
+                        }
+                    }));
+                } else {
+                    SwingUtilities.invokeLater(() -> customNodeStatusLbl.setText("Available after workflow download"));
+                }
+            } catch (Exception ignored) {
+                SwingUtilities.invokeLater(() -> customNodeStatusLbl.setText("Check skipped"));
+            }
+        });
 
         if (entry.requiredModels.isEmpty()) {
             if (!entry.hasBeenValidated) {
@@ -265,7 +300,7 @@ public class BlueprintDetailsDialog extends JDialog {
                             btnDlWorkflow.setText("Download Workflow");
                             btnDlWorkflow.setIcon(SvgIconFactory.get(AppIcon.DOWNLOAD));
                             JOptionPane.showMessageDialog(this,
-                                    "Failed to download workflow: " + ex.getCause().getMessage(),
+                                     "Failed to download workflow: " + ex.getCause().getMessage(),
                                     "Download Error", JOptionPane.ERROR_MESSAGE);
                         });
                         return null;
@@ -319,6 +354,23 @@ public class BlueprintDetailsDialog extends JDialog {
 
         row.add(lbl, BorderLayout.WEST);
         row.add(val, BorderLayout.CENTER);
+        parent.add(row);
+        parent.add(Box.createVerticalStrut(3));
+    }
+
+    private static void addRowWithComponent(JPanel parent, String label, JComponent valueComponent, Color textSecondary) {
+        JPanel row = new JPanel(new BorderLayout(10, 0));
+        row.setOpaque(false);
+        row.setAlignmentX(Component.LEFT_ALIGNMENT);
+        row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 26));
+
+        JLabel lbl = new JLabel(label + ":");
+        lbl.setFont(new Font("SansSerif", Font.BOLD, 11));
+        lbl.setForeground(textSecondary);
+        lbl.setPreferredSize(new Dimension(120, 18));
+
+        row.add(lbl, BorderLayout.WEST);
+        row.add(valueComponent, BorderLayout.CENTER);
         parent.add(row);
         parent.add(Box.createVerticalStrut(3));
     }

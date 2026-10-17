@@ -1,0 +1,167 @@
+name: Standalone App Packages (jpackage)
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-windows:
+    name: Build Standalone Windows Packages (.exe / .msi / .zip)
+    runs-on: windows-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v7
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v6
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Build Fat JAR
+        run: mvn -B clean package -DskipTests
+
+      - name: Package Standalone App Image (Zero Java Dependency)
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path "dist"
+          jpackage `
+            --type app-image `
+            --name "ComfyUICompanion" `
+            --input "target" `
+            --main-jar "comfyuicompanion.jar" `
+            --main-class "de.tki.comfyuicompanion.Main" `
+            --dest "dist" `
+            --app-version "2.0.0" `
+            --vendor "TKI" `
+            --description "Enterprise AI Companion for ComfyUI"
+
+          Compress-Archive -Path "dist/ComfyUICompanion" -DestinationPath "dist/ComfyUICompanion-Windows-x64-Portable.zip" -Force
+
+      - name: Package Native Windows MSI Installer
+        shell: pwsh
+        run: |
+          jpackage `
+            --type msi `
+            --name "ComfyUICompanion" `
+            --input "target" `
+            --main-jar "comfyuicompanion.jar" `
+            --main-class "de.tki.comfyuicompanion.Main" `
+            --dest "dist" `
+            --app-version "2.0.0" `
+            --vendor "TKI" `
+            --description "Enterprise AI Companion for ComfyUI" `
+            --win-dir-chooser `
+            --win-menu `
+            --win-shortcut
+
+      - name: Upload Windows Standalone Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ComfyUICompanion-Windows
+          path: |
+            dist/*.zip
+            dist/*.msi
+            dist/*.exe
+          retention-days: 14
+
+  build-macos:
+    name: Build Standalone macOS DMG (.dmg)
+    runs-on: macos-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v7
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v6
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Build Fat JAR
+        run: mvn -B clean package -DskipTests
+
+      - name: Package Native macOS DMG
+        run: |
+          mkdir -p dist
+          jpackage \
+            --type dmg \
+            --name "ComfyUICompanion" \
+            --input "target" \
+            --main-jar "comfyuicompanion.jar" \
+            --main-class "de.tki.comfyuicompanion.Main" \
+            --dest "dist" \
+            --app-version "2.0.0" \
+            --vendor "TKI" \
+            --description "Enterprise AI Companion for ComfyUI"
+
+      - name: Upload macOS Standalone Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ComfyUICompanion-macOS-DMG
+          path: dist/*.dmg
+          retention-days: 14
+
+  build-linux:
+    name: Build Standalone Linux Packages (.deb / .tar.gz)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v7
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v6
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Build Fat JAR
+        run: mvn -B clean package -DskipTests
+
+      - name: Package Linux App Image & Tarball
+        run: |
+          mkdir -p dist
+          jpackage \
+            --type app-image \
+            --name "ComfyUICompanion" \
+            --input "target" \
+            --main-jar "comfyuicompanion.jar" \
+            --main-class "de.tki.comfyuicompanion.Main" \
+            --dest "dist" \
+            --app-version "2.0.0" \
+            --vendor "TKI" \
+            --description "Enterprise AI Companion for ComfyUI"
+          tar -czf dist/ComfyUICompanion-Linux-x64.tar.gz -C dist ComfyUICompanion
+
+      - name: Package Native Linux DEB
+        run: |
+          jpackage \
+            --type deb \
+            --name "comfyuicompanion" \
+            --input "target" \
+            --main-jar "comfyuicompanion.jar" \
+            --main-class "de.tki.comfyuicompanion.Main" \
+            --dest "dist" \
+            --app-version "2.0.0" \
+            --vendor "TKI" \
+            --description "Enterprise AI Companion for ComfyUI"
+
+      - name: Upload Linux Standalone Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ComfyUICompanion-Linux
+          path: |
+            dist/*.tar.gz
+            dist/*.deb
+          retention-days: 14

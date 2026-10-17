@@ -27,6 +27,7 @@ public class AppLifecycleManager {
     private final HardwareMonitorService hardwareMonitorService;
     private final ProcessTracker processTracker;
     private final de.tki.comfyuicompanion.service.IDefaultCacheBootstrapper cacheBootstrapper;
+    private final de.tki.comfyuicompanion.service.IFileSystemLinkService linkService;
 
     public AppLifecycleManager(ConfigService configService,
                                ModelListService modelListService,
@@ -34,7 +35,17 @@ public class AppLifecycleManager {
                                IDownloadManager downloadManager,
                                HardwareMonitorService hardwareMonitorService,
                                ProcessTracker processTracker) {
-        this(configService, modelListService, processController, downloadManager, hardwareMonitorService, processTracker, null);
+        this(configService, modelListService, processController, downloadManager, hardwareMonitorService, processTracker, null, null);
+    }
+
+    public AppLifecycleManager(ConfigService configService,
+                               ModelListService modelListService,
+                               ComfyProcessController processController,
+                               IDownloadManager downloadManager,
+                               HardwareMonitorService hardwareMonitorService,
+                               ProcessTracker processTracker,
+                               de.tki.comfyuicompanion.service.IDefaultCacheBootstrapper cacheBootstrapper) {
+        this(configService, modelListService, processController, downloadManager, hardwareMonitorService, processTracker, cacheBootstrapper, null);
     }
 
     @Autowired
@@ -44,7 +55,8 @@ public class AppLifecycleManager {
                                @Autowired(required = false) IDownloadManager downloadManager,
                                @Autowired(required = false) HardwareMonitorService hardwareMonitorService,
                                @Autowired(required = false) ProcessTracker processTracker,
-                               @Autowired(required = false) de.tki.comfyuicompanion.service.IDefaultCacheBootstrapper cacheBootstrapper) {
+                               @Autowired(required = false) de.tki.comfyuicompanion.service.IDefaultCacheBootstrapper cacheBootstrapper,
+                               @Autowired(required = false) de.tki.comfyuicompanion.service.IFileSystemLinkService linkService) {
         this.configService = configService;
         this.modelListService = modelListService;
         this.processController = processController;
@@ -52,6 +64,7 @@ public class AppLifecycleManager {
         this.hardwareMonitorService = hardwareMonitorService;
         this.processTracker = processTracker;
         this.cacheBootstrapper = cacheBootstrapper;
+        this.linkService = linkService != null ? linkService : new FileSystemLinkService();
     }
 
     /**
@@ -69,6 +82,7 @@ public class AppLifecycleManager {
                 String url = "https://raw.githubusercontent.com/Comfy-Org/ComfyUI-Manager/main/model-list.json";
                 modelListService.importFromUrl(url);
             }
+            verifyOperatingSystemCapabilities();
             return true;
         } catch (Exception e) {
             logger.warn("Could not unlock vault with default password. Resetting vault to start clean...");
@@ -79,10 +93,27 @@ public class AppLifecycleManager {
                     String url = "https://raw.githubusercontent.com/Comfy-Org/ComfyUI-Manager/main/model-list.json";
                     modelListService.importFromUrl(url);
                 }
+                verifyOperatingSystemCapabilities();
                 return true;
             } catch (Exception ex) {
                 logger.error("Failed to reset and unlock vault: {}", ex.getMessage(), ex);
                 return false;
+            }
+        }
+    }
+
+    /**
+     * Verifies operating system capabilities at application startup, checking symlink creation permissions
+     * and activating transparent NTFS junction / hard link fallbacks on Windows when Developer Mode is disabled.
+     */
+    public void verifyOperatingSystemCapabilities() {
+        if (linkService != null && linkService.isWindows()) {
+            boolean symlinksAllowed = linkService.isSymlinkCreationAllowed();
+            if (symlinksAllowed) {
+                logger.info("🔗 [Storage/LinkCapabilities] Native Windows symbolic link creation is permitted (Developer Mode / Administrator active).");
+            } else {
+                logger.info("ℹ️ [Storage/LinkCapabilities] Standard Windows symbolic links require Developer Mode / Admin rights. "
+                        + "Zero-privilege fallbacks enabled: NTFS Junctions (mklink /J) for directories and Hard Links for files.");
             }
         }
     }

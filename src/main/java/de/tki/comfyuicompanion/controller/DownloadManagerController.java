@@ -13,9 +13,12 @@ import de.tki.comfyuicompanion.service.impl.ConfigService;
 import de.tki.comfyuicompanion.service.impl.LocalModelScanner;
 import de.tki.comfyuicompanion.service.impl.ModelHashRegistry;
 import de.tki.comfyuicompanion.service.impl.ModelListService;
+import de.tki.comfyuicompanion.service.provisioning.CustomNodeResolverService;
+import de.tki.comfyuicompanion.service.provisioning.CustomNodeResolverService.CustomNodePackage;
 import de.tki.comfyuicompanion.ui.DownloadManagerView;
 import de.tki.comfyuicompanion.ui.dialog.CivitaiVersionSelectorDialog;
 import de.tki.comfyuicompanion.ui.dialog.DownloadArchiveDialog;
+import de.tki.comfyuicompanion.ui.dialog.MissingCustomNodesDialog;
 import de.tki.comfyuicompanion.ui.icons.AppIcon;
 import de.tki.comfyuicompanion.ui.icons.SvgIconFactory;
 import de.tki.comfyuicompanion.util.BackgroundExecutor;
@@ -26,15 +29,20 @@ import javax.swing.JButton;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JTabbedPane;
+import javax.swing.SwingUtilities;
 import javax.swing.table.DefaultTableModel;
+import java.awt.Window;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Controller managing Download Manager operations, model analysis, queue execution,
- * archive operations, model verification, Civitai lookup, and UI table updates.
+ * archive operations, model verification, Civitai lookup, missing custom node resolution,
+ * and UI table updates.
  */
 @Component
 public class DownloadManagerController implements DownloadManagerView.DownloadManagerListener {
@@ -55,6 +63,7 @@ public class DownloadManagerController implements DownloadManagerView.DownloadMa
     private final DownloadModelResolutionHelper resolutionHelper;
     private final DownloadQueueCoordinator queueCoordinator;
     private final DownloadWorkflowAnalyzer workflowAnalyzer;
+    private final CustomNodeResolverService customNodeResolverService;
 
     private DownloadManagerView view;
     private List<ModelInfo> modelsToDownload = new ArrayList<>();
@@ -77,7 +86,27 @@ public class DownloadManagerController implements DownloadManagerView.DownloadMa
                                      CivitaiService civitaiService) {
         this(configService, downloadManager, analyzer, searchService, modelValidator, workflowService,
                 modelListService, archiveService, localScanner, hashRegistry, diagnosticService,
-                backgroundExecutor, civitaiService, new DownloadQueueCoordinator(), new DownloadWorkflowAnalyzer());
+                backgroundExecutor, civitaiService, new DownloadQueueCoordinator(), new DownloadWorkflowAnalyzer(), null);
+    }
+
+    public DownloadManagerController(ConfigService configService,
+                                     IDownloadManager downloadManager,
+                                     IModelAnalyzer analyzer,
+                                     IModelSearchService searchService,
+                                     IModelValidator modelValidator,
+                                     IWorkflowService workflowService,
+                                     ModelListService modelListService,
+                                     ArchiveService archiveService,
+                                     LocalModelScanner localScanner,
+                                     ModelHashRegistry hashRegistry,
+                                     ComfyDiagnosticService diagnosticService,
+                                     @Autowired(required = false) BackgroundExecutor backgroundExecutor,
+                                     CivitaiService civitaiService,
+                                     @Autowired(required = false) DownloadQueueCoordinator queueCoordinator,
+                                     @Autowired(required = false) DownloadWorkflowAnalyzer workflowAnalyzer) {
+        this(configService, downloadManager, analyzer, searchService, modelValidator, workflowService,
+                modelListService, archiveService, localScanner, hashRegistry, diagnosticService,
+                backgroundExecutor, civitaiService, queueCoordinator, workflowAnalyzer, null);
     }
 
     @Autowired
@@ -95,7 +124,8 @@ public class DownloadManagerController implements DownloadManagerView.DownloadMa
                                      @Autowired(required = false) BackgroundExecutor backgroundExecutor,
                                      CivitaiService civitaiService,
                                      @Autowired(required = false) DownloadQueueCoordinator queueCoordinator,
-                                     @Autowired(required = false) DownloadWorkflowAnalyzer workflowAnalyzer) {
+                                     @Autowired(required = false) DownloadWorkflowAnalyzer workflowAnalyzer,
+                                     @Autowired(required = false) CustomNodeResolverService customNodeResolverService) {
         this.configService = configService;
         this.downloadManager = downloadManager;
         this.analyzer = analyzer;
@@ -112,6 +142,7 @@ public class DownloadManagerController implements DownloadManagerView.DownloadMa
         this.resolutionHelper = new DownloadModelResolutionHelper(configService, archiveService, localScanner, searchService, this.backgroundExecutor);
         this.queueCoordinator = queueCoordinator != null ? queueCoordinator : new DownloadQueueCoordinator();
         this.workflowAnalyzer = workflowAnalyzer != null ? workflowAnalyzer : new DownloadWorkflowAnalyzer();
+        this.customNodeResolverService = customNodeResolverService;
     }
 
     public void setView(DownloadManagerView view) {
@@ -170,6 +201,42 @@ public class DownloadManagerController implements DownloadManagerView.DownloadMa
     public void onAnalyzeJsonContent() {
         analyzeJsonContent();
         searchMissingOnline(true);
+    }
+
+    @Override
+    public void onCheckMissingCustomNodes() {
+        if (view == null) return;
+        String text = view.getJsonInputArea().getText();
+        if (text == null || text.isBlank()) {
+            JOptionPane.showMessageDialog(view, "Please load or paste a workflow JSON first.", "No Workflow", JOptionPane.INFORMATION_MESSAGE);
+            return;
+        }
+
+        if (customNodeResolverService == null) {
+            JOptionPane.showMessageDialog(view, "Custom node resolver service is currently unavailable.", "Service Unavailable", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
+        view.getStatusLabel().setText("Status: Analyzing workflow for missing custom nodes...");
+        customNodeResolverService.analyzeWorkflowNodes(text).subscribe(report -> SwingUtilities.invokeLater(() -> {
+            view.getStatusLabel().setText("Status: Custom node analysis completed.");
+            if (report.missingNodeTypes().isEmpty()) {
+                JOptionPane.showMessageDialog(view, "All required custom nodes are already installed in ComfyUI! ✅", "Custom Nodes Verified", JOptionPane.INFORMATION_MESSAGE);
+                return;
+            }
+
+            Map<CustomNodePackage, List<String>> packagesMap = new LinkedHashMap<>();
+            if (customNodeResolverService.getManagerBridgeService() != null) {
+                packagesMap = customNodeResolverService.getManagerBridgeService().resolvePackagesForNodes(report.missingNodeTypes());
+            }
+
+            Window owner = SwingUtilities.getWindowAncestor(view);
+            new MissingCustomNodesDialog(owner, packagesMap, customNodeResolverService.getManagerBridgeService(), () -> {
+                JOptionPane.showMessageDialog(owner, "Custom nodes installation complete. Restart ComfyUI if running.", "Installation Complete", JOptionPane.INFORMATION_MESSAGE);
+            }).setVisible(true);
+        }), err -> SwingUtilities.invokeLater(() -> {
+            view.getStatusLabel().setText("Status: Failed to analyze custom nodes: " + err.getMessage());
+        }));
     }
 
     @Override
@@ -273,20 +340,17 @@ public class DownloadManagerController implements DownloadManagerView.DownloadMa
 
         if (downloadButton == null || pauseButton == null || stopButton == null) return;
 
-        boolean hasItems = tableModel != null && tableModel.getRowCount() > 0;
         boolean anySelected = false;
-        if (hasItems) {
+        if (tableModel != null) {
             for (int i = 0; i < tableModel.getRowCount(); i++) {
-                Boolean sel = (Boolean) tableModel.getValueAt(i, 0);
-                String status = (String) tableModel.getValueAt(i, 7);
-                if (Boolean.TRUE.equals(sel) && status != null && !status.contains("Already exists")) {
+                if (Boolean.TRUE.equals(tableModel.getValueAt(i, 0))) {
                     anySelected = true;
                     break;
                 }
             }
         }
 
-        downloadButton.setEnabled(hasItems && anySelected && !isDownloading);
+        downloadButton.setEnabled(anySelected && !isDownloading);
         pauseButton.setEnabled(isDownloading);
         stopButton.setEnabled(isDownloading);
 
@@ -296,25 +360,18 @@ public class DownloadManagerController implements DownloadManagerView.DownloadMa
         }
     }
 
-    public void searchMissingOnline() {
-        searchMissingOnline(false);
-    }
-
-    public void searchMissingOnline(boolean manual) {
-        workflowAnalyzer.searchMissingOnline(
-                view, modelsToDownload, currentFileName, manual,
-                searchService, configService, localScanner
-        );
+    public void searchMissingOnline(boolean notifyIfAllPresent) {
+        workflowAnalyzer.searchMissingOnline(view, modelsToDownload, currentFileName, notifyIfAllPresent,
+                searchService, configService, localScanner);
     }
 
     public void runDiagnostics(JTabbedPane tabs) {
-        if (modelsToDownload == null || modelsToDownload.isEmpty()) {
-            JOptionPane.showMessageDialog(view, "Please load a workflow first to perform diagnostics.");
-            return;
-        }
+        if (diagnosticService == null) return;
         List<String> missing = diagnosticService.getMissingModels(modelsToDownload);
-        if (missing.isEmpty()) {
-            JOptionPane.showMessageDialog(view, "✅ All workflow models are visible to ComfyUI!", "Diagnostics Successful", JOptionPane.INFORMATION_MESSAGE);
+        if (missing == null) {
+            JOptionPane.showMessageDialog(view, "Could not query ComfyUI API.\nPlease check if ComfyUI is running.", "Diagnostics Error", JOptionPane.ERROR_MESSAGE);
+        } else if (missing.isEmpty()) {
+            JOptionPane.showMessageDialog(view, "ComfyUI recognizes all models required for this workflow!", "Diagnostics Passed", JOptionPane.INFORMATION_MESSAGE);
         } else {
             String list = String.join("\n- ", missing);
             Object[] options = {"Switch to Overview (Restart)", "Ignore"};
@@ -339,7 +396,7 @@ public class DownloadManagerController implements DownloadManagerView.DownloadMa
 
     @Override
     public void onShowStorageCleanerDialog() {
-        java.awt.Window owner = view != null ? javax.swing.SwingUtilities.getWindowAncestor(view) : null;
+        Window owner = view != null ? SwingUtilities.getWindowAncestor(view) : null;
         new de.tki.comfyuicompanion.ui.dialog.StorageCleanerDialog(
                 owner, configService, archiveService, hashRegistry, backgroundExecutor,
                 () -> {

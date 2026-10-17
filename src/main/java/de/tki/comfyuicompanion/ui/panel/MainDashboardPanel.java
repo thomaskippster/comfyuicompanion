@@ -11,10 +11,12 @@ import de.tki.comfyuicompanion.service.impl.ModelHashRegistry;
 import de.tki.comfyuicompanion.service.impl.ProfileManager;
 import de.tki.comfyuicompanion.service.impl.UpdaterService;
 import de.tki.comfyuicompanion.service.impl.VersionService;
+import de.tki.comfyuicompanion.service.impl.CustomNodeSnapshotService;
 import de.tki.comfyuicompanion.ui.AutoUpdaterDialog;
 import de.tki.comfyuicompanion.ui.DeduplicationDialog;
 import de.tki.comfyuicompanion.ui.GlassPanel;
 import de.tki.comfyuicompanion.ui.ModelUpdateCheckerDialog;
+import de.tki.comfyuicompanion.ui.dialog.SnapshotRollbackDialog;
 import de.tki.comfyuicompanion.ui.icons.AppIcon;
 import de.tki.comfyuicompanion.ui.icons.SvgIconFactory;
 
@@ -185,6 +187,9 @@ public class MainDashboardPanel {
         eastGbc.gridy++;
         eastGbc.insets = new Insets(3, 5, 3, 5);
         east.add(createQuickActionBtn("Update ComfyUI & Nodes", AppIcon.DOWNLOAD, () -> new AutoUpdaterDialog(parentFrame, updaterService).setVisible(true)), eastGbc);
+
+        eastGbc.gridy++;
+        east.add(createQuickActionBtn("Snapshots & Rollback", AppIcon.REFRESH, () -> new SnapshotRollbackDialog(parentFrame, new CustomNodeSnapshotService(configService)).setVisible(true)), eastGbc);
 
         eastGbc.gridy++;
         east.add(createQuickActionBtn("Check Model Upgrades", AppIcon.SEARCH, () -> new ModelUpdateCheckerDialog(parentFrame, configService, hashRegistry, modelValidator, civitaiService, downloadManager).setVisible(true)), eastGbc);

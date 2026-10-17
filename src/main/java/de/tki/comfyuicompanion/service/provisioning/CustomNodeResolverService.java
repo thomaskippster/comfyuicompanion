@@ -2,8 +2,11 @@ package de.tki.comfyuicompanion.service.provisioning;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import de.tki.comfyuicompanion.service.ICustomNodeManagerBridgeService;
 import de.tki.comfyuicompanion.service.SafePathValidator;
 import de.tki.comfyuicompanion.service.impl.ConfigService;
+import de.tki.comfyuicompanion.service.impl.CustomNodeInstaller;
+import de.tki.comfyuicompanion.service.impl.CustomNodeManagerBridgeService;
 import de.tki.comfyuicompanion.util.ConfigConstants;
 import org.eclipse.jgit.api.Git;
 import org.slf4j.Logger;
@@ -20,11 +23,12 @@ import java.nio.file.Paths;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.Consumer;
 
 /**
  * Enterprise Service for analyzing workflow JSONs for missing ComfyUI Custom Nodes,
  * querying ComfyUI's object_info endpoint, and resolving known Git repositories
- * for 1-click installation.
+ * for 1-click installation via ComfyUI-Manager's extension mappings.
  */
 @Service
 public class CustomNodeResolverService {
@@ -35,8 +39,9 @@ public class CustomNodeResolverService {
     private final WebClient webClient;
     private final ConfigService configService;
     private final SafePathValidator safePathValidator;
+    private final ICustomNodeManagerBridgeService managerBridgeService;
 
-    // Registry of well-known community custom node packages
+    // Registry of well-known community custom node packages (fallback)
     private static final Map<String, CustomNodePackage> KNOWN_CUSTOM_NODES = new HashMap<>();
 
     static {
@@ -61,33 +66,56 @@ public class CustomNodeResolverService {
     }
 
     private static void register(String name, String gitUrl, String... nodeTypes) {
-        CustomNodePackage pkg = new CustomNodePackage(name, gitUrl, Arrays.asList(nodeTypes));
+        CustomNodePackage pkg = new CustomNodePackage(name, gitUrl, Arrays.asList(nodeTypes), List.of());
         for (String type : nodeTypes) {
             KNOWN_CUSTOM_NODES.put(type.toLowerCase(Locale.ROOT), pkg);
         }
     }
 
-    public record CustomNodePackage(String packageName, String gitUrl, List<String> nodeClasses) {}
+    /**
+     * Definition of a custom node package containing metadata and node class names.
+     */
+    public record CustomNodePackage(String packageName, String gitUrl, List<String> nodeClasses, List<String> pipDependencies) {
+        public CustomNodePackage(String packageName, String gitUrl, List<String> nodeClasses) {
+            this(packageName, gitUrl, nodeClasses, List.of());
+        }
+    }
 
+    /**
+     * Report produced after analyzing a workflow for missing nodes.
+     */
     public record NodeResolutionReport(
             Set<String> requiredNodeTypes,
             Set<String> missingNodeTypes,
             List<CustomNodePackage> recommendedPackages
     ) {}
 
+    public CustomNodeResolverService(ObjectMapper objectMapper,
+                                     WebClient.Builder webClientBuilder,
+                                     ConfigService configService,
+                                     SafePathValidator safePathValidator) {
+        this(objectMapper, webClientBuilder, configService, safePathValidator, null);
+    }
+
     @Autowired
     public CustomNodeResolverService(ObjectMapper objectMapper,
                                      WebClient.Builder webClientBuilder,
                                      @Autowired(required = false) ConfigService configService,
-                                     @Autowired(required = false) SafePathValidator safePathValidator) {
+                                     @Autowired(required = false) SafePathValidator safePathValidator,
+                                     @Autowired(required = false) ICustomNodeManagerBridgeService managerBridgeService) {
         this.objectMapper = objectMapper;
         this.webClient = webClientBuilder.build();
         this.configService = configService;
         this.safePathValidator = safePathValidator != null ? safePathValidator : new SafePathValidator();
+        this.managerBridgeService = managerBridgeService != null ? managerBridgeService
+                : new CustomNodeManagerBridgeService(configService, null, new CustomNodeInstaller(configService, this.safePathValidator, null));
     }
 
     /**
      * Extracts all node types from a workflow JSON (supporting both GUI graph format and API prompt format).
+     *
+     * @param workflowJson workflow JSON text
+     * @return set of extracted node types
      */
     public Set<String> extractNodeTypes(String workflowJson) {
         Set<String> types = new LinkedHashSet<>();
@@ -127,6 +155,8 @@ public class CustomNodeResolverService {
 
     /**
      * Queries ComfyUI's /object_info endpoint to get the set of currently registered nodes.
+     *
+     * @return mono emitting the set of registered node class names
      */
     public Mono<Set<String>> getRegisteredComfyUiNodes() {
         String baseUrl = configService != null ? configService.getComfyUIUrl() : ConfigConstants.DEFAULT_COMFYUI_URL;
@@ -154,7 +184,11 @@ public class CustomNodeResolverService {
     }
 
     /**
-     * Analyzes a workflow against ComfyUI registered nodes and produces a resolution report.
+     * Analyzes a workflow against ComfyUI registered nodes and produces a resolution report,
+     * looking up missing nodes in ComfyUI-Manager's extension mappings.
+     *
+     * @param workflowJson workflow JSON content
+     * @return mono emitting the node resolution report
      */
     public Mono<NodeResolutionReport> analyzeWorkflowNodes(String workflowJson) {
         Set<String> required = extractNodeTypes(workflowJson);
@@ -169,10 +203,19 @@ public class CustomNodeResolverService {
                 }
                 if (!registered.isEmpty() && !registered.contains(req)) {
                     missing.add(req);
-                    CustomNodePackage pkg = KNOWN_CUSTOM_NODES.get(req.toLowerCase(Locale.ROOT));
-                    if (pkg != null) {
-                        packages.add(pkg);
+
+                    // 1. Resolve via ComfyUI-Manager Bridge
+                    Optional<CustomNodePackage> resolvedPkg = Optional.empty();
+                    if (managerBridgeService != null) {
+                        resolvedPkg = managerBridgeService.resolveNodePackage(req);
                     }
+
+                    // 2. Fallback to static mapping
+                    if (resolvedPkg.isEmpty()) {
+                        resolvedPkg = Optional.ofNullable(KNOWN_CUSTOM_NODES.get(req.toLowerCase(Locale.ROOT)));
+                    }
+
+                    resolvedPkg.ifPresent(packages::add);
                 }
             }
 
@@ -182,14 +225,23 @@ public class CustomNodeResolverService {
 
     /**
      * Clones a custom node repository directly into ComfyUI's custom_nodes directory.
+     *
+     * @param gitUrl git repository URL
+     * @param customNodesDir destination custom_nodes directory
+     * @return completable future completing with true if installed
      */
     public CompletableFuture<Boolean> installCustomNode(String gitUrl, Path customNodesDir) {
+        CustomNodePackage pkg = new CustomNodePackage(extractRepoName(gitUrl), gitUrl, List.of(), List.of());
+        if (managerBridgeService != null) {
+            return managerBridgeService.installPackageAsync(pkg, msg -> logger.info("[CustomNodeInstall] {}", msg));
+        }
+
         return CompletableFuture.supplyAsync(() -> {
             try {
                 safePathValidator.validateWithinBase(customNodesDir, customNodesDir);
                 Files.createDirectories(customNodesDir);
 
-                String repoName = gitUrl.substring(gitUrl.lastIndexOf('/') + 1).replace(".git", "");
+                String repoName = extractRepoName(gitUrl);
                 Path targetDir = customNodesDir.resolve(repoName);
                 safePathValidator.validateWithinBase(customNodesDir, targetDir);
 
@@ -211,6 +263,33 @@ public class CustomNodeResolverService {
                 return false;
             }
         });
+    }
+
+    /**
+     * Installs a list of resolved custom node packages with live console progress reporting.
+     *
+     * @param packages list of packages to install
+     * @param progress progress consumer
+     * @return future completing with true if all installed successfully
+     */
+    public CompletableFuture<Boolean> installPackagesAsync(List<CustomNodePackage> packages, Consumer<String> progress) {
+        if (managerBridgeService != null) {
+            return managerBridgeService.installPackagesAsync(packages, progress);
+        }
+        return CompletableFuture.completedFuture(false);
+    }
+
+    public ICustomNodeManagerBridgeService getManagerBridgeService() {
+        return managerBridgeService;
+    }
+
+    private String extractRepoName(String gitUrl) {
+        if (gitUrl == null || gitUrl.isBlank()) return "custom_node";
+        String clean = gitUrl.trim();
+        if (clean.endsWith("/")) clean = clean.substring(0, clean.length() - 1);
+        if (clean.endsWith(".git")) clean = clean.substring(0, clean.length() - 4);
+        int lastSlash = clean.lastIndexOf('/');
+        return lastSlash >= 0 ? clean.substring(lastSlash + 1) : clean;
     }
 
     private boolean isCoreNode(String nodeType) {

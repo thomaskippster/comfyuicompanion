@@ -148,13 +148,22 @@ public class BlueprintCardBuilder {
             reqColor = AMBER_PARTIAL;
         }
 
-        JPanel statusRow = new JPanel(new BorderLayout());
+        JPanel statusRow = new JPanel(new BorderLayout(0, 2));
         statusRow.setOpaque(false);
 
         JLabel lblReq = new JLabel(reqText);
         lblReq.setFont(new Font("SansSerif", Font.PLAIN, 10));
         lblReq.setForeground(reqColor);
-        statusRow.add(lblReq, BorderLayout.WEST);
+        statusRow.add(lblReq, BorderLayout.NORTH);
+
+        BlueprintHardwareAdvisor.CompatibilityReport hwReport =
+                BlueprintHardwareAdvisor.evaluate(entry, status, null, null, null);
+        JLabel lblHw = new JLabel(hwReport.badgeText());
+        lblHw.setFont(new Font("SansSerif", Font.BOLD, 10));
+        lblHw.setForeground(hwReport.level().getBadgeColor());
+        lblHw.setToolTipText(hwReport.detailSummary());
+        statusRow.add(lblHw, BorderLayout.SOUTH);
+        card.setToolTipText(hwReport.detailSummary());
 
         info.add(statusRow);
         card.add(info, BorderLayout.CENTER);

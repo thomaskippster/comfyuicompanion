@@ -212,11 +212,19 @@ public class PromptLabModelDiscovery {
         if (view == null || view.getPromptModelCombo() == null) {
             return;
         }
+        boolean preserveExistingWorkflow = false;
         if (isUpdatingCombo != null) {
             isUpdatingCombo.set(true);
         }
         try {
             String selected = (String) view.getPromptModelCombo().getSelectedItem();
+            boolean isRemixedWorkflow = view.getPromptPresetLabel() != null
+                    && view.getPromptPresetLabel().getText() != null
+                    && view.getPromptPresetLabel().getText().contains("Remixed from PNG");
+            boolean hasExistingNodes = view.getPromptJsonArea() != null
+                    && view.getPromptJsonArea().getText() != null
+                    && view.getPromptJsonArea().getText().contains("\"class_type\"");
+
             if ((selected == null || "No ready offline blueprints available".equals(selected)) && configService != null) {
                 JSONObject session = configService.getPromptLabSession();
                 if (session != null && session.has("model")) {
@@ -258,6 +266,11 @@ public class PromptLabModelDiscovery {
 
                 if (selected != null && itemsToAdd.contains(selected)) {
                     view.getPromptModelCombo().setSelectedItem(selected);
+                    preserveExistingWorkflow = hasExistingNodes;
+                } else if (isRemixedWorkflow && selected != null && !selected.isBlank()) {
+                    view.getPromptModelCombo().addItem(selected);
+                    view.getPromptModelCombo().setSelectedItem(selected);
+                    preserveExistingWorkflow = true;
                 } else {
                     view.getPromptModelCombo().setSelectedIndex(0);
                 }
@@ -269,7 +282,7 @@ public class PromptLabModelDiscovery {
         }
 
         String current = (String) view.getPromptModelCombo().getSelectedItem();
-        if (current != null && !current.equals("No ready offline blueprints available") && onSelectedCallback != null) {
+        if (!preserveExistingWorkflow && current != null && !current.equals("No ready offline blueprints available") && onSelectedCallback != null) {
             onSelectedCallback.accept(current);
         }
     }

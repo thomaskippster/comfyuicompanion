@@ -171,6 +171,11 @@ public class BlueprintDetailsDialog extends JDialog {
         addRow(body, "Available locally", String.valueOf(status.presentCount), textSecondary, textPrimary);
         addRow(body, "Missing", String.valueOf(status.missingCount), textSecondary, textPrimary);
 
+        BlueprintHardwareAdvisor.CompatibilityReport hwReport =
+                BlueprintHardwareAdvisor.evaluate(entry, status, configService, null, modelSizeResolver);
+        addRow(body, "Hardware Check", hwReport.badgeText() + " — " + hwReport.detailSummary(),
+                textSecondary, hwReport.level().getBadgeColor());
+
         if (entry.requiredModels.isEmpty()) {
             if (!entry.hasBeenValidated) {
                 entry.hasBeenValidated = true;

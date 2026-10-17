@@ -242,21 +242,31 @@ public class WorkflowGraphParameterExtractor {
     }
 
     /**
-     * Collects all nodes from a workflow graph, including nodes inside subgraphs/groups.
+     * Collects all active nodes from a workflow graph, including nodes inside active subgraphs/groups,
+     * while skipping muted (mode 2) and bypassed (mode 4) nodes.
      *
      * @param root The root JSONObject representing the workflow.
-     * @return A list of all JSON objects representing nodes.
+     * @return A list of all JSON objects representing active nodes.
      */
     public List<JSONObject> collectAllNodes(JSONObject root) {
         List<JSONObject> allNodes = new ArrayList<>();
         if (root == null) return allNodes;
 
+        java.util.Set<String> bypassedTypes = new java.util.HashSet<>();
+        java.util.Set<String> activeTypes = new java.util.HashSet<>();
+
         if (root.has("nodes") && root.get("nodes") instanceof JSONArray nodes) {
             for (int i = 0; i < nodes.length(); i++) {
                 JSONObject node = nodes.optJSONObject(i);
-                if (node != null) {
-                    allNodes.add(node);
+                if (node == null) continue;
+                int mode = node.optInt("mode", 0);
+                String type = node.optString("type", "");
+                if (mode == 2 || mode == 4) {
+                    if (!type.isEmpty()) bypassedTypes.add(type);
+                    continue;
                 }
+                if (!type.isEmpty()) activeTypes.add(type);
+                allNodes.add(node);
             }
         }
 
@@ -264,11 +274,19 @@ public class WorkflowGraphParameterExtractor {
             if (defs.has("subgraphs") && defs.get("subgraphs") instanceof JSONArray subgraphs) {
                 for (int i = 0; i < subgraphs.length(); i++) {
                     JSONObject sg = subgraphs.optJSONObject(i);
-                    if (sg != null && sg.has("nodes") && sg.get("nodes") instanceof JSONArray sgNodes) {
+                    if (sg == null) continue;
+                    String sgId = sg.optString("id", "");
+                    if (!sgId.isEmpty() && bypassedTypes.contains(sgId) && !activeTypes.contains(sgId)) {
+                        continue;
+                    }
+                    if (sg.has("nodes") && sg.get("nodes") instanceof JSONArray sgNodes) {
                         for (int j = 0; j < sgNodes.length(); j++) {
                             JSONObject sn = sgNodes.optJSONObject(j);
                             if (sn != null) {
-                                allNodes.add(sn);
+                                int snMode = sn.optInt("mode", 0);
+                                if (snMode != 2 && snMode != 4) {
+                                    allNodes.add(sn);
+                                }
                             }
                         }
                     }

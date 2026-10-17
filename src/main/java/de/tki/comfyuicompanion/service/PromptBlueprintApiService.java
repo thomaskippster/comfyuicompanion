@@ -49,11 +49,15 @@ public class PromptBlueprintApiService {
     public void injectLabInputs(JSONObject promptObj, PromptLabInputs inputs) {
         if (promptObj == null || inputs == null) return;
 
-        // 1. Pre-scan for negative conditioning node links from samplers
+        // 1. Pre-scan for negative conditioning node links from samplers and ConditioningZeroOut nodes
         Set<String> negativeNodeIds = new HashSet<>();
+        Set<String> zeroOutNodeIds = new HashSet<>();
         for (String key : promptObj.keySet()) {
             JSONObject node = promptObj.optJSONObject(key);
             if (node == null) continue;
+            if ("ConditioningZeroOut".equals(node.optString("class_type", ""))) {
+                zeroOutNodeIds.add(key);
+            }
             JSONObject inp = node.optJSONObject("inputs");
             if (inp == null) continue;
 
@@ -111,10 +115,16 @@ public class PromptBlueprintApiService {
                 }
             }
 
+            boolean negativeIsZeroOut = false;
+            if (inp.has("negative") && inp.get("negative") instanceof JSONArray negArr && negArr.length() > 0) {
+                negativeIsZeroOut = zeroOutNodeIds.contains(String.valueOf(negArr.get(0)));
+            }
+            double effectiveCfg = negativeIsZeroOut ? 1.0 : inputs.cfg();
+
             // Sampler / scheduler parameters
             if ("KSampler".equals(ct) || "KSamplerAdvanced".equals(ct)) {
                 inp.put("steps", inputs.steps());
-                inp.put("cfg",   inputs.cfg());
+                inp.put("cfg",   effectiveCfg);
                 if (inputs.denoise() >= 0.0 && inputs.denoise() <= 1.0) {
                     inp.put("denoise", inputs.denoise());
                 }
@@ -123,8 +133,8 @@ public class PromptBlueprintApiService {
             } else if ("FluxGuidance".equals(ct)) {
                 inp.put("guidance", inputs.cfg());
             } else if ("CFGGuider".equals(ct)) {
-                if (inputs.cfg() > 0) {
-                    inp.put("cfg", inputs.cfg());
+                if (effectiveCfg > 0) {
+                    inp.put("cfg", effectiveCfg);
                 }
             }
 

@@ -31,6 +31,7 @@ public class PromptLabView extends JPanel {
         void onBlueprintSelected(String selectedModel);
         void onUpdatePromptLabJson();
         void onSendPromptToComfyUI();
+        default void openPromptHistoryDialog(java.awt.Window parentWindow) {}
     }
 
     private PromptLabController controller;
@@ -57,7 +58,7 @@ public class PromptLabView extends JPanel {
     private JTextArea promptLabConsole;
     private JButton btnSendToComfy;
 
-    // Dummy objects for backward compatibility with unused fields
+    // Compatibility objects for session management and json synchronization
     private final JTextArea promptAssembleArea = new JTextArea();
     @SuppressWarnings("rawtypes") private final JComboBox promptEnvCombo = new JComboBox();
     private final JCheckBox chkPhotorealistic = new JCheckBox(), chkOil = new JCheckBox(), chkEngine = new JCheckBox();
@@ -96,23 +97,18 @@ public class PromptLabView extends JPanel {
         promptModelCombo.setEditable(false);
         promptModelCombo.setEnabled(false);
         promptModelCombo.setFont(new Font("SansSerif", Font.PLAIN, 14));
-        promptModelCombo.setMinimumSize(new Dimension(80, 32));
         promptModelCombo.setPreferredSize(new Dimension(100, 32));
         modelRow.add(promptModelCombo, BorderLayout.CENTER);
 
         JButton btnRefreshModels = new JButton(SvgIconFactory.get(AppIcon.REFRESH));
         btnRefreshModels.setToolTipText("Refresh models list from ComfyUI");
-        btnRefreshModels.addActionListener(e -> {
-            if (controller != null) controller.onRefreshModels();
-        });
+        btnRefreshModels.addActionListener(e -> { if (controller != null) controller.onRefreshModels(); });
         modelRow.add(btnRefreshModels, BorderLayout.EAST);
-
         leftPanel.add(modelRow);
         leftPanel.add(Box.createVerticalStrut(6));
 
         promptPresetLabel = new JLabel("⚠️ No ready blueprints or local models detected") {
-            @Override
-            public void updateUI() {
+            @Override public void updateUI() {
                 super.updateUI();
                 Color c = UIManager.getColor("PromptLab.presetForeground");
                 if (c != null) setForeground(c);
@@ -122,8 +118,6 @@ public class PromptLabView extends JPanel {
         Color pc = UIManager.getColor("PromptLab.presetForeground");
         if (pc != null) promptPresetLabel.setForeground(pc);
         promptPresetLabel.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
-        promptPresetLabel.setMinimumSize(new Dimension(80, 20));
-        promptPresetLabel.setPreferredSize(new Dimension(100, 20));
         promptPresetLabel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 20));
         leftPanel.add(promptPresetLabel);
         leftPanel.add(Box.createVerticalStrut(18));
@@ -278,14 +272,10 @@ public class PromptLabView extends JPanel {
         };
         promptSubjectField.getDocument().addDocumentListener(updateJsonDocListener);
         promptNegativeField.getDocument().addDocumentListener(updateJsonDocListener);
-
         promptModelCombo.addActionListener(e -> {
-            String selected = (String) promptModelCombo.getSelectedItem();
-            if (selected != null && controller != null) {
-                controller.onBlueprintSelected(selected);
-            }
+            String sel = (String) promptModelCombo.getSelectedItem();
+            if (sel != null && controller != null) controller.onBlueprintSelected(sel);
         });
-
         parametersPanel.attachChangeListener(() -> {
             if (controller != null) controller.onUpdatePromptLabJson();
         });
@@ -305,18 +295,25 @@ public class PromptLabView extends JPanel {
         JPanel rightHeaderActions = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 6, 0));
         rightHeaderActions.setOpaque(false);
 
+        JButton btnHistory = new JButton("History...", SvgIconFactory.get(AppIcon.FILE_TEXT, 14));
+        btnHistory.setFont(new Font("SansSerif", Font.PLAIN, 12));
+        btnHistory.setToolTipText("Open Prompt History & Quick-Recall (last 25 sessions)");
+        btnHistory.addActionListener(e -> {
+            java.awt.Window win = SwingUtilities.getWindowAncestor(this);
+            if (controller != null) controller.openPromptHistoryDialog(win);
+        });
+        rightHeaderActions.add(btnHistory);
+
         JButton btnRemixPng = new JButton("Remix PNG...", SvgIconFactory.get(AppIcon.GALLERY, 14));
         btnRemixPng.setFont(new Font("SansSerif", Font.PLAIN, 12));
-        btnRemixPng.setToolTipText("Load prompt, seed, and workflow from a ComfyUI PNG image (or Drag & Drop a PNG onto the Image Lab)");
+        btnRemixPng.setToolTipText("Load prompt, seed, and workflow from a ComfyUI PNG image");
         btnRemixPng.addActionListener(e -> de.tki.comfyuicompanion.controller.PromptLabImageDropHandler.promptAndImportPng(this, controller));
         rightHeaderActions.add(btnRemixPng);
 
         JButton btnMatrixGrid = new JButton("Matrix / XY Grid", SvgIconFactory.get(AppIcon.IMAGE_LAB, 14));
         btnMatrixGrid.setFont(new Font("SansSerif", Font.PLAIN, 12));
-        btnMatrixGrid.setToolTipText("Open Batch / Prompt Matrix XY-Grid to compare {a|b} prompt variations and CFG sweeps side-by-side");
-        btnMatrixGrid.addActionListener(e -> {
-            if (onOpenMatrixGrid != null) onOpenMatrixGrid.run();
-        });
+        btnMatrixGrid.setToolTipText("Open Batch / Prompt Matrix XY-Grid");
+        btnMatrixGrid.addActionListener(e -> { if (onOpenMatrixGrid != null) onOpenMatrixGrid.run(); });
         rightHeaderActions.add(btnMatrixGrid);
         rightTopPanel.add(rightHeaderActions, BorderLayout.EAST);
 

@@ -213,12 +213,11 @@ public class VideoLipSyncService implements IVideoLipSyncService {
         pb.redirectOutput(ProcessBuilder.Redirect.DISCARD);
         Process p = processTracker != null ? processTracker.start(pb) : pb.start();
 
-        Thread errThread = new Thread(() -> {
+        Thread errThread = Thread.ofVirtual().name("ffmpeg-lipsync-reader").start(() -> {
             try (BufferedReader r = new BufferedReader(new InputStreamReader(p.getErrorStream(), StandardCharsets.UTF_8))) {
                 while (r.readLine() != null) { /* discard */ }
             } catch (IOException ignored) {}
         });
-        errThread.start();
 
         int exit = p.waitFor();
         errThread.join();

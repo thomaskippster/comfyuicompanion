@@ -35,6 +35,7 @@ public class PromptLabController implements PromptLabView.PromptLabController {
     private final PromptLabSessionManager sessionManager;
     private final PromptLabBlueprintCoordinator blueprintCoordinator;
     private final PromptLabJsonSynchronizer jsonSynchronizer;
+    private final de.tki.comfyuicompanion.service.IPromptHistoryService promptHistoryService;
 
     private volatile String currentBlueprintGuiJson;
     private final AtomicBoolean isUpdatingCombo = new AtomicBoolean(false);
@@ -53,6 +54,7 @@ public class PromptLabController implements PromptLabView.PromptLabController {
         this.sessionManager = new PromptLabSessionManager(null);
         this.blueprintCoordinator = new PromptLabBlueprintCoordinator(null, null, null, null, this.modelResolver);
         this.jsonSynchronizer = new PromptLabJsonSynchronizer(new PromptBlueprintApiService());
+        this.promptHistoryService = new de.tki.comfyuicompanion.service.impl.PromptHistoryService((ConfigService) null);
     }
 
     /**
@@ -65,7 +67,8 @@ public class PromptLabController implements PromptLabView.PromptLabController {
                                @Autowired(required = false) IComfyTemplateService comfyTemplateService,
                                @Autowired(required = false) IModelArchitectureService modelArchitectureService,
                                @Autowired(required = false) IWorkflowDownloader workflowDownloader,
-                               @Autowired(required = false) BackgroundExecutor backgroundExecutor) {
+                               @Autowired(required = false) BackgroundExecutor backgroundExecutor,
+                               @Autowired(required = false) de.tki.comfyuicompanion.service.IPromptHistoryService promptHistoryService) {
         this.comfyApiClient = comfyApiClient;
         this.modelResolver = new PromptLabModelResolver(modelArchitectureService);
         this.presetManager = new PromptLabPresetManager(modelArchitectureService, comfyTemplateService, this.modelResolver);
@@ -73,6 +76,7 @@ public class PromptLabController implements PromptLabView.PromptLabController {
         this.blueprintCoordinator = new PromptLabBlueprintCoordinator(configService, comfyTemplateService,
                 workflowDownloader, backgroundExecutor, this.modelResolver);
         this.jsonSynchronizer = new PromptLabJsonSynchronizer(promptBlueprintApiService);
+        this.promptHistoryService = promptHistoryService != null ? promptHistoryService : new de.tki.comfyuicompanion.service.impl.PromptHistoryService(configService);
     }
 
     /** Sets the PromptLabView instance to bind. */
@@ -120,7 +124,86 @@ public class PromptLabController implements PromptLabView.PromptLabController {
 
     @Override
     public void onSendPromptToComfyUI() {
+        recordCurrentPromptHistory();
         if (sendPromptHandler != null) sendPromptHandler.run();
+    }
+
+    @Override
+    public void openPromptHistoryDialog(java.awt.Window parentWindow) {
+        if (promptHistoryService != null) {
+            de.tki.comfyuicompanion.ui.dialog.PromptHistoryDialog dialog =
+                    new de.tki.comfyuicompanion.ui.dialog.PromptHistoryDialog(parentWindow, promptHistoryService, this::recallPrompt);
+            dialog.setVisible(true);
+        }
+    }
+
+    /**
+     * Records the active prompt and sampling parameters into the persistent history service.
+     */
+    public void recordCurrentPromptHistory() {
+        if (promptHistoryService == null || view == null) return;
+        try {
+            String pos = view.getPromptSubjectField() != null ? view.getPromptSubjectField().getText() : "";
+            String neg = view.getPromptNegativeField() != null ? view.getPromptNegativeField().getText() : "";
+            String model = (view.getPromptModelCombo() != null && view.getPromptModelCombo().getSelectedItem() != null)
+                    ? view.getPromptModelCombo().getSelectedItem().toString() : "";
+            int w = view.getPromptWidthSpinner() != null ? ((Number) view.getPromptWidthSpinner().getValue()).intValue() : 512;
+            int h = view.getPromptHeightSpinner() != null ? ((Number) view.getPromptHeightSpinner().getValue()).intValue() : 512;
+            int steps = view.getPromptStepsSpinner() != null ? ((Number) view.getPromptStepsSpinner().getValue()).intValue() : 20;
+            double cfg = view.getPromptCfgSpinner() != null ? ((Number) view.getPromptCfgSpinner().getValue()).doubleValue() : 7.0;
+            String sampler = (view.getPromptSamplerCombo() != null && view.getPromptSamplerCombo().getSelectedItem() != null)
+                    ? view.getPromptSamplerCombo().getSelectedItem().toString() : "euler";
+            String scheduler = (view.getPromptSchedulerCombo() != null && view.getPromptSchedulerCombo().getSelectedItem() != null)
+                    ? view.getPromptSchedulerCombo().getSelectedItem().toString() : "normal";
+
+            promptHistoryService.recordPrompt(new de.tki.comfyuicompanion.domain.PromptHistoryEntry(
+                    System.currentTimeMillis(), pos, neg, model, w, h, steps, cfg, sampler, scheduler
+            ));
+        } catch (Exception e) {
+            logger.warn("Failed to record prompt history: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Restores an earlier prompt snapshot from history into the UI controls and updates JSON.
+     *
+     * @param entry the history snapshot to restore
+     */
+    public void recallPrompt(de.tki.comfyuicompanion.domain.PromptHistoryEntry entry) {
+        if (entry == null || view == null) return;
+        if (view.getPromptSubjectField() != null && entry.positivePrompt() != null) {
+            view.getPromptSubjectField().setText(entry.positivePrompt());
+        }
+        if (view.getPromptNegativeField() != null && entry.negativePrompt() != null) {
+            view.getPromptNegativeField().setText(entry.negativePrompt());
+        }
+        if (view.getPromptWidthSpinner() != null && entry.width() > 0) {
+            view.getPromptWidthSpinner().setValue(entry.width());
+        }
+        if (view.getPromptHeightSpinner() != null && entry.height() > 0) {
+            view.getPromptHeightSpinner().setValue(entry.height());
+        }
+        if (view.getPromptStepsSpinner() != null && entry.steps() > 0) {
+            view.getPromptStepsSpinner().setValue(entry.steps());
+        }
+        if (view.getPromptCfgSpinner() != null && entry.cfg() > 0) {
+            view.getPromptCfgSpinner().setValue(entry.cfg());
+        }
+        if (view.getPromptSamplerCombo() != null && entry.sampler() != null) {
+            view.getPromptSamplerCombo().setSelectedItem(entry.sampler());
+        }
+        if (view.getPromptSchedulerCombo() != null && entry.scheduler() != null) {
+            view.getPromptSchedulerCombo().setSelectedItem(entry.scheduler());
+        }
+        if (entry.model() != null && !entry.model().isBlank() && view.getPromptModelCombo() != null) {
+            for (int i = 0; i < view.getPromptModelCombo().getItemCount(); i++) {
+                if (entry.model().equals(view.getPromptModelCombo().getItemAt(i))) {
+                    view.getPromptModelCombo().setSelectedIndex(i);
+                    break;
+                }
+            }
+        }
+        updatePromptLabJson();
     }
 
     /** @return the current blueprint GUI JSON string */

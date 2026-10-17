@@ -136,7 +136,7 @@ public class SceneMediaPostProcessor {
         pb.redirectOutput(ProcessBuilder.Redirect.DISCARD);
         Process process = startProcess(pb, overrideTracker);
 
-        Thread errorReaderThread = new Thread(() -> {
+        Thread errorReaderThread = Thread.ofVirtual().name("ffmpeg-mux-reader").start(() -> {
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getErrorStream(), StandardCharsets.UTF_8))) {
                 String line;
                 while ((line = reader.readLine()) != null) {
@@ -146,7 +146,6 @@ public class SceneMediaPostProcessor {
                 logger.error("Error reading FFmpeg error stream: {}", e.getMessage());
             }
         });
-        errorReaderThread.start();
 
         int exitCode = process.waitFor();
         errorReaderThread.join();

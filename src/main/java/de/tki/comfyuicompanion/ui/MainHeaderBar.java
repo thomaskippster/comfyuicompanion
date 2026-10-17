@@ -27,6 +27,7 @@ public class MainHeaderBar extends JPanel {
     private final IComfyLifecycleService lifecycleService;
     private final ProfileManager profileManager;
     private final Consumer<LaunchProfile> startComfyAction;
+    private final de.tki.comfyuicompanion.service.IComfyConnectionMonitorService connectionMonitorService;
 
     private JLabel globalStatusIndicator;
     private JButton quickActionBtn;
@@ -47,6 +48,19 @@ public class MainHeaderBar extends JPanel {
                          IComfyLifecycleService lifecycleService,
                          ProfileManager profileManager,
                          Consumer<LaunchProfile> startComfyAction) {
+        this(parentFrame, configService, modelArchitectureService, processController,
+                lifecycleService, profileManager, startComfyAction,
+                new de.tki.comfyuicompanion.service.impl.ComfyConnectionMonitorService(configService));
+    }
+
+    public MainHeaderBar(JFrame parentFrame,
+                         ConfigService configService,
+                         IModelArchitectureService modelArchitectureService,
+                         ComfyProcessController processController,
+                         IComfyLifecycleService lifecycleService,
+                         ProfileManager profileManager,
+                         Consumer<LaunchProfile> startComfyAction,
+                         de.tki.comfyuicompanion.service.IComfyConnectionMonitorService connectionMonitorService) {
         super(new BorderLayout(15, 10));
         this.configService = configService;
         this.modelArchitectureService = modelArchitectureService;
@@ -54,6 +68,10 @@ public class MainHeaderBar extends JPanel {
         this.lifecycleService = lifecycleService;
         this.profileManager = profileManager;
         this.startComfyAction = startComfyAction;
+        this.connectionMonitorService = connectionMonitorService;
+        if (this.connectionMonitorService != null) {
+            this.connectionMonitorService.start();
+        }
 
         setOpaque(false);
         setPreferredSize(new Dimension(0, 60));
@@ -197,20 +215,30 @@ public class MainHeaderBar extends JPanel {
                 }
             }
 
-            if (running) {
-                if (starting) {
-                    globalStatusIndicator.setText("Status: Starting");
-                    globalStatusIndicator.setIcon(SvgIconFactory.createStatusDot(new Color(255, 204, 0), 10));
-                    globalStatusIndicator.setForeground(new Color(255, 204, 0));
-                    quickActionBtn.setText("Stop");
-                    quickActionBtn.setIcon(SvgIconFactory.get(AppIcon.CLOSE, 12));
-                } else {
-                    globalStatusIndicator.setText("Status: Running");
-                    globalStatusIndicator.setIcon(SvgIconFactory.createStatusDot(new Color(30, 190, 170), 10));
-                    globalStatusIndicator.setForeground(new Color(30, 190, 170));
-                    quickActionBtn.setText("Stop");
-                    quickActionBtn.setIcon(SvgIconFactory.get(AppIcon.CLOSE, 12));
-                }
+            de.tki.comfyuicompanion.service.IComfyConnectionMonitorService.ConnectionState connState =
+                    connectionMonitorService != null ? connectionMonitorService.getState() :
+                    (running ? (starting ? de.tki.comfyuicompanion.service.IComfyConnectionMonitorService.ConnectionState.CONNECTING : de.tki.comfyuicompanion.service.IComfyConnectionMonitorService.ConnectionState.CONNECTED) : de.tki.comfyuicompanion.service.IComfyConnectionMonitorService.ConnectionState.DISCONNECTED);
+
+            if (starting) {
+                globalStatusIndicator.setText("Status: Starting");
+                globalStatusIndicator.setIcon(SvgIconFactory.createStatusDot(new Color(255, 204, 0), 10));
+                globalStatusIndicator.setForeground(new Color(255, 204, 0));
+                quickActionBtn.setText("Stop");
+                quickActionBtn.setIcon(SvgIconFactory.get(AppIcon.CLOSE, 12));
+            } else if (connState == de.tki.comfyuicompanion.service.IComfyConnectionMonitorService.ConnectionState.CONNECTED) {
+                String summary = connectionMonitorService != null ? connectionMonitorService.getSystemSummary() : "";
+                String label = (summary != null && !summary.isEmpty()) ? "Status: Online (" + summary + ")" : "Status: Online";
+                globalStatusIndicator.setText(label);
+                globalStatusIndicator.setIcon(SvgIconFactory.createStatusDot(new Color(30, 190, 170), 10));
+                globalStatusIndicator.setForeground(new Color(30, 190, 170));
+                quickActionBtn.setText(running ? "Stop" : "Restart");
+                quickActionBtn.setIcon(running ? SvgIconFactory.get(AppIcon.CLOSE, 12) : SvgIconFactory.get(AppIcon.REFRESH, 12));
+            } else if (connState == de.tki.comfyuicompanion.service.IComfyConnectionMonitorService.ConnectionState.CONNECTING) {
+                globalStatusIndicator.setText("Status: Reconnecting...");
+                globalStatusIndicator.setIcon(SvgIconFactory.createStatusDot(new Color(255, 204, 0), 10));
+                globalStatusIndicator.setForeground(new Color(255, 204, 0));
+                quickActionBtn.setText(running ? "Stop" : "Start");
+                quickActionBtn.setIcon(running ? SvgIconFactory.get(AppIcon.CLOSE, 12) : SvgIconFactory.get(AppIcon.PLAY, 12));
             } else {
                 globalStatusIndicator.setText("Status: Offline");
                 globalStatusIndicator.setIcon(SvgIconFactory.createStatusDot(new Color(220, 50, 50), 10));

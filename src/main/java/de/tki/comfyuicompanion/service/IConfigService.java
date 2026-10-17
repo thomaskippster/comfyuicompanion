@@ -129,6 +129,12 @@ public interface IConfigService {
 
     String getLocalLlmModel();
     void setLocalLlmModel(String model);
+
+    boolean isAudioLipSyncEnabled();
+    void setAudioLipSyncEnabled(boolean enabled);
+
+    String getLipSyncEngine();
+    void setLipSyncEngine(String engine);
     
     boolean isBlueprintGalleryEnabled();
     void setBlueprintGalleryEnabled(boolean enabled);

@@ -83,4 +83,21 @@ class CustomNodeResolverServiceTest {
         // Core node KSampler should be ignored in missing list
         assertThat(report.missingNodeTypes()).doesNotContain("KSampler");
     }
+
+    @Test
+    @DisplayName("findKnownPackage: should resolve lip-sync community packages (LivePortrait, SadTalker, Wav2Lip)")
+    void shouldFindLipSyncPackages() {
+        var livePortrait = resolverService.findKnownPackage("LivePortraitCropper");
+        assertThat(livePortrait).isPresent();
+        assertThat(livePortrait.get().packageName()).isEqualTo("LivePortrait");
+        assertThat(livePortrait.get().gitUrl()).isEqualTo("https://github.com/kijai/ComfyUI-LivePortrait");
+
+        var sadTalker = resolverService.findKnownPackage("SadTalker");
+        assertThat(sadTalker).isPresent();
+        assertThat(sadTalker.get().packageName()).isEqualTo("SadTalker");
+
+        var wav2Lip = resolverService.findKnownPackage("Wav2Lip");
+        assertThat(wav2Lip).isPresent();
+        assertThat(wav2Lip.get().packageName()).isEqualTo("Wav2Lip");
+    }
 }

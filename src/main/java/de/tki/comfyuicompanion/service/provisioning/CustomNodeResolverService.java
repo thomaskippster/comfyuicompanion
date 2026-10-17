@@ -63,6 +63,12 @@ public class CustomNodeResolverService {
                 "ColorMatch", "SetGetNode", "GetNode", "SetNode", "ImageBatchTest");
         register("ControlNetAux", "https://github.com/Fannovel16/comfy_controlnet_preprocessors",
                 "LineArtPreprocessor", "DWPreprocessor", "Zoe-DepthMapPreprocessor", "CannyEdgePreprocessor");
+        register("LivePortrait", "https://github.com/kijai/ComfyUI-LivePortrait",
+                "LivePortraitLoadCropperModel", "LivePortraitCropper", "LivePortraitPredict", "LivePortraitAudioDriven", "LivePortraitLoadModel");
+        register("Wav2Lip", "https://github.com/Shakker-Labs/ComfyUI-Wav2Lip",
+                "Wav2Lip", "Wav2LipPreprocessor");
+        register("SadTalker", "https://github.com/OpenTalker/SadTalker",
+                "SadTalker", "SadTalkerLoader");
     }
 
     private static void register(String name, String gitUrl, String... nodeTypes) {
@@ -109,6 +115,19 @@ public class CustomNodeResolverService {
         this.safePathValidator = safePathValidator != null ? safePathValidator : new SafePathValidator();
         this.managerBridgeService = managerBridgeService != null ? managerBridgeService
                 : new CustomNodeManagerBridgeService(configService, null, new CustomNodeInstaller(configService, this.safePathValidator, null));
+    }
+
+    /**
+     * Resolves a known fallback custom node package by node class name.
+     *
+     * @param nodeType node class name
+     * @return optional containing the package if known
+     */
+    public Optional<CustomNodePackage> findKnownPackage(String nodeType) {
+        if (nodeType == null || nodeType.isBlank()) {
+            return Optional.empty();
+        }
+        return Optional.ofNullable(KNOWN_CUSTOM_NODES.get(nodeType.toLowerCase(Locale.ROOT)));
     }
 
     /**

@@ -29,17 +29,28 @@ public class SceneMediaPostProcessor {
     private final SceneSimulationService simulationService;
     private final MediaTranscodingService mediaTranscodingService;
     private final ProcessTracker defaultProcessTracker;
+    private final de.tki.comfyuicompanion.service.IVideoLipSyncService lipSyncService;
+
+    public SceneMediaPostProcessor(
+            ConfigService configService,
+            SceneSimulationService simulationService,
+            MediaTranscodingService mediaTranscodingService,
+            ProcessTracker defaultProcessTracker) {
+        this(configService, simulationService, mediaTranscodingService, defaultProcessTracker, null);
+    }
 
     @Autowired
     public SceneMediaPostProcessor(
             ConfigService configService,
             SceneSimulationService simulationService,
             MediaTranscodingService mediaTranscodingService,
-            @Autowired(required = false) ProcessTracker defaultProcessTracker) {
+            @Autowired(required = false) ProcessTracker defaultProcessTracker,
+            @Autowired(required = false) de.tki.comfyuicompanion.service.IVideoLipSyncService lipSyncService) {
         this.configService = configService;
         this.simulationService = simulationService != null ? simulationService : new SceneSimulationService(defaultProcessTracker);
         this.mediaTranscodingService = mediaTranscodingService != null ? mediaTranscodingService : new MediaTranscodingService(configService, defaultProcessTracker);
         this.defaultProcessTracker = defaultProcessTracker;
+        this.lipSyncService = lipSyncService != null ? lipSyncService : new de.tki.comfyuicompanion.service.impl.VideoLipSyncService(configService);
     }
 
     /**
@@ -64,6 +75,24 @@ public class SceneMediaPostProcessor {
         boolean isImage = rawOutputFile.getName().toLowerCase().matches(".*\\.(png|jpg|jpeg|webp)$");
         String audioPath = scene.getAudioPath();
         File audioFile = (audioPath != null && !audioPath.trim().isEmpty()) ? new File(audioPath) : null;
+
+        boolean isLipSyncEnabled = configService != null && configService.isAudioLipSyncEnabled();
+        if (isLipSyncEnabled && audioFile != null && audioFile.exists() && lipSyncService != null) {
+            String engine = configService.getLipSyncEngine();
+            logger.info("🎤 [SceneMediaPostProcessor] Audio Lip-Sync enabled. Applying head animation via '{}'...", engine);
+            try {
+                File syncedFile = lipSyncService.applyLipSync(rawOutputFile, audioFile, finalVideoFile, scene).join();
+                if (syncedFile != null && syncedFile.exists()) {
+                    logger.info("✅ [SceneMediaPostProcessor] Audio Lip-Sync complete: {}", syncedFile.getAbsolutePath());
+                    if (rawOutputFile.exists() && !rawOutputFile.getAbsolutePath().equals(finalVideoFile.getAbsolutePath())) {
+                        rawOutputFile.delete();
+                    }
+                    return;
+                }
+            } catch (Exception e) {
+                logger.warn("⚠️ [SceneMediaPostProcessor] Lip-sync synthesis encountered an error, falling back to standard audio post-processing: {}", e.getMessage());
+            }
+        }
 
         if (isImage) {
             logger.info("🖼️ [SceneMediaPostProcessor] Raw output is an image. Converting to MP4 scene video...");

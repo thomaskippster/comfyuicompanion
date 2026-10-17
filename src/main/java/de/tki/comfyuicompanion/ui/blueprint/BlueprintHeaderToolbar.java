@@ -234,9 +234,14 @@ public class BlueprintHeaderToolbar extends JPanel {
         int ready = 0;
         int partial = 0;
         int missing = 0;
+        int checking = 0;
         for (BlueprintEntry e : entries) {
+            if (!e.hasBeenValidated && e.requiredModels.isEmpty()) {
+                checking++;
+                continue;
+            }
             BlueprintStatus s = statusSupplier.apply(e);
-            if (s.missingCount == 0) {
+            if (s.missingCount == 0 && s.presentCount > 0) {
                 ready++;
             } else if (s.presentCount > 0) {
                 partial++;
@@ -244,8 +249,9 @@ public class BlueprintHeaderToolbar extends JPanel {
                 missing++;
             }
         }
+        String suffix = checking > 0 ? "  ·  " + checking + " checking" : "";
         setSummaryText(total + " workflows on Comfy.org  ·  "
-                + ready + " ready  ·  " + partial + " partial  ·  " + missing + " not installed");
+                + ready + " ready  ·  " + partial + " partial  ·  " + missing + " not installed" + suffix);
     }
 
     /**

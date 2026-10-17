@@ -175,6 +175,9 @@ public class BlueprintGalleryTab extends JPanel {
                 e -> showDetails(e, computeStatus(e)),
                 (e, w) -> dataCoordinator.playVideoPreview(e, w, null));
         headerToolbar.updateSummary(allEntries, this::computeStatus);
+        if (onDataLoadedCallback != null) {
+            try { onDataLoadedCallback.run(); } catch (Exception ignored) {}
+        }
     }
 
     private void showDetails(BlueprintEntry entry, BlueprintStatus status) {

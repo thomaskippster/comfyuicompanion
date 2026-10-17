@@ -132,12 +132,18 @@ public class BlueprintDataCoordinator {
             if (resolved != null && !resolved.isEmpty()) {
                 entry.requiredModels.clear();
                 entry.requiredModels.addAll(resolved);
+                entry.hasBeenValidated = true;
                 entry.status = computeStatusInternal(entry);
             } else if (wf.getRequiredModelInfos() != null && !wf.getRequiredModelInfos().isEmpty()) {
                 entry.requiredModels.clear();
                 entry.requiredModels.addAll(wf.getRequiredModelInfos());
+                entry.hasBeenValidated = true;
+                entry.status = computeStatusInternal(entry);
+            } else if (!entry.requiredModels.isEmpty()) {
+                entry.hasBeenValidated = true;
                 entry.status = computeStatusInternal(entry);
             } else {
+                entry.hasBeenValidated = false;
                 entry.status = new BlueprintStatus(0, 0, new ArrayList<>());
                 if (localModelValidator != null) {
                     localModelValidator.validateWorkflowModelsAsync(wf).thenAccept(v -> {
@@ -145,6 +151,7 @@ public class BlueprintDataCoordinator {
                         if (wf.getRequiredModelInfos() != null) {
                             entry.requiredModels.addAll(wf.getRequiredModelInfos());
                         }
+                        entry.hasBeenValidated = true;
                         entry.status = computeStatusInternal(entry);
                         if (asyncModelValidatorCallback != null) {
                             asyncModelValidatorCallback.accept(() -> {});

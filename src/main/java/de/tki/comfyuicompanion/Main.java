@@ -422,9 +422,9 @@ public class Main extends JFrame {
 
     private void showPathsDialog() {
         getDialogCoordinator().showPathsDialog(() -> {
-            if (uiComponents != null && uiComponents.dashboardPanelCoordinator != null) {
-                uiComponents.dashboardPanelCoordinator.refreshVersions(versionService, configService);
-            }
+            if (uiComponents != null && uiComponents.dashboardPanelCoordinator != null) uiComponents.dashboardPanelCoordinator.refreshVersions(versionService, configService);
+            if (blueprintGalleryTab != null) blueprintGalleryTab.refreshAllData(true);
+            refreshPromptLabModels();
         }, this::syncBridgeFiles);
     }
 

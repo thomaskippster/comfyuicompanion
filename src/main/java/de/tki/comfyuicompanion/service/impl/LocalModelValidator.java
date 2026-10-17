@@ -226,6 +226,31 @@ public class LocalModelValidator implements ILocalModelValidator {
             return CompletableFuture.completedFuture(null);
         }
 
+        File localWorkflowFile = findLocalWorkflowFile(workflow);
+        if (localWorkflowFile != null && localWorkflowFile.exists()) {
+            try {
+                String jsonText = Files.readString(localWorkflowFile.toPath(), java.nio.charset.StandardCharsets.UTF_8);
+                List<ModelInfo> analyzedInfo = modelAnalyzer.analyze(jsonText, localWorkflowFile.getName());
+                if (analyzedInfo != null && !analyzedInfo.isEmpty()) {
+                    workflow.setRequiredModelInfos(analyzedInfo);
+                    boolean isCloud = WorkflowCloudDetector.checkCloudOnly(jsonText, analyzedInfo);
+                    workflow.setCloudOnly(isCloud);
+                    List<String> parsedModels = new ArrayList<>();
+                    for (ModelInfo info : analyzedInfo) {
+                        if (info.getName() != null && !info.getName().isBlank()) {
+                            parsedModels.add(info.getName());
+                        }
+                    }
+                    workflow.setRequiredModels(parsedModels);
+                    if (wfId != null) {
+                        cacheManager.putAndSave(wfId, analyzedInfo, isCloud);
+                    }
+                    workflow.setHasAllModelsLocal(checkModelsPresent(parsedModels));
+                    return CompletableFuture.completedFuture(null);
+                }
+            } catch (Exception ignored) {}
+        }
+
         String downloadUrl = workflow.getJsonDownloadUrl();
         if (downloadUrl == null || downloadUrl.isEmpty() || downloadUrl.startsWith("mock:")) {
             workflow.setHasAllModelsLocal(false);
@@ -348,6 +373,39 @@ public class LocalModelValidator implements ILocalModelValidator {
         int dot = s.lastIndexOf('.');
         if (dot >= 0) s = s.substring(0, dot);
         return s.toLowerCase(Locale.ROOT).trim();
+    }
+
+    private File findLocalWorkflowFile(ComfyRegistryWorkflow workflow) {
+        if (workflow == null) return null;
+        List<File> dirs = new ArrayList<>();
+        if (configService != null) {
+            if (configService.getUserWorkflowsDir() != null) dirs.add(configService.getUserWorkflowsDir());
+            if (configService.getShippedWorkflowsDir() != null) dirs.add(configService.getShippedWorkflowsDir());
+        } else {
+            dirs.add(new File("user_workflows"));
+            dirs.add(new File("workflows"));
+        }
+        String id = workflow.getId();
+        String title = workflow.getTitle();
+        String sanitizedTitle = title != null
+                ? title.replaceAll("[^a-zA-Z0-9\\-_\\s]", "").trim().replaceAll("\\s+", "_").toLowerCase(Locale.ROOT)
+                : null;
+        for (File dir : dirs) {
+            if (dir == null || !dir.exists() || !dir.isDirectory()) continue;
+            if (id != null && !id.isBlank()) {
+                File f1 = new File(dir, id + ".json");
+                if (f1.exists()) return f1;
+                if (id.startsWith("image_")) {
+                    File f2 = new File(dir, id.substring(6) + ".json");
+                    if (f2.exists()) return f2;
+                }
+            }
+            if (sanitizedTitle != null && !sanitizedTitle.isBlank()) {
+                File f3 = new File(dir, sanitizedTitle + ".json");
+                if (f3.exists()) return f3;
+            }
+        }
+        return null;
     }
 
     /**

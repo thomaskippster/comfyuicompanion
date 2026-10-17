@@ -48,6 +48,26 @@ public class PromptLabExecutionHandler {
     private final PromptLabAiAssistant aiAssistant;
     private final PromptLabModelInputSanitizer modelInputSanitizer;
     private PromptLabView promptLabView;
+    private Runnable onOpenPathsConfig;
+    private java.util.function.BiConsumer<String, String> onDownloadMissingModels;
+
+    /**
+     * Sets the callback for opening the paths configuration dialog.
+     *
+     * @param onOpenPathsConfig callback to invoke
+     */
+    public void setOnOpenPathsConfig(Runnable onOpenPathsConfig) {
+        this.onOpenPathsConfig = onOpenPathsConfig;
+    }
+
+    /**
+     * Sets the callback for forwarding a workflow with missing models to the Download Manager.
+     *
+     * @param onDownloadMissingModels consumer accepting workflow name and JSON payload
+     */
+    public void setOnDownloadMissingModels(java.util.function.BiConsumer<String, String> onDownloadMissingModels) {
+        this.onDownloadMissingModels = onDownloadMissingModels;
+    }
 
     public PromptLabExecutionHandler(ConfigService configService,
                                      LocalAIService localAIService,
@@ -235,6 +255,17 @@ public class PromptLabExecutionHandler {
                 PromptBlueprintApiService apiService = new PromptBlueprintApiService();
                 apiService.injectLabInputs(promptToQueue, inputs);
                 sanitizeModelInputsInPrompt(promptToQueue, objectInfo);
+
+                List<String> missingModels = modelInputSanitizer.validateRequiredModelsInPrompt(promptToQueue, objectInfo);
+                if (!missingModels.isEmpty()) {
+                    String extraPath = configService.getExtraComfyUIPath();
+                    String wfJson = promptToQueue.toString(2);
+                    SwingUtilities.invokeLater(() -> modelInputSanitizer.handleMissingModels(
+                            parentComponent, missingModels, extraPath, console,
+                            () -> { if (onDownloadMissingModels != null) onDownloadMissingModels.accept("prompt_lab_workflow", wfJson); },
+                            onOpenPathsConfig));
+                    return;
+                }
 
                 JSONObject payload = new JSONObject();
                 payload.put("prompt", promptToQueue);

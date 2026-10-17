@@ -101,6 +101,11 @@ public class Gemma4Service {
                 """, idea, modelStr, width > 0 ? width : 832, height > 0 ? height : 480, count, count);
 
         // Use 0.65f temperature to prevent phrase-repetition loops while maintaining strict JSON adherence
-        return localGemmaService.generateCompletion(systemPrompt, userPrompt, 0.65f, 2048);
+        try {
+            return localGemmaService.generateCompletion(systemPrompt, userPrompt, 0.65f, 2048);
+        } finally {
+            // Immediate VRAM purge: unload local LLM instantly so 100% of GPU VRAM is available for ComfyUI
+            localGemmaService.unloadModelSync();
+        }
     }
 }

@@ -2,9 +2,15 @@ package de.tki.comfyuicompanion.ui.video;
 
 import de.tki.comfyuicompanion.domain.Scene;
 import de.tki.comfyuicompanion.service.IComfyLifecycleService;
+import de.tki.comfyuicompanion.service.IVideoFrameChainingService;
+import de.tki.comfyuicompanion.service.IVideoVisionFeedbackService;
+import de.tki.comfyuicompanion.service.IVideoVramOptimizer;
 import de.tki.comfyuicompanion.service.impl.ComfyPipelineService;
 import de.tki.comfyuicompanion.service.impl.ConfigService;
 import de.tki.comfyuicompanion.service.impl.Video4jEditorService;
+import de.tki.comfyuicompanion.service.impl.VideoFrameChainingService;
+import de.tki.comfyuicompanion.service.impl.VideoVisionFeedbackService;
+import de.tki.comfyuicompanion.service.pipeline.VideoVramOptimizer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -30,23 +36,40 @@ public class VideoBatchRenderCoordinator {
     private final ComfyPipelineService comfyPipelineService;
     private final Video4jEditorService video4jEditorService;
     private final IComfyLifecycleService lifecycleService;
+    private final IVideoFrameChainingService frameChainingService;
+    private final IVideoVramOptimizer vramOptimizer;
+    private final IVideoVisionFeedbackService visionFeedbackService;
 
     /**
-     * Constructs a new VideoBatchRenderCoordinator.
-     *
-     * @param configService        configuration service for output directory lookup
-     * @param comfyPipelineService pipeline service executing ComfyUI scene generations
-     * @param video4jEditorService editor service stitching video clips
-     * @param lifecycleService     lifecycle service monitoring ComfyUI health
+     * Constructs a new VideoBatchRenderCoordinator with default supplementary services.
      */
     public VideoBatchRenderCoordinator(ConfigService configService,
                                        ComfyPipelineService comfyPipelineService,
                                        Video4jEditorService video4jEditorService,
                                        IComfyLifecycleService lifecycleService) {
+        this(configService, comfyPipelineService, video4jEditorService, lifecycleService,
+                new VideoFrameChainingService(configService),
+                new VideoVramOptimizer(configService, null, null),
+                new VideoVisionFeedbackService(configService));
+    }
+
+    /**
+     * Constructs a new VideoBatchRenderCoordinator with explicit supplementary services.
+     */
+    public VideoBatchRenderCoordinator(ConfigService configService,
+                                       ComfyPipelineService comfyPipelineService,
+                                       Video4jEditorService video4jEditorService,
+                                       IComfyLifecycleService lifecycleService,
+                                       IVideoFrameChainingService frameChainingService,
+                                       IVideoVramOptimizer vramOptimizer,
+                                       IVideoVisionFeedbackService visionFeedbackService) {
         this.configService = configService;
         this.comfyPipelineService = comfyPipelineService;
         this.video4jEditorService = video4jEditorService;
         this.lifecycleService = lifecycleService;
+        this.frameChainingService = frameChainingService != null ? frameChainingService : new VideoFrameChainingService(configService);
+        this.vramOptimizer = vramOptimizer != null ? vramOptimizer : new VideoVramOptimizer(configService, null, null);
+        this.visionFeedbackService = visionFeedbackService != null ? visionFeedbackService : new VideoVisionFeedbackService(configService);
     }
 
     /**
@@ -81,7 +104,9 @@ public class VideoBatchRenderCoordinator {
         for (Scene sc : scenes) {
             sc.setWidth(width);
             sc.setHeight(height);
-            sc.setSpeakerImagePath(speakerPath != null && !speakerPath.trim().isEmpty() ? speakerPath.trim() : null);
+            if (speakerPath != null && !speakerPath.trim().isEmpty() && (sc.getSpeakerImagePath() == null || sc.getSpeakerImagePath().trim().isEmpty())) {
+                sc.setSpeakerImagePath(speakerPath.trim());
+            }
         }
 
         buttonsDisabledSetter.accept(true);
@@ -93,10 +118,67 @@ public class VideoBatchRenderCoordinator {
                 consoleLogger.accept("Checking ComfyUI server status...");
                 ensureComfyUiHealthy();
 
+                String serverUrl = configService != null ? configService.getComfyUIUrl() : "http://127.0.0.1:8188";
+                boolean twoPhase = configService != null && configService.isTwoPhaseRenderingEnabled();
+                boolean frameChaining = configService != null && configService.isLastFrameChainingEnabled();
+                File outputDir = new File(configService != null && configService.getResolvedOutputDir() != null && !configService.getResolvedOutputDir().isBlank()
+                        ? configService.getResolvedOutputDir() : "output");
+
+                // ==========================================
+                // PASS 1: Storyboard / Keyframe Phase (if enabled)
+                // ==========================================
+                if (twoPhase) {
+                    consoleLogger.accept("🎨 [Pass 1/2] Storyboard Phase: Generating keyframes for timeline scenes...");
+                    for (int i = 0; i < scenes.size(); i++) {
+                        Scene sc = scenes.get(i);
+                        final int currentIdx = i + 1;
+                        final int totalScenes = scenes.size();
+
+                        if (sc.getSpeakerImagePath() == null || sc.getSpeakerImagePath().trim().isEmpty() || !new File(sc.getSpeakerImagePath()).exists()) {
+                            SwingUtilities.invokeLater(() -> progressBar.setValue((int) (((double) currentIdx / (totalScenes * 2)) * 100)));
+                            consoleLogger.accept("🎨 [Pass 1] Rendering Keyframe " + currentIdx + "/" + totalScenes + ": " + sc.getSceneId());
+
+                            try {
+                                File keyframe = comfyPipelineService.generateKeyframe(sc).join();
+                                if (keyframe != null && keyframe.exists()) {
+                                    sc.setSpeakerImagePath(keyframe.getAbsolutePath());
+                                    String refinedPrompt = visionFeedbackService.refinePromptWithVisualFeedback(sc, keyframe);
+                                    if (refinedPrompt != null && !refinedPrompt.isBlank()) {
+                                        sc.setPrompt(refinedPrompt);
+                                    }
+                                    SwingUtilities.invokeLater(() -> {
+                                        timelineListView.repaint();
+                                        previewUpdater.accept(sc);
+                                    });
+                                }
+                            } catch (Exception kfEx) {
+                                logger.warn("⚠️ [Pass 1] Keyframe generation for scene {} skipped: {}", sc.getSceneId(), kfEx.getMessage());
+                            }
+                        }
+                    }
+
+                    consoleLogger.accept("🧹 [Pass 1 Complete] Purging ComfyUI VRAM prior to video generation...");
+                    if (vramOptimizer != null) {
+                        vramOptimizer.purgeComfyVram(serverUrl);
+                    }
+                }
+
+                // ==========================================
+                // PASS 2: Video Diffusion / Motion Phase
+                // ==========================================
+                consoleLogger.accept(twoPhase ? "🎬 [Pass 2/2] Motion Phase: Rendering video clips..." : "🎬 Rendering video clips...");
                 for (int i = 0; i < scenes.size(); i++) {
                     Scene scene = scenes.get(i);
                     final int currentIdx = i + 1;
                     final int totalScenes = scenes.size();
+
+                    if (frameChaining && i > 0 && frameChainingService != null) {
+                        String chained = frameChainingService.resolveChainedStartImage(scenes, i, speakerPath, outputDir);
+                        if (chained != null && !chained.isBlank() && new File(chained).exists()) {
+                            scene.setSpeakerImagePath(chained);
+                            consoleLogger.accept("🔗 Chained Scene " + currentIdx + " to last frame of Scene " + i);
+                        }
+                    }
 
                     File output = null;
                     int maxRetries = 3;
@@ -104,7 +186,9 @@ public class VideoBatchRenderCoordinator {
 
                     for (int attempt = 1; attempt <= maxRetries; attempt++) {
                         final int att = attempt;
-                        SwingUtilities.invokeLater(() -> progressBar.setValue((int) (((double) currentIdx / totalScenes) * 100)));
+                        int progressBase = twoPhase ? 50 : 0;
+                        int progressScale = twoPhase ? 50 : 100;
+                        SwingUtilities.invokeLater(() -> progressBar.setValue(progressBase + (int) (((double) currentIdx / totalScenes) * progressScale)));
                         consoleLogger.accept("Generating Scene " + currentIdx + "/" + totalScenes + ": " + scene.getSceneId() + (att > 1 ? " (Attempt " + att + ")" : ""));
 
                         try {

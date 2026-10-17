@@ -1,11 +1,13 @@
 package de.tki.comfyuicompanion.ui.video;
 
+import de.tki.comfyuicompanion.service.impl.ConfigService;
+
 import javax.swing.*;
 import java.awt.*;
 
 /**
- * Panel encapsulating controls for video output dimensions (width, height, duration)
- * and sampling generation parameters (steps, CFG scale, motion bucket).
+ * Panel encapsulating controls for video output dimensions (width, height, duration),
+ * sampling generation parameters (steps, CFG scale, motion bucket), and 16 GB VRAM optimizations.
  */
 public class VideoSamplingParamsPanel extends JPanel {
 
@@ -15,11 +17,24 @@ public class VideoSamplingParamsPanel extends JPanel {
     private final JSpinner videoStepsSpinner;
     private final JSpinner videoCfgSpinner;
     private final JSpinner videoMotionSpinner;
+    private final JCheckBox chk16GbOpt;
+    private final JCheckBox chkFrameChaining;
+    private final JCheckBox chkTwoPhase;
+    private final JComboBox<String> cmbLocalLlm;
 
     /**
-     * Constructs a new VideoSamplingParamsPanel and initializes spinners and labels.
+     * Constructs a new VideoSamplingParamsPanel with default configuration.
      */
     public VideoSamplingParamsPanel() {
+        this(null);
+    }
+
+    /**
+     * Constructs a new VideoSamplingParamsPanel bound to the provided configuration service.
+     *
+     * @param configService the configuration service
+     */
+    public VideoSamplingParamsPanel(ConfigService configService) {
         setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
         setOpaque(false);
         setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -64,7 +79,80 @@ public class VideoSamplingParamsPanel extends JPanel {
         samplerRow.add(createSpinnerPanel("CFG Scale", videoCfgSpinner));
         samplerRow.add(createSpinnerPanel("Motion Bucket", videoMotionSpinner));
         add(samplerRow);
+        add(Box.createVerticalStrut(16));
+
+        // 6. 16 GB VRAM & Pipeline Optimization
+        JLabel lblOpt = new JLabel("16 GB VRAM & Pipeline Optimization");
+        lblOpt.putClientProperty("FlatLaf.styleClass", "h4");
+        lblOpt.setAlignmentX(Component.LEFT_ALIGNMENT);
+        add(lblOpt);
+        add(Box.createVerticalStrut(6));
+
+        chk16GbOpt = new JCheckBox("16 GB Optimization (CPU CLIP & Tiled VAE)",
+                configService != null ? configService.is16GbVramOptimizationEnabled() : true);
+        chk16GbOpt.setToolTipText("Forces CLIP text encoders to CPU and applies VAEDecodeTiled to prevent OOM errors on 16 GB GPUs.");
+        chk16GbOpt.setFont(new Font("SansSerif", Font.PLAIN, 12));
+        chk16GbOpt.setAlignmentX(Component.LEFT_ALIGNMENT);
+        chk16GbOpt.addActionListener(e -> {
+            if (configService != null) {
+                configService.set16GbVramOptimizationEnabled(chk16GbOpt.isSelected());
+            }
+        });
+        add(chk16GbOpt);
+        add(Box.createVerticalStrut(4));
+
+        chkFrameChaining = new JCheckBox("Continuous Shot (Last-Frame Chaining)",
+                configService != null ? configService.isLastFrameChainingEnabled() : true);
+        chkFrameChaining.setToolTipText("Feeds the final frame of the previous scene as the starting keyframe for the next scene.");
+        chkFrameChaining.setFont(new Font("SansSerif", Font.PLAIN, 12));
+        chkFrameChaining.setAlignmentX(Component.LEFT_ALIGNMENT);
+        chkFrameChaining.addActionListener(e -> {
+            if (configService != null) {
+                configService.setLastFrameChainingEnabled(chkFrameChaining.isSelected());
+            }
+        });
+        add(chkFrameChaining);
+        add(Box.createVerticalStrut(4));
+
+        chkTwoPhase = new JCheckBox("Two-Phase Render (Storyboard Keyframe -> I2V)",
+                configService != null ? configService.isTwoPhaseRenderingEnabled() : false);
+        chkTwoPhase.setToolTipText("Renders starting keyframes first, purges VRAM, and then triggers video diffusion with visual feedback.");
+        chkTwoPhase.setFont(new Font("SansSerif", Font.PLAIN, 12));
+        chkTwoPhase.setAlignmentX(Component.LEFT_ALIGNMENT);
+        chkTwoPhase.addActionListener(e -> {
+            if (configService != null) {
+                configService.setTwoPhaseRenderingEnabled(chkTwoPhase.isSelected());
+            }
+        });
+        add(chkTwoPhase);
+        add(Box.createVerticalStrut(6));
+
+        JPanel llmRow = new JPanel(new BorderLayout(6, 0));
+        llmRow.setOpaque(false);
+        llmRow.setAlignmentX(Component.LEFT_ALIGNMENT);
+        llmRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 30));
+        JLabel lblLlm = new JLabel("Script LLM:");
+        lblLlm.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        cmbLocalLlm = new JComboBox<>(new String[]{"gemma-3-4b", "qwen-2.5-7b"});
+        cmbLocalLlm.setFont(new Font("SansSerif", Font.PLAIN, 12));
+        if (configService != null && configService.getLocalLlmModel() != null) {
+            String curr = configService.getLocalLlmModel();
+            if (curr.contains("qwen")) {
+                cmbLocalLlm.setSelectedItem("qwen-2.5-7b");
+            } else {
+                cmbLocalLlm.setSelectedItem("gemma-3-4b");
+            }
+        }
+        cmbLocalLlm.addActionListener(e -> {
+            if (configService != null) {
+                configService.setLocalLlmModel((String) cmbLocalLlm.getSelectedItem());
+            }
+        });
+        llmRow.add(lblLlm, BorderLayout.WEST);
+        llmRow.add(cmbLocalLlm, BorderLayout.CENTER);
+        add(llmRow);
     }
+
 
     private JPanel createSpinnerPanel(String label, JSpinner spinner) {
         JPanel panel = new JPanel(new BorderLayout(0, 2));

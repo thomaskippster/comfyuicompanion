@@ -254,6 +254,17 @@ public class ComfyPipelineService {
     }
 
     /**
+     * Generates a high-resolution keyframe image for the given scene (Pass 1 of two-phase rendering).
+     *
+     * @param scene the scene domain model
+     * @return CompletableFuture resolving to the generated keyframe image file
+     */
+    public CompletableFuture<File> generateKeyframe(Scene scene) {
+        return scenePipelineRunner.executeKeyframe(scene);
+    }
+
+
+    /**
      * Generates a montage scene using existing source clips where applicable.
      *
      * @param scene the scene

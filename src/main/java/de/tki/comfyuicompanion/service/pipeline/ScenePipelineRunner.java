@@ -437,4 +437,48 @@ public class ScenePipelineRunner {
     public void injectParamsIntoBlueprint(JSONObject workflowJson, long seed, String filenamePrefix, Scene scene) {
         blueprintInjector.injectParamsIntoBlueprint(workflowJson, seed, filenamePrefix, scene);
     }
+
+    /**
+     * Executes single-frame keyframe image generation for a scene.
+     *
+     * @param scene the scene domain model
+     * @return CompletableFuture resolving to the generated keyframe image file
+     */
+    public CompletableFuture<File> executeKeyframe(Scene scene) {
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                String serverUrl = configService.getComfyUIUrl();
+                long seed = Math.abs(new Random().nextLong());
+                String filenamePrefix = "keyframe_" + scene.getSceneId();
+                String speakerImage = uploadSpeakerImageIfPresent(serverUrl, scene);
+
+                List<String> unets = inspectionClient.fetchObjectInfoOptions(serverUrl, "UNETLoader", "unet_name");
+                List<String> ckpts = inspectionClient.fetchAvailableCheckpoints(serverUrl);
+                List<String> clips = inspectionClient.fetchObjectInfoOptions(serverUrl, "CLIPLoader", "clip_name");
+                List<String> vaes = inspectionClient.fetchObjectInfoOptions(serverUrl, "VAELoader", "vae_name");
+
+                JSONObject workflowJson = workflowBuilder.generateSceneImageWorkflow(
+                        serverUrl, scene, speakerImage, seed, filenamePrefix, unets, ckpts, clips, vaes);
+                workflowBuilder.sanitizeWorkflow(workflowJson, serverUrl);
+
+                String promptId = jobPollingService.submitPrompt(serverUrl, workflowJson);
+                logger.info("🎨 [ScenePipelineRunner] Submitted keyframe job for scene {}. Prompt ID: {}", scene.getSceneId(), promptId);
+                ComfyJobPollingService.ComfyOutputRef outputRef = jobPollingService.pollHistoryForOutput(serverUrl, promptId);
+
+                String comfyOutputPath = configService.getResolvedOutputDir();
+                if (comfyOutputPath == null || comfyOutputPath.trim().isEmpty()) {
+                    comfyOutputPath = new File("output").getAbsolutePath();
+                }
+                File imageFile = jobPollingService.resolveOutputFile(comfyOutputPath, outputRef, scene.getSceneId());
+                if (imageFile == null && outputRef != null && outputRef.filename() != null && !outputRef.filename().trim().isEmpty()) {
+                    imageFile = jobPollingService.downloadOutput(serverUrl, outputRef, scene.getSceneId());
+                }
+                return imageFile;
+            } catch (Exception e) {
+                logger.error("🔴 [ScenePipelineRunner] Failed generating keyframe for scene {}: {}", scene.getSceneId(), e.getMessage());
+                throw new RuntimeException("Keyframe generation failed: " + e.getMessage(), e);
+            }
+        });
+    }
 }
+

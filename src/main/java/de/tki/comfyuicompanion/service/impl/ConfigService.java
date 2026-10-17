@@ -413,13 +413,9 @@ public class ConfigService implements IConfigService {
         String defaultPath = PlatformUtils.isWindows() ? "./tools/tts/piper.exe" : "./tools/tts/piper";
         String configuredPath = settings.optString("piper_path", defaultPath);
         File binFile = new File(configuredPath);
-        if (binFile.exists()) {
-            return configuredPath;
-        }
+        if (binFile.exists()) return configuredPath;
         File fallbackBin = new File(System.getProperty("user.dir"), configuredPath);
-        if (fallbackBin.exists()) {
-            return fallbackBin.getAbsolutePath();
-        }
+        if (fallbackBin.exists()) return fallbackBin.getAbsolutePath();
         String found = ExecutableLocator.findExecutablePath("piper", configuredPath, getPythonPath());
         return found != null ? found : configuredPath;
     }
@@ -436,28 +432,29 @@ public class ConfigService implements IConfigService {
     public synchronized String getTtsProvider() { return settings.optString("tts_provider", "ComfyUI Qwen-TTS"); }
     public synchronized void setTtsProvider(String provider) { settings.put("tts_provider", provider); save(); }
 
-    public synchronized String getQwenTtsModelRepo() {
-        return settings.optString("qwen_tts_model_repo", "Qwen/Qwen2-Audio-7B-Instruct");
-    }
+    public synchronized String getQwenTtsModelRepo() { return settings.optString("qwen_tts_model_repo", "Qwen/Qwen2-Audio-7B-Instruct"); }
     public synchronized void setQwenTtsModelRepo(String repo) { settings.put("qwen_tts_model_repo", repo); save(); }
 
-    public synchronized String getQwenTtsModelPath() {
-        return settings.optString("qwen_tts_model_path", System.getProperty("user.home") + "/.cache/huggingface/hub");
-    }
+    public synchronized String getQwenTtsModelPath() { return settings.optString("qwen_tts_model_path", System.getProperty("user.home") + "/.cache/huggingface/hub"); }
     public synchronized void setQwenTtsModelPath(String path) { settings.put("qwen_tts_model_path", path); save(); }
 
-    public synchronized boolean isQwenTtsModelAuto() {
-        return settings.optBoolean("qwen_tts_model_auto", true);
-    }
-    public synchronized void setQwenTtsModelAuto(boolean auto) {
-        settings.put("qwen_tts_model_auto", auto);
-        save();
-    }
+    public synchronized boolean isQwenTtsModelAuto() { return settings.optBoolean("qwen_tts_model_auto", true); }
+    public synchronized void setQwenTtsModelAuto(boolean auto) { settings.put("qwen_tts_model_auto", auto); save(); }
 
-    public synchronized String getQwenTtsVoice() {
-        return settings.optString("qwen_tts_voice", "Chelsie");
-    }
+    public synchronized String getQwenTtsVoice() { return settings.optString("qwen_tts_voice", "Chelsie"); }
     public synchronized void setQwenTtsVoice(String voice) { settings.put("qwen_tts_voice", voice); save(); }
+
+    public synchronized boolean is16GbVramOptimizationEnabled() { return settings.optBoolean("video_16gb_vram_opt", true); }
+    public synchronized void set16GbVramOptimizationEnabled(boolean enabled) { settings.put("video_16gb_vram_opt", enabled); save(); }
+
+    public synchronized boolean isLastFrameChainingEnabled() { return settings.optBoolean("video_last_frame_chaining", true); }
+    public synchronized void setLastFrameChainingEnabled(boolean enabled) { settings.put("video_last_frame_chaining", enabled); save(); }
+
+    public synchronized boolean isTwoPhaseRenderingEnabled() { return settings.optBoolean("video_two_phase_rendering", false); }
+    public synchronized void setTwoPhaseRenderingEnabled(boolean enabled) { settings.put("video_two_phase_rendering", enabled); save(); }
+
+    public synchronized String getLocalLlmModel() { return settings.optString("local_llm_model", "gemma-3-4b"); }
+    public synchronized void setLocalLlmModel(String model) { settings.put("local_llm_model", model); save(); }
 
     public synchronized String getElevenLabsApiKey() { return ""; }
     public synchronized void setElevenLabsApiKey(String apiKey) { settings.remove("elevenlabs_api_key"); save(); }

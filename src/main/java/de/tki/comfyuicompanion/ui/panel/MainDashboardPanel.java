@@ -69,7 +69,13 @@ public class MainDashboardPanel {
         panel.add(profilePanel = new LaunchProfilePanel(parentFrame, configService, profileManager,
                 this::updateSelectedProfileInfo), BorderLayout.WEST);
         panel.add(createCenterPanel(), BorderLayout.CENTER);
-        panel.add(createEastPanel(), BorderLayout.EAST);
+        JScrollPane eastScroll = new JScrollPane(createEastPanel(),
+                ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED,
+                ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
+        eastScroll.setBorder(null);
+        eastScroll.setOpaque(false);
+        eastScroll.getViewport().setOpaque(false);
+        panel.add(eastScroll, BorderLayout.EAST);
         profilePanel.refreshProfiles();
         updateSelectedProfileInfo(profilePanel.getSelectedProfile());
         statusTimer = new Timer(1000, e -> updateStatusUI());
@@ -167,17 +173,17 @@ public class MainDashboardPanel {
         east.add(monitorPanel, eastGbc);
 
         eastGbc.gridy++;
-        eastGbc.insets = new Insets(15, 5, 15, 5);
+        eastGbc.insets = new Insets(8, 5, 8, 5);
         east.add(new JSeparator(), eastGbc);
 
         eastGbc.gridy++;
-        eastGbc.insets = new Insets(5, 5, 15, 5);
+        eastGbc.insets = new Insets(2, 5, 4, 5);
         JLabel actionsHeader = new JLabel("Quick Actions");
         actionsHeader.putClientProperty("FlatLaf.styleClass", "h3");
         east.add(actionsHeader, eastGbc);
 
         eastGbc.gridy++;
-        eastGbc.insets = new Insets(6, 5, 6, 5);
+        eastGbc.insets = new Insets(3, 5, 3, 5);
         east.add(createQuickActionBtn("Update ComfyUI & Nodes", AppIcon.DOWNLOAD, () -> new AutoUpdaterDialog(parentFrame, updaterService).setVisible(true)), eastGbc);
 
         eastGbc.gridy++;
@@ -185,6 +191,14 @@ public class MainDashboardPanel {
 
         eastGbc.gridy++;
         east.add(createQuickActionBtn("Storage Optimizer", AppIcon.STORAGE_OPTIMIZER, () -> new DeduplicationDialog(parentFrame, configService, modelValidator, hashRegistry).setVisible(true)), eastGbc);
+
+        eastGbc.gridy++;
+        eastGbc.insets = new Insets(8, 5, 8, 5);
+        east.add(new JSeparator(), eastGbc);
+
+        eastGbc.gridy++;
+        eastGbc.insets = new Insets(0, 0, 0, 0);
+        east.add(new DashboardLegalNoticePanel(parentFrame, configService), eastGbc);
 
         eastGbc.gridy++;
         eastGbc.weighty = 1.0;

@@ -61,7 +61,7 @@ public class ResourceGapAnalyzer {
         MissingResourceReport report = analyze(intent);
 
         if (!report.isMissing()) {
-            logger.info("Auto-Provisioning: Alle Ressourcen vorhanden. Führe Graph direkt aus.");
+            logger.info("Auto-Provisioning: All resources available. Executing graph directly.");
             return comfyHttpClient.triggerWorkflow(workflow, clientId);
         }
 

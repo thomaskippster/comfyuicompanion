@@ -1,11 +1,11 @@
 package de.tki.comfyuicompanion.domain;
 
 /**
- * Typisierte Leistungsstufen für Hardware-Ressourcen (VRAM/GPU) zur
- * Bestimmung optimaler Video-Diffusions-Parameter.
+ * Typed performance tiers for hardware resources (VRAM/GPU) to determine
+ * optimal video diffusion parameters.
  */
 public enum HardwareTier {
-    CPU_ONLY("CPU / Keine GPU", 512, 288, 15, "cpu_mode", 512L * 288L),
+    CPU_ONLY("CPU / No dedicated GPU", 512, 288, 15, "cpu_mode", 512L * 288L),
     BUDGET("Budget GPU (< 12 GB VRAM)", 640, 360, 20, "background_mode", 768L * 512L),
     MID_TIER("Mid-Range GPU (12 - 20 GB VRAM)", 832, 480, 20, "default", 960L * 544L),
     HIGH_END("High-End GPU (≥ 20 GB VRAM)", 1280, 720, 25, "beast_mode", 1920L * 1080L);

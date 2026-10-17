@@ -25,12 +25,14 @@ public class CivitaiHeaderToolbar extends JPanel {
     private final JComboBox<String> sortCombo = new JComboBox<>(new String[]{
             "Highest Rated", "Most Downloaded", "Newest"
     });
-    private final JCheckBox nsfwCheck = new JCheckBox("Allow NSFW", false);
+    private final JButton legalBtn = new JButton("⚖️ Legal & Licenses");
+    private final JButton incompleteDownloadsBtn = new JButton("Incomplete Downloads", SvgIconFactory.get(AppIcon.STORAGE_OPTIMIZER, 14));
     private final JButton refreshBtn = new JButton("Refresh", SvgIconFactory.get(AppIcon.REFRESH, 16));
     private final JLabel statusLabel = new JLabel(" ");
 
     private final Timer searchDebounceTimer;
     private Runnable filterChangedListener;
+    private Runnable incompleteDownloadsListener;
 
     /**
      * Constructs a new CivitaiHeaderToolbar and initializes its visual components and listeners.
@@ -103,16 +105,28 @@ public class CivitaiHeaderToolbar extends JPanel {
         gbc.gridx = 3;
         controlsRow.add(sortCombo, gbc);
 
-        // NSFW
-        nsfwCheck.setToolTipText("Include mature/NSFW models in search results");
-        nsfwCheck.addActionListener(e -> triggerFilterChange());
+        // Legal notice & compliance button
+        legalBtn.setToolTipText("View legal notices, user liability disclaimer, youth protection filter, and CivitAI licenses");
+        legalBtn.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        legalBtn.addActionListener(e -> de.tki.comfyuicompanion.ui.dialog.LegalNoticeDialog.show(this));
         gbc.gridx = 4;
-        controlsRow.add(nsfwCheck, gbc);
+        controlsRow.add(legalBtn, gbc);
+
+        // Incomplete Downloads & Cleanup Button
+        incompleteDownloadsBtn.setToolTipText("Inspect, resume, or clean up incomplete model downloads (.cmfd, .part, .tmp) to reclaim disk space");
+        incompleteDownloadsBtn.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        incompleteDownloadsBtn.addActionListener(e -> {
+            if (incompleteDownloadsListener != null) {
+                incompleteDownloadsListener.run();
+            }
+        });
+        gbc.gridx = 5;
+        controlsRow.add(incompleteDownloadsBtn, gbc);
 
         // Refresh Button
         refreshBtn.setPreferredSize(new Dimension(100, 32));
         refreshBtn.addActionListener(e -> triggerFilterChange());
-        gbc.gridx = 5;
+        gbc.gridx = 6;
         gbc.insets = new Insets(0, 0, 0, 0);
         controlsRow.add(refreshBtn, gbc);
 
@@ -123,6 +137,15 @@ public class CivitaiHeaderToolbar extends JPanel {
         if (filterChangedListener != null) {
             filterChangedListener.run();
         }
+    }
+
+    /**
+     * Sets the callback triggered when the incomplete downloads button is clicked.
+     *
+     * @param listener the runnable callback
+     */
+    public void setOnIncompleteDownloadsClicked(Runnable listener) {
+        this.incompleteDownloadsListener = listener;
     }
 
     /**
@@ -172,11 +195,12 @@ public class CivitaiHeaderToolbar extends JPanel {
 
     /**
      * Retrieves whether NSFW content is permitted.
+     * Always returns false as adult/NSFW content is prohibited app-wide.
      *
-     * @return true if NSFW is checked
+     * @return false (NSFW is permanently disabled)
      */
     public boolean isAllowNsfw() {
-        return nsfwCheck.isSelected();
+        return false;
     }
 
     /**

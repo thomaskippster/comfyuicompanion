@@ -34,7 +34,6 @@ import java.nio.file.Paths;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Main application window and coordinator for Companion for ComfyUI.
@@ -70,18 +69,14 @@ public class Main extends JFrame {
     private IModelArchitectureService modelArchitectureService;
     private HardwareMonitorService hardwareMonitorService;
     private UpdaterService updaterService;
-    private VideoArchitectTab videoArchitectTab;
-    private BlueprintGalleryTab blueprintGalleryTab;
-    private CivitaiGalleryTab civitaiGalleryTab;
+    private VideoArchitectTab videoArchitectTab; private BlueprintGalleryTab blueprintGalleryTab; private CivitaiGalleryTab civitaiGalleryTab;
     private DependencyService dependencyService;
     private BackgroundExecutor backgroundExecutor;
     private ProcessTracker processTracker;
     private PromptBlueprintApiService promptBlueprintApiService;
     private ComfyApiClient comfyApiClient;
-    private PromptLabView promptLabView;
-    private PromptLabController promptLabController;
-    private DownloadManagerView downloadManagerView;
-    private DownloadManagerController downloadManagerController;
+    private PromptLabView promptLabView; private PromptLabController promptLabController;
+    private DownloadManagerView downloadManagerView; private DownloadManagerController downloadManagerController;
     private IWorkflowDownloader workflowDownloader;
     private AppLifecycleManager appLifecycleManager;
     private IDefaultCacheBootstrapper defaultCacheBootstrapper;
@@ -91,6 +86,7 @@ public class Main extends JFrame {
     private MainWindowLifecycleHandler lifecycleHandler;
     private ComfyBridgeManager comfyBridgeManager;
     private MainDialogCoordinator dialogCoordinator;
+    private ComfyExecutionCoordinator executionCoordinator;
 
     private Image appIcon;
     private String currentFileName = "input.json";
@@ -98,9 +94,7 @@ public class Main extends JFrame {
     // Legacy test/reflection access fields
     JLabel statusLabel;
     JTextArea jsonInputArea;
-    JButton downloadButton;
-    JButton pauseButton;
-    JButton stopButton;
+    JButton downloadButton, pauseButton, stopButton;
     DefaultTableModel tableModel;
     JLabel activeAiModelLabel;
     boolean isDownloading;
@@ -203,21 +197,29 @@ public class Main extends JFrame {
         this.downloadManagerView = downloadManagerView;
         this.downloadManagerController = downloadManagerController;
         this.workflowDownloader = workflowDownloader;
-        this.appLifecycleManager = appLifecycleManager;
+        this.appLifecycleManager = appLifecycleManager != null ? appLifecycleManager :
+                new AppLifecycleManager(configService, modelListService, processController, downloadManager, hardwareMonitorService, processTracker, defaultCacheBootstrapper);
         this.defaultCacheBootstrapper = defaultCacheBootstrapper;
         this.comfyInstallationScanner = comfyInstallationScanner != null ? comfyInstallationScanner : 
             new ComfyInstallationScanner(configService, bootstrapper, profileManager);
 
         if (this.lifecycleService != null) {
-            this.lifecycleService.setOnBrowserLaunched(() -> {
-                SwingUtilities.invokeLater(() -> {
-                    refreshPromptLabModels();
-                    if (blueprintGalleryTab != null) {
-                        blueprintGalleryTab.refreshAllData();
-                    }
-                });
-            });
+            this.lifecycleService.setOnBrowserLaunched(() -> SwingUtilities.invokeLater(() -> {
+                refreshPromptLabModels();
+                if (blueprintGalleryTab != null) {
+                    blueprintGalleryTab.refreshAllData();
+                }
+            }));
         }
+    }
+
+    private ComfyExecutionCoordinator getExecutionCoordinator() {
+        if (executionCoordinator == null) {
+            executionCoordinator = new ComfyExecutionCoordinator(this, processController, profileManager,
+                    configService, backgroundExecutor, updaterService, bootstrapper, promptLabController,
+                    () -> this.uiComponents);
+        }
+        return executionCoordinator;
     }
 
     public void launch(String[] args) {
@@ -227,7 +229,7 @@ public class Main extends JFrame {
         try {
             Files.createDirectories(appData);
         } catch (Exception ex) {
-            logger.error("FATAL: Cannot create application data directory: " + appData + " - " + ex.getMessage());
+            logger.error("FATAL: Cannot create application data directory: {} - {}", appData, ex.getMessage());
             JOptionPane.showMessageDialog(null, "Cannot create application data directory:\n" + appData + "\n\n" + ex.getMessage(), "Startup Error", JOptionPane.ERROR_MESSAGE);
         }
         profileManager.init(appData);
@@ -238,16 +240,14 @@ public class Main extends JFrame {
             System.setProperty("apple.awt.application.appearance", "system");
         }
 
-        restBridge.setWorkflowConsumer(workflowJson -> {
-            SwingUtilities.invokeLater(() -> {
-                logger.info("[Main] WorkflowConsumer triggered - bringing to front.");
-                loadWorkflowExternal("remote_workflow", workflowJson);
-                setVisible(true);
-                setExtendedState(JFrame.NORMAL);
-                toFront();
-                requestFocus();
-            });
-        });
+        restBridge.setWorkflowConsumer(workflowJson -> SwingUtilities.invokeLater(() -> {
+            logger.info("[Main] WorkflowConsumer triggered - bringing to front.");
+            loadWorkflowExternal("remote_workflow", workflowJson);
+            setVisible(true);
+            setExtendedState(JFrame.NORMAL);
+            toFront();
+            requestFocus();
+        }));
 
         if (configService != null && configService.isUnlocked()) restBridge.setApiToken(configService.getApiToken());
         restBridge.startServer();
@@ -256,7 +256,7 @@ public class Main extends JFrame {
             processController, appLifecycleManager, appContext, null);
         lifecycleHandler.registerShutdownHooks();
 
-        boolean unlocked = appLifecycleManager != null ? appLifecycleManager.unlockDefaultVault() : promptForPassword();
+        boolean unlocked = appLifecycleManager.unlockDefaultVault();
         if (!unlocked) System.exit(0);
 
         setupTheme(configService != null && configService.isDarkMode());
@@ -294,9 +294,6 @@ public class Main extends JFrame {
         });
     }
 
-    /**
-     * Initializes the user interface components using MainWindowBuilder.
-     */
     private void initUI() {
         loadIcon();
         uiComponents = new MainWindowBuilder.MainWindowComponents();
@@ -338,7 +335,7 @@ public class Main extends JFrame {
                 FlatLaf.updateUI();
                 SwingUtilities.updateComponentTreeUI(this);
             } catch (Exception e) {
-                logger.error("Theme setup failed: " + e.getMessage());
+                logger.error("Theme setup failed: {}", e.getMessage());
             }
         }
     }
@@ -350,62 +347,12 @@ public class Main extends JFrame {
                 setIconImage(appIcon);
             }
         } catch (IOException e) {
-            logger.error("Could not load app icon: " + e.getMessage());
+            logger.error("Could not load app icon: {}", e.getMessage());
         }
-    }
-
-    private boolean promptForPassword() {
-        if (configService == null) return false;
-        setupTheme(configService.isDarkMode());
-        String defaultPass = System.getProperty("user.name", "default") + "@" + getHostName();
-        try {
-            configService.unlock(defaultPass);
-            if (configService.isVaultFresh() && modelListService != null) {
-                modelListService.importFromUrl("https://raw.githubusercontent.com/Comfy-Org/ComfyUI-Manager/main/model-list.json");
-            }
-            return true;
-        } catch (Exception e) {
-            try {
-                configService.resetVault();
-                configService.unlock(defaultPass);
-                return true;
-            } catch (Exception ex) {
-                return false;
-            }
-        }
-    }
-
-    private String getHostName() {
-        try { return java.net.InetAddress.getLocalHost().getHostName(); }
-        catch (Exception e) { return "localhost"; }
     }
 
     public void updateTabVisibility() {
-        if (uiComponents == null || uiComponents.mainTabs == null || configService == null) return;
-        java.awt.Component selectedComp = uiComponents.mainTabs.getSelectedComponent();
-        uiComponents.mainTabs.removeAll();
-
-        if (uiComponents.dashboardPanel != null)
-            uiComponents.mainTabs.addTab("Dashboard", de.tki.comfyuicompanion.ui.icons.SvgIconFactory.get(de.tki.comfyuicompanion.ui.icons.AppIcon.DASHBOARD, 16), uiComponents.dashboardPanel);
-        if (uiComponents.downloadManagerPanel != null)
-            uiComponents.mainTabs.addTab("Download Manager", de.tki.comfyuicompanion.ui.icons.SvgIconFactory.get(de.tki.comfyuicompanion.ui.icons.AppIcon.DOWNLOAD_MANAGER, 16), uiComponents.downloadManagerPanel);
-        if (uiComponents.galleryPanel != null)
-            uiComponents.mainTabs.addTab("Gallery", de.tki.comfyuicompanion.ui.icons.SvgIconFactory.get(de.tki.comfyuicompanion.ui.icons.AppIcon.GALLERY, 16), uiComponents.galleryPanel);
-        if (configService.isBlueprintGalleryEnabled() && uiComponents.blueprintGalleryWrapper != null)
-            uiComponents.mainTabs.addTab("Blueprint Gallery", de.tki.comfyuicompanion.ui.icons.SvgIconFactory.get(de.tki.comfyuicompanion.ui.icons.AppIcon.BLUEPRINT_GALLERY, 16), uiComponents.blueprintGalleryWrapper);
-        if (configService.isCivitaiGalleryEnabled() && uiComponents.civitaiHubWrapper != null)
-            uiComponents.mainTabs.addTab("Model Hub", de.tki.comfyuicompanion.ui.icons.SvgIconFactory.get(de.tki.comfyuicompanion.ui.icons.AppIcon.MODEL_HUB, 16), uiComponents.civitaiHubWrapper);
-        if (configService.isPromptLabEnabled() && uiComponents.promptLabPanel != null)
-            uiComponents.mainTabs.addTab("Image Lab", de.tki.comfyuicompanion.ui.icons.SvgIconFactory.get(de.tki.comfyuicompanion.ui.icons.AppIcon.IMAGE_LAB, 16), uiComponents.promptLabPanel);
-        if (configService.isVideoArchitectEnabled() && uiComponents.videoArchitectWrapper != null)
-            uiComponents.mainTabs.addTab("Video Architect (Beta)", de.tki.comfyuicompanion.ui.icons.SvgIconFactory.get(de.tki.comfyuicompanion.ui.icons.AppIcon.VIDEO_ARCHITECT, 16), uiComponents.videoArchitectWrapper);
-        if (uiComponents.settingsPanel != null)
-            uiComponents.mainTabs.addTab("Settings", de.tki.comfyuicompanion.ui.icons.SvgIconFactory.get(de.tki.comfyuicompanion.ui.icons.AppIcon.SETTINGS, 16), uiComponents.settingsPanel);
-
-        if (selectedComp != null) {
-            int index = uiComponents.mainTabs.indexOfComponent(selectedComp);
-            uiComponents.mainTabs.setSelectedIndex(index != -1 ? index : 0);
-        }
+        MainWindowTabManager.updateTabVisibility(uiComponents, configService);
     }
 
     public void updateAiModelDisplay() {
@@ -419,8 +366,8 @@ public class Main extends JFrame {
                             : "Download local Gemma model to unlock suggestions.");
                 }
                 String activeText = hasGemma ? "Active AI: Local Gemma" : "Active AI: None / Cloud";
-                if (uiComponents != null) {
-                    if (uiComponents.activeAiModelLabel != null) uiComponents.activeAiModelLabel.setText(activeText);
+                if (uiComponents != null && uiComponents.activeAiModelLabel != null) {
+                    uiComponents.activeAiModelLabel.setText(activeText);
                 }
                 if (downloadManagerView != null && downloadManagerView.getActiveAiModelLabel() != null) {
                     downloadManagerView.getActiveAiModelLabel().setText(activeText);
@@ -430,98 +377,19 @@ public class Main extends JFrame {
     }
 
     public void startComfyUI(LaunchProfile selected, boolean clearConsole, boolean openBrowser) {
-        if (selected == null) return;
-        if (clearConsole && uiComponents != null && uiComponents.dashboardPanelCoordinator != null && uiComponents.dashboardPanelCoordinator.getComfyConsoleArea() != null) {
-            uiComponents.dashboardPanelCoordinator.getComfyConsoleArea().setText("");
-        }
-        AtomicBoolean cudaError = new AtomicBoolean(false);
-        processController.start(selected, Paths.get(configService.getComfyUIPath()), configService.getPythonPath(), log -> {
-            if (log.contains("Torch not compiled with CUDA enabled") || log.contains("AssertionError: Torch not compiled with CUDA enabled")) {
-                if (!cudaError.getAndSet(true)) {
-                    SwingUtilities.invokeLater(() -> {
-                        int choice = JOptionPane.showConfirmDialog(this,
-                                "ComfyUI / PyTorch reported a CUDA error:\n'Torch not compiled with CUDA enabled'\n\nWould you like to automatically reinstall PyTorch with CUDA support now?",
-                                "CUDA PyTorch Error Detected", JOptionPane.YES_NO_OPTION, JOptionPane.ERROR_MESSAGE);
-                        if (choice == JOptionPane.YES_OPTION) triggerEnvironmentRepair();
-                        else if (choice == JOptionPane.NO_OPTION) switchToCpuModeProfile();
-                    });
-                }
-            }
-            if (log.contains("To see the GUI go to:")) {
-                refreshPromptLabModels();
-                int idx = log.indexOf("http://");
-                if (idx == -1) idx = log.indexOf("https://");
-                if (idx != -1) {
-                    String url = log.substring(idx).trim();
-                    backgroundExecutor.execute(() -> {
-                        try {
-                            boolean shouldOpen = openBrowser && (configService == null || !configService.isHideComfyUI());
-                            if (Desktop.isDesktopSupported() && shouldOpen) {
-                                Desktop.getDesktop().browse(new java.net.URI(url));
-                            }
-                        } catch (Exception e) {}
-                    });
-                }
-            }
-            appendToConsole(log);
-        }).thenAccept(exitCode -> {
-            if (exitCode != 0 && cudaError.get()) {
-                SwingUtilities.invokeLater(() -> {
-                    int choice = JOptionPane.showConfirmDialog(this,
-                            "ComfyUI failed to start because CUDA is not enabled/supported on this PyTorch installation.\nWould you like to switch to 'CPU Mode' profile and start ComfyUI on your CPU?",
-                            "CUDA Error Detected", JOptionPane.YES_NO_OPTION, JOptionPane.ERROR_MESSAGE);
-                    if (choice == JOptionPane.YES_OPTION) switchToCpuModeProfile();
-                });
-            }
-        });
-    }
-
-    private void switchToCpuModeProfile() {
-        List<LaunchProfile> profiles = profileManager.loadProfiles();
-        LaunchProfile cpuProfile = profiles.stream().filter(p -> p.id().equals("cpu_mode")).findFirst().orElse(null);
-        if (cpuProfile != null) {
-            if (uiComponents != null && uiComponents.dashboardPanelCoordinator != null && uiComponents.dashboardPanelCoordinator.getProfileList() != null) {
-                uiComponents.dashboardPanelCoordinator.getProfileList().setSelectedValue(cpuProfile, true);
-            }
-            startComfyUI(cpuProfile, true, configService == null || !configService.isHideComfyUI());
-        }
+        getExecutionCoordinator().startComfyUI(selected, clearConsole, openBrowser);
     }
 
     public void performFullServiceRestart() {
-        backgroundExecutor.execute(() -> {
-            processController.stop();
-            try { Thread.sleep(1500); } catch (InterruptedException ignored) {}
-            SwingUtilities.invokeLater(() -> {
-                if (uiComponents != null && uiComponents.mainTabs != null) uiComponents.mainTabs.setSelectedIndex(0);
-                LaunchProfile activeProfile = null;
-                if (uiComponents != null && uiComponents.dashboardPanelCoordinator != null && uiComponents.dashboardPanelCoordinator.getProfileList() != null) {
-                    activeProfile = uiComponents.dashboardPanelCoordinator.getProfileList().getSelectedValue();
-                }
-                if (activeProfile == null && configService != null) {
-                    String activeId = configService.getActiveProfile();
-                    List<LaunchProfile> profiles = profileManager.loadProfiles();
-                    activeProfile = profiles.stream().filter(p -> p.id().equals(activeId)).findFirst().orElse(null);
-                    if (activeProfile == null && !profiles.isEmpty()) activeProfile = profiles.get(0);
-                }
-                if (activeProfile != null) {
-                    if (uiComponents != null && uiComponents.dashboardPanelCoordinator != null) {
-                        if (uiComponents.dashboardPanelCoordinator.getProfileList() != null) uiComponents.dashboardPanelCoordinator.getProfileList().setSelectedValue(activeProfile, true);
-                        if (uiComponents.dashboardPanelCoordinator.getComfyConsoleArea() != null) uiComponents.dashboardPanelCoordinator.getComfyConsoleArea().append("\n🔄 Restarting ComfyUI...\n");
-                    }
-                    startComfyUI(activeProfile, false, configService == null || !configService.isHideComfyUI());
-                }
-            });
-        });
+        getExecutionCoordinator().performFullServiceRestart();
     }
 
-    private void appendToConsole(String log) {
-        SwingUtilities.invokeLater(() -> {
-            if (uiComponents != null && uiComponents.dashboardPanelCoordinator != null && uiComponents.dashboardPanelCoordinator.getComfyConsoleArea() != null) {
-                JTextArea area = uiComponents.dashboardPanelCoordinator.getComfyConsoleArea();
-                area.append(log.endsWith("\n") ? log : log + "\n");
-                area.setCaretPosition(area.getDocument().getLength());
-            }
-        });
+    public void triggerEnvironmentRepair() {
+        getExecutionCoordinator().triggerEnvironmentRepair();
+    }
+
+    public void triggerWslDependencyFix() {
+        getExecutionCoordinator().triggerWslDependencyFix();
     }
 
     public boolean scanAndVerifyComfyUIInstallation(boolean showDialogIfFound) {
@@ -545,35 +413,51 @@ public class Main extends JFrame {
         return dialogCoordinator;
     }
 
-    private void showInstallationDialog() { getDialogCoordinator().showInstallationDialog(this::syncBridgeFiles, dlg -> {
-        if (comfyBridgeManager == null) comfyBridgeManager = new ComfyBridgeManager(configService, pathResolver);
-        comfyBridgeManager.installComfyUIBridge(configService != null ? configService.getComfyUIPath() : "", dlg);
-    }); }
-    private void showPathsDialog() { getDialogCoordinator().showPathsDialog(() -> {
-        if (uiComponents != null && uiComponents.dashboardPanelCoordinator != null) uiComponents.dashboardPanelCoordinator.refreshVersions(versionService, configService);
-    }, this::syncBridgeFiles); }
+    private void showInstallationDialog() {
+        getDialogCoordinator().showInstallationDialog(this::syncBridgeFiles, dlg -> {
+            if (comfyBridgeManager == null) comfyBridgeManager = new ComfyBridgeManager(configService, pathResolver);
+            comfyBridgeManager.installComfyUIBridge(configService != null ? configService.getComfyUIPath() : "", dlg);
+        });
+    }
+
+    private void showPathsDialog() {
+        getDialogCoordinator().showPathsDialog(() -> {
+            if (uiComponents != null && uiComponents.dashboardPanelCoordinator != null) {
+                uiComponents.dashboardPanelCoordinator.refreshVersions(versionService, configService);
+            }
+        }, this::syncBridgeFiles);
+    }
+
     private void showDownloadSettingsDialog() { getDialogCoordinator().showDownloadSettingsDialog(); }
     private void showVideoArchitectAutoconfigDialog() { getDialogCoordinator().showVideoArchitectAutoconfigDialog(); }
     private void showApiKeysDialog() { getDialogCoordinator().showApiKeysDialog(this::updateAiModelDisplay); }
     private void showHelpDialog() { getDialogCoordinator().showHelpDialog(); }
+
     private void resetSettings() {
         getDialogCoordinator().resetSettings(() -> {
-            if (uiComponents != null && uiComponents.settingsPanelCoordinator != null) uiComponents.settingsPanelCoordinator.loadSettingsIntoUI();
+            if (uiComponents != null && uiComponents.settingsPanelCoordinator != null) {
+                uiComponents.settingsPanelCoordinator.loadSettingsIntoUI();
+            }
             updateTabVisibility();
             setupTheme(configService != null && configService.isDarkMode());
         });
     }
 
     public void importWorkflow(File file) {
-        if (downloadManagerController != null && uiComponents != null) downloadManagerController.importWorkflow(file, uiComponents.mainTabs, uiComponents.downloadManagerPanel);
+        if (downloadManagerController != null && uiComponents != null) {
+            downloadManagerController.importWorkflow(file, uiComponents.mainTabs, uiComponents.downloadManagerPanel);
+        }
     }
+
     public void focusDownloadTabAndSelectModels(List<ModelInfo> missingModels) {
         if (uiComponents != null && uiComponents.mainTabs != null) uiComponents.mainTabs.setSelectedIndex(1);
         if (downloadManagerController != null) downloadManagerController.focusDownloadTabAndSelectModels(missingModels);
     }
+
     public String getWorkspaceWorkflowJson() {
         return (uiComponents != null && uiComponents.jsonInputArea != null) ? uiComponents.jsonInputArea.getText() : "";
     }
+
     public void loadWorkflowExternal(String name, String json) {
         SwingUtilities.invokeLater(() -> {
             if (uiComponents != null && uiComponents.jsonInputArea != null) {
@@ -592,34 +476,14 @@ public class Main extends JFrame {
         if (promptLabController != null) promptLabController.refreshPromptLabModels();
     }
 
-    public void triggerEnvironmentRepair() {
-        if (uiComponents != null && uiComponents.mainTabs != null) uiComponents.mainTabs.setSelectedIndex(0);
-        if (uiComponents != null && uiComponents.dashboardPanelCoordinator != null && uiComponents.dashboardPanelCoordinator.getComfyConsoleArea() != null) {
-            uiComponents.dashboardPanelCoordinator.getComfyConsoleArea().setText("");
-        }
-        backgroundExecutor.execute(() -> updaterService.repairEnvironment(this::appendToConsole));
-    }
-
-    public void triggerWslDependencyFix() {
-        if (uiComponents != null && uiComponents.mainTabs != null) uiComponents.mainTabs.setSelectedIndex(0);
-        if (uiComponents != null && uiComponents.dashboardPanelCoordinator != null && uiComponents.dashboardPanelCoordinator.getComfyConsoleArea() != null) {
-            uiComponents.dashboardPanelCoordinator.getComfyConsoleArea().setText("");
-        }
-        String comfyPathStr = configService != null ? configService.getComfyUIPath() : null;
-        Path comfyDir = (comfyPathStr != null && !comfyPathStr.isEmpty()) ? Paths.get(comfyPathStr) : null;
-        backgroundExecutor.execute(() -> bootstrapper.fixWslDependencies(comfyDir, this::appendToConsole));
-    }
-
     private PromptLabModelResolver createModelResolver() {
-        PromptLabModelResolver resolver = new PromptLabModelResolver(modelArchitectureService);
-        resolver.getComfyClips().addAll(this.comfyClips);
-        resolver.getComfyVaes().addAll(this.comfyVaes);
-        resolver.getComfyClipTypes().addAll(this.comfyClipTypes);
-        resolver.getComfyCheckpoints().addAll(this.comfyCheckpoints);
-        resolver.getComfyUnetModels().addAll(this.comfyUnetModels);
-        resolver.getComfyUnetWeightDtypes().addAll(this.comfyUnetWeightDtypes);
-        return resolver;
+        PromptLabModelResolver r = new PromptLabModelResolver(modelArchitectureService);
+        r.getComfyClips().addAll(this.comfyClips); r.getComfyVaes().addAll(this.comfyVaes);
+        r.getComfyClipTypes().addAll(this.comfyClipTypes); r.getComfyCheckpoints().addAll(this.comfyCheckpoints);
+        r.getComfyUnetModels().addAll(this.comfyUnetModels); r.getComfyUnetWeightDtypes().addAll(this.comfyUnetWeightDtypes);
+        return r;
     }
+
     private String resolveClipForModel(String selectedModel) { return createModelResolver().resolveClipForModel(selectedModel); }
     private String resolveClipType(String clipModel, String selectedModel) { return createModelResolver().resolveClipType(clipModel, selectedModel); }
     private String resolveVaeForModel(String modelName) { return createModelResolver().resolveVaeForModel(modelName); }

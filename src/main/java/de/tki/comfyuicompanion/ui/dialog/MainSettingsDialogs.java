@@ -11,7 +11,6 @@ import org.slf4j.LoggerFactory;
 
 import javax.swing.*;
 import java.awt.*;
-import java.io.File;
 import java.util.concurrent.ExecutorService;
 import java.util.function.Consumer;
 
@@ -22,158 +21,32 @@ import java.util.function.Consumer;
 public class MainSettingsDialogs {
     private static final Logger logger = LoggerFactory.getLogger(MainSettingsDialogs.class);
 
+    /**
+     * Displays the directory settings dialog by delegating to {@link PathsSettingsDialog}.
+     *
+     * @param parent             the parent JFrame
+     * @param configService      the configuration service
+     * @param lifecycleService   the ComfyUI lifecycle service
+     * @param backgroundExecutor background executor service
+     * @param onSettingsUpdated  callback on settings update
+     * @param onSyncBridge       callback on sync bridge
+     */
     public static void showPathsDialog(JFrame parent,
                                        ConfigService configService,
                                        IComfyLifecycleService lifecycleService,
                                        ExecutorService backgroundExecutor,
                                        Runnable onSettingsUpdated,
                                        Runnable onSyncBridge) {
-        StandardDialog dialog = new StandardDialog(parent, "Directory Settings");
-        dialog.setSize(600, 480);
-        dialog.setLocationRelativeTo(parent);
-
-        JPanel panel = dialog.createContentPanel();
-        GridBagConstraints gbc = new GridBagConstraints();
-        gbc.fill = GridBagConstraints.HORIZONTAL;
-        gbc.gridx = 0; gbc.gridy = 0; gbc.weightx = 1.0;
-        gbc.insets = new Insets(0, 0, 5, 0);
-
-        panel.add(new JLabel("Extra ComfyUI Path (contains models, input, output):"), gbc);
-
-        gbc.gridy++;
-        JPanel row1 = new JPanel(new BorderLayout(5, 0));
-        JTextField field1 = new JTextField(configService.getExtraComfyUIPath());
-        JButton browse1 = new JButton("Browse...");
-        browse1.addActionListener(e -> {
-            JFileChooser chooser = new JFileChooser();
-            chooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
-            if (chooser.showOpenDialog(dialog) == JFileChooser.APPROVE_OPTION) {
-                field1.setText(chooser.getSelectedFile().getAbsolutePath());
-            }
-        });
-        row1.add(field1, BorderLayout.CENTER);
-        row1.add(browse1, BorderLayout.EAST);
-        panel.add(row1, gbc);
-
-        gbc.gridy++;
-        gbc.insets = new Insets(10, 0, 5, 0);
-        panel.add(new JLabel("Archive Path (Offload storage):"), gbc);
-
-        gbc.gridy++;
-        gbc.insets = new Insets(0, 0, 5, 0);
-        JPanel row2 = new JPanel(new BorderLayout(5, 0));
-        JTextField field2 = new JTextField(configService.getArchivePath());
-        JButton browse2 = new JButton("Browse...");
-        browse2.addActionListener(e -> {
-            JFileChooser chooser = new JFileChooser();
-            chooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
-            if (chooser.showOpenDialog(dialog) == JFileChooser.APPROVE_OPTION) {
-                field2.setText(chooser.getSelectedFile().getAbsolutePath());
-            }
-        });
-        row2.add(field2, BorderLayout.CENTER);
-        row2.add(browse2, BorderLayout.EAST);
-        panel.add(row2, gbc);
-
-        gbc.gridy++;
-        gbc.insets = new Insets(10, 0, 5, 0);
-        panel.add(new JLabel("ComfyUI Main Directory (contains main.py):"), gbc);
-
-        gbc.gridy++;
-        gbc.insets = new Insets(0, 0, 5, 0);
-        JPanel row3 = new JPanel(new BorderLayout(5, 0));
-        JTextField field3 = new JTextField(configService.getComfyUIPath());
-        JButton browse3 = new JButton("Browse...");
-        row3.add(field3, BorderLayout.CENTER);
-        row3.add(browse3, BorderLayout.EAST);
-        panel.add(row3, gbc);
-
-        gbc.gridy++;
-        gbc.insets = new Insets(10, 0, 5, 0);
-        panel.add(new JLabel("Python Executable Path:"), gbc);
-
-        gbc.gridy++;
-        gbc.insets = new Insets(0, 0, 5, 0);
-        JPanel row4 = new JPanel(new BorderLayout(5, 0));
-        JTextField field4 = new JTextField(configService.getPythonPath());
-        JButton browse4 = new JButton("Browse...");
-        row4.add(field4, BorderLayout.CENTER);
-        row4.add(browse4, BorderLayout.EAST);
-        panel.add(row4, gbc);
-
-        browse3.addActionListener(e -> {
-            JFileChooser chooser = new JFileChooser();
-            chooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
-            if (chooser.showOpenDialog(dialog) == JFileChooser.APPROVE_OPTION) {
-                File dir = chooser.getSelectedFile();
-                field3.setText(dir.getAbsolutePath());
-                File embeddedPy = new File(dir.getParentFile(), "python_embeded\\python.exe");
-                if (embeddedPy.exists()) {
-                    field4.setText(embeddedPy.getAbsolutePath());
-                } else {
-                    File venvPy = new File(dir, "venv\\Scripts\\python.exe");
-                    if (venvPy.exists()) {
-                        field4.setText(venvPy.getAbsolutePath());
-                    }
-                }
-            }
-        });
-
-        browse4.addActionListener(e -> {
-            JFileChooser chooser = new JFileChooser();
-            chooser.setFileSelectionMode(JFileChooser.FILES_ONLY);
-            if (chooser.showOpenDialog(dialog) == JFileChooser.APPROVE_OPTION) {
-                field4.setText(chooser.getSelectedFile().getAbsolutePath());
-            }
-        });
-
-        gbc.gridy++;
-        gbc.weighty = 1.0;
-        JPanel spacer = new JPanel();
-        spacer.setOpaque(false);
-        panel.add(spacer, gbc);
-
-        JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT));
-        JButton cancel = new JButton("Cancel");
-        cancel.addActionListener(e -> dialog.dispose());
-        JButton save = new JButton("Save");
-        save.putClientProperty("JButton.buttonType", "accent");
-        save.addActionListener(e -> {
-            String oldExtraPath = configService.getExtraComfyUIPath();
-            String oldComfyUIPath = configService.getComfyUIPath();
-
-            String newExtraPath = field1.getText().trim();
-            String newArchive = field2.getText().trim();
-            String newComfyUIPath = field3.getText().trim();
-            String newPythonPath = field4.getText().trim();
-
-            configService.setExtraComfyUIPath(newExtraPath);
-            configService.setArchivePath(newArchive);
-            configService.setComfyUIPath(newComfyUIPath);
-            configService.setPythonPath(newPythonPath);
-            configService.autoDiscoverPaths();
-
-            if (onSyncBridge != null) onSyncBridge.run();
-            if (onSettingsUpdated != null) onSettingsUpdated.run();
-            dialog.dispose();
-
-            boolean pathsChanged = !newExtraPath.equalsIgnoreCase(oldExtraPath) || !newComfyUIPath.equalsIgnoreCase(oldComfyUIPath);
-            if (pathsChanged && lifecycleService != null && lifecycleService.isHealthy()) {
-                backgroundExecutor.execute(() -> {
-                    logger.info("🔄 [Lifecycle] Custom paths updated. Restarting ComfyUI server to apply changes...");
-                    lifecycleService.stop();
-                    lifecycleService.start();
-                });
-            }
-        });
-        buttons.add(cancel);
-        buttons.add(save);
-
-        dialog.add(panel, BorderLayout.CENTER);
-        dialog.add(buttons, BorderLayout.SOUTH);
-        dialog.setVisible(true);
+        PathsSettingsDialog.showPathsDialog(parent, configService, lifecycleService, backgroundExecutor, onSettingsUpdated, onSyncBridge);
     }
 
+    /**
+     * Displays the download settings dialog.
+     *
+     * @param parent        the parent JFrame
+     * @param configService the configuration service
+     * @param onSaved       callback when settings are saved
+     */
     public static void showDownloadSettingsDialog(JFrame parent, ConfigService configService, Runnable onSaved) {
         StandardDialog dialog = new StandardDialog(parent, "Download Settings");
         dialog.setSize(600, 560);
@@ -284,6 +157,13 @@ public class MainSettingsDialogs {
         dialog.setVisible(true);
     }
 
+    /**
+     * Displays a background installation dialog for Video Architect dependencies (e.g. FFmpeg).
+     *
+     * @param parent             the parent JFrame
+     * @param dependencyService  the dependency service to run dependency installation
+     * @param backgroundExecutor executor for background tasks
+     */
     public static void showVideoArchitectAutoconfigDialog(JFrame parent,
                                                           DependencyService dependencyService,
                                                           ExecutorService backgroundExecutor) {
@@ -328,199 +208,25 @@ public class MainSettingsDialogs {
     }
 
     /**
-     * Displays the centralized API keys, cloud tokens, and audio service configuration dialog.
-     * Allows managing credentials for Civitai, Hugging Face, ElevenLabs, and local TTS engines.
+     * Displays the centralized API keys, cloud tokens, and audio service configuration dialog
+     * by delegating to {@link ApiKeysSettingsDialog}.
      *
      * @param parent        the parent JFrame
      * @param configService configuration service for reading and saving credentials
      * @param onSaved       callback executed when settings are successfully saved
      */
     public static void showApiKeysDialog(JFrame parent, ConfigService configService, Runnable onSaved) {
-        StandardDialog dialog = new StandardDialog(parent, "API Keys & Services");
-        dialog.setSize(640, 720);
-        dialog.setLocationRelativeTo(parent);
-
-        JPanel panel = dialog.createContentPanel();
-        GridBagConstraints gbc = new GridBagConstraints();
-        gbc.fill = GridBagConstraints.HORIZONTAL;
-        gbc.gridx = 0; gbc.gridy = 0; gbc.weightx = 1.0;
-
-        // --- Model Hub & Repository Credentials ---
-        JLabel hubHeader = new JLabel("Model Hub & Repository Credentials");
-        hubHeader.setFont(new Font("SansSerif", Font.BOLD, 13));
-        panel.add(hubHeader, gbc);
-
-        gbc.gridy++;
-        gbc.insets = new Insets(10, 0, 5, 0);
-        panel.add(new JLabel("Civitai API Key (for gated models, member access & high-speed downloads):"), gbc);
-
-        gbc.gridy++;
-        gbc.insets = new Insets(0, 0, 5, 0);
-        JTextField civitaiApiKeyField = new JTextField(configService.getCivitaiApiKey());
-        panel.add(civitaiApiKeyField, gbc);
-
-        gbc.gridy++;
-        gbc.insets = new Insets(0, 0, 15, 0);
-        JLabel civitaiHint = new JLabel("<html><i>Get your key on civitai.com -> Account Settings -> API Keys. Stored in AES-256 encrypted vault.</i></html>");
-        civitaiHint.setFont(new Font("SansSerif", Font.PLAIN, 11));
-        civitaiHint.setForeground(Color.GRAY);
-        panel.add(civitaiHint, gbc);
-
-        gbc.gridy++;
-        gbc.insets = new Insets(0, 0, 5, 0);
-        panel.add(new JLabel("Hugging Face Access Token (hf_... for gated models like LTX-2.5, Flux):"), gbc);
-
-        gbc.gridy++;
-        gbc.insets = new Insets(0, 0, 5, 0);
-        JTextField hfTokenField = new JTextField(configService.getHfToken());
-        panel.add(hfTokenField, gbc);
-
-        gbc.gridy++;
-        gbc.insets = new Insets(0, 0, 15, 0);
-        JLabel hfHint = new JLabel("<html><i>Requires accepting terms on huggingface.co prior to downloading gated repositories.</i></html>");
-        hfHint.setFont(new Font("SansSerif", Font.PLAIN, 11));
-        hfHint.setForeground(Color.GRAY);
-        panel.add(hfHint, gbc);
-
-        // --- Separator ---
-        gbc.gridy++;
-        gbc.insets = new Insets(5, 0, 15, 0);
-        panel.add(new JSeparator(), gbc);
-
-        // --- Audio & TTS Services ---
-        gbc.gridy++;
-        gbc.insets = new Insets(0, 0, 10, 0);
-        JLabel ttsHeader = new JLabel("Audio & Text-to-Speech (TTS)");
-        ttsHeader.setFont(new Font("SansSerif", Font.BOLD, 13));
-        panel.add(ttsHeader, gbc);
-
-        gbc.gridy++;
-        gbc.insets = new Insets(0, 0, 5, 0);
-        panel.add(new JLabel("TTS Provider:"), gbc);
-
-        gbc.gridy++;
-        gbc.insets = new Insets(0, 0, 12, 0);
-        JComboBox<String> ttsProviderCombo = new JComboBox<>(new String[]{"ComfyUI Qwen-TTS", "ComfyUI KokoroTTS", "ComfyUI ElevenLabs"});
-        ttsProviderCombo.setSelectedItem(configService.getTtsProvider());
-        panel.add(ttsProviderCombo, gbc);
-
-        gbc.gridy++;
-        gbc.insets = new Insets(0, 0, 5, 0);
-        panel.add(new JLabel("ElevenLabs API Key (if using ComfyUI ElevenLabs):"), gbc);
-        gbc.gridy++;
-        gbc.insets = new Insets(0, 0, 10, 0);
-        JTextField elevenLabsApiKeyField = new JTextField(configService.getElevenLabsApiKey());
-        panel.add(elevenLabsApiKeyField, gbc);
-
-        gbc.gridy++;
-        gbc.insets = new Insets(0, 0, 5, 0);
-        panel.add(new JLabel("ElevenLabs Voice ID (if using ComfyUI ElevenLabs):"), gbc);
-        gbc.gridy++;
-        gbc.insets = new Insets(0, 0, 12, 0);
-        JTextField elevenLabsVoiceField = new JTextField(configService.getElevenLabsVoiceId());
-        panel.add(elevenLabsVoiceField, gbc);
-
-        gbc.gridy++;
-        gbc.insets = new Insets(0, 0, 5, 0);
-        panel.add(new JLabel("Qwen-TTS Voice (if using ComfyUI Qwen-TTS):"), gbc);
-        gbc.gridy++;
-        gbc.insets = new Insets(0, 0, 10, 0);
-        String[] qwenVoices = new String[]{"Chelsie", "Ethan", "Serena", "Aiden", "Vivian"};
-        JComboBox<String> qwenVoiceCombo = new JComboBox<>(qwenVoices);
-        qwenVoiceCombo.setEditable(true);
-        qwenVoiceCombo.setSelectedItem(configService.getQwenTtsVoice());
-        panel.add(qwenVoiceCombo, gbc);
-
-        gbc.gridy++;
-        gbc.insets = new Insets(0, 0, 5, 0);
-        panel.add(new JLabel("Qwen-TTS Model Repo (Hugging Face id):"), gbc);
-        gbc.gridy++;
-        gbc.insets = new Insets(0, 0, 10, 0);
-        JTextField qwenModelRepoField = new JTextField(configService.getQwenTtsModelRepo());
-        panel.add(qwenModelRepoField, gbc);
-
-        gbc.gridy++;
-        gbc.insets = new Insets(0, 0, 5, 0);
-        JCheckBox qwenAutoSelectCheck = new JCheckBox("Auto-select best Qwen-TTS model for my hardware", configService.isQwenTtsModelAuto());
-        panel.add(qwenAutoSelectCheck, gbc);
-
-        gbc.gridy++;
-        gbc.insets = new Insets(5, 0, 12, 0);
-        JPanel qwenAutoRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
-        qwenAutoRow.setOpaque(false);
-        JButton detectButton = new JButton("Detect VRAM & recommend model");
-        JLabel qwenAutoStatus = new JLabel(" ");
-        qwenAutoStatus.setFont(qwenAutoStatus.getFont().deriveFont(Font.PLAIN, 11f));
-        qwenAutoRow.add(detectButton);
-        qwenAutoRow.add(Box.createHorizontalStrut(10));
-        qwenAutoRow.add(qwenAutoStatus);
-        panel.add(qwenAutoRow, gbc);
-
-        gbc.gridy++;
-        gbc.insets = new Insets(0, 0, 5, 0);
-        panel.add(new JLabel("Piper TTS Binary Path (if using Local Piper):"), gbc);
-        gbc.gridy++;
-        gbc.insets = new Insets(0, 0, 10, 0);
-        JTextField piperPathField = new JTextField(configService.getPiperPath());
-        panel.add(piperPathField, gbc);
-
-        gbc.gridy++;
-        gbc.insets = new Insets(0, 0, 5, 0);
-        panel.add(new JLabel("Piper TTS ONNX Model Path (if using Local Piper):"), gbc);
-        gbc.gridy++;
-        gbc.insets = new Insets(0, 0, 15, 0);
-        JTextField piperModelField = new JTextField(configService.getPiperModelPath());
-        panel.add(piperModelField, gbc);
-
-        Runnable updateTtsVisibility = () -> {
-            boolean isEleven = "ComfyUI ElevenLabs".equals(ttsProviderCombo.getSelectedItem());
-            elevenLabsApiKeyField.setEnabled(isEleven);
-            elevenLabsVoiceField.setEnabled(isEleven);
-
-            boolean isPiper = false;
-            piperPathField.setEnabled(isPiper);
-            piperModelField.setEnabled(isPiper);
-            boolean isQwen = "ComfyUI Qwen-TTS".equals(ttsProviderCombo.getSelectedItem());
-            qwenVoiceCombo.setEnabled(isQwen);
-            qwenModelRepoField.setEnabled(isQwen);
-        };
-        ttsProviderCombo.addActionListener(e -> updateTtsVisibility.run());
-        updateTtsVisibility.run();
-
-        gbc.gridy++;
-        gbc.weighty = 1.0;
-        JPanel spacer = new JPanel();
-        spacer.setOpaque(false);
-        panel.add(spacer, gbc);
-
-        JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT));
-        JButton cancel = new JButton("Cancel");
-        cancel.addActionListener(e -> dialog.dispose());
-        JButton save = new JButton("Save");
-        save.putClientProperty("JButton.buttonType", "accent");
-        save.addActionListener(e -> {
-            configService.setCivitaiApiKey(civitaiApiKeyField.getText().trim());
-            configService.setHfToken(hfTokenField.getText().trim());
-            configService.setElevenLabsApiKey(elevenLabsApiKeyField.getText().trim());
-            configService.setElevenLabsVoiceId(elevenLabsVoiceField.getText().trim());
-            configService.setTtsProvider((String) ttsProviderCombo.getSelectedItem());
-            configService.setPiperPath(piperPathField.getText().trim());
-            configService.setPiperModelPath(piperModelField.getText().trim());
-            configService.setQwenTtsVoice((String) qwenVoiceCombo.getSelectedItem());
-            configService.setQwenTtsModelRepo(qwenModelRepoField.getText().trim());
-            configService.setQwenTtsModelAuto(qwenAutoSelectCheck.isSelected());
-
-            if (onSaved != null) onSaved.run();
-            dialog.dispose();
-        });
-        buttons.add(cancel);
-        buttons.add(save);
-
-        dialog.add(panel, BorderLayout.CENTER);
-        dialog.add(buttons, BorderLayout.SOUTH);
-        dialog.setVisible(true);
+        ApiKeysSettingsDialog.showApiKeysDialog(parent, configService, onSaved);
     }
 
+    /**
+     * Displays the ComfyUI Bridge installation dialog.
+     *
+     * @param parent          the parent JFrame
+     * @param configService   configuration service
+     * @param onSyncBridge    callback to sync bridge tokens
+     * @param onInstallBridge consumer to trigger bridge installation
+     */
     public static void showInstallationDialog(JFrame parent,
                                               ConfigService configService,
                                               Runnable onSyncBridge,
@@ -611,6 +317,12 @@ public class MainSettingsDialogs {
         dialog.setVisible(true);
     }
 
+    /**
+     * Displays the user guide and documentation dialog.
+     *
+     * @param parent        the parent JFrame
+     * @param configService configuration service to read theme mode
+     */
     public static void showHelpDialog(JFrame parent, ConfigService configService) {
         JDialog helpDialog = new JDialog(parent, "User Guide & Documentation", true);
         helpDialog.setLayout(new BorderLayout());

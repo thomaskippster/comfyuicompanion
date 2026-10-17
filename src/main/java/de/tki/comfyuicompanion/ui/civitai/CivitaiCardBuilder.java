@@ -142,6 +142,11 @@ public class CivitaiCardBuilder {
         if (entry.baseModel() != null && !entry.baseModel().isBlank()) {
             badgeRow.add(createPill(entry.baseModel(), new Color(14, 116, 144, 210), Color.WHITE));
         }
+        if (entry.poi()) {
+            badgeRow.add(createPill("⚠️ POI", new Color(217, 119, 6, 220), Color.WHITE));
+        }
+        Color commColor = entry.isCommercialAllowed() ? new Color(16, 185, 129, 210) : new Color(107, 114, 128, 210);
+        badgeRow.add(createPill(entry.commercialBadgeLabel(), commColor, Color.WHITE));
         contentPanel.add(badgeRow);
 
         contentPanel.add(Box.createVerticalStrut(6));
@@ -259,13 +264,13 @@ public class CivitaiCardBuilder {
                     drawTypePlaceholder(g2, w, h, entry.type(), darkMode);
                 }
 
-                // NSFW badge overlay
-                if (entry.nsfw()) {
-                    g2.setColor(COLOR_NSFW);
-                    g2.fillRoundRect(w - 46, 6, 40, 16, 4, 4);
+                // Person of Interest (POI) badge overlay for real persons
+                if (entry.poi()) {
+                    g2.setColor(new Color(217, 119, 6, 230));
+                    g2.fillRoundRect(w - 55, 6, 49, 16, 4, 4);
                     g2.setColor(Color.WHITE);
                     g2.setFont(new Font("SansSerif", Font.BOLD, 9));
-                    g2.drawString("NSFW", w - 40, 18);
+                    g2.drawString("PERSON", w - 50, 18);
                 }
 
                 g2.dispose();

@@ -45,6 +45,8 @@ public class PromptLabExecutionHandler {
     private final Consumer<LaunchProfile> startComfyAction;
     private final Consumer<Image> onPreviewImageChanged;
     private final Runnable onAiModelDisplayUpdated;
+    private final PromptLabAiAssistant aiAssistant;
+    private final PromptLabModelInputSanitizer modelInputSanitizer;
     private PromptLabView promptLabView;
 
     public PromptLabExecutionHandler(ConfigService configService,
@@ -57,6 +59,25 @@ public class PromptLabExecutionHandler {
                                      Consumer<LaunchProfile> startComfyAction,
                                      Consumer<Image> onPreviewImageChanged,
                                      Runnable onAiModelDisplayUpdated) {
+        this(configService, localAIService, lifecycleService, comfyApiClient, profileManager,
+                promptLabController, backgroundExecutor, startComfyAction, onPreviewImageChanged,
+                onAiModelDisplayUpdated,
+                new PromptLabAiAssistant(localAIService, backgroundExecutor, onAiModelDisplayUpdated),
+                new PromptLabModelInputSanitizer());
+    }
+
+    public PromptLabExecutionHandler(ConfigService configService,
+                                     LocalAIService localAIService,
+                                     IComfyLifecycleService lifecycleService,
+                                     ComfyApiClient comfyApiClient,
+                                     ProfileManager profileManager,
+                                     PromptLabController promptLabController,
+                                     ExecutorService backgroundExecutor,
+                                     Consumer<LaunchProfile> startComfyAction,
+                                     Consumer<Image> onPreviewImageChanged,
+                                     Runnable onAiModelDisplayUpdated,
+                                     PromptLabAiAssistant aiAssistant,
+                                     PromptLabModelInputSanitizer modelInputSanitizer) {
         this.configService = configService;
         this.localAIService = localAIService;
         this.lifecycleService = lifecycleService;
@@ -67,6 +88,8 @@ public class PromptLabExecutionHandler {
         this.startComfyAction = startComfyAction;
         this.onPreviewImageChanged = onPreviewImageChanged;
         this.onAiModelDisplayUpdated = onAiModelDisplayUpdated;
+        this.aiAssistant = aiAssistant;
+        this.modelInputSanitizer = modelInputSanitizer;
     }
 
     /**
@@ -374,47 +397,7 @@ public class PromptLabExecutionHandler {
      * @param parent the parent component for dialogs
      */
     public void downloadLocalGemmaModel(Component parent) {
-        if (promptLabView == null) return;
-        JButton btnSuggest = promptLabView.getBtnSuggestSubject();
-        JTextArea console = promptLabView.getPromptLabConsole();
-
-        if (btnSuggest != null) {
-            btnSuggest.setEnabled(false);
-            btnSuggest.setText("Downloading...");
-            btnSuggest.setIcon(SvgIconFactory.get(AppIcon.REFRESH));
-        }
-        if (console != null) {
-            console.append("Starting download of Gemma-3-4B GGUF model (3 GB) from Hugging Face...\n");
-        }
-
-        localAIService.getLocalGemmaService().downloadModel(
-                (percent, status) -> SwingUtilities.invokeLater(() -> {
-                    if (console != null) console.append("Download: " + status + "\n");
-                }),
-                () -> SwingUtilities.invokeLater(() -> {
-                    if (btnSuggest != null) {
-                        btnSuggest.setEnabled(true);
-                        btnSuggest.setText("Suggest");
-                        btnSuggest.setIcon(SvgIconFactory.get(AppIcon.SUGGEST));
-                    }
-                    if (console != null) console.append("✅ Local Gemma model downloaded successfully!\n");
-                    JOptionPane.showMessageDialog(parent,
-                            "Local Gemma model downloaded successfully!",
-                            "Download Complete", JOptionPane.INFORMATION_MESSAGE);
-                    if (onAiModelDisplayUpdated != null) onAiModelDisplayUpdated.run();
-                }),
-                (errorMsg, ex) -> SwingUtilities.invokeLater(() -> {
-                    if (btnSuggest != null) {
-                        btnSuggest.setEnabled(true);
-                        btnSuggest.setText("Suggest");
-                        btnSuggest.setIcon(SvgIconFactory.get(AppIcon.SUGGEST));
-                    }
-                    if (console != null) console.append("❌ Download failed: " + errorMsg + "\n");
-                    JOptionPane.showMessageDialog(parent,
-                            "Failed to download Gemma model: " + errorMsg,
-                            "Download Failed", JOptionPane.ERROR_MESSAGE);
-                })
-        );
+        aiAssistant.downloadLocalGemmaModel(parent, promptLabView);
     }
 
     /**
@@ -423,101 +406,7 @@ public class PromptLabExecutionHandler {
      * @param parent the parent component for dialogs
      */
     public void suggestSubjectCompletions(Component parent) {
-        if (promptLabView == null) return;
-
-        boolean hasGemma = localAIService != null && localAIService.isLocalGemmaDownloaded();
-        if (!hasGemma) {
-            int choice = JOptionPane.showConfirmDialog(parent,
-                    "The local Gemma model is not downloaded.\n" +
-                            "Would you like to download the Gemma-3-4B GGUF model (approx. 3 GB) now to get suggestions?",
-                    "Download Local Gemma Model?", JOptionPane.YES_NO_OPTION, JOptionPane.QUESTION_MESSAGE);
-            if (choice == JOptionPane.YES_OPTION) {
-                downloadLocalGemmaModel(parent);
-            }
-            return;
-        }
-
-        String currentSubject = promptLabView.getPromptSubjectField() != null ? promptLabView.getPromptSubjectField().getText().trim() : "";
-        if (currentSubject.isEmpty()) {
-            JOptionPane.showMessageDialog(parent,
-                    "Please enter a basic prompt or subject first.",
-                    "Empty Prompt", JOptionPane.WARNING_MESSAGE);
-            return;
-        }
-
-        JButton btnSuggest = promptLabView.getBtnSuggestSubject();
-        JTextArea console = promptLabView.getPromptLabConsole();
-
-        if (btnSuggest != null) {
-            btnSuggest.setEnabled(false);
-            btnSuggest.setText("Suggesting...");
-            btnSuggest.setIcon(SvgIconFactory.get(AppIcon.REFRESH));
-        }
-        if (console != null) {
-            console.append("Generating prompt completion suggestions using local Gemma...\n");
-        }
-
-        backgroundExecutor.execute(() -> {
-            List<String> suggestions = null;
-            StringBuilder errorLogs = new StringBuilder();
-            try {
-                suggestions = localAIService.getDirectGemmaCompletions(currentSubject);
-            } catch (Throwable ex) {
-                logger.warn("AI suggestions failed: {}", ex.getMessage(), ex);
-                errorLogs.append("AI suggestions failed: ").append(ex.getMessage()).append("\n");
-                for (StackTraceElement ste : ex.getStackTrace()) {
-                    errorLogs.append("\tat ").append(ste).append("\n");
-                }
-            }
-
-            final List<String> finalSuggestions = suggestions;
-            final String finalErrors = errorLogs.toString();
-            SwingUtilities.invokeLater(() -> {
-                if (btnSuggest != null) {
-                    btnSuggest.setEnabled(true);
-                    btnSuggest.setText("Suggest");
-                    btnSuggest.setIcon(SvgIconFactory.get(AppIcon.SUGGEST));
-                }
-
-                if (finalSuggestions != null && !finalSuggestions.isEmpty()) {
-                    JPanel suggPanel = promptLabView.getPromptSubjectSuggestionsPanel();
-                    if (suggPanel != null) {
-                        suggPanel.removeAll();
-                        for (String suggestion : finalSuggestions) {
-                            JButton sugBtn = new JButton(suggestion);
-                            sugBtn.setHorizontalAlignment(SwingConstants.LEFT);
-                            sugBtn.setFont(new Font("SansSerif", Font.PLAIN, 11));
-                            sugBtn.putClientProperty("FlatLaf.style", "arc: 6; background: $TextField.background; border: 4,8,4,8,$Card.border,1,6");
-                            sugBtn.setCursor(new Cursor(Cursor.HAND_CURSOR));
-                            sugBtn.setToolTipText("Click to use: " + suggestion);
-                            sugBtn.setMaximumSize(new Dimension(Integer.MAX_VALUE, 30));
-                            sugBtn.setPreferredSize(new Dimension(300, 30));
-                            sugBtn.setAlignmentX(Component.LEFT_ALIGNMENT);
-                            sugBtn.addActionListener(e -> {
-                                promptLabView.getPromptSubjectField().setText(suggestion);
-                                promptLabView.getPromptSubjectSuggestionsWrapper().setVisible(false);
-                                promptLabView.getPromptLabLeftPanel().revalidate();
-                                promptLabView.getPromptLabLeftPanel().repaint();
-                            });
-                            suggPanel.add(sugBtn);
-                            suggPanel.add(Box.createVerticalStrut(4));
-                        }
-                    }
-                    promptLabView.getPromptSubjectSuggestionsWrapper().setVisible(true);
-                    promptLabView.getPromptLabLeftPanel().revalidate();
-                    promptLabView.getPromptLabLeftPanel().repaint();
-                    if (console != null) console.append("Subject suggestions loaded successfully using local Gemma.\n");
-                } else {
-                    if (console != null) {
-                        console.append("❌ Error: Could not generate suggestions.\n");
-                        if (!finalErrors.isEmpty()) console.append(finalErrors + "\n");
-                    }
-                    JOptionPane.showMessageDialog(parent,
-                            "Could not generate suggestions. Please ensure the local Gemma model is downloaded correctly.",
-                            "Suggestions Failed", JOptionPane.WARNING_MESSAGE);
-                }
-            });
-        });
+        aiAssistant.suggestSubjectCompletions(parent, promptLabView);
     }
 
     /**
@@ -527,72 +416,7 @@ public class PromptLabExecutionHandler {
      * @param objectInfo the ComfyUI object info for validation
      */
     public void sanitizeModelInputsInPrompt(JSONObject promptObj, JSONObject objectInfo) {
-        if (promptObj == null) return;
-        for (String key : promptObj.keySet()) {
-            JSONObject node = promptObj.optJSONObject(key);
-            if (node == null) continue;
-            JSONObject inp = node.optJSONObject("inputs");
-            if (inp == null) continue;
-            String classType = node.optString("class_type", "");
-
-            if ("KSamplerSelect".equals(classType)) {
-                String sn = inp.optString("sampler_name", "");
-                if (sn.isBlank() || sn.equalsIgnoreCase("COMBO") || sn.equalsIgnoreCase("Auto")) {
-                    String uiSampler = (promptLabView.getPromptSamplerCombo() != null && promptLabView.getPromptSamplerCombo().getSelectedItem() != null)
-                            ? (String) promptLabView.getPromptSamplerCombo().getSelectedItem() : "Auto";
-                    inp.put("sampler_name", (!uiSampler.equalsIgnoreCase("Auto") && !uiSampler.equalsIgnoreCase("COMBO")) ? uiSampler : "euler");
-                }
-            }
-
-            for (String ik : new ArrayList<>(inp.keySet())) {
-                Object val = inp.opt(ik);
-                if (val instanceof String s && !s.isBlank()) {
-                    String cleaned = s.replaceAll("[/\\\\]+", "/").trim();
-                    if (s.startsWith("/") || s.startsWith("\\")) {
-                        cleaned = "/" + cleaned.replaceAll("^/+", "");
-                    }
-
-                    if (cleaned.equalsIgnoreCase("COMBO") || cleaned.equalsIgnoreCase("Auto")) {
-                        if (ik.equals("sampler_name") || classType.contains("Sampler")) {
-                            String uiSampler = (promptLabView.getPromptSamplerCombo() != null && promptLabView.getPromptSamplerCombo().getSelectedItem() != null)
-                                    ? (String) promptLabView.getPromptSamplerCombo().getSelectedItem() : "Auto";
-                            inp.put(ik, (!uiSampler.equalsIgnoreCase("Auto") && !uiSampler.equalsIgnoreCase("COMBO")) ? uiSampler : "euler");
-                            continue;
-                        } else if (ik.equals("scheduler")) {
-                            String uiScheduler = (promptLabView.getPromptSchedulerCombo() != null && promptLabView.getPromptSchedulerCombo().getSelectedItem() != null)
-                                    ? (String) promptLabView.getPromptSchedulerCombo().getSelectedItem() : "Auto";
-                            inp.put(ik, (!uiScheduler.equalsIgnoreCase("Auto") && !uiScheduler.equalsIgnoreCase("COMBO")) ? uiScheduler : "simple");
-                            continue;
-                        }
-                    }
-
-                    boolean isModelKey = ik.endsWith("_name") || ik.endsWith("_path") || ik.equals("model") || ik.equals("vae") || ik.equals("clip") || ik.equals("unet");
-                    boolean isModelFile = cleaned.endsWith(".safetensors") || cleaned.endsWith(".ckpt") || cleaned.endsWith(".pt") || cleaned.endsWith(".bin") || cleaned.endsWith(".onnx") || cleaned.endsWith(".sft");
-
-                    if (isModelKey || isModelFile) {
-                        String matchedOption = null;
-                        if (objectInfo != null) {
-                            matchedOption = findModelInObjectInfo(classType, ik, cleaned, objectInfo);
-                        }
-                        if (matchedOption == null) {
-                            matchedOption = findExactComfyModelOption(classType, ik, cleaned);
-                        }
-                        if (matchedOption != null) {
-                            inp.put(ik, matchedOption);
-                        } else {
-                            if (ik.equals("sampler_name") && cleaned.equalsIgnoreCase("COMBO")) {
-                                inp.put(ik, "euler");
-                            } else if (ik.equals("scheduler") && cleaned.equalsIgnoreCase("COMBO")) {
-                                inp.put(ik, "normal");
-                            } else {
-                                inp.put(ik, cleaned);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        PromptBlueprintApiService.sanitizeAllSeedsInPrompt(promptObj);
+        modelInputSanitizer.sanitizeModelInputsInPrompt(promptObj, objectInfo, promptLabView, promptLabController);
     }
 
     /**
@@ -604,39 +428,7 @@ public class PromptLabExecutionHandler {
      * @return the matched exact ComfyUI model name or null
      */
     public String findExactComfyModelOption(String classType, String inputKey, String targetValue) {
-        if (targetValue == null || targetValue.isBlank()) return targetValue;
-        Set<String> options = null;
-
-        if (inputKey.equals("unet_name")) {
-            options = promptLabController.getComfyUnetModels();
-        } else if (inputKey.equals("ckpt_name")) {
-            options = promptLabController.getComfyCheckpoints();
-        } else if (inputKey.equals("clip_name") || inputKey.equals("clip_name1") || inputKey.equals("clip_name2")) {
-            options = promptLabController.getComfyClips();
-        } else if (inputKey.equals("vae_name")) {
-            options = promptLabController.getComfyVaes();
-        } else if (inputKey.equals("type") && classType.contains("CLIPLoader")) {
-            options = promptLabController.getComfyClipTypes();
-        } else if (inputKey.equals("weight_dtype")) {
-            options = promptLabController.getComfyUnetWeightDtypes();
-        }
-
-        if (options != null && !options.isEmpty()) {
-            String normTarget = targetValue.replace('\\', '/').trim();
-            for (String opt : options) {
-                if (opt.replace('\\', '/').equalsIgnoreCase(normTarget)) {
-                    return opt;
-                }
-            }
-            String targetFileName = new File(normTarget).getName();
-            for (String opt : options) {
-                String optFileName = new File(opt.replace('\\', '/')).getName();
-                if (optFileName.equalsIgnoreCase(targetFileName)) {
-                    return opt;
-                }
-            }
-        }
-        return null;
+        return modelInputSanitizer.findExactComfyModelOption(classType, inputKey, targetValue, promptLabController);
     }
 
     /**
@@ -649,6 +441,6 @@ public class PromptLabExecutionHandler {
      * @return the resolved model name
      */
     public String findModelInObjectInfo(String classType, String inputKey, String targetValue, JSONObject objectInfo) {
-        return PromptBlueprintApiService.findModelInObjectInfo(classType, inputKey, targetValue, objectInfo);
+        return modelInputSanitizer.findModelInObjectInfo(classType, inputKey, targetValue, objectInfo);
     }
 }

@@ -4,13 +4,11 @@ import de.tki.comfyuicompanion.domain.ComfyTemplate;
 import de.tki.comfyuicompanion.service.IComfyTemplateService;
 import de.tki.comfyuicompanion.service.IModelArchitectureService;
 import de.tki.comfyuicompanion.ui.PromptLabView;
-import org.json.JSONArray;
 import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.swing.*;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
 
@@ -25,6 +23,7 @@ public class PromptLabPresetManager {
     private final IModelArchitectureService modelArchitectureService;
     private final IComfyTemplateService comfyTemplateService;
     private final PromptLabModelResolver modelResolver;
+    private final WorkflowGraphParameterExtractor parameterExtractor;
 
     /**
      * Constructs a new PromptLabPresetManager.
@@ -39,6 +38,7 @@ public class PromptLabPresetManager {
         this.modelArchitectureService = modelArchitectureService;
         this.comfyTemplateService = comfyTemplateService;
         this.modelResolver = modelResolver;
+        this.parameterExtractor = new WorkflowGraphParameterExtractor();
     }
 
     /**
@@ -240,217 +240,31 @@ public class PromptLabPresetManager {
      */
     public void populateUiFromWorkflow(PromptLabView view, String jsonStr) {
         if (jsonStr == null || jsonStr.trim().isEmpty() || view == null) return;
-        try {
-            JSONObject obj = new JSONObject(jsonStr);
+        var p = parameterExtractor.extractFromWorkflow(jsonStr);
 
-            Integer extractedWidth = null;
-            Integer extractedHeight = null;
-            Integer extractedBatch = null;
-            Integer extractedSteps = null;
-            Double extractedCfg = null;
-            Double extractedDenoise = null;
-            String extractedSampler = null;
-            String extractedScheduler = null;
-
-            if (obj.has("nodes")) {
-                List<JSONObject> allNodes = collectAllNodes(obj);
-
-                for (JSONObject node : allNodes) {
-                    String type = node.optString("type", "");
-                    JSONArray widgets = node.optJSONArray("widgets_values");
-                    JSONObject inputs = node.optJSONObject("inputs");
-
-                    if (type.contains("Empty") || type.contains("Latent")) {
-                        if (widgets != null && widgets.length() >= 2) {
-                            if (widgets.get(0) instanceof Number num && extractedWidth == null) extractedWidth = num.intValue();
-                            if (widgets.get(1) instanceof Number num && extractedHeight == null) extractedHeight = num.intValue();
-                            if (widgets.length() >= 3 && widgets.get(2) instanceof Number num && extractedBatch == null) extractedBatch = num.intValue();
-                        }
-                        if (inputs != null) {
-                            if (inputs.has("width") && extractedWidth == null) extractedWidth = inputs.optInt("width");
-                            if (inputs.has("height") && extractedHeight == null) extractedHeight = inputs.optInt("height");
-                            if (inputs.has("batch_size") && extractedBatch == null) extractedBatch = inputs.optInt("batch_size");
-                        }
-                    }
-
-                    if ("Flux2Scheduler".equals(type)) {
-                        if (widgets != null && widgets.length() > 0 && widgets.get(0) instanceof Number num && extractedSteps == null) {
-                            extractedSteps = num.intValue();
-                        }
-                        if (widgets != null && widgets.length() > 1 && widgets.get(1) instanceof Number num && extractedWidth == null) {
-                            extractedWidth = num.intValue();
-                        }
-                        if (widgets != null && widgets.length() > 2 && widgets.get(2) instanceof Number num && extractedHeight == null) {
-                            extractedHeight = num.intValue();
-                        }
-                        if (inputs != null) {
-                            if (inputs.has("steps") && extractedSteps == null) extractedSteps = inputs.optInt("steps");
-                            if (inputs.has("width") && extractedWidth == null) extractedWidth = inputs.optInt("width");
-                            if (inputs.has("height") && extractedHeight == null) extractedHeight = inputs.optInt("height");
-                        }
-                        if (extractedScheduler == null) extractedScheduler = "simple";
-                    }
-
-                    if ("BasicScheduler".equals(type) || "BetaScheduler".equals(type)) {
-                        if (widgets != null && widgets.length() > 0 && widgets.get(0) instanceof String s && extractedScheduler == null) {
-                            if (!s.isBlank() && !s.equalsIgnoreCase("COMBO")) extractedScheduler = s;
-                        }
-                        if (widgets != null && widgets.length() > 1 && widgets.get(1) instanceof Number num && extractedSteps == null) {
-                            extractedSteps = num.intValue();
-                        }
-                        if (widgets != null && widgets.length() > 2 && widgets.get(2) instanceof Number num && extractedDenoise == null) {
-                            extractedDenoise = num.doubleValue();
-                        }
-                        if (inputs != null) {
-                            if (inputs.has("scheduler") && extractedScheduler == null && !inputs.optString("scheduler").equalsIgnoreCase("COMBO")) {
-                                extractedScheduler = inputs.optString("scheduler");
-                            }
-                            if (inputs.has("steps") && extractedSteps == null) extractedSteps = inputs.optInt("steps");
-                            if (inputs.has("denoise") && extractedDenoise == null) extractedDenoise = inputs.optDouble("denoise");
-                        }
-                    }
-
-                    if ("SDTurboScheduler".equals(type)) {
-                        if (widgets != null && widgets.length() > 0 && widgets.get(0) instanceof Number num && extractedSteps == null) {
-                            extractedSteps = num.intValue();
-                        }
-                        if (widgets != null && widgets.length() > 1 && widgets.get(1) instanceof Number num && extractedDenoise == null) {
-                            extractedDenoise = num.doubleValue();
-                        }
-                        if (inputs != null) {
-                            if (inputs.has("steps") && extractedSteps == null) extractedSteps = inputs.optInt("steps");
-                            if (inputs.has("denoise") && extractedDenoise == null) extractedDenoise = inputs.optDouble("denoise");
-                        }
-                    }
-
-                    if ("KSamplerSelect".equals(type)) {
-                        if (widgets != null && widgets.length() > 0 && extractedSampler == null) {
-                            Object first = widgets.get(0);
-                            String s = (first instanceof String str) ? str : first.toString();
-                            if (!s.isBlank() && !s.equalsIgnoreCase("COMBO")) extractedSampler = s;
-                        }
-                        if (inputs != null && inputs.has("sampler_name") && extractedSampler == null && !inputs.optString("sampler_name").equalsIgnoreCase("COMBO")) {
-                            extractedSampler = inputs.optString("sampler_name");
-                        }
-                    }
-
-                    if ("CFGGuider".equals(type)) {
-                        if (widgets != null && widgets.length() > 0 && widgets.get(0) instanceof Number num && extractedCfg == null) {
-                            extractedCfg = num.doubleValue();
-                        }
-                        if (inputs != null && inputs.has("cfg") && extractedCfg == null) extractedCfg = inputs.optDouble("cfg");
-                    } else if ("FluxGuidance".equals(type)) {
-                        if (widgets != null && widgets.length() > 0 && widgets.get(0) instanceof Number num && extractedCfg == null) {
-                            extractedCfg = num.doubleValue();
-                        }
-                        if (inputs != null && inputs.has("guidance") && extractedCfg == null) extractedCfg = inputs.optDouble("guidance");
-                    }
-
-                    if ("KSampler".equals(type)) {
-                        if (widgets != null) {
-                            if (widgets.length() > 2 && widgets.get(2) instanceof Number num && extractedSteps == null) extractedSteps = num.intValue();
-                            if (widgets.length() > 3 && widgets.get(3) instanceof Number num && extractedCfg == null) extractedCfg = num.doubleValue();
-                            if (widgets.length() > 4 && widgets.get(4) instanceof String s && extractedSampler == null) {
-                                if (!s.isBlank() && !s.equalsIgnoreCase("COMBO")) extractedSampler = s;
-                            }
-                            if (widgets.length() > 5 && widgets.get(5) instanceof String s && extractedScheduler == null) {
-                                if (!s.isBlank() && !s.equalsIgnoreCase("COMBO")) extractedScheduler = s;
-                            }
-                            if (widgets.length() > 6 && widgets.get(6) instanceof Number num && extractedDenoise == null) extractedDenoise = num.doubleValue();
-                        }
-                        if (inputs != null) {
-                            if (inputs.has("steps") && extractedSteps == null) extractedSteps = inputs.optInt("steps");
-                            if (inputs.has("cfg") && extractedCfg == null) extractedCfg = inputs.optDouble("cfg");
-                            if (inputs.has("sampler_name") && extractedSampler == null && !inputs.optString("sampler_name").equalsIgnoreCase("COMBO")) extractedSampler = inputs.optString("sampler_name");
-                            if (inputs.has("scheduler") && extractedScheduler == null && !inputs.optString("scheduler").equalsIgnoreCase("COMBO")) extractedScheduler = inputs.optString("scheduler");
-                            if (inputs.has("denoise") && extractedDenoise == null) extractedDenoise = inputs.optDouble("denoise");
-                        }
-                    } else if ("KSamplerAdvanced".equals(type)) {
-                        if (widgets != null) {
-                            if (widgets.length() > 3 && widgets.get(3) instanceof Number num && extractedSteps == null) extractedSteps = num.intValue();
-                            if (widgets.length() > 4 && widgets.get(4) instanceof Number num && extractedCfg == null) extractedCfg = num.doubleValue();
-                            if (widgets.length() > 5 && widgets.get(5) instanceof String s && extractedSampler == null) {
-                                if (!s.isBlank() && !s.equalsIgnoreCase("COMBO")) extractedSampler = s;
-                            }
-                            if (widgets.length() > 6 && widgets.get(6) instanceof String s && extractedScheduler == null) {
-                                if (!s.isBlank() && !s.equalsIgnoreCase("COMBO")) extractedScheduler = s;
-                            }
-                        }
-                        if (inputs != null) {
-                            if (inputs.has("steps") && extractedSteps == null) extractedSteps = inputs.optInt("steps");
-                            if (inputs.has("cfg") && extractedCfg == null) extractedCfg = inputs.optDouble("cfg");
-                            if (inputs.has("sampler_name") && extractedSampler == null && !inputs.optString("sampler_name").equalsIgnoreCase("COMBO")) extractedSampler = inputs.optString("sampler_name");
-                            if (inputs.has("scheduler") && extractedScheduler == null && !inputs.optString("scheduler").equalsIgnoreCase("COMBO")) extractedScheduler = inputs.optString("scheduler");
-                        }
-                    }
-                }
-            } else {
-                JSONObject promptObj = obj.has("prompt") ? obj.getJSONObject("prompt") : obj;
-                for (String key : promptObj.keySet()) {
-                    JSONObject node = promptObj.optJSONObject(key);
-                    if (node == null) continue;
-                    String classType = node.optString("class_type", "");
-                    JSONObject inputs = node.optJSONObject("inputs");
-                    if (inputs == null) continue;
-
-                    if (classType.contains("KSampler")) {
-                        if (inputs.has("steps") && extractedSteps == null) extractedSteps = inputs.optInt("steps");
-                        if (inputs.has("cfg") && extractedCfg == null) extractedCfg = inputs.optDouble("cfg");
-                        if (inputs.has("sampler_name") && extractedSampler == null && !inputs.optString("sampler_name").equalsIgnoreCase("COMBO")) extractedSampler = inputs.optString("sampler_name");
-                        if (inputs.has("scheduler") && extractedScheduler == null && !inputs.optString("scheduler").equalsIgnoreCase("COMBO")) extractedScheduler = inputs.optString("scheduler");
-                        if (inputs.has("denoise") && extractedDenoise == null) extractedDenoise = inputs.optDouble("denoise");
-                    } else if ("KSamplerSelect".equals(classType)) {
-                        if (inputs.has("sampler_name") && extractedSampler == null && !inputs.optString("sampler_name").equalsIgnoreCase("COMBO")) extractedSampler = inputs.optString("sampler_name");
-                    } else if ("Flux2Scheduler".equals(classType)) {
-                        if (inputs.has("steps") && extractedSteps == null) extractedSteps = inputs.optInt("steps");
-                        if (inputs.has("width") && extractedWidth == null) extractedWidth = inputs.optInt("width");
-                        if (inputs.has("height") && extractedHeight == null) extractedHeight = inputs.optInt("height");
-                        if (extractedScheduler == null) extractedScheduler = "simple";
-                    } else if ("BasicScheduler".equals(classType) || "BetaScheduler".equals(classType)) {
-                        if (inputs.has("scheduler") && extractedScheduler == null && !inputs.optString("scheduler").equalsIgnoreCase("COMBO")) extractedScheduler = inputs.optString("scheduler");
-                        if (inputs.has("steps") && extractedSteps == null) extractedSteps = inputs.optInt("steps");
-                        if (inputs.has("denoise") && extractedDenoise == null) extractedDenoise = inputs.optDouble("denoise");
-                    } else if ("SDTurboScheduler".equals(classType)) {
-                        if (inputs.has("steps") && extractedSteps == null) extractedSteps = inputs.optInt("steps");
-                        if (inputs.has("denoise") && extractedDenoise == null) extractedDenoise = inputs.optDouble("denoise");
-                    } else if ("CFGGuider".equals(classType)) {
-                        if (inputs.has("cfg") && extractedCfg == null) extractedCfg = inputs.optDouble("cfg");
-                    } else if ("FluxGuidance".equals(classType)) {
-                        if (inputs.has("guidance") && extractedCfg == null) extractedCfg = inputs.optDouble("guidance");
-                    } else if (classType.contains("Empty") || classType.contains("Latent")) {
-                        if (inputs.has("width") && extractedWidth == null) extractedWidth = inputs.optInt("width");
-                        if (inputs.has("height") && extractedHeight == null) extractedHeight = inputs.optInt("height");
-                        if (inputs.has("batch_size") && extractedBatch == null) extractedBatch = inputs.optInt("batch_size");
-                    }
-                }
-            }
-
-            if (extractedWidth != null && extractedWidth > 0 && view.getPromptWidthSpinner() != null) {
-                view.getPromptWidthSpinner().setValue(extractedWidth);
-            }
-            if (extractedHeight != null && extractedHeight > 0 && view.getPromptHeightSpinner() != null) {
-                view.getPromptHeightSpinner().setValue(extractedHeight);
-            }
-            if (extractedBatch != null && extractedBatch > 0 && view.getPromptBatchSizeSpinner() != null) {
-                view.getPromptBatchSizeSpinner().setValue(extractedBatch);
-            }
-            if (extractedSteps != null && extractedSteps > 0 && view.getPromptStepsSpinner() != null) {
-                view.getPromptStepsSpinner().setValue(extractedSteps);
-            }
-            if (extractedCfg != null && extractedCfg >= 0 && view.getPromptCfgSpinner() != null) {
-                view.getPromptCfgSpinner().setValue(extractedCfg);
-            }
-            if (extractedDenoise != null && extractedDenoise >= 0.0 && extractedDenoise <= 1.0 && view.getPromptDenoiseSpinner() != null) {
-                view.getPromptDenoiseSpinner().setValue(extractedDenoise);
-            }
-            if (extractedSampler != null && !extractedSampler.isBlank() && view.getPromptSamplerCombo() != null) {
-                selectOrAddComboItem(view.getPromptSamplerCombo(), extractedSampler);
-            }
-            if (extractedScheduler != null && !extractedScheduler.isBlank() && view.getPromptSchedulerCombo() != null) {
-                selectOrAddComboItem(view.getPromptSchedulerCombo(), extractedScheduler);
-            }
-        } catch (Exception e) {
-            logger.warn("Failed to parse workflow to extract defaults: {}", e.getMessage());
+        if (p.width() != null && p.width() > 0 && view.getPromptWidthSpinner() != null) {
+            view.getPromptWidthSpinner().setValue(p.width());
+        }
+        if (p.height() != null && p.height() > 0 && view.getPromptHeightSpinner() != null) {
+            view.getPromptHeightSpinner().setValue(p.height());
+        }
+        if (p.batch() != null && p.batch() > 0 && view.getPromptBatchSizeSpinner() != null) {
+            view.getPromptBatchSizeSpinner().setValue(p.batch());
+        }
+        if (p.steps() != null && p.steps() > 0 && view.getPromptStepsSpinner() != null) {
+            view.getPromptStepsSpinner().setValue(p.steps());
+        }
+        if (p.cfg() != null && p.cfg() >= 0 && view.getPromptCfgSpinner() != null) {
+            view.getPromptCfgSpinner().setValue(p.cfg());
+        }
+        if (p.denoise() != null && p.denoise() >= 0.0 && p.denoise() <= 1.0 && view.getPromptDenoiseSpinner() != null) {
+            view.getPromptDenoiseSpinner().setValue(p.denoise());
+        }
+        if (p.sampler() != null && !p.sampler().isBlank() && view.getPromptSamplerCombo() != null) {
+            selectOrAddComboItem(view.getPromptSamplerCombo(), p.sampler());
+        }
+        if (p.scheduler() != null && !p.scheduler().isBlank() && view.getPromptSchedulerCombo() != null) {
+            selectOrAddComboItem(view.getPromptSchedulerCombo(), p.scheduler());
         }
     }
 
@@ -461,34 +275,7 @@ public class PromptLabPresetManager {
      * @return A list of all JSON objects representing nodes.
      */
     public List<JSONObject> collectAllNodes(JSONObject root) {
-        List<JSONObject> allNodes = new ArrayList<>();
-        if (root == null) return allNodes;
-
-        if (root.has("nodes") && root.get("nodes") instanceof JSONArray nodes) {
-            for (int i = 0; i < nodes.length(); i++) {
-                JSONObject node = nodes.optJSONObject(i);
-                if (node != null) {
-                    allNodes.add(node);
-                }
-            }
-        }
-
-        if (root.has("definitions") && root.get("definitions") instanceof JSONObject defs) {
-            if (defs.has("subgraphs") && defs.get("subgraphs") instanceof JSONArray subgraphs) {
-                for (int i = 0; i < subgraphs.length(); i++) {
-                    JSONObject sg = subgraphs.optJSONObject(i);
-                    if (sg != null && sg.has("nodes") && sg.get("nodes") instanceof JSONArray sgNodes) {
-                        for (int j = 0; j < sgNodes.length(); j++) {
-                            JSONObject sn = sgNodes.optJSONObject(j);
-                            if (sn != null) {
-                                allNodes.add(sn);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        return allNodes;
+        return parameterExtractor.collectAllNodes(root);
     }
 
     /**

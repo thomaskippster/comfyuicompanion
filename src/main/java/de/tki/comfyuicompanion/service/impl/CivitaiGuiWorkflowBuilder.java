@@ -5,14 +5,20 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import de.tki.comfyuicompanion.domain.CivitaiModelEntry;
 import de.tki.comfyuicompanion.domain.ModelInfo;
+import de.tki.comfyuicompanion.service.IConfigService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.stream.Stream;
 
 /**
  * Dedicated builder synthesizing ComfyUI GUI-format workflows (LiteGraph schema)
@@ -29,24 +35,47 @@ public class CivitaiGuiWorkflowBuilder {
     private static final Logger log = LoggerFactory.getLogger(CivitaiGuiWorkflowBuilder.class);
 
     private final ObjectMapper objectMapper;
+    private final IConfigService configService;
+    private final ComfyGraphNodeFactory nodeFactory;
+    private final CivitaiLocalModelScanner localModelScanner;
 
     /**
-     * Constructs a new CivitaiGuiWorkflowBuilder with the specified Jackson {@link ObjectMapper}.
+     * Constructs a new CivitaiGuiWorkflowBuilder with the specified dependencies.
      *
-     * @param objectMapper the object mapper for creating JSON graph trees
+     * @param objectMapper  the object mapper for creating JSON graph trees
+     * @param configService optional configuration service for resolving local model directories
+     * @param nodeFactory   optional factory for creating LiteGraph nodes and links
      */
     @Autowired
-    public CivitaiGuiWorkflowBuilder(ObjectMapper objectMapper) {
+    public CivitaiGuiWorkflowBuilder(
+            ObjectMapper objectMapper,
+            @Autowired(required = false) IConfigService configService,
+            @Autowired(required = false) ComfyGraphNodeFactory nodeFactory) {
         this.objectMapper = objectMapper != null ? objectMapper : new ObjectMapper();
+        this.configService = configService;
+        this.nodeFactory = nodeFactory != null ? nodeFactory : new ComfyGraphNodeFactory(this.objectMapper);
+        this.localModelScanner = new CivitaiLocalModelScanner(this.configService);
     }
 
     /**
-     * Builds a LiteGraph-compatible GUI workflow {@link ObjectNode} for the specified Civitai model entry.
+     * Constructor supporting legacy callers with 2 arguments.
      *
-     * @param entry          the Civitai model entry
-     * @param requiredModels the list of operational models resolved for this entry
-     * @return an {@link ObjectNode} representing the complete LiteGraph diagram
+     * @param objectMapper  the object mapper
+     * @param configService configuration service
      */
+    public CivitaiGuiWorkflowBuilder(ObjectMapper objectMapper, IConfigService configService) {
+        this(objectMapper, configService, null);
+    }
+
+    /**
+     * Convenience constructor for testing without Spring context.
+     *
+     * @param objectMapper the object mapper for creating JSON graph trees
+     */
+    public CivitaiGuiWorkflowBuilder(ObjectMapper objectMapper) {
+        this(objectMapper, null, null);
+    }
+
     /**
      * Builds a LiteGraph-compatible GUI workflow {@link ObjectNode} for the specified Civitai model entry,
      * using the default trigger words or fallback prompt.
@@ -77,14 +106,24 @@ public class CivitaiGuiWorkflowBuilder {
         String primaryFilename = entry != null && entry.filename() != null ? entry.filename() : "model.safetensors";
         String baseModelFilename = primaryFilename;
 
-        if (isLora && requiredModels != null) {
-            for (ModelInfo info : requiredModels) {
-                String itype = info.getType() != null ? info.getType().toLowerCase(Locale.ROOT) : "";
-                if (itype.contains("checkpoint") || itype.contains("unet") || itype.contains("diffusion")) {
-                    baseModelFilename = info.getFilename() != null && !info.getFilename().isBlank() ? info.getFilename() : info.getName();
-                    break;
+        if (isLora) {
+            String resolvedBase = null;
+            if (requiredModels != null) {
+                for (ModelInfo info : requiredModels) {
+                    String itype = info.getType() != null ? info.getType().toLowerCase(Locale.ROOT) : "";
+                    if (itype.contains("checkpoint") || itype.contains("unet") || itype.contains("diffusion")) {
+                        String fn = info.getFilename() != null && !info.getFilename().isBlank() ? info.getFilename() : info.getName();
+                        if (fn != null && !fn.equalsIgnoreCase(primaryFilename)) {
+                            resolvedBase = fn;
+                            break;
+                        }
+                    }
                 }
             }
+            if (resolvedBase == null || resolvedBase.equalsIgnoreCase(primaryFilename)) {
+                resolvedBase = findFallbackCheckpointName(baseLower);
+            }
+            baseModelFilename = resolvedBase;
         }
 
         // Architecture-specific dimension and sampling defaults
@@ -95,7 +134,7 @@ public class CivitaiGuiWorkflowBuilder {
         String samplerName = "euler";
         String scheduler = "normal";
 
-        if (baseLower.contains("1.5") || baseLower.contains("sd 1.5")) {
+        if (baseLower.contains("1.5") || baseLower.contains("sd 1.5") || (isLora && (baseModelFilename.contains("1-5") || baseModelFilename.contains("1.5")))) {
             width = 512;
             height = 512;
             steps = 20;
@@ -199,11 +238,11 @@ public class CivitaiGuiWorkflowBuilder {
     private void buildCheckpointGraph(ArrayNode nodes, ArrayNode links, String ckptName, String starterPrompt,
                                       int width, int height, int steps, double cfg, String sampler, String scheduler, long seed) {
         // Node 4: CheckpointLoaderSimple
-        ObjectNode n4 = createNode(4, "CheckpointLoaderSimple", 40, 180, 315, 98, 0);
+        ObjectNode n4 = nodeFactory.createNode(4, "CheckpointLoaderSimple", 40, 180, 315, 98, 0);
         ArrayNode n4Outputs = objectMapper.createArrayNode();
-        n4Outputs.add(createOutput("MODEL", "MODEL", 0, 1));
-        n4Outputs.add(createOutput("CLIP", "CLIP", 1, 2, 3));
-        n4Outputs.add(createOutput("VAE", "VAE", 2, 7));
+        n4Outputs.add(nodeFactory.createOutput("MODEL", "MODEL", 0, 1));
+        n4Outputs.add(nodeFactory.createOutput("CLIP", "CLIP", 1, 2, 3));
+        n4Outputs.add(nodeFactory.createOutput("VAE", "VAE", 2, 7));
         n4.set("outputs", n4Outputs);
         ArrayNode n4Widgets = objectMapper.createArrayNode();
         n4Widgets.add(ckptName);
@@ -211,59 +250,24 @@ public class CivitaiGuiWorkflowBuilder {
         nodes.add(n4);
 
         // Node 6: Positive Prompt
-        ObjectNode n6 = createNode(6, "CLIPTextEncode", 415, 100, 425, 180, 1);
-        n6.put("title", "CLIP Text Encode (Positive Prompt)");
-        n6.put("color", "#232");
-        n6.put("bgcolor", "#353");
-        ArrayNode n6Inputs = objectMapper.createArrayNode();
-        n6Inputs.add(createInput("clip", "CLIP", 2));
-        n6.set("inputs", n6Inputs);
-        ArrayNode n6Outputs = objectMapper.createArrayNode();
-        n6Outputs.add(createOutput("CONDITIONING", "CONDITIONING", 0, 4));
-        n6.set("outputs", n6Outputs);
-        ArrayNode n6Widgets = objectMapper.createArrayNode();
-        n6Widgets.add(starterPrompt);
-        n6.set("widgets_values", n6Widgets);
-        nodes.add(n6);
+        nodes.add(nodeFactory.createPromptNode(6, "CLIP Text Encode (Positive Prompt)", "#232", "#353", 415, 100, 2, 4, starterPrompt, 1));
 
         // Node 7: Negative Prompt
-        ObjectNode n7 = createNode(7, "CLIPTextEncode", 415, 340, 425, 180, 2);
-        n7.put("title", "CLIP Text Encode (Negative Prompt)");
-        n7.put("color", "#322");
-        n7.put("bgcolor", "#533");
-        ArrayNode n7Inputs = objectMapper.createArrayNode();
-        n7Inputs.add(createInput("clip", "CLIP", 3));
-        n7.set("inputs", n7Inputs);
-        ArrayNode n7Outputs = objectMapper.createArrayNode();
-        n7Outputs.add(createOutput("CONDITIONING", "CONDITIONING", 0, 5));
-        n7.set("outputs", n7Outputs);
-        ArrayNode n7Widgets = objectMapper.createArrayNode();
-        n7Widgets.add("text, watermark, blurry, low quality, bad anatomy");
-        n7.set("widgets_values", n7Widgets);
-        nodes.add(n7);
+        nodes.add(nodeFactory.createPromptNode(7, "CLIP Text Encode (Negative Prompt)", "#322", "#533", 415, 340, 3, 5, "text, watermark, blurry, low quality, bad anatomy", 2));
 
         // Node 5: EmptyLatentImage
-        ObjectNode n5 = createNode(5, "EmptyLatentImage", 415, 580, 315, 106, 3);
-        ArrayNode n5Outputs = objectMapper.createArrayNode();
-        n5Outputs.add(createOutput("LATENT", "LATENT", 0, 6));
-        n5.set("outputs", n5Outputs);
-        ArrayNode n5Widgets = objectMapper.createArrayNode();
-        n5Widgets.add(width);
-        n5Widgets.add(height);
-        n5Widgets.add(1);
-        n5.set("widgets_values", n5Widgets);
-        nodes.add(n5);
+        nodes.add(nodeFactory.createEmptyLatentNode(5, 415, 580, width, height, 1, 6, 3));
 
         // Node 3: KSampler
-        ObjectNode n3 = createNode(3, "KSampler", 880, 150, 315, 262, 4);
+        ObjectNode n3 = nodeFactory.createNode(3, "KSampler", 880, 150, 315, 262, 4);
         ArrayNode n3Inputs = objectMapper.createArrayNode();
-        n3Inputs.add(createInput("model", "MODEL", 1));
-        n3Inputs.add(createInput("positive", "CONDITIONING", 4));
-        n3Inputs.add(createInput("negative", "CONDITIONING", 5));
-        n3Inputs.add(createInput("latent_image", "LATENT", 6));
+        n3Inputs.add(nodeFactory.createInput("model", "MODEL", 1));
+        n3Inputs.add(nodeFactory.createInput("positive", "CONDITIONING", 4));
+        n3Inputs.add(nodeFactory.createInput("negative", "CONDITIONING", 5));
+        n3Inputs.add(nodeFactory.createInput("latent_image", "LATENT", 6));
         n3.set("inputs", n3Inputs);
         ArrayNode n3Outputs = objectMapper.createArrayNode();
-        n3Outputs.add(createOutput("LATENT", "LATENT", 0, 8));
+        n3Outputs.add(nodeFactory.createOutput("LATENT", "LATENT", 0, 8));
         n3.set("outputs", n3Outputs);
         ArrayNode n3Widgets = objectMapper.createArrayNode();
         n3Widgets.add(seed);
@@ -277,48 +281,31 @@ public class CivitaiGuiWorkflowBuilder {
         nodes.add(n3);
 
         // Node 8: VAEDecode
-        ObjectNode n8 = createNode(8, "VAEDecode", 1240, 150, 210, 46, 5);
-        ArrayNode n8Inputs = objectMapper.createArrayNode();
-        n8Inputs.add(createInput("samples", "LATENT", 8));
-        n8Inputs.add(createInput("vae", "VAE", 7));
-        n8.set("inputs", n8Inputs);
-        ArrayNode n8Outputs = objectMapper.createArrayNode();
-        n8Outputs.add(createOutput("IMAGE", "IMAGE", 0, 9));
-        n8.set("outputs", n8Outputs);
-        n8.set("widgets_values", objectMapper.createArrayNode());
-        nodes.add(n8);
+        nodes.add(nodeFactory.createVaeDecodeNode(8, 1240, 150, 8, 7, 9, 5));
 
         // Node 9: SaveImage
-        ObjectNode n9 = createNode(9, "SaveImage", 1490, 150, 500, 500, 6);
-        ArrayNode n9Inputs = objectMapper.createArrayNode();
-        n9Inputs.add(createInput("images", "IMAGE", 9));
-        n9.set("inputs", n9Inputs);
-        n9.set("outputs", objectMapper.createArrayNode());
-        ArrayNode n9Widgets = objectMapper.createArrayNode();
-        n9Widgets.add("ComfyUI");
-        n9.set("widgets_values", n9Widgets);
-        nodes.add(n9);
+        nodes.add(nodeFactory.createSaveImageNode(9, 1490, 150, 9, "ComfyUI", 6));
 
         // Links
-        links.add(createLink(1, 4, 0, 3, 0, "MODEL"));
-        links.add(createLink(2, 4, 1, 6, 0, "CLIP"));
-        links.add(createLink(3, 4, 1, 7, 0, "CLIP"));
-        links.add(createLink(4, 6, 0, 3, 1, "CONDITIONING"));
-        links.add(createLink(5, 7, 0, 3, 2, "CONDITIONING"));
-        links.add(createLink(6, 5, 0, 3, 3, "LATENT"));
-        links.add(createLink(7, 4, 2, 8, 1, "VAE"));
-        links.add(createLink(8, 3, 0, 8, 0, "LATENT"));
-        links.add(createLink(9, 8, 0, 9, 0, "IMAGE"));
+        links.add(nodeFactory.createLink(1, 4, 0, 3, 0, "MODEL"));
+        links.add(nodeFactory.createLink(2, 4, 1, 6, 0, "CLIP"));
+        links.add(nodeFactory.createLink(3, 4, 1, 7, 0, "CLIP"));
+        links.add(nodeFactory.createLink(4, 6, 0, 3, 1, "CONDITIONING"));
+        links.add(nodeFactory.createLink(5, 7, 0, 3, 2, "CONDITIONING"));
+        links.add(nodeFactory.createLink(6, 5, 0, 3, 3, "LATENT"));
+        links.add(nodeFactory.createLink(7, 4, 2, 8, 1, "VAE"));
+        links.add(nodeFactory.createLink(8, 3, 0, 8, 0, "LATENT"));
+        links.add(nodeFactory.createLink(9, 8, 0, 9, 0, "IMAGE"));
     }
 
     private void buildLoraGraph(ArrayNode nodes, ArrayNode links, String ckptName, String loraName, String starterPrompt,
                                 int width, int height, int steps, double cfg, String sampler, String scheduler, long seed) {
         // Node 4: CheckpointLoaderSimple
-        ObjectNode n4 = createNode(4, "CheckpointLoaderSimple", 40, 140, 315, 98, 0);
+        ObjectNode n4 = nodeFactory.createNode(4, "CheckpointLoaderSimple", 40, 140, 315, 98, 0);
         ArrayNode n4Outputs = objectMapper.createArrayNode();
-        n4Outputs.add(createOutput("MODEL", "MODEL", 0, 1));
-        n4Outputs.add(createOutput("CLIP", "CLIP", 1, 2));
-        n4Outputs.add(createOutput("VAE", "VAE", 2, 7));
+        n4Outputs.add(nodeFactory.createOutput("MODEL", "MODEL", 0, 1));
+        n4Outputs.add(nodeFactory.createOutput("CLIP", "CLIP", 1, 2));
+        n4Outputs.add(nodeFactory.createOutput("VAE", "VAE", 2, 7));
         n4.set("outputs", n4Outputs);
         ArrayNode n4Widgets = objectMapper.createArrayNode();
         n4Widgets.add(ckptName);
@@ -326,14 +313,14 @@ public class CivitaiGuiWorkflowBuilder {
         nodes.add(n4);
 
         // Node 10: LoraLoader
-        ObjectNode n10 = createNode(10, "LoraLoader", 40, 320, 315, 126, 1);
+        ObjectNode n10 = nodeFactory.createNode(10, "LoraLoader", 40, 320, 315, 126, 1);
         ArrayNode n10Inputs = objectMapper.createArrayNode();
-        n10Inputs.add(createInput("model", "MODEL", 1));
-        n10Inputs.add(createInput("clip", "CLIP", 2));
+        n10Inputs.add(nodeFactory.createInput("model", "MODEL", 1));
+        n10Inputs.add(nodeFactory.createInput("clip", "CLIP", 2));
         n10.set("inputs", n10Inputs);
         ArrayNode n10Outputs = objectMapper.createArrayNode();
-        n10Outputs.add(createOutput("MODEL", "MODEL", 0, 10));
-        n10Outputs.add(createOutput("CLIP", "CLIP", 1, 11, 12));
+        n10Outputs.add(nodeFactory.createOutput("MODEL", "MODEL", 0, 10));
+        n10Outputs.add(nodeFactory.createOutput("CLIP", "CLIP", 1, 11, 12));
         n10.set("outputs", n10Outputs);
         ArrayNode n10Widgets = objectMapper.createArrayNode();
         n10Widgets.add(loraName);
@@ -343,59 +330,24 @@ public class CivitaiGuiWorkflowBuilder {
         nodes.add(n10);
 
         // Node 6: Positive Prompt
-        ObjectNode n6 = createNode(6, "CLIPTextEncode", 415, 100, 425, 180, 2);
-        n6.put("title", "CLIP Text Encode (Positive Prompt)");
-        n6.put("color", "#232");
-        n6.put("bgcolor", "#353");
-        ArrayNode n6Inputs = objectMapper.createArrayNode();
-        n6Inputs.add(createInput("clip", "CLIP", 11));
-        n6.set("inputs", n6Inputs);
-        ArrayNode n6Outputs = objectMapper.createArrayNode();
-        n6Outputs.add(createOutput("CONDITIONING", "CONDITIONING", 0, 4));
-        n6.set("outputs", n6Outputs);
-        ArrayNode n6Widgets = objectMapper.createArrayNode();
-        n6Widgets.add(starterPrompt);
-        n6.set("widgets_values", n6Widgets);
-        nodes.add(n6);
+        nodes.add(nodeFactory.createPromptNode(6, "CLIP Text Encode (Positive Prompt)", "#232", "#353", 415, 100, 11, 4, starterPrompt, 2));
 
         // Node 7: Negative Prompt
-        ObjectNode n7 = createNode(7, "CLIPTextEncode", 415, 340, 425, 180, 3);
-        n7.put("title", "CLIP Text Encode (Negative Prompt)");
-        n7.put("color", "#322");
-        n7.put("bgcolor", "#533");
-        ArrayNode n7Inputs = objectMapper.createArrayNode();
-        n7Inputs.add(createInput("clip", "CLIP", 12));
-        n7.set("inputs", n7Inputs);
-        ArrayNode n7Outputs = objectMapper.createArrayNode();
-        n7Outputs.add(createOutput("CONDITIONING", "CONDITIONING", 0, 5));
-        n7.set("outputs", n7Outputs);
-        ArrayNode n7Widgets = objectMapper.createArrayNode();
-        n7Widgets.add("text, watermark, blurry, low quality, bad anatomy");
-        n7.set("widgets_values", n7Widgets);
-        nodes.add(n7);
+        nodes.add(nodeFactory.createPromptNode(7, "CLIP Text Encode (Negative Prompt)", "#322", "#533", 415, 340, 12, 5, "text, watermark, blurry, low quality, bad anatomy", 3));
 
         // Node 5: EmptyLatentImage
-        ObjectNode n5 = createNode(5, "EmptyLatentImage", 415, 580, 315, 106, 4);
-        ArrayNode n5Outputs = objectMapper.createArrayNode();
-        n5Outputs.add(createOutput("LATENT", "LATENT", 0, 6));
-        n5.set("outputs", n5Outputs);
-        ArrayNode n5Widgets = objectMapper.createArrayNode();
-        n5Widgets.add(width);
-        n5Widgets.add(height);
-        n5Widgets.add(1);
-        n5.set("widgets_values", n5Widgets);
-        nodes.add(n5);
+        nodes.add(nodeFactory.createEmptyLatentNode(5, 415, 580, width, height, 1, 6, 4));
 
         // Node 3: KSampler
-        ObjectNode n3 = createNode(3, "KSampler", 880, 150, 315, 262, 5);
+        ObjectNode n3 = nodeFactory.createNode(3, "KSampler", 880, 150, 315, 262, 5);
         ArrayNode n3Inputs = objectMapper.createArrayNode();
-        n3Inputs.add(createInput("model", "MODEL", 10));
-        n3Inputs.add(createInput("positive", "CONDITIONING", 4));
-        n3Inputs.add(createInput("negative", "CONDITIONING", 5));
-        n3Inputs.add(createInput("latent_image", "LATENT", 6));
+        n3Inputs.add(nodeFactory.createInput("model", "MODEL", 10));
+        n3Inputs.add(nodeFactory.createInput("positive", "CONDITIONING", 4));
+        n3Inputs.add(nodeFactory.createInput("negative", "CONDITIONING", 5));
+        n3Inputs.add(nodeFactory.createInput("latent_image", "LATENT", 6));
         n3.set("inputs", n3Inputs);
         ArrayNode n3Outputs = objectMapper.createArrayNode();
-        n3Outputs.add(createOutput("LATENT", "LATENT", 0, 8));
+        n3Outputs.add(nodeFactory.createOutput("LATENT", "LATENT", 0, 8));
         n3.set("outputs", n3Outputs);
         ArrayNode n3Widgets = objectMapper.createArrayNode();
         n3Widgets.add(seed);
@@ -409,99 +361,34 @@ public class CivitaiGuiWorkflowBuilder {
         nodes.add(n3);
 
         // Node 8: VAEDecode
-        ObjectNode n8 = createNode(8, "VAEDecode", 1240, 150, 210, 46, 6);
-        ArrayNode n8Inputs = objectMapper.createArrayNode();
-        n8Inputs.add(createInput("samples", "LATENT", 8));
-        n8Inputs.add(createInput("vae", "VAE", 7));
-        n8.set("inputs", n8Inputs);
-        ArrayNode n8Outputs = objectMapper.createArrayNode();
-        n8Outputs.add(createOutput("IMAGE", "IMAGE", 0, 9));
-        n8.set("outputs", n8Outputs);
-        n8.set("widgets_values", objectMapper.createArrayNode());
-        nodes.add(n8);
+        nodes.add(nodeFactory.createVaeDecodeNode(8, 1240, 150, 8, 7, 9, 6));
 
         // Node 9: SaveImage
-        ObjectNode n9 = createNode(9, "SaveImage", 1490, 150, 500, 500, 7);
-        ArrayNode n9Inputs = objectMapper.createArrayNode();
-        n9Inputs.add(createInput("images", "IMAGE", 9));
-        n9.set("inputs", n9Inputs);
-        n9.set("outputs", objectMapper.createArrayNode());
-        ArrayNode n9Widgets = objectMapper.createArrayNode();
-        n9Widgets.add("ComfyUI");
-        n9.set("widgets_values", n9Widgets);
-        nodes.add(n9);
+        nodes.add(nodeFactory.createSaveImageNode(9, 1490, 150, 9, "ComfyUI", 7));
 
         // Links
-        links.add(createLink(1, 4, 0, 10, 0, "MODEL"));
-        links.add(createLink(2, 4, 1, 10, 1, "CLIP"));
-        links.add(createLink(4, 6, 0, 3, 1, "CONDITIONING"));
-        links.add(createLink(5, 7, 0, 3, 2, "CONDITIONING"));
-        links.add(createLink(6, 5, 0, 3, 3, "LATENT"));
-        links.add(createLink(7, 4, 2, 8, 1, "VAE"));
-        links.add(createLink(8, 3, 0, 8, 0, "LATENT"));
-        links.add(createLink(9, 8, 0, 9, 0, "IMAGE"));
-        links.add(createLink(10, 10, 0, 3, 0, "MODEL"));
-        links.add(createLink(11, 10, 1, 6, 0, "CLIP"));
-        links.add(createLink(12, 10, 1, 7, 0, "CLIP"));
+        links.add(nodeFactory.createLink(1, 4, 0, 10, 0, "MODEL"));
+        links.add(nodeFactory.createLink(2, 4, 1, 10, 1, "CLIP"));
+        links.add(nodeFactory.createLink(4, 6, 0, 3, 1, "CONDITIONING"));
+        links.add(nodeFactory.createLink(5, 7, 0, 3, 2, "CONDITIONING"));
+        links.add(nodeFactory.createLink(6, 5, 0, 3, 3, "LATENT"));
+        links.add(nodeFactory.createLink(7, 4, 2, 8, 1, "VAE"));
+        links.add(nodeFactory.createLink(8, 3, 0, 8, 0, "LATENT"));
+        links.add(nodeFactory.createLink(9, 8, 0, 9, 0, "IMAGE"));
+        links.add(nodeFactory.createLink(10, 10, 0, 3, 0, "MODEL"));
+        links.add(nodeFactory.createLink(11, 10, 1, 6, 0, "CLIP"));
+        links.add(nodeFactory.createLink(12, 10, 1, 7, 0, "CLIP"));
     }
 
-    private ObjectNode createNode(int id, String type, double x, double y, double width, double height, int order) {
-        ObjectNode node = objectMapper.createObjectNode();
-        node.put("id", id);
-        node.put("type", type);
-
-        ArrayNode pos = objectMapper.createArrayNode();
-        pos.add(x);
-        pos.add(y);
-        node.set("pos", pos);
-
-        ArrayNode size = objectMapper.createArrayNode();
-        size.add(width);
-        size.add(height);
-        node.set("size", size);
-
-        node.set("flags", objectMapper.createObjectNode());
-        node.put("order", order);
-        node.put("mode", 0);
-        node.set("inputs", objectMapper.createArrayNode());
-        node.set("outputs", objectMapper.createArrayNode());
-
-        ObjectNode props = objectMapper.createObjectNode();
-        props.put("Node name for S&R", type);
-        node.set("properties", props);
-
-        return node;
-    }
-
-    private ObjectNode createInput(String name, String type, int link) {
-        ObjectNode input = objectMapper.createObjectNode();
-        input.put("name", name);
-        input.put("type", type);
-        input.put("link", link);
-        return input;
-    }
-
-    private ObjectNode createOutput(String name, String type, int slotIndex, int... linkIds) {
-        ObjectNode output = objectMapper.createObjectNode();
-        output.put("name", name);
-        output.put("type", type);
-        output.put("slot_index", slotIndex);
-        ArrayNode links = objectMapper.createArrayNode();
-        for (int link : linkIds) {
-            links.add(link);
-        }
-        output.set("links", links);
-        return output;
-    }
-
-    private ArrayNode createLink(int linkId, int originId, int originSlot, int targetId, int targetSlot, String type) {
-        ArrayNode link = objectMapper.createArrayNode();
-        link.add(linkId);
-        link.add(originId);
-        link.add(originSlot);
-        link.add(targetId);
-        link.add(targetSlot);
-        link.add(type);
-        return link;
+    /**
+     * Determines a fallback checkpoint filename when building workflows for LoRA models
+     * that have no explicit base checkpoint attached in their dependencies.
+     *
+     * @param baseLower the lowercased base architecture string
+     * @return a valid checkpoint filename
+     */
+    private String findFallbackCheckpointName(String baseLower) {
+        return (localModelScanner != null ? localModelScanner : new CivitaiLocalModelScanner(configService))
+                .findFallbackCheckpointName(baseLower);
     }
 }

@@ -160,9 +160,8 @@ public class CivitaiHubService implements ICivitaiHubService {
             urlBuilder.append("&sort=").append(URLEncoder.encode(apiSort, StandardCharsets.UTF_8));
         }
 
-        if (!allowNsfw) {
-            urlBuilder.append("&nsfw=false");
-        }
+        // Permanently enforce Safe-Search / nsfw=false across the entire application
+        urlBuilder.append("&nsfw=false");
 
         return URI.create(urlBuilder.toString());
     }
@@ -204,6 +203,10 @@ public class CivitaiHubService implements ICivitaiHubService {
 
     @Override
     public ModelInfo createModelInfoForDownload(CivitaiModelEntry entry) {
+        if (entry.nsfw()) {
+            throw new IllegalArgumentException("NSFW models are strictly prohibited and cannot be downloaded.");
+        }
+
         ModelFolder folder = ModelFolder.fromString(entry.type());
         String folderName = folder.getDefaultFolderName();
 
@@ -222,18 +225,42 @@ public class CivitaiHubService implements ICivitaiHubService {
     /**
      * Parses a single Civitai model JSON node into a domain {@link CivitaiModelEntry}.
      * Handles thumbs-based rating fallback and resolves thumbnails and file metadata.
+     * Strictly rejects mature/NSFW entries to prevent youth protection violations.
      *
      * @param item the raw JSON node from the Civitai API models list or item response
-     * @return the parsed model entry, or {@code null} if the item cannot be converted
+     * @return the parsed model entry, or {@code null} if the item cannot be converted or is NSFW
      */
     public CivitaiModelEntry parseModelEntry(JsonNode item) {
         try {
+            boolean nsfw = item.path("nsfw").asBoolean(false) || item.path("nsfwLevel").asInt(1) > 1;
+            if (nsfw) {
+                // Strictly exclude mature/NSFW models from the application
+                return null;
+            }
+
             long id = item.path("id").asLong(0);
             String name = item.path("name").asText("Unnamed Model");
             String type = item.path("type").asText("Checkpoint");
             String creator = item.path("creator").path("username").asText("Civitai Creator");
             String description = item.path("description").asText("");
-            boolean nsfw = item.path("nsfw").asBoolean(false);
+            boolean poi = item.path("poi").asBoolean(false);
+
+            String commercialUse = "None";
+            JsonNode commNode = item.path("allowCommercialUse");
+            if (commNode.isTextual()) {
+                commercialUse = commNode.asText();
+            } else if (commNode.isArray()) {
+                List<String> list = new ArrayList<>();
+                for (JsonNode elem : commNode) {
+                    if (elem.isTextual()) list.add(elem.asText());
+                }
+                commercialUse = list.isEmpty() ? "None" : String.join(", ", list);
+            } else if (commNode.isBoolean()) {
+                commercialUse = commNode.asBoolean() ? "Commercial Allowed" : "None";
+            }
+            boolean allowNoCredit = item.path("allowNoCredit").asBoolean(false);
+            boolean allowDerivatives = item.path("allowDerivatives").asBoolean(true);
+
             int downloadCount = item.path("stats").path("downloadCount").asInt(0);
             double rating = item.path("stats").path("rating").asDouble(0.0);
             if (rating <= 0.0) {
@@ -308,7 +335,11 @@ public class CivitaiHubService implements ICivitaiHubService {
                     downloadCount,
                     rating,
                     triggerWords,
-                    nsfw
+                    false, // Always safe / non-nsfw
+                    poi,
+                    commercialUse,
+                    allowNoCredit,
+                    allowDerivatives
             );
         } catch (Exception e) {
             log.debug("Skipping unparseable Civitai item: {}", e.getMessage());

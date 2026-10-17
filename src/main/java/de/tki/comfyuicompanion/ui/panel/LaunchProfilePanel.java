@@ -70,7 +70,7 @@ public class LaunchProfilePanel extends GlassPanel {
         setPreferredSize(new Dimension(320, 0));
         setBorder(BorderFactory.createEmptyBorder(15, 15, 15, 15));
 
-        JLabel profilesHeader = new JLabel("Startprofile");
+        JLabel profilesHeader = new JLabel("Launch Profiles");
         profilesHeader.putClientProperty("FlatLaf.styleClass", "h3");
         add(profilesHeader, BorderLayout.NORTH);
 

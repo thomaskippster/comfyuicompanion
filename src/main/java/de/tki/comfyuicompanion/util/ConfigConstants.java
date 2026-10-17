@@ -54,7 +54,7 @@ public final class ConfigConstants {
     /** Hardware Monitor Interval */
     public static final int HARDWARE_MONITOR_INTERVAL_SEC = 2;
     
-    /** Retry Delay nach Fehler */
+    /** Retry delay after error */
     public static final int RETRY_DELAY_MS = 50;
     
     /** Thread Sleep für Polling */

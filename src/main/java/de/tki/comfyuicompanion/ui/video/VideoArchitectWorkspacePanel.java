@@ -63,9 +63,7 @@ public class VideoArchitectWorkspacePanel extends CardPanel {
     private Supplier<JSpinner> heightSpinnerSupplier;
 
     private JTabbedPane videoRightTabbedPane;
-    private DefaultListModel<Scene> timelineListModel;
-    private JList<Scene> timelineListView;
-    private JScrollPane timelineScroll;
+    private VideoArchitectSequencePanel sequencePanel;
     private JLabel videoPreviewLabel;
     private Image currentPreviewImage;
     private JTextArea storyboardJsonArea;
@@ -73,16 +71,6 @@ public class VideoArchitectWorkspacePanel extends CardPanel {
     private JProgressBar videoProgressBar;
     private JButton btnGenerateScenes;
     private JButton btnMasterRender;
-
-    // Toolbar buttons
-    private JButton addSceneBtn;
-    private JButton editSceneBtn;
-    private JButton visualFilterBtn;
-    private JButton playVideoBtn;
-    private JButton moveUpBtn;
-    private JButton moveDownBtn;
-    private JButton deleteBtn;
-    private JButton clearListBtn;
 
     /**
      * Constructs a new VideoArchitectWorkspacePanel.
@@ -119,95 +107,37 @@ public class VideoArchitectWorkspacePanel extends CardPanel {
         videoRightTabbedPane.setOpaque(false);
 
         // TAB 1: Timeline Sequence
-        JPanel timelineTabPanel = new JPanel(new BorderLayout(8, 8));
-        timelineTabPanel.setOpaque(false);
-
-        JPanel toolbar = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 2));
-        toolbar.setOpaque(false);
-
-        addSceneBtn = new JButton("Add Scene", SvgIconFactory.get(AppIcon.ADD));
-        addSceneBtn.addActionListener(e -> showEditSceneDialog(null, true));
-        toolbar.add(addSceneBtn);
-
-        editSceneBtn = new JButton("Edit", SvgIconFactory.get(AppIcon.EDIT));
-        editSceneBtn.addActionListener(e -> {
-            Scene selected = timelineListView.getSelectedValue();
-            if (selected != null) {
-                showEditSceneDialog(selected, false);
-            } else {
-                logToConsole("Select a scene to edit.");
-            }
-        });
-        toolbar.add(editSceneBtn);
-
-        visualFilterBtn = new JButton("Visual Filter (OpenCV)", SvgIconFactory.get(AppIcon.PALETTE));
-        visualFilterBtn.setToolTipText("Adjust frame contrast and brightness with native OpenCV real-time preview.");
-        visualFilterBtn.addActionListener(e -> {
-            Scene selected = timelineListView.getSelectedValue();
-            if (selected != null) {
-                showOpenCvEnhancementDialog(selected);
-            } else {
-                logToConsole("Select a scene to adjust OpenCV visual enhancement.");
-            }
-        });
-        toolbar.add(visualFilterBtn);
-
-        playVideoBtn = new JButton("Play Video", SvgIconFactory.get(AppIcon.PLAY));
-        playVideoBtn.addActionListener(e -> handlePreviewSceneVideo());
-        toolbar.add(playVideoBtn);
-
-        moveUpBtn = new JButton("Up");
-        moveUpBtn.addActionListener(e -> handleMoveScene(-1));
-        toolbar.add(moveUpBtn);
-
-        moveDownBtn = new JButton("Down");
-        moveDownBtn.addActionListener(e -> handleMoveScene(1));
-        toolbar.add(moveDownBtn);
-
-        deleteBtn = new JButton("Delete", SvgIconFactory.get(AppIcon.DELETE));
-        deleteBtn.addActionListener(e -> handleDeleteScene());
-        toolbar.add(deleteBtn);
-
-        clearListBtn = new JButton("Clear All");
-        clearListBtn.addActionListener(e -> {
-            if (timelineListModel.isEmpty()) return;
-            int confirm = JOptionPane.showConfirmDialog(this, "Are you sure you want to clear all timeline scenes?", "Clear Timeline", JOptionPane.YES_NO_OPTION);
-            if (confirm == JOptionPane.YES_OPTION) {
-                timelineListModel.clear();
-                updateStoryboardJson();
-                logToConsole("Timeline cleared.");
-            }
-        });
-        toolbar.add(clearListBtn);
-
-        timelineTabPanel.add(toolbar, BorderLayout.NORTH);
-
-        timelineListModel = new DefaultListModel<>();
-        timelineListView = new JList<>(timelineListModel);
-        timelineListView.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
-        timelineListView.setCellRenderer(new SceneCardCellRenderer());
-        timelineListView.setBackground(ThemeManager.isDarkMode() ? new Color(15, 17, 22) : Color.WHITE);
-        timelineListView.addMouseListener(new MouseAdapter() {
-            @Override
-            public void mouseClicked(MouseEvent e) {
-                Scene selected = timelineListView.getSelectedValue();
-                if (selected != null) {
-                    updatePreviewForScene(selected);
-                    if (e.getClickCount() == 2) {
+        sequencePanel = new VideoArchitectSequencePanel(
+                () -> showEditSceneDialog(null, true),
+                selected -> {
+                    if (selected != null) {
                         showEditSceneDialog(selected, false);
+                    } else {
+                        logToConsole("Select a scene to edit.");
                     }
-                }
-            }
-        });
-
-        timelineScroll = new JScrollPane(timelineListView);
-        timelineScroll.setOpaque(false);
-        timelineScroll.getViewport().setOpaque(false);
-        timelineScroll.getViewport().setBackground(ThemeManager.isDarkMode() ? new Color(15, 17, 22) : Color.WHITE);
-        timelineScroll.setBorder(BorderFactory.createEmptyBorder());
-        timelineTabPanel.add(timelineScroll, BorderLayout.CENTER);
-
-        videoRightTabbedPane.addTab("Timeline Sequence", SvgIconFactory.get(AppIcon.VIDEO_ARCHITECT), timelineTabPanel);
+                },
+                selected -> {
+                    if (selected != null) {
+                        showOpenCvEnhancementDialog(selected);
+                    } else {
+                        logToConsole("Select a scene to adjust OpenCV visual enhancement.");
+                    }
+                },
+                this::handlePreviewSceneVideo,
+                this::handleMoveScene,
+                this::handleDeleteScene,
+                () -> {
+                    if (getTimelineListModel().isEmpty()) return;
+                    int confirm = JOptionPane.showConfirmDialog(this, "Are you sure you want to clear all timeline scenes?", "Clear Timeline", JOptionPane.YES_NO_OPTION);
+                    if (confirm == JOptionPane.YES_OPTION) {
+                        getTimelineListModel().clear();
+                        updateStoryboardJson();
+                        logToConsole("Timeline cleared.");
+                    }
+                },
+                this::updatePreviewForScene
+        );
+        videoRightTabbedPane.addTab("Timeline Sequence", SvgIconFactory.get(AppIcon.VIDEO_ARCHITECT), sequencePanel);
 
         // TAB 2: Scene / Video Preview
         JPanel previewTabPanel = new JPanel(new BorderLayout(10, 10));
@@ -397,7 +327,7 @@ public class VideoArchitectWorkspacePanel extends CardPanel {
      * Serializes the current timeline list into the storyboard JSON text area.
      */
     public void updateStoryboardJson() {
-        timelineCoordinator.updateStoryboardJson(timelineListModel, storyboardJsonArea);
+        timelineCoordinator.updateStoryboardJson(getTimelineListModel(), storyboardJsonArea);
     }
 
     /**
@@ -406,7 +336,7 @@ public class VideoArchitectWorkspacePanel extends CardPanel {
      * @param direction -1 to move up, +1 to move down
      */
     public void handleMoveScene(int direction) {
-        timelineCoordinator.handleMoveScene(direction, timelineListView, timelineListModel,
+        timelineCoordinator.handleMoveScene(direction, getTimelineListView(), getTimelineListModel(),
                 this::logToConsole, this::updateStoryboardJson);
     }
 
@@ -414,7 +344,7 @@ public class VideoArchitectWorkspacePanel extends CardPanel {
      * Deletes the currently selected scene from the timeline.
      */
     public void handleDeleteScene() {
-        timelineCoordinator.handleDeleteScene(timelineListView, timelineListModel,
+        timelineCoordinator.handleDeleteScene(getTimelineListView(), getTimelineListModel(),
                 this::logToConsole, this::updateStoryboardJson);
     }
 
@@ -422,7 +352,7 @@ public class VideoArchitectWorkspacePanel extends CardPanel {
      * Plays the rendered video of the selected scene using the system default player.
      */
     public void handlePreviewSceneVideo() {
-        timelineCoordinator.handlePreviewSceneVideo(timelineListView, this::logToConsole);
+        timelineCoordinator.handlePreviewSceneVideo(getTimelineListView(), this::logToConsole);
     }
 
     /**
@@ -432,7 +362,7 @@ public class VideoArchitectWorkspacePanel extends CardPanel {
      */
     public void showOpenCvEnhancementDialog(Scene scene) {
         timelineCoordinator.showOpenCvEnhancementDialog(this, scene, video4jEditorService,
-                timelineListView, () -> {
+                getTimelineListView(), () -> {
                     updateStoryboardJson();
                     updatePreviewForScene(scene);
                 }, this::logToConsole);
@@ -446,7 +376,7 @@ public class VideoArchitectWorkspacePanel extends CardPanel {
      */
     public void showEditSceneDialog(Scene targetScene, boolean isNew) {
         timelineCoordinator.showEditSceneDialog(this, targetScene, isNew,
-                timelineListModel, timelineListView, getWidthSpinner(), getHeightSpinner(),
+                getTimelineListModel(), getTimelineListView(), getWidthSpinner(), getHeightSpinner(),
                 promptOptimizer, this::updateStoryboardJson, this::logToConsole);
     }
 
@@ -457,9 +387,10 @@ public class VideoArchitectWorkspacePanel extends CardPanel {
      */
     public List<Scene> getAllScenes() {
         List<Scene> scenes = new ArrayList<>();
-        if (timelineListModel != null) {
-            for (int i = 0; i < timelineListModel.size(); i++) {
-                scenes.add(timelineListModel.get(i));
+        DefaultListModel<Scene> model = getTimelineListModel();
+        if (model != null) {
+            for (int i = 0; i < model.size(); i++) {
+                scenes.add(model.get(i));
             }
         }
         return scenes;
@@ -494,160 +425,25 @@ public class VideoArchitectWorkspacePanel extends CardPanel {
      */
     public void setButtonsDisabled(boolean disabled) {
         VideoArchitectThemeHandler.setButtonsDisabled(disabled, btnGenerateScenes, btnMasterRender,
-                addSceneBtn, editSceneBtn, moveUpBtn, moveDownBtn, visualFilterBtn,
-                playVideoBtn, deleteBtn, clearListBtn);
+                getAddSceneBtn(), getEditSceneBtn(), getMoveUpBtn(), getMoveDownBtn(),
+                getVisualFilterBtn(), getPlayVideoBtn(), getDeleteBtn(), getClearListBtn());
     }
 
-    /**
-     * Returns the timeline list model.
-     *
-     * @return the list model
-     */
-    public DefaultListModel<Scene> getTimelineListModel() {
-        return timelineListModel;
-    }
-
-    /**
-     * Returns the timeline JList view component.
-     *
-     * @return the list view
-     */
-    public JList<Scene> getTimelineListView() {
-        return timelineListView;
-    }
-
-    /**
-     * Returns the scroll pane wrapping the timeline list.
-     *
-     * @return the timeline scroll pane
-     */
-    public JScrollPane getTimelineScroll() {
-        return timelineScroll;
-    }
-
-    /**
-     * Returns the video preview image label.
-     *
-     * @return the preview label
-     */
-    public JLabel getVideoPreviewLabel() {
-        return videoPreviewLabel;
-    }
-
-    /**
-     * Returns the storyboard JSON text area.
-     *
-     * @return the JSON area
-     */
-    public JTextArea getStoryboardJsonArea() {
-        return storyboardJsonArea;
-    }
-
-    /**
-     * Returns the execution console text area.
-     *
-     * @return the console text area
-     */
-    public JTextArea getVideoConsoleArea() {
-        return videoConsoleArea;
-    }
-
-    /**
-     * Returns the progress bar component.
-     *
-     * @return the progress bar
-     */
-    public JProgressBar getVideoProgressBar() {
-        return videoProgressBar;
-    }
-
-    /**
-     * Returns the generate scenes button.
-     *
-     * @return the generate button
-     */
-    public JButton getBtnGenerateScenes() {
-        return btnGenerateScenes;
-    }
-
-    /**
-     * Returns the master render button.
-     *
-     * @return the master render button
-     */
-    public JButton getBtnMasterRender() {
-        return btnMasterRender;
-    }
-
-    /**
-     * Returns the add scene button.
-     *
-     * @return the add scene button
-     */
-    public JButton getAddSceneBtn() {
-        return addSceneBtn;
-    }
-
-    /**
-     * Returns the edit scene button.
-     *
-     * @return the edit scene button
-     */
-    public JButton getEditSceneBtn() {
-        return editSceneBtn;
-    }
-
-    /**
-     * Returns the visual filter button.
-     *
-     * @return the visual filter button
-     */
-    public JButton getVisualFilterBtn() {
-        return visualFilterBtn;
-    }
-
-    /**
-     * Returns the play video button.
-     *
-     * @return the play video button
-     */
-    public JButton getPlayVideoBtn() {
-        return playVideoBtn;
-    }
-
-    /**
-     * Returns the move scene up button.
-     *
-     * @return the move up button
-     */
-    public JButton getMoveUpBtn() {
-        return moveUpBtn;
-    }
-
-    /**
-     * Returns the move scene down button.
-     *
-     * @return the move down button
-     */
-    public JButton getMoveDownBtn() {
-        return moveDownBtn;
-    }
-
-    /**
-     * Returns the delete scene button.
-     *
-     * @return the delete button
-     */
-    public JButton getDeleteBtn() {
-        return deleteBtn;
-    }
-
-    /**
-     * Returns the clear all scenes button.
-     *
-     * @return the clear button
-     */
-    public JButton getClearListBtn() {
-        return clearListBtn;
-    }
+    public DefaultListModel<Scene> getTimelineListModel() { return sequencePanel != null ? sequencePanel.getTimelineListModel() : null; }
+    public JList<Scene> getTimelineListView() { return sequencePanel != null ? sequencePanel.getTimelineListView() : null; }
+    public JScrollPane getTimelineScroll() { return sequencePanel != null ? sequencePanel.getTimelineScroll() : null; }
+    public JLabel getVideoPreviewLabel() { return videoPreviewLabel; }
+    public JTextArea getStoryboardJsonArea() { return storyboardJsonArea; }
+    public JTextArea getVideoConsoleArea() { return videoConsoleArea; }
+    public JProgressBar getVideoProgressBar() { return videoProgressBar; }
+    public JButton getBtnGenerateScenes() { return btnGenerateScenes; }
+    public JButton getBtnMasterRender() { return btnMasterRender; }
+    public JButton getAddSceneBtn() { return sequencePanel != null ? sequencePanel.getAddSceneBtn() : null; }
+    public JButton getEditSceneBtn() { return sequencePanel != null ? sequencePanel.getEditSceneBtn() : null; }
+    public JButton getVisualFilterBtn() { return sequencePanel != null ? sequencePanel.getVisualFilterBtn() : null; }
+    public JButton getPlayVideoBtn() { return sequencePanel != null ? sequencePanel.getPlayVideoBtn() : null; }
+    public JButton getMoveUpBtn() { return sequencePanel != null ? sequencePanel.getMoveUpBtn() : null; }
+    public JButton getMoveDownBtn() { return sequencePanel != null ? sequencePanel.getMoveDownBtn() : null; }
+    public JButton getDeleteBtn() { return sequencePanel != null ? sequencePanel.getDeleteBtn() : null; }
+    public JButton getClearListBtn() { return sequencePanel != null ? sequencePanel.getClearListBtn() : null; }
 }

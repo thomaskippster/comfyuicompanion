@@ -71,6 +71,16 @@ public class Scene {
     public Scene() {}
 
     /**
+     * Convenience constructor initializing scene ID and visual prompt.
+     *
+     * @param sceneId unique identifier of the scene
+     * @param prompt  visual generation prompt
+     */
+    public Scene(String sceneId, String prompt) {
+        this(sceneId, prompt, 0, 120, null, null);
+    }
+
+    /**
      * Convenience constructor initializing primary scene identifiers and timing.
      *
      * @param sceneId    unique identifier of the scene

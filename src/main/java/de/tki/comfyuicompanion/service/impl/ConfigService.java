@@ -35,10 +35,11 @@ public class ConfigService implements IConfigService {
     private final ComfyAutoDiscoveryService autoDiscoveryService;
     private final VaultStorageService vaultStorageService;
     private final ConfigDirectoryManager directoryManager;
+    private final MediaConfigManager mediaConfigManager;
 
     public ConfigService(EncryptionUtils encryptionUtils, PathResolver pathResolver) {
         this(encryptionUtils, pathResolver, new ExtraModelPathsYamlSynchronizer(), new ComfyAutoDiscoveryService(),
-                new VaultStorageService(), new ConfigDirectoryManager());
+                new VaultStorageService(), new ConfigDirectoryManager(), new MediaConfigManager());
     }
 
     public ConfigService(EncryptionUtils encryptionUtils,
@@ -46,7 +47,7 @@ public class ConfigService implements IConfigService {
                          ExtraModelPathsYamlSynchronizer yamlSynchronizer,
                          ComfyAutoDiscoveryService autoDiscoveryService) {
         this(encryptionUtils, pathResolver, yamlSynchronizer, autoDiscoveryService,
-                new VaultStorageService(), new ConfigDirectoryManager());
+                new VaultStorageService(), new ConfigDirectoryManager(), new MediaConfigManager());
     }
 
     @Autowired
@@ -55,13 +56,15 @@ public class ConfigService implements IConfigService {
                          @Autowired(required = false) ExtraModelPathsYamlSynchronizer yamlSynchronizer,
                          @Autowired(required = false) ComfyAutoDiscoveryService autoDiscoveryService,
                          @Autowired(required = false) VaultStorageService vaultStorageService,
-                         @Autowired(required = false) ConfigDirectoryManager directoryManager) {
+                         @Autowired(required = false) ConfigDirectoryManager directoryManager,
+                         @Autowired(required = false) MediaConfigManager mediaConfigManager) {
         this.encryptionUtils = encryptionUtils;
         this.pathResolver = pathResolver;
         this.yamlSynchronizer = yamlSynchronizer != null ? yamlSynchronizer : new ExtraModelPathsYamlSynchronizer();
         this.autoDiscoveryService = autoDiscoveryService != null ? autoDiscoveryService : new ComfyAutoDiscoveryService();
         this.vaultStorageService = vaultStorageService != null ? vaultStorageService : new VaultStorageService();
         this.directoryManager = directoryManager != null ? directoryManager : new ConfigDirectoryManager();
+        this.mediaConfigManager = mediaConfigManager != null ? mediaConfigManager : new MediaConfigManager();
         loadPersistentSettings();
     }
 
@@ -406,61 +409,56 @@ public class ConfigService implements IConfigService {
     public synchronized boolean isUseSymlinksOnRestore() { return settings.optBoolean("use_symlinks_on_restore", false); }
     public synchronized void setUseSymlinksOnRestore(boolean enabled) { settings.put("use_symlinks_on_restore", enabled); save(); }
 
-    public synchronized String getXttsUrl() { return settings.optString("xtts_url", "http://localhost:8020/api/tts"); }
-    public synchronized void setXttsUrl(String url) { settings.put("xtts_url", url); save(); }
+    public synchronized String getXttsUrl() { return mediaConfigManager.getXttsUrl(settings); }
+    public synchronized void setXttsUrl(String url) { mediaConfigManager.setXttsUrl(settings, url, this::save); }
 
-    public synchronized String getPiperPath() {
-        String defaultPath = PlatformUtils.isWindows() ? "./tools/tts/piper.exe" : "./tools/tts/piper";
-        String configuredPath = settings.optString("piper_path", defaultPath);
-        File binFile = new File(configuredPath);
-        if (binFile.exists()) return configuredPath;
-        File fallbackBin = new File(System.getProperty("user.dir"), configuredPath);
-        if (fallbackBin.exists()) return fallbackBin.getAbsolutePath();
-        String found = ExecutableLocator.findExecutablePath("piper", configuredPath, getPythonPath());
-        return found != null ? found : configuredPath;
-    }
-    public synchronized void setPiperPath(String path) { settings.put("piper_path", path); save(); }
+    public synchronized String getPiperPath() { return mediaConfigManager.getPiperPath(settings, getPythonPath()); }
+    public synchronized void setPiperPath(String path) { mediaConfigManager.setPiperPath(settings, path, this::save); }
 
-    public synchronized String getSpeakerImagePath() { return settings.optString("speaker_image", ""); }
-    public synchronized void setSpeakerImagePath(String path) { settings.put("speaker_image", path); save(); }
+    public synchronized String getSpeakerImagePath() { return mediaConfigManager.getSpeakerImagePath(settings); }
+    public synchronized void setSpeakerImagePath(String path) { mediaConfigManager.setSpeakerImagePath(settings, path, this::save); }
 
-    public synchronized String getPiperModelPath() {
-        return settings.optString("piper_model_path", "./tools/tts/en_model.onnx");
-    }
-    public synchronized void setPiperModelPath(String path) { settings.put("piper_model_path", path); save(); }
+    public synchronized String getPiperModelPath() { return mediaConfigManager.getPiperModelPath(settings); }
+    public synchronized void setPiperModelPath(String path) { mediaConfigManager.setPiperModelPath(settings, path, this::save); }
 
-    public synchronized String getTtsProvider() { return settings.optString("tts_provider", "ComfyUI Qwen-TTS"); }
-    public synchronized void setTtsProvider(String provider) { settings.put("tts_provider", provider); save(); }
+    public synchronized String getTtsProvider() { return mediaConfigManager.getTtsProvider(settings); }
+    public synchronized void setTtsProvider(String provider) { mediaConfigManager.setTtsProvider(settings, provider, this::save); }
 
-    public synchronized String getQwenTtsModelRepo() { return settings.optString("qwen_tts_model_repo", "Qwen/Qwen2-Audio-7B-Instruct"); }
-    public synchronized void setQwenTtsModelRepo(String repo) { settings.put("qwen_tts_model_repo", repo); save(); }
+    public synchronized String getQwenTtsModelRepo() { return mediaConfigManager.getQwenTtsModelRepo(settings); }
+    public synchronized void setQwenTtsModelRepo(String repo) { mediaConfigManager.setQwenTtsModelRepo(settings, repo, this::save); }
 
-    public synchronized String getQwenTtsModelPath() { return settings.optString("qwen_tts_model_path", System.getProperty("user.home") + "/.cache/huggingface/hub"); }
-    public synchronized void setQwenTtsModelPath(String path) { settings.put("qwen_tts_model_path", path); save(); }
+    public synchronized String getQwenTtsModelPath() { return mediaConfigManager.getQwenTtsModelPath(settings); }
+    public synchronized void setQwenTtsModelPath(String path) { mediaConfigManager.setQwenTtsModelPath(settings, path, this::save); }
 
-    public synchronized boolean isQwenTtsModelAuto() { return settings.optBoolean("qwen_tts_model_auto", true); }
-    public synchronized void setQwenTtsModelAuto(boolean auto) { settings.put("qwen_tts_model_auto", auto); save(); }
+    public synchronized boolean isQwenTtsModelAuto() { return mediaConfigManager.isQwenTtsModelAuto(settings); }
+    public synchronized void setQwenTtsModelAuto(boolean auto) { mediaConfigManager.setQwenTtsModelAuto(settings, auto, this::save); }
 
-    public synchronized String getQwenTtsVoice() { return settings.optString("qwen_tts_voice", "Chelsie"); }
-    public synchronized void setQwenTtsVoice(String voice) { settings.put("qwen_tts_voice", voice); save(); }
+    public synchronized String getQwenTtsVoice() { return mediaConfigManager.getQwenTtsVoice(settings); }
+    public synchronized void setQwenTtsVoice(String voice) { mediaConfigManager.setQwenTtsVoice(settings, voice, this::save); }
 
-    public synchronized boolean is16GbVramOptimizationEnabled() { return settings.optBoolean("video_16gb_vram_opt", true); }
-    public synchronized void set16GbVramOptimizationEnabled(boolean enabled) { settings.put("video_16gb_vram_opt", enabled); save(); }
+    public synchronized boolean is16GbVramOptimizationEnabled() { return mediaConfigManager.is16GbVramOptimizationEnabled(settings); }
+    public synchronized void set16GbVramOptimizationEnabled(boolean enabled) { mediaConfigManager.set16GbVramOptimizationEnabled(settings, enabled, this::save); }
 
-    public synchronized boolean isLastFrameChainingEnabled() { return settings.optBoolean("video_last_frame_chaining", true); }
-    public synchronized void setLastFrameChainingEnabled(boolean enabled) { settings.put("video_last_frame_chaining", enabled); save(); }
+    public synchronized boolean isLastFrameChainingEnabled() { return mediaConfigManager.isLastFrameChainingEnabled(settings); }
+    public synchronized void setLastFrameChainingEnabled(boolean enabled) { mediaConfigManager.setLastFrameChainingEnabled(settings, enabled, this::save); }
 
-    public synchronized boolean isTwoPhaseRenderingEnabled() { return settings.optBoolean("video_two_phase_rendering", false); }
-    public synchronized void setTwoPhaseRenderingEnabled(boolean enabled) { settings.put("video_two_phase_rendering", enabled); save(); }
+    public synchronized boolean isTwoPhaseRenderingEnabled() { return mediaConfigManager.isTwoPhaseRenderingEnabled(settings); }
+    public synchronized void setTwoPhaseRenderingEnabled(boolean enabled) { mediaConfigManager.setTwoPhaseRenderingEnabled(settings, enabled, this::save); }
 
-    public synchronized String getLocalLlmModel() { return settings.optString("local_llm_model", "gemma-3-4b"); }
-    public synchronized void setLocalLlmModel(String model) { settings.put("local_llm_model", model); save(); }
+    public synchronized String getLocalLlmModel() { return mediaConfigManager.getLocalLlmModel(settings); }
+    public synchronized void setLocalLlmModel(String model) { mediaConfigManager.setLocalLlmModel(settings, model, this::save); }
 
-    public synchronized String getElevenLabsApiKey() { return ""; }
-    public synchronized void setElevenLabsApiKey(String apiKey) { settings.remove("elevenlabs_api_key"); save(); }
+    public synchronized boolean isAudioLipSyncEnabled() { return mediaConfigManager.isAudioLipSyncEnabled(settings); }
+    public synchronized void setAudioLipSyncEnabled(boolean enabled) { mediaConfigManager.setAudioLipSyncEnabled(settings, enabled, this::save); }
 
-    public synchronized String getElevenLabsVoiceId() { return settings.optString("elevenlabs_voice_id", "21m00Tcm4TlvDq8ikWAM"); }
-    public synchronized void setElevenLabsVoiceId(String voiceId) { settings.put("elevenlabs_voice_id", voiceId); save(); }
+    public synchronized String getLipSyncEngine() { return mediaConfigManager.getLipSyncEngine(settings); }
+    public synchronized void setLipSyncEngine(String engine) { mediaConfigManager.setLipSyncEngine(settings, engine, this::save); }
+
+    public synchronized String getElevenLabsApiKey() { return mediaConfigManager.getElevenLabsApiKey(settings); }
+    public synchronized void setElevenLabsApiKey(String apiKey) { mediaConfigManager.setElevenLabsApiKey(settings, apiKey, this::save); }
+
+    public synchronized String getElevenLabsVoiceId() { return mediaConfigManager.getElevenLabsVoiceId(settings); }
+    public synchronized void setElevenLabsVoiceId(String voiceId) { mediaConfigManager.setElevenLabsVoiceId(settings, voiceId, this::save); }
 
     public synchronized String getFfmpegPath() {
         String configured = settings.optString("ffmpeg_path", "");

@@ -21,6 +21,8 @@ public class VideoSamplingParamsPanel extends JPanel {
     private final JCheckBox chkFrameChaining;
     private final JCheckBox chkTwoPhase;
     private final JComboBox<String> cmbLocalLlm;
+    private final JCheckBox chkLipSync;
+    private final JComboBox<String> cmbLipSyncEngine;
 
     /**
      * Constructs a new VideoSamplingParamsPanel with default configuration.
@@ -151,6 +153,41 @@ public class VideoSamplingParamsPanel extends JPanel {
         llmRow.add(lblLlm, BorderLayout.WEST);
         llmRow.add(cmbLocalLlm, BorderLayout.CENTER);
         add(llmRow);
+        add(Box.createVerticalStrut(6));
+
+        // 7. Audio Lip-Sync & Facial Animation
+        chkLipSync = new JCheckBox("Audio Lip-Sync (Audio-Driven Head Animation)",
+                configService != null ? configService.isAudioLipSyncEnabled() : false);
+        chkLipSync.setToolTipText("Animates facial expressions and synchronizes lip movement to scene narration audio using LivePortrait, SadTalker, or Wav2Lip.");
+        chkLipSync.setFont(new Font("SansSerif", Font.PLAIN, 12));
+        chkLipSync.setAlignmentX(Component.LEFT_ALIGNMENT);
+        chkLipSync.addActionListener(e -> {
+            if (configService != null) {
+                configService.setAudioLipSyncEnabled(chkLipSync.isSelected());
+            }
+        });
+        add(chkLipSync);
+        add(Box.createVerticalStrut(4));
+
+        JPanel lipSyncRow = new JPanel(new BorderLayout(6, 0));
+        lipSyncRow.setOpaque(false);
+        lipSyncRow.setAlignmentX(Component.LEFT_ALIGNMENT);
+        lipSyncRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 30));
+        JLabel lblLipEngine = new JLabel("Lip-Sync Engine:");
+        lblLipEngine.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        cmbLipSyncEngine = new JComboBox<>(new String[]{"Auto", "LivePortrait", "SadTalker", "Wav2Lip"});
+        cmbLipSyncEngine.setFont(new Font("SansSerif", Font.PLAIN, 12));
+        if (configService != null && configService.getLipSyncEngine() != null) {
+            cmbLipSyncEngine.setSelectedItem(configService.getLipSyncEngine());
+        }
+        cmbLipSyncEngine.addActionListener(e -> {
+            if (configService != null) {
+                configService.setLipSyncEngine((String) cmbLipSyncEngine.getSelectedItem());
+            }
+        });
+        lipSyncRow.add(lblLipEngine, BorderLayout.WEST);
+        lipSyncRow.add(cmbLipSyncEngine, BorderLayout.CENTER);
+        add(lipSyncRow);
     }
 
 
@@ -202,4 +239,16 @@ public class VideoSamplingParamsPanel extends JPanel {
 
     /** @return the motion bucket value */
     public int getVideoMotion() { return (Integer) videoMotionSpinner.getValue(); }
+
+    /** @return the audio lip-sync checkbox */
+    public JCheckBox getChkLipSync() { return chkLipSync; }
+
+    /** @return the lip-sync engine combobox */
+    public JComboBox<String> getCmbLipSyncEngine() { return cmbLipSyncEngine; }
+
+    /** @return true if lip sync is checked */
+    public boolean isLipSyncSelected() { return chkLipSync.isSelected(); }
+
+    /** @return selected lip sync engine identifier */
+    public String getSelectedLipSyncEngine() { return (String) cmbLipSyncEngine.getSelectedItem(); }
 }

@@ -118,20 +118,21 @@ public class ConfigService implements IConfigService {
     }
 
     /**
+     * Checks whether the application is running in portable mode.
+     *
+     * @return {@code true} if portable mode is active
+     */
+    public boolean isPortableMode() {
+        return directoryManager.isPortableMode(vaultFile, configFile);
+    }
+
+    /**
      * Obtains the application data root path, or a mock path during tests.
      *
      * @return absolute path to application data directory
      */
     public String getAppDataPath() {
-        String override = System.getProperty("comfyuicompanion.appdata");
-        if (override != null && !override.isEmpty()) {
-            return override;
-        }
-        String command = System.getProperty("sun.java.command", "");
-        if (command.contains("surefire") || command.contains("junit") || command.contains("testng")) {
-            return new File(System.getProperty("java.io.tmpdir"), "comfy_test_appdata_safe").getAbsolutePath();
-        }
-        return System.getProperty("user.dir");
+        return directoryManager.resolveAppDataPath(vaultFile, configFile);
     }
 
     /**

@@ -106,6 +106,54 @@ public class PromptLabModelInputSanitizer {
     }
 
     /**
+     * Validates that all node class_types in the prompt graph are registered in ComfyUI's /object_info.
+     *
+     * @param promptObj  the prompt JSON object to inspect
+     * @param objectInfo the ComfyUI /object_info registry payload
+     * @return list of missing custom node class types, or an empty list if all node types are registered
+     */
+    public List<String> validateRequiredNodesInPrompt(JSONObject promptObj, JSONObject objectInfo) {
+        if (promptObj == null || objectInfo == null || objectInfo.isEmpty()) {
+            return Collections.emptyList();
+        }
+        Set<String> missingNodes = new LinkedHashSet<>();
+        for (String key : promptObj.keySet()) {
+            JSONObject node = promptObj.optJSONObject(key);
+            if (node == null) continue;
+            String classType = node.optString("class_type", "").trim();
+            if (!classType.isEmpty() && !objectInfo.has(classType)) {
+                missingNodes.add(classType);
+            }
+        }
+        return new ArrayList<>(missingNodes);
+    }
+
+    /**
+     * Logs missing custom node class types to the console and alerts the user.
+     *
+     * @param parent       the parent UI component for the warning dialog
+     * @param missingNodes the list of missing node class types
+     * @param console      the console text area to append log messages to
+     */
+    public void handleMissingNodes(java.awt.Component parent, List<String> missingNodes, JTextArea console) {
+        if (missingNodes == null || missingNodes.isEmpty()) return;
+        StringBuilder sb = new StringBuilder("❌ Missing required Custom Nodes in ComfyUI:\n");
+        for (String n : missingNodes) {
+            sb.append("   • ").append(n).append("\n");
+        }
+        sb.append("💡 Tip: Install the required Custom Nodes in ComfyUI Manager and restart ComfyUI.\n");
+        if (console != null) {
+            console.append(sb.toString());
+        }
+        StringBuilder msg = new StringBuilder("The selected workflow requires Custom Nodes that are not installed in ComfyUI:\n\n");
+        for (String n : missingNodes) {
+            msg.append("  • ").append(n).append("\n");
+        }
+        msg.append("\nPlease install the missing custom node extensions in ComfyUI and restart the server.");
+        JOptionPane.showMessageDialog(parent, msg.toString(), "Missing Custom Nodes", JOptionPane.WARNING_MESSAGE);
+    }
+
+    /**
      * Validates that all required model inputs in the prompt graph exist in ComfyUI's /object_info registry.
      *
      * @param promptObj  the prompt JSON object to validate

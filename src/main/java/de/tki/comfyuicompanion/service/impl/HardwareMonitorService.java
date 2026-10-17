@@ -107,8 +107,8 @@ public class HardwareMonitorService {
             java.lang.management.OperatingSystemMXBean osBean = ManagementFactory.getOperatingSystemMXBean();
             if (osBean instanceof com.sun.management.OperatingSystemMXBean sunBean) {
                 this.cpuLoad = sunBean.getCpuLoad() * 100.0;
-                long total = sunBean.getTotalPhysicalMemorySize();
-                long free = sunBean.getFreePhysicalMemorySize();
+                long total = sunBean.getTotalMemorySize();
+                long free = sunBean.getFreeMemorySize();
                 this.ramTotal = total;
                 this.ramUsed = total - free;
             }

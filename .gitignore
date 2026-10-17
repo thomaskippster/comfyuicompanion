@@ -30,6 +30,8 @@ opencode.json
 # User Model List (internal DB) & Local Caches
 uploaded_models.json
 pending_downloads.json
+prompt_history.json
+dist/
 model_hashes.json
 object_info*.json
 cache/

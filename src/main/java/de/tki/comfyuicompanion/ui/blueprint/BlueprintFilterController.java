@@ -215,6 +215,29 @@ public class BlueprintFilterController {
     }
 
     /**
+     * Checks whether a blueprint entry requires at least one actual local model file
+     * rather than only virtual cloud API providers.
+     *
+     * @param entry the blueprint entry to inspect
+     * @return true if at least one required model is a local model file
+     */
+    public static boolean hasLocalModelRequirement(BlueprintEntry entry) {
+        if (entry == null || entry.requiredModels == null || entry.requiredModels.isEmpty()) {
+            return false;
+        }
+        for (de.tki.comfyuicompanion.domain.ModelInfo req : entry.requiredModels) {
+            if (req == null || req.getName() == null || req.getName().isBlank()) continue;
+            String lower = req.getName().trim().toLowerCase(Locale.ROOT);
+            if (!lower.equals("openai") && !lower.equals("dall-e") && !lower.equals("dalle")
+                    && !lower.equals("elevenlabs") && !lower.equals("gemini") && !lower.equals("anthropic")
+                    && !lower.equals("claude") && !lower.equals("openrouter")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
      * Returns the available blueprints for general execution.
      * 
      * @param allEntries all available entries
@@ -224,7 +247,7 @@ public class BlueprintFilterController {
         List<BlueprintEntry> list = new ArrayList<>();
         for (BlueprintEntry e : allEntries) {
             BlueprintStatus s = e.status;
-            if (e.hasBeenValidated && s != null && s.missingCount == 0 && s.presentCount > 0) {
+            if (e.hasBeenValidated && s != null && s.missingCount == 0 && s.presentCount > 0 && hasLocalModelRequirement(e)) {
                 if (e.registryWorkflow != null && e.registryWorkflow.isCloudOnly()) {
                     continue;
                 }

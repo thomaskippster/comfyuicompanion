@@ -42,8 +42,12 @@ public class PromptLabSessionManager {
             session.put("anime", view.getChkAnime().isSelected());
             session.put("dark_fantasy", view.getChkFantasy().isSelected());
             session.put("watercolor", view.getChkSketch().isSelected());
-            if (view.getPromptModelCombo() != null && view.getPromptModelCombo().getSelectedItem() != null) {
-                session.put("model", view.getPromptModelCombo().getSelectedItem());
+            if (view.getPromptModelCombo() != null && view.getPromptModelCombo().isEnabled()
+                    && view.getPromptModelCombo().getSelectedItem() != null) {
+                String sel = view.getPromptModelCombo().getSelectedItem().toString();
+                if (!"No ready offline blueprints available".equals(sel)) {
+                    session.put("model", sel);
+                }
             }
             if (view.getPromptWidthSpinner() != null) {
                 session.put("width", view.getPromptWidthSpinner().getValue());
@@ -87,19 +91,13 @@ public class PromptLabSessionManager {
             if (session.has("dark_fantasy")) view.getChkFantasy().setSelected(session.getBoolean("dark_fantasy"));
             if (session.has("watercolor")) view.getChkSketch().setSelected(session.getBoolean("watercolor"));
 
-            if (session.has("model") && view.getPromptModelCombo() != null) {
+            if (session.has("model") && view.getPromptModelCombo() != null && view.getPromptModelCombo().isEnabled()) {
                 String model = session.getString("model");
-                boolean found = false;
                 for (int i = 0; i < view.getPromptModelCombo().getItemCount(); i++) {
                     if (model.equals(view.getPromptModelCombo().getItemAt(i))) {
                         view.getPromptModelCombo().setSelectedIndex(i);
-                        found = true;
                         break;
                     }
-                }
-                if (!found) {
-                    view.getPromptModelCombo().addItem(model);
-                    view.getPromptModelCombo().setSelectedItem(model);
                 }
             }
             if (session.has("width") && view.getPromptWidthSpinner() != null) {

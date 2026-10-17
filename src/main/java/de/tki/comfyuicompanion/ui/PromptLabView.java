@@ -102,8 +102,9 @@ public class PromptLabView extends JPanel {
         modelRow.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
         modelRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 35));
 
-        promptModelCombo = new JComboBox<>(new String[]{"v1-5-pruned-emaonly.safetensors"});
+        promptModelCombo = new JComboBox<>(new String[]{"No ready offline blueprints available"});
         promptModelCombo.setEditable(false);
+        promptModelCombo.setEnabled(false);
         promptModelCombo.setFont(new Font("SansSerif", Font.PLAIN, 14));
         modelRow.add(promptModelCombo, BorderLayout.CENTER);
 
@@ -117,7 +118,7 @@ public class PromptLabView extends JPanel {
         leftPanel.add(modelRow);
         leftPanel.add(Box.createVerticalStrut(6));
 
-        promptPresetLabel = new JLabel("Detected Preset: Stable Diffusion 1.5 (SD 1.5)") {
+        promptPresetLabel = new JLabel("⚠️ No ready blueprints or local models detected") {
             @Override
             public void updateUI() {
                 super.updateUI();
@@ -372,6 +373,8 @@ public class PromptLabView extends JPanel {
         btnSendToComfy.putClientProperty("Button.background", new Color(255, 204, 0));
         btnSendToComfy.putClientProperty("Button.foreground", Color.BLACK);
         btnSendToComfy.setPreferredSize(new Dimension(0, 45));
+        btnSendToComfy.setEnabled(false);
+        btnSendToComfy.setToolTipText("No ready blueprints or local models available. Download models or configure paths first.");
         btnSendToComfy.addActionListener(e -> {
             if (controller != null) controller.onSendPromptToComfyUI();
         });

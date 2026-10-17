@@ -190,10 +190,11 @@ public class LocalModelValidator implements ILocalModelValidator {
         }
 
         String wfId = workflow.getId();
+        File localWorkflowFile = findLocalWorkflowFile(workflow);
         if (wfId != null && cacheManager.contains(wfId)) {
             List<ModelInfo> cached = cacheManager.get(wfId);
             boolean isCloud = cacheManager.isCloudOnly(wfId);
-            if ((cached != null && !cached.isEmpty()) || isCloud) {
+            if ((cached != null && !cached.isEmpty()) || (isCloud && (localWorkflowFile == null || !localWorkflowFile.exists()))) {
                 workflow.setRequiredModelInfos(cached != null ? cached : new ArrayList<>());
                 workflow.setCloudOnly(isCloud);
                 List<String> names = new ArrayList<>();
@@ -203,7 +204,7 @@ public class LocalModelValidator implements ILocalModelValidator {
                     }
                 }
                 workflow.setRequiredModels(names);
-                boolean allPresent = checkModelsPresent(names);
+                boolean allPresent = !names.isEmpty() && checkModelsPresent(names);
                 workflow.setHasAllModelsLocal(allPresent);
                 return CompletableFuture.completedFuture(null);
             }
@@ -226,7 +227,6 @@ public class LocalModelValidator implements ILocalModelValidator {
             return CompletableFuture.completedFuture(null);
         }
 
-        File localWorkflowFile = findLocalWorkflowFile(workflow);
         if (localWorkflowFile != null && localWorkflowFile.exists()) {
             try {
                 String jsonText = Files.readString(localWorkflowFile.toPath(), java.nio.charset.StandardCharsets.UTF_8);

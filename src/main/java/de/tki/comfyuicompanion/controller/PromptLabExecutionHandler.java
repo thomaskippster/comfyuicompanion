@@ -144,6 +144,21 @@ public class PromptLabExecutionHandler {
     public void sendPromptToComfyUI(Component parentComponent, File selectedInputImage) {
         if (promptLabView == null) return;
 
+        if (promptLabView.getPromptModelCombo() != null) {
+            Object selObj = promptLabView.getPromptModelCombo().getSelectedItem();
+            String selStr = selObj != null ? selObj.toString().trim() : "";
+            if (!promptLabView.getPromptModelCombo().isEnabled()
+                    || selStr.isEmpty()
+                    || "No ready offline blueprints available".equalsIgnoreCase(selStr)) {
+                JOptionPane.showMessageDialog(parentComponent,
+                        "No ready blueprints or local models are available.\n"
+                        + "Please download required models in the Blueprint Gallery / Download Manager\n"
+                        + "or configure your Extra Models Path in Settings -> Configure Paths.",
+                        "No Models Available", JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+        }
+
         final String comfyUrl = configService.getComfyUIUrl();
         final String assembledPrompt = promptLabView.getPromptSubjectField() != null ? promptLabView.getPromptSubjectField().getText().trim() : "";
         final String negativePrompt  = promptLabView.getPromptNegativeField() != null ? promptLabView.getPromptNegativeField().getText().trim() : "";

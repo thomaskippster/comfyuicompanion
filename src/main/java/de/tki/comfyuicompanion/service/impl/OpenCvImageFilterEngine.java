@@ -10,6 +10,8 @@ import org.opencv.core.Core;
 import org.opencv.core.CvType;
 import org.opencv.core.Mat;
 import org.opencv.core.MatOfByte;
+import org.opencv.core.MatOfDouble;
+import org.opencv.core.Scalar;
 import org.opencv.core.Size;
 import org.opencv.imgcodecs.Imgcodecs;
 import org.opencv.imgproc.Imgproc;
@@ -22,6 +24,7 @@ import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -244,5 +247,131 @@ public class OpenCvImageFilterEngine {
             logger.error("Failed to load/enhance video preview in JavaFX: {}", t.getMessage());
         }
         return null;
+    }
+
+    /**
+     * Performs gentle Reinhard color transfer in the LAB color space from a reference image to a source image.
+     * Matches channel means and standard deviations while blending with original colors to retain scene sharpness.
+     *
+     * @param sourceBgr    the source BGR image matrix to adjust
+     * @param referenceBgr the reference BGR image matrix (e.g., Scene 1)
+     * @param blendFactor  blending weight (recommended 0.35 - 0.50; 0.0 = original, 1.0 = fully transferred)
+     * @return the color-harmonized BGR image matrix, or a clone of the source if reference is invalid
+     */
+    public Mat colorTransferLabReinhard(Mat sourceBgr, Mat referenceBgr, double blendFactor) {
+        if (sourceBgr == null || sourceBgr.empty()) {
+            return null;
+        }
+        if (referenceBgr == null || referenceBgr.empty()) {
+            return sourceBgr.clone();
+        }
+
+        Mat sLab = new Mat();
+        Mat rLab = new Mat();
+        Imgproc.cvtColor(sourceBgr, sLab, Imgproc.COLOR_BGR2Lab);
+        Imgproc.cvtColor(referenceBgr, rLab, Imgproc.COLOR_BGR2Lab);
+
+        Mat sLabF = new Mat();
+        Mat rLabF = new Mat();
+        sLab.convertTo(sLabF, CvType.CV_32FC3);
+        rLab.convertTo(rLabF, CvType.CV_32FC3);
+
+        List<Mat> sChannels = new ArrayList<>(3);
+        List<Mat> rChannels = new ArrayList<>(3);
+        Core.split(sLabF, sChannels);
+        Core.split(rLabF, rChannels);
+
+        List<Mat> transChannels = new ArrayList<>(3);
+        for (int i = 0; i < 3; i++) {
+            MatOfDouble sMean = new MatOfDouble();
+            MatOfDouble sStd = new MatOfDouble();
+            Core.meanStdDev(sChannels.get(i), sMean, sStd);
+
+            MatOfDouble rMean = new MatOfDouble();
+            MatOfDouble rStd = new MatOfDouble();
+            Core.meanStdDev(rChannels.get(i), rMean, rStd);
+
+            double sM = sMean.get(0, 0)[0];
+            double sS = sStd.get(0, 0)[0];
+            double rM = rMean.get(0, 0)[0];
+            double rS = rStd.get(0, 0)[0];
+
+            Mat ch = new Mat();
+            Core.subtract(sChannels.get(i), new Scalar(sM), ch);
+            double scale = (sS > 1e-4) ? (rS / sS) : 1.0;
+            Core.multiply(ch, new Scalar(scale), ch);
+            Core.add(ch, new Scalar(rM), ch);
+            transChannels.add(ch);
+
+            sChannels.get(i).release();
+            rChannels.get(i).release();
+        }
+
+        Mat transferredF = new Mat();
+        Core.merge(transChannels, transferredF);
+        for (Mat tc : transChannels) {
+            tc.release();
+        }
+
+        double factor = Math.max(0.0, Math.min(1.0, blendFactor));
+        Mat blendedF = new Mat();
+        Core.addWeighted(transferredF, factor, sLabF, 1.0 - factor, 0.0, blendedF);
+
+        Mat blended8U = new Mat();
+        blendedF.convertTo(blended8U, CvType.CV_8UC3);
+
+        Mat destBgr = new Mat();
+        Imgproc.cvtColor(blended8U, destBgr, Imgproc.COLOR_Lab2BGR);
+
+        sLab.release();
+        rLab.release();
+        sLabF.release();
+        rLabF.release();
+        transferredF.release();
+        blendedF.release();
+        blended8U.release();
+
+        return destBgr;
+    }
+
+    /**
+     * Harmonizes keyframe image color palettes by applying gentle LAB color transfer relative to a reference image.
+     *
+     * @param sourceImageFile    image to harmonize
+     * @param referenceImageFile palette reference image (e.g., Scene 1)
+     * @param outputFile         destination file for the harmonized keyframe
+     * @param blendFactor        blending ratio between transferred palette and original colors
+     * @return the output file, or the original file on failure
+     */
+    public File harmonizeKeyframeColorsLab(File sourceImageFile, File referenceImageFile, File outputFile, double blendFactor) {
+        if (sourceImageFile == null || !sourceImageFile.exists()) {
+            return sourceImageFile;
+        }
+        if (referenceImageFile == null || !referenceImageFile.exists() || sourceImageFile.equals(referenceImageFile)) {
+            return sourceImageFile;
+        }
+        try {
+            Mat srcMat = Imgcodecs.imread(sourceImageFile.getAbsolutePath());
+            Mat refMat = Imgcodecs.imread(referenceImageFile.getAbsolutePath());
+            if (srcMat.empty() || refMat.empty()) {
+                if (!srcMat.empty()) srcMat.release();
+                if (!refMat.empty()) refMat.release();
+                return sourceImageFile;
+            }
+
+            Mat harmonized = colorTransferLabReinhard(srcMat, refMat, blendFactor);
+            if (outputFile.getParentFile() != null && !outputFile.getParentFile().exists()) {
+                outputFile.getParentFile().mkdirs();
+            }
+            Imgcodecs.imwrite(outputFile.getAbsolutePath(), harmonized);
+
+            srcMat.release();
+            refMat.release();
+            harmonized.release();
+            return outputFile;
+        } catch (Throwable t) {
+            logger.warn("⚠️ [OpenCvImageFilterEngine] Color transfer failed for '{}': {}", sourceImageFile.getName(), t.getMessage());
+            return sourceImageFile;
+        }
     }
 }

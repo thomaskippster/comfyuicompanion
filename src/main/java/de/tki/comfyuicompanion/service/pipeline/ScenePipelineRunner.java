@@ -155,7 +155,7 @@ public class ScenePipelineRunner {
                 String serverUrl = configService.getComfyUIUrl();
                 ensureVideoHelperSuite(serverUrl, effectiveLifecycle);
 
-                long seed = Math.abs(new Random().nextLong());
+                long seed = (scene.getSeed() != null && scene.getSeed() > 0) ? scene.getSeed() : Math.abs(new Random().nextLong());
                 String filenamePrefix = "videoarchitect_" + scene.getSceneId();
 
                 String speakerImage = uploadSpeakerImageIfPresent(serverUrl, scene);
@@ -448,7 +448,7 @@ public class ScenePipelineRunner {
         return CompletableFuture.supplyAsync(() -> {
             try {
                 String serverUrl = configService.getComfyUIUrl();
-                long seed = Math.abs(new Random().nextLong());
+                long seed = (scene.getSeed() != null && scene.getSeed() > 0) ? scene.getSeed() : Math.abs(new Random().nextLong());
                 String filenamePrefix = "keyframe_" + scene.getSceneId();
                 String speakerImage = uploadSpeakerImageIfPresent(serverUrl, scene);
 

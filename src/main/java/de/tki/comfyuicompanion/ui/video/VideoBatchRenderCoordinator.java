@@ -124,6 +124,14 @@ public class VideoBatchRenderCoordinator {
                 File outputDir = new File(configService != null && configService.getResolvedOutputDir() != null && !configService.getResolvedOutputDir().isBlank()
                         ? configService.getResolvedOutputDir() : "output");
 
+                // Enforce shared base seed across storyboard scenes for visual continuity
+                long sharedBaseSeed = Math.abs(new java.security.SecureRandom().nextLong());
+                for (Scene sc : scenes) {
+                    if (sc.getSeed() == null || sc.getSeed() <= 0) {
+                        sc.setSeed(sharedBaseSeed);
+                    }
+                }
+
                 // ==========================================
                 // PASS 1: Storyboard / Keyframe Phase (if enabled)
                 // ==========================================
@@ -141,6 +149,17 @@ public class VideoBatchRenderCoordinator {
                             try {
                                 File keyframe = comfyPipelineService.generateKeyframe(sc).join();
                                 if (keyframe != null && keyframe.exists()) {
+                                    // Gentle LAB color transfer against Scene 1 palette
+                                    if (i > 0 && scenes.get(0).getSpeakerImagePath() != null) {
+                                        File refKeyframe = new File(scenes.get(0).getSpeakerImagePath());
+                                        if (refKeyframe.exists()) {
+                                            File harmonized = new File(outputDir, "harmonized_keyframe_" + sc.getSceneId() + ".png");
+                                            File matched = video4jEditorService.harmonizeKeyframeColorsLab(keyframe, refKeyframe, harmonized, 0.40);
+                                            if (matched != null && matched.exists()) {
+                                                keyframe = matched;
+                                            }
+                                        }
+                                    }
                                     sc.setSpeakerImagePath(keyframe.getAbsolutePath());
                                     String refinedPrompt = visionFeedbackService.refinePromptWithVisualFeedback(sc, keyframe);
                                     if (refinedPrompt != null && !refinedPrompt.isBlank()) {

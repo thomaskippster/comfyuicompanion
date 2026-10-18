@@ -54,55 +54,56 @@ public class VideoPromptOptimizer implements IVideoPromptOptimizer {
     @Override
     public String buildStoryboardSystemPrompt(String targetModel, int width, int height, int sceneCount) {
         int count = sceneCount > 0 ? sceneCount : 5;
+        boolean isQwen = targetModel != null && targetModel.toLowerCase().contains("qwen");
         String modelDirective = (targetModel != null && !targetModel.isBlank())
-                ? "Target Video Diffusion Model: " + targetModel + ".\n"
+                ? "Target Video Diffusion Architecture: " + targetModel + ".\n"
                 : "";
         String resolutionDirective = (width > 0 && height > 0)
                 ? String.format("Target Resolution & Aspect Ratio: %dx%d.\n", width, height)
                 : "";
+        String modelSpecificNote = isQwen
+                ? "Ensure strictly valid JSON matching Qwen ChatML schema without any explanatory prefix or markdown code fence."
+                : "Return strictly valid JSON only without markdown code fences.";
 
         return String.format("""
-                You are a master Hollywood film director, visual storyboard architect, and senior AI video prompt engineer.
-                Your mission is to deconstruct the user's master video idea into a sequence of exactly %d sequential, cinematic visual scenes.
-                %s%s
-                DIRECTOR'S 5-BEAT DRAMATIC ARC:
-                1. Scene 1 (Establishing/Atmosphere): Wide cinematic tracking shot establishing location, scale, horizon, and consistent lighting mood.
-                2. Scene 2 (Focus/Anticipation): Medium slow push-in focusing on key subjects, machinery, or tangible physical build-up under the same lighting.
-                3. Scene 3 (Climax/Kinetic Peak): Low-angle dynamic tracking shot capturing maximum macroscopic physics (ignition, blast, rapid movement, pressure waves).
-                4. Scene 4 (Reaction/Shift): Perspective shift or counter-shot capturing aftermath, bystanders, or environmental elements under the same atmosphere.
-                5. Scene 5 (Resolution/Outro): High crane tilt-up or drone pull-back into the sky, lingering smoke dissipation, revealing vast horizon under the same lighting mood.
+                You are an award-winning cinematographer and prompt architect for generative AI video pipelines (Flux, SDXL, Wan 2.1, LTX-Video). Your task is to transform the user's idea into a visually stunning, temporally consistent storyboard in strict JSON format.
+                %s%s%s
 
-                MANDATORY TEMPORAL & LIGHTING CONTINUITY:
-                The entire video sequence depicts ONE SINGLE CONTINUOUS EVENT at ONE SPECIFIC TIME OF DAY.
-                - Analyze the master concept and establish ONE fixed environmental lighting condition and sky palette (e.g. 'golden hour sunset with warm backlight', 'bright daytime clear desert sun', or 'deep midnight illuminated by industrial floodlights').
-                - EVERY scene's 'visual_prompt' MUST strictly adhere to this IDENTICAL lighting condition and atmosphere.
-                - NEVER jump from dusk to bright day to night between scenes. The time of day remains locked across all scenes.
+                STRICT RULES FOR EVERY SCENE:
+                1. SEPARATE NARRATION FROM VISUALS:
+                   - "narration": Short, atmospheric voiceover/subtitle sentence (max 12 words, in the language of the user's prompt).
+                   - "visual_prompt": STRICTLY in English. Describe ONLY what a physical camera lens can see.
+                2. NO ABSTRACT METAPHORS IN VISUAL_PROMPT:
+                   - NEVER use poetic phrases like "shattered silence", "collective breath", "inevitable", or "primal scream" in "visual_prompt".
+                   - Translate emotions into concrete physical visuals (e.g., instead of "tension in the air", write "extreme close-up of a weathered astronaut helmet visor reflecting a bright rocket ignition, crisp rim lighting").
+                3. NO UNDEFINED CROWDS OR BLOBS:
+                   - NEVER generate vague crowds in fog or darkness. Always focus on 1 clearly defined hero subject per shot with distinct foreground, midground, and background depth.
+                4. MANDATORY VISUAL PROMPT FORMULA:
+                   Structure every "visual_prompt" exactly in this order:
+                   [Camera Shot & Angle] + [Concrete Hero Subject with specific textures] + [Environment & Depth] + [Lighting & Atmosphere] + [Technical Camera Specs].
+                5. GLOBAL STYLE ANCHOR FOR TEMPORAL CONSISTENCY:
+                   - Define a single "style_anchor" (lens, film stock, color grading, lighting style) that keeps all scenes visually unified without locking pixel coordinates.
+                6. GLOBAL NEGATIVE PROMPT:
+                   - Provide a strong "negative_prompt": "blurry, out of focus, abstract blobs, faceless crowd, muddy colors, color banding, overexposed vertical streaks, ghosting, morphing, low resolution, deformed, watermark, text".
 
-                CRITICAL DIRECTIVES FOR VIDEO GENERATION:
-                Local video diffusion models (Wan 2.1, Hunyuan Video, LTX-Video) generate FROZEN / STATIC videos if prompts describe a static photograph. You MUST enforce kinetic life into every prompt:
-                1. MANDATORY CAMERA TRAJECTORY: Every 'visual_prompt' MUST begin with an active camera movement directive (e.g. 'Camera slowly pushes forward over...', 'Low-angle tracking shot gliding through...', 'Cinematic camera pans smoothly right revealing...', 'Drone sweeps low over...').
-                2. ENVIRONMENTAL KINETICS & PHYSICS (HIGH-OCTANE MACROSCOPIC MOTION): Describe visible, high-speed physical velocity in the environment and subjects (e.g. 'massive rocket exhaust flames roar downwards, volcanic smoke plumes billow outward violently, ground vibration shaking dust', 'crowds surge against barriers waving excitedly', 'water ripples and surges violently', 'gale-force winds whip sand'). NEVER use subtle micro-motions like 'dust motes dance' in wide shots.
-                3. SUBJECT ACTION & MOVEMENT: Characters, vehicles, or animals must perform continuous physical actions (running, launching, striding, gesturing, surging) rather than static poses ('standing still', 'sitting motionless').
-                4. AVOID STATIC PHOTO TRIGGERS & FADES: NEVER use 'wide establishing shot', '85mm lens on tripod', 'still life', or 'fading light' (the model interprets fading light as a dark-to-light fade-in rather than animation).
-                5. DUAL-ANCHOR FORMULA & UNIFIED GLOBAL STYLE ANCHOR:
-                   To maintain visual and stylistic continuity across cuts, every 'visual_prompt' MUST conclude with the EXACT SAME cohesive visual style and lighting anchor.
-                6. STRICT NEGATIVE DIRECTIVES:
-                   - NO TEXT OR NUMBERS: Never describe countdown timers, clocks, digital readouts, subtitles, letters, or logos.
-                   - NO CUTS INSIDE A SCENE: Each scene is ONE single continuous camera movement.
-                   - NO ABSTRACT METAPHORS: Do not write 'anticipation', 'aftermath', or 'tension'. Only describe tangible light, shadows, velocity, and matter.
+                REQUIRED SCENE COUNT: Exactly %d sequential scenes.
 
-                NARRATION PROGRESSION & VOICEOVER:
-                - Each 'narration_text' MUST be a unique, evolving poetic/documentary voiceover thought.
-                - NEVER repeat words, phrases, or sentence motifs across scenes (e.g. do NOT repeat 'earth tries to break free').
-
-                For EACH scene, you MUST generate an object in a JSON array with exactly these keys:
-                1. 'scene_id': sequential identifier ('S1', 'S2', 'S3', ...)
-                2. 'visual_prompt': a detailed, kinetic prompt following all directives above (camera trajectory + active subject + dynamic environment + global style anchor).
-                3. 'duration_seconds': integer duration in seconds (between 4 and 6 seconds).
-                4. 'narration_text': compelling, unique voiceover line matching the scene's emotional pacing.
-
-                Return ONLY the raw JSON array starting with '[' and ending with ']'. Do not wrap it in markdown code fences or explanatory text.
-                """, count, modelDirective, resolutionDirective).strip();
+                OUTPUT STRICTLY VALID JSON ONLY (NO MARKDOWN BLOCKS, NO EXPLANATIONS):
+                {
+                  "project_title": "String",
+                  "style_anchor": "35mm anamorphic lens, f/2.8, cinematic color grading, volumetric lighting, razor-sharp focus, intricate surface textures, 8k photorealistic",
+                  "negative_prompt": "blurry, out of focus, abstract blobs, faceless crowd, muddy colors, color banding, overexposed streaks, ghosting, low resolution, text, watermark",
+                  "scenes": [
+                    {
+                      "scene_id": 1,
+                      "duration_seconds": 4,
+                      "camera_motion": "slow_push_in | slow_pan_right | slow_pan_left | static_focus | crane_up",
+                      "narration": "String",
+                      "visual_prompt": "String"
+                    }
+                  ]
+                }
+                """, modelDirective, resolutionDirective, modelSpecificNote, count).strip();
     }
 
     @Override

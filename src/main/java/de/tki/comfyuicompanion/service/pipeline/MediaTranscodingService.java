@@ -80,12 +80,17 @@ public class MediaTranscodingService {
         w = (w / 2) * 2;
         h = (h / 2) * 2;
 
+        int overscanW = ((int) Math.round(w * 1.25) / 8) * 8;
+        int overscanH = ((int) Math.round(h * 1.25) / 8) * 8;
+        String preScale = String.format(java.util.Locale.US,
+                "scale=%d:%d:force_original_aspect_ratio=increase,crop=%d:%d", overscanW, overscanH, overscanW, overscanH);
+
         String scaleFilter = String.format(java.util.Locale.US,
                 "scale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-ih)/2", w, h, w, h);
         int fpsInt = fps > 0 ? (int) fps : 24;
         String motionFilter = String.format(java.util.Locale.US,
-                "zoompan=z='min(zoom+0.0008,1.12)':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=%dx%d:fps=%d,%s",
-                w, h, fpsInt, scaleFilter);
+                "%s,zoompan=z='min(zoom+0.0008,1.15)':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=%dx%d:fps=%d,%s",
+                preScale, w, h, fpsInt, scaleFilter);
 
         List<String> cmd = new ArrayList<>();
         cmd.add(ffmpegPath);

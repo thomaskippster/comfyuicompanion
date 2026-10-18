@@ -19,10 +19,12 @@ class VideoPromptOptimizerTest {
     void testBuildStoryboardSystemPromptContainsCriticalDirectives() {
         String systemPrompt = optimizer.buildStoryboardSystemPrompt();
         assertNotNull(systemPrompt);
-        assertTrue(systemPrompt.contains("MANDATORY CAMERA TRAJECTORY"), "System prompt must mandate camera movement");
-        assertTrue(systemPrompt.contains("ENVIRONMENTAL KINETICS & PHYSICS"), "System prompt must mandate environmental physics");
-        assertTrue(systemPrompt.contains("SUBJECT ACTION & MOVEMENT"), "System prompt must mandate subject kinetics");
-        assertTrue(systemPrompt.contains("AVOID STATIC PHOTO TRIGGERS"), "System prompt must ban static photo terms");
+        assertTrue(systemPrompt.contains("SEPARATE NARRATION FROM VISUALS"), "System prompt must mandate narration separation");
+        assertTrue(systemPrompt.contains("NO ABSTRACT METAPHORS IN VISUAL_PROMPT"), "System prompt must forbid abstract metaphors");
+        assertTrue(systemPrompt.contains("NO UNDEFINED CROWDS OR BLOBS"), "System prompt must forbid crowds or blobs");
+        assertTrue(systemPrompt.contains("MANDATORY VISUAL PROMPT FORMULA"), "System prompt must provide visual prompt formula");
+        assertTrue(systemPrompt.contains("GLOBAL STYLE ANCHOR FOR TEMPORAL CONSISTENCY"), "System prompt must mandate style anchor");
+        assertTrue(systemPrompt.contains("GLOBAL NEGATIVE PROMPT"), "System prompt must mandate global negative prompt");
     }
 
     @Test
@@ -93,12 +95,11 @@ class VideoPromptOptimizerTest {
         assertNotNull(prompt);
         assertTrue(prompt.contains("Wan 2.1 (T2V / I2V 14B)"), "Must include model target");
         assertTrue(prompt.contains("832x480"), "Must include resolution");
-        assertTrue(prompt.contains("exactly 5 sequential"), "Must enforce scene count");
-        assertTrue(prompt.contains("DIRECTOR'S 5-BEAT DRAMATIC ARC"), "Must provide dramatic arc structure");
-        assertTrue(prompt.contains("DUAL-ANCHOR FORMULA"), "Must provide style consistency anchor");
-        assertTrue(prompt.contains("MANDATORY TEMPORAL & LIGHTING CONTINUITY"), "Must enforce temporal and lighting continuity");
-        assertTrue(prompt.contains("HIGH-OCTANE MACROSCOPIC MOTION"), "Must enforce macroscopic physics");
-        assertTrue(prompt.contains("STRICT NEGATIVE DIRECTIVES"), "Must forbid countdowns and abstract adjectives");
+        assertTrue(prompt.contains("Exactly 5 sequential scenes"), "Must enforce scene count");
+        assertTrue(prompt.contains("SEPARATE NARRATION FROM VISUALS"), "Must enforce narration separation");
+        assertTrue(prompt.contains("GLOBAL STYLE ANCHOR FOR TEMPORAL CONSISTENCY"), "Must enforce style anchor");
+        assertTrue(prompt.contains("GLOBAL NEGATIVE PROMPT"), "Must enforce negative prompt");
+        assertTrue(prompt.contains("MANDATORY VISUAL PROMPT FORMULA"), "Must enforce prompt formula");
     }
 
     @Test

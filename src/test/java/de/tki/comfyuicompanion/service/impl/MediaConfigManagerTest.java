@@ -40,7 +40,7 @@ class MediaConfigManagerTest {
     void testLocalLlmModelAndVideoOptimization() {
         assertThat(mediaConfigManager.getLocalLlmModel(settings)).isEqualTo("gemma-3-4b");
         assertThat(mediaConfigManager.is16GbVramOptimizationEnabled(settings)).isTrue();
-        assertThat(mediaConfigManager.isLastFrameChainingEnabled(settings)).isTrue();
+        assertThat(mediaConfigManager.isLastFrameChainingEnabled(settings)).isFalse();
         assertThat(mediaConfigManager.isTwoPhaseRenderingEnabled(settings)).isFalse();
 
         mediaConfigManager.setLocalLlmModel(settings, "qwen-2.5-7b", () -> saved.set(true));

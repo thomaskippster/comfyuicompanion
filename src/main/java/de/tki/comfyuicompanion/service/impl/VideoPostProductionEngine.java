@@ -131,7 +131,8 @@ public class VideoPostProductionEngine {
                 transition = "fade";
             }
             double transDur = s.getTransitionDuration();
-            if (transDur <= 0) transDur = 1.0;
+            if (transDur <= 0) transDur = 0.20;
+            transDur = Math.min(transDur, 0.25);
             transDur = Math.min(transDur, Math.min(durations[i - 1], durations[i]) / 2.0);
             String outV = i == segments.size() - 1 ? "[v]" : ("[v" + i + "]");
             String outA = i == segments.size() - 1 ? "[a]" : ("[a" + i + "]");
@@ -153,12 +154,14 @@ public class VideoPostProductionEngine {
         args.add(lastAudioLabel);
         args.add("-c:v");
         args.add("libx264");
-        args.add("-preset");
-        args.add("medium");
         args.add("-crf");
-        args.add("18");
+        args.add("17");
+        args.add("-preset");
+        args.add("slow");
         args.add("-pix_fmt");
         args.add("yuv420p");
+        args.add("-movflags");
+        args.add("+faststart");
         args.add("-c:a");
         args.add("aac");
         args.add("-b:a");
@@ -231,7 +234,8 @@ public class VideoPostProductionEngine {
                 String narration = s.getNarrationText();
                 if (narration != null && !narration.trim().isEmpty()) {
                     File subFile = File.createTempFile("sub_master_" + s.getSceneId() + "_", ".txt");
-                    Files.writeString(subFile.toPath(), narration.trim(), StandardCharsets.UTF_8);
+                    String wrapped = wrapSubtitleText(narration.trim(), 48);
+                    Files.writeString(subFile.toPath(), wrapped, StandardCharsets.UTF_8);
                     tempSubFiles.add(subFile);
 
                     String escapedSubPath = subFile.getAbsolutePath()
@@ -239,9 +243,10 @@ public class VideoPostProductionEngine {
                             .replace(":", "\\:")
                             .replace("'", "\\'");
 
+                    String fontParam = resolveSystemSansFontParam();
                     String drawtext = String.format(Locale.US,
-                            "drawtext=textfile='%s':enable='between(t,%.2f,%.2f)':fontsize=24:fontcolor=white:borderw=2:bordercolor=black:x=(w-tw)/2:y=h-th-40",
-                            escapedSubPath, Math.max(0.0, startSec), endSec);
+                            "drawtext=textfile='%s':enable='between(t,%.2f,%.2f)'%s:fontcolor=white:fontsize=28:box=1:boxcolor=black@0.55:boxborderw=12:shadowcolor=black@0.8:shadowx=1:shadowy=1:x=(w-text_w)/2:y=h-th-45",
+                            escapedSubPath, Math.max(0.0, startSec), endSec, fontParam);
                     drawtextFilters.add(drawtext);
                 }
 
@@ -258,12 +263,14 @@ public class VideoPostProductionEngine {
                 cmd.add(String.join(",", drawtextFilters));
                 cmd.add("-c:v");
                 cmd.add("libx264");
-                cmd.add("-preset");
-                cmd.add("medium");
                 cmd.add("-crf");
-                cmd.add("18");
+                cmd.add("17");
+                cmd.add("-preset");
+                cmd.add("slow");
                 cmd.add("-pix_fmt");
                 cmd.add("yuv420p");
+                cmd.add("-movflags");
+                cmd.add("+faststart");
                 cmd.add("-c:a");
                 cmd.add("copy");
                 cmd.add(tempOutput.getAbsolutePath());
@@ -300,5 +307,70 @@ public class VideoPostProductionEngine {
                 if (tf.exists()) tf.delete();
             }
         }
+    }
+
+    /**
+     * Resolves a platform-specific Sans-Serif font file for clean FFmpeg drawtext rendering.
+     *
+     * @return the fontfile parameter clause for FFmpeg, or an empty string if not found
+     */
+    public static String resolveSystemSansFontParam() {
+        String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
+        File fontFile = null;
+
+        if (os.contains("win")) {
+            File segoe = new File("C:/Windows/Fonts/segoeui.ttf");
+            File arial = new File("C:/Windows/Fonts/arial.ttf");
+            if (segoe.exists()) fontFile = segoe;
+            else if (arial.exists()) fontFile = arial;
+        } else if (os.contains("mac")) {
+            File sfns = new File("/System/Library/Fonts/SFNS.ttf");
+            File helv = new File("/System/Library/Fonts/Helvetica.ttc");
+            if (sfns.exists()) fontFile = sfns;
+            else if (helv.exists()) fontFile = helv;
+        } else {
+            File liberation = new File("/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf");
+            File dejavu = new File("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf");
+            if (liberation.exists()) fontFile = liberation;
+            else if (dejavu.exists()) fontFile = dejavu;
+        }
+
+        if (fontFile != null && fontFile.exists()) {
+            String escaped = fontFile.getAbsolutePath().replace("\\", "/").replace(":", "\\:").replace("'", "\\'");
+            return ":fontfile='" + escaped + "'";
+        }
+        return "";
+    }
+
+    /**
+     * Wraps subtitle text at word boundaries to prevent line overflows beyond the video frame.
+     *
+     * @param text             raw narration text
+     * @param maxCharsPerLine  maximum characters per line (defaults to 48)
+     * @return wrapped text with newline breaks
+     */
+    public static String wrapSubtitleText(String text, int maxCharsPerLine) {
+        if (text == null || text.isBlank()) return "";
+        int limit = maxCharsPerLine > 10 ? maxCharsPerLine : 48;
+        String[] words = text.trim().split("\\s+");
+        StringBuilder sb = new StringBuilder();
+        StringBuilder line = new StringBuilder();
+
+        for (String w : words) {
+            if (line.length() + w.length() + (line.isEmpty() ? 0 : 1) > limit) {
+                if (!line.isEmpty()) {
+                    sb.append(line).append("\n");
+                    line.setLength(0);
+                }
+            }
+            if (!line.isEmpty()) {
+                line.append(" ");
+            }
+            line.append(w);
+        }
+        if (!line.isEmpty()) {
+            sb.append(line);
+        }
+        return sb.toString();
     }
 }

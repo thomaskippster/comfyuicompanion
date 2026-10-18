@@ -191,6 +191,21 @@ public class SceneBlueprintInjector {
                 if (inputs.has("cfg")) {
                     inputs.put("cfg", wanCfg);
                 }
+                if (inputs.has("denoise")) {
+                    double d = inputs.optDouble("denoise", 1.0);
+                    if (d < 0.88) {
+                        inputs.put("denoise", 0.88);
+                    }
+                }
+            }
+
+            if ("CLIPTextEncode".equals(classType)) {
+                String text = inputs.optString("text", "");
+                boolean isNegative = text.toLowerCase().contains("blurry") || text.toLowerCase().contains("bad hands")
+                        || text.toLowerCase().contains("worst quality") || text.toLowerCase().contains("low quality");
+                if (isNegative && scene.getNegativePrompt() != null && !scene.getNegativePrompt().isBlank() && !text.contains(scene.getNegativePrompt().trim())) {
+                    inputs.put("text", scene.getNegativePrompt().trim() + ", " + text);
+                }
             }
 
             if ("VHS_VideoCombine".equals(classType) || "SaveVideo".equals(classType)) {

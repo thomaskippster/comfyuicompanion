@@ -53,8 +53,8 @@ public class VideoSamplingParamsPanel extends JPanel {
         sizeRow.setAlignmentX(Component.LEFT_ALIGNMENT);
         sizeRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 50));
 
-        videoWidthSpinner = new JSpinner(new SpinnerNumberModel(832, 256, 3840, 16));
-        videoHeightSpinner = new JSpinner(new SpinnerNumberModel(480, 256, 2160, 16));
+        videoWidthSpinner = new JSpinner(new SpinnerNumberModel(1280, 256, 3840, 16));
+        videoHeightSpinner = new JSpinner(new SpinnerNumberModel(720, 256, 2160, 16));
         videoDurationSpinner = new JSpinner(new SpinnerNumberModel(5, 1, 60, 1));
         sizeRow.add(createSpinnerPanel("Width", videoWidthSpinner));
         sizeRow.add(createSpinnerPanel("Height", videoHeightSpinner));
@@ -74,8 +74,8 @@ public class VideoSamplingParamsPanel extends JPanel {
         samplerRow.setAlignmentX(Component.LEFT_ALIGNMENT);
         samplerRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 50));
 
-        videoStepsSpinner = new JSpinner(new SpinnerNumberModel(20, 1, 100, 1));
-        videoCfgSpinner = new JSpinner(new SpinnerNumberModel(3.0, 0.5, 20.0, 0.5));
+        videoStepsSpinner = new JSpinner(new SpinnerNumberModel(28, 1, 100, 1));
+        videoCfgSpinner = new JSpinner(new SpinnerNumberModel(6.5, 0.5, 20.0, 0.5));
         videoMotionSpinner = new JSpinner(new SpinnerNumberModel(127, 1, 255, 1));
         samplerRow.add(createSpinnerPanel("Steps", videoStepsSpinner));
         samplerRow.add(createSpinnerPanel("CFG Scale", videoCfgSpinner));
@@ -104,7 +104,7 @@ public class VideoSamplingParamsPanel extends JPanel {
         add(Box.createVerticalStrut(4));
 
         chkFrameChaining = new JCheckBox("Continuous Shot (Last-Frame Chaining)",
-                configService != null ? configService.isLastFrameChainingEnabled() : true);
+                configService != null ? configService.isLastFrameChainingEnabled() : false);
         chkFrameChaining.setToolTipText("Feeds the final frame of the previous scene as the starting keyframe for the next scene.");
         chkFrameChaining.setFont(new Font("SansSerif", Font.PLAIN, 12));
         chkFrameChaining.setAlignmentX(Component.LEFT_ALIGNMENT);

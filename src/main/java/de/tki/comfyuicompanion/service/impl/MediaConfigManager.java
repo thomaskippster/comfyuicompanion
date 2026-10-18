@@ -249,7 +249,7 @@ public class MediaConfigManager {
      * @return true if enabled
      */
     public boolean isLastFrameChainingEnabled(JSONObject settings) {
-        return settings.optBoolean("video_last_frame_chaining", true);
+        return settings.optBoolean("video_last_frame_chaining", false);
     }
 
     /**

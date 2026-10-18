@@ -59,6 +59,10 @@ public class Scene {
     private String videoPath;
     private String narrationText;
     private String speakerImagePath;
+    private String styleAnchor;
+    private String negativePrompt;
+    private String cameraMotion;
+    private Long seed;
 
     private RenderSettings renderSettings = RenderSettings.DEFAULT;
     private TransitionSettings transitionSettings = TransitionSettings.DEFAULT;
@@ -161,6 +165,66 @@ public class Scene {
 
     public void setSpeakerImagePath(String speakerImagePath) {
         this.speakerImagePath = speakerImagePath;
+    }
+
+    /**
+     * Alias getter for the visual prompt.
+     *
+     * @return the visual scene prompt
+     */
+    public String getVisualPrompt() {
+        return getPrompt();
+    }
+
+    /**
+     * Alias setter for the visual prompt.
+     *
+     * @param visualPrompt the visual scene prompt
+     */
+    public void setVisualPrompt(String visualPrompt) {
+        setPrompt(visualPrompt);
+    }
+
+    public String getStyleAnchor() {
+        return styleAnchor;
+    }
+
+    public void setStyleAnchor(String styleAnchor) {
+        this.styleAnchor = styleAnchor;
+    }
+
+    public String getNegativePrompt() {
+        return negativePrompt;
+    }
+
+    public void setNegativePrompt(String negativePrompt) {
+        this.negativePrompt = negativePrompt;
+    }
+
+    public String getCameraMotion() {
+        return cameraMotion;
+    }
+
+    public void setCameraMotion(String cameraMotion) {
+        this.cameraMotion = cameraMotion;
+    }
+
+    /**
+     * Retrieves the generation seed assigned to this scene.
+     *
+     * @return the generation seed, or null if unassigned
+     */
+    public Long getSeed() {
+        return seed;
+    }
+
+    /**
+     * Assigns the generation seed for this scene.
+     *
+     * @param seed the generation seed
+     */
+    public void setSeed(Long seed) {
+        this.seed = seed;
     }
 
     // --- Value Object Accessors ---

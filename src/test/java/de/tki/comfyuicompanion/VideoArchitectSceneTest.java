@@ -286,11 +286,11 @@ public class VideoArchitectSceneTest {
         Field widthSpinnerField = VideoArchitectTab.class.getDeclaredField("videoWidthSpinner");
         widthSpinnerField.setAccessible(true);
         JSpinner widthSpinner = (JSpinner) widthSpinnerField.get(tab);
-        assertEquals(832, widthSpinner.getValue(), "Default width should be 832 (safe 480p VRAM preset)");
+        assertEquals(1280, widthSpinner.getValue(), "Default width should be 1280 (16:9 HD widescreen preset)");
 
         Field heightSpinnerField = VideoArchitectTab.class.getDeclaredField("videoHeightSpinner");
         heightSpinnerField.setAccessible(true);
         JSpinner heightSpinner = (JSpinner) heightSpinnerField.get(tab);
-        assertEquals(480, heightSpinner.getValue(), "Default height should be 480 (safe 480p VRAM preset)");
+        assertEquals(720, heightSpinner.getValue(), "Default height should be 720 (16:9 HD widescreen preset)");
     }
 }

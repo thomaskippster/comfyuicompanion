@@ -173,7 +173,11 @@ public class VideoWorkflowBuilder {
         double cfgNoLora = userCfg;
         double cfgLora = 1.0;
 
-        String negativePrompt = "色调艳丽, 过曝, 静态, 细节模糊不清, 字幕, 风格, 作品, 画作, 画面, 静止, 整体发灰, 最差质量, 低质量, JPEG压缩残留, 丑陋的, 残缺的, 多余的手指, 变形的手指, 畸形, 水印, low quality, worst quality, deformed, distorted, blurry, static, text, watermark, signature";
+        String baseNegative = "blurry, out of focus, abstract blobs, faceless crowd, muddy colors, color banding, overexposed vertical streaks, ghosting, morphing, low resolution, deformed, watermark, text, signature, static, worst quality, low quality";
+        String sceneNegative = scene.getNegativePrompt();
+        String negativePrompt = (sceneNegative != null && !sceneNegative.isBlank())
+                ? (sceneNegative.trim() + ", " + baseNegative)
+                : baseNegative;
 
         workflowJson.put("129:90", makeNode("VAELoader", new JSONObject().put("vae_name", vaeName)));
         workflowJson.put("129:84", makeNode("CLIPLoader", new JSONObject().put("clip_name", clipName).put("type", "wan").put("device", "default")));
@@ -283,15 +287,35 @@ public class VideoWorkflowBuilder {
             JSONObject mainObj = promptBlueprintApiService.extractApiPayload(apiPayload.toString());
             JSONObject promptObj = mainObj.getJSONObject("prompt");
 
-            int imgWidth = scene.getWidth() > 0 ? scene.getWidth() : 832;
-            int imgHeight = scene.getHeight() > 0 ? scene.getHeight() : 480;
+            int imgWidth = scene.getWidth() > 0 ? scene.getWidth() : 1280;
+            int imgHeight = scene.getHeight() > 0 ? scene.getHeight() : 720;
+
+            boolean hasKenBurns = scene.getCameraMotion() != null && !scene.getCameraMotion().isBlank() && !scene.getCameraMotion().equalsIgnoreCase("none");
+            if (hasKenBurns) {
+                imgWidth = ((int) Math.round(imgWidth * 1.25) / 8) * 8;
+                imgHeight = ((int) Math.round(imgHeight * 1.25) / 8) * 8;
+            }
+
+            String baseNeg = "blurry, out of focus, abstract blobs, faceless crowd, muddy colors, color banding, overexposed streaks, ghosting, low resolution, text, watermark, deformed";
+            String sceneNeg = scene.getNegativePrompt();
+            String effectiveNegative = (sceneNeg != null && !sceneNeg.isBlank())
+                    ? (sceneNeg.trim() + ", " + baseNeg)
+                    : baseNeg;
+
+            boolean isFlux = blueprintFile != null && blueprintFile.getName().toLowerCase().contains("flux");
+            int defaultSteps = isFlux ? 22 : 28;
+            double defaultCfg = isFlux ? 1.0 : 6.5;
+            String sampler = isFlux ? "euler" : "dpmpp_2m";
+            String scheduler = isFlux ? "simple" : "karras";
+            double denoise = (speakerImage != null && !speakerImage.isBlank()) ? 0.88 : 1.0;
+
             PromptBlueprintApiService.PromptLabInputs inputs = new PromptBlueprintApiService.PromptLabInputs(
                     scene.getPrompt(),
-                    "blurry, low quality, distortion, bad anatomy, deformed",
+                    effectiveNegative,
                     imgWidth, imgHeight,
-                    (scene.getSteps() > 0 ? scene.getSteps() : 8),
-                    (scene.getCfgScale() > 0 ? scene.getCfgScale() : 1.0),
-                    seed, "euler", "simple", 1.0, 1, speakerImage
+                    (scene.getSteps() > 0 ? scene.getSteps() : defaultSteps),
+                    (scene.getCfgScale() > 0 ? scene.getCfgScale() : defaultCfg),
+                    seed, sampler, scheduler, denoise, 1, speakerImage
             );
 
             promptBlueprintApiService.injectLabInputs(promptObj, inputs);

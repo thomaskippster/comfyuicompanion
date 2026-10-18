@@ -248,6 +248,19 @@ public class Video4jEditorService {
         return FfmpegProcessRunner.buildDummyWavCommand(ffmpegPath, duration, dest);
     }
 
+    /**
+     * Harmonizes keyframe color palettes using Reinhard LAB color transfer relative to a reference image.
+     *
+     * @param sourceImageFile    image to harmonize
+     * @param referenceImageFile palette reference image (e.g. Scene 1)
+     * @param outputFile         output destination file
+     * @param blendFactor        blending ratio (0.35 - 0.50)
+     * @return harmonized image file
+     */
+    public File harmonizeKeyframeColorsLab(File sourceImageFile, File referenceImageFile, File outputFile, double blendFactor) {
+        return imageFilterEngine.harmonizeKeyframeColorsLab(sourceImageFile, referenceImageFile, outputFile, blendFactor);
+    }
+
     private void openSystemFolder(File targetFile) {
         if (System.getProperty("surefire.real.class.path") != null || System.getProperty("java.class.path").contains("junit") || java.awt.GraphicsEnvironment.isHeadless()) {
             return;

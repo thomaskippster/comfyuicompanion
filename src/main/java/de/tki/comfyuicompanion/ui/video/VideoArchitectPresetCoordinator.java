@@ -114,29 +114,55 @@ public class VideoArchitectPresetCoordinator {
                                  JSpinner videoStepsSpinner,
                                  JSpinner videoCfgSpinner,
                                  Consumer<String> loggerFn) {
-        if (selected == null) return;
+        boolean isLowVram = false;
+        if (hardwareProfileService != null) {
+            HardwareProfile profile = hardwareProfileService.getHardwareProfile();
+            isLowVram = profile != null && profile.isWeakSystem();
+        }
+
         if (selected.contains("LTX-Video")) {
-            if (videoPresetLabel != null) videoPresetLabel.setText("Detected Preset: LTX-Video High-Speed (768x512 | 24 fps)");
-            if (videoWidthSpinner != null) videoWidthSpinner.setValue(768);
-            if (videoHeightSpinner != null) videoHeightSpinner.setValue(512);
+            int w = isLowVram ? 1024 : 1280;
+            int h = isLowVram ? 576 : 720;
+            if (videoPresetLabel != null) videoPresetLabel.setText("Detected Preset: LTX-Video High-Speed (" + w + "x" + h + " | 24 fps)");
+            if (videoWidthSpinner != null) videoWidthSpinner.setValue(w);
+            if (videoHeightSpinner != null) videoHeightSpinner.setValue(h);
             if (videoStepsSpinner != null) videoStepsSpinner.setValue(30);
             if (videoCfgSpinner != null) videoCfgSpinner.setValue(3.0);
+        } else if (selected.contains("Flux")) {
+            int w = isLowVram ? 1024 : 1280;
+            int h = isLowVram ? 576 : 720;
+            if (videoPresetLabel != null) videoPresetLabel.setText("Detected Preset: Flux Widescreen (" + w + "x" + h + " | FluxGuidance 3.5)");
+            if (videoWidthSpinner != null) videoWidthSpinner.setValue(w);
+            if (videoHeightSpinner != null) videoHeightSpinner.setValue(h);
+            if (videoStepsSpinner != null) videoStepsSpinner.setValue(22);
+            if (videoCfgSpinner != null) videoCfgSpinner.setValue(1.0);
+        } else if (selected.contains("SDXL") || selected.contains("Pony") || selected.contains("Illustrious")) {
+            if (videoPresetLabel != null) videoPresetLabel.setText("Detected Preset: SDXL / Pony Widescreen (1024x576 | DPMPP_2M Karras)");
+            if (videoWidthSpinner != null) videoWidthSpinner.setValue(1024);
+            if (videoHeightSpinner != null) videoHeightSpinner.setValue(576);
+            if (videoStepsSpinner != null) videoStepsSpinner.setValue(28);
+            if (videoCfgSpinner != null) videoCfgSpinner.setValue(6.5);
+        } else if (selected.contains("SD 1.5")) {
+            if (videoPresetLabel != null) videoPresetLabel.setText("Detected Preset: SD 1.5 Upscale (768x432 -> 1280x720)");
+            if (videoWidthSpinner != null) videoWidthSpinner.setValue(768);
+            if (videoHeightSpinner != null) videoHeightSpinner.setValue(432);
+            if (videoStepsSpinner != null) videoStepsSpinner.setValue(28);
+            if (videoCfgSpinner != null) videoCfgSpinner.setValue(6.5);
         } else if (selected.contains("Hunyuan")) {
-            if (videoPresetLabel != null) videoPresetLabel.setText("Detected Preset: Hunyuan Video 1.5 (832x480 | 24 fps, Safe VRAM)");
-            if (videoWidthSpinner != null) videoWidthSpinner.setValue(832);
-            if (videoHeightSpinner != null) videoHeightSpinner.setValue(480);
+            int w = isLowVram ? 1024 : 1280;
+            int h = isLowVram ? 576 : 720;
+            if (videoPresetLabel != null) videoPresetLabel.setText("Detected Preset: Hunyuan Video 1.5 (" + w + "x" + h + " | 24 fps)");
+            if (videoWidthSpinner != null) videoWidthSpinner.setValue(w);
+            if (videoHeightSpinner != null) videoHeightSpinner.setValue(h);
             if (videoStepsSpinner != null) videoStepsSpinner.setValue(20);
             if (videoCfgSpinner != null) videoCfgSpinner.setValue(6.0);
-        } else if (selected.contains("Image to Video")) {
-            if (videoPresetLabel != null) videoPresetLabel.setText("Detected Preset: Wan 2.1 I2V (832x480 | 16 fps, Safe VRAM)");
-            if (videoWidthSpinner != null) videoWidthSpinner.setValue(832);
-            if (videoHeightSpinner != null) videoHeightSpinner.setValue(480);
-            if (videoStepsSpinner != null) videoStepsSpinner.setValue(20);
-            if (videoCfgSpinner != null) videoCfgSpinner.setValue(3.0);
         } else {
-            if (videoPresetLabel != null) videoPresetLabel.setText("Detected Preset: Wan 2.2 Cinematic Video (832x480 | 16 fps, Safe VRAM)");
-            if (videoWidthSpinner != null) videoWidthSpinner.setValue(832);
-            if (videoHeightSpinner != null) videoHeightSpinner.setValue(480);
+            // Wan 2.2 / Default
+            int w = isLowVram ? 1024 : 1280;
+            int h = isLowVram ? 576 : 720;
+            if (videoPresetLabel != null) videoPresetLabel.setText("Detected Preset: Wan 2.2 Cinematic Video (" + w + "x" + h + " | 16 fps)");
+            if (videoWidthSpinner != null) videoWidthSpinner.setValue(w);
+            if (videoHeightSpinner != null) videoHeightSpinner.setValue(h);
             if (videoStepsSpinner != null) videoStepsSpinner.setValue(20);
             if (videoCfgSpinner != null) videoCfgSpinner.setValue(3.0);
         }

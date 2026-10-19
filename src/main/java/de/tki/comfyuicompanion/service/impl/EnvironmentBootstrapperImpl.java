@@ -1,9 +1,12 @@
 package de.tki.comfyuicompanion.service.impl;
 
+import de.tki.comfyuicompanion.util.PlatformUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.io.File;
 import java.io.FileInputStream;
+import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -12,6 +15,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.time.Duration;
+import java.util.Comparator;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 import java.util.zip.ZipEntry;
@@ -89,69 +93,103 @@ public class EnvironmentBootstrapperImpl {
      *
      * @param targetDir destination folder
      * @param progressCallback progress sink
-     * @return future containing path to python.exe
+     * @return future containing path to python executable
      */
     public CompletableFuture<Path> downloadAndExtractPortablePython(Path targetDir, Consumer<String> progressCallback) {
-        String pythonUrl = "https://www.python.org/ftp/python/3.11.9/python-3.11.9-embed-amd64.zip";
-        Path zipFile = targetDir.resolve("python_portable.zip");
+        boolean isWin = PlatformUtils.isWindows();
         Path extractDir = targetDir.resolve("python_embeded");
+        Path pythonExe = isWin ? extractDir.resolve("python.exe") : extractDir.resolve("bin").resolve("python3");
 
         return CompletableFuture.runAsync(() -> {
             try {
                 Files.createDirectories(targetDir);
                 progressCallback.accept("📥 Downloading portable Python...");
 
-                HttpRequest request = HttpRequest.newBuilder().uri(URI.create(pythonUrl)).GET().timeout(Duration.ofSeconds(30)).build();
-                httpClient.send(request, HttpResponse.BodyHandlers.ofFile(zipFile));
+                if (isWin) {
+                    String pythonUrl = "https://www.python.org/ftp/python/3.11.9/python-3.11.9-embed-amd64.zip";
+                    Path zipFile = targetDir.resolve("python_portable.zip");
+                    HttpRequest request = HttpRequest.newBuilder().uri(URI.create(pythonUrl)).GET().timeout(Duration.ofSeconds(60)).build();
+                    httpClient.send(request, HttpResponse.BodyHandlers.ofFile(zipFile));
 
-                progressCallback.accept("📦 Extracting Python environment...");
-                extractZip(zipFile, extractDir);
+                    progressCallback.accept("📦 Extracting Python environment...");
+                    extractZip(zipFile, extractDir);
+                    Files.deleteIfExists(zipFile);
+                } else {
+                    String pythonUrl = "https://github.com/astral-sh/python-build-standalone/releases/download/20241016/cpython-3.11.10%2B20241016-x86_64-unknown-linux-gnu-install_only.tar.gz";
+                    Path tarGzFile = targetDir.resolve("python_portable.tar.gz");
+                    HttpRequest request = HttpRequest.newBuilder().uri(URI.create(pythonUrl)).GET().timeout(Duration.ofSeconds(120)).build();
+                    httpClient.send(request, HttpResponse.BodyHandlers.ofFile(tarGzFile));
 
-                Files.deleteIfExists(zipFile);
+                    progressCallback.accept("📦 Extracting Python environment...");
+                    if (Files.exists(extractDir.resolve("python.exe"))) {
+                        deleteDirectory(extractDir);
+                    }
+                    Files.createDirectories(extractDir);
+
+                    ProcessBuilder pb = new ProcessBuilder("tar", "-xzf", tarGzFile.toString(), "-C", extractDir.toString(), "--strip-components=1");
+                    Process p = processTracker.start(pb);
+                    int exitCode = p.waitFor();
+                    if (exitCode != 0) {
+                        throw new RuntimeException("tar extraction failed with exit code " + exitCode);
+                    }
+                    Files.deleteIfExists(tarGzFile);
+
+                    Path binDir = extractDir.resolve("bin");
+                    if (Files.exists(binDir)) {
+                        try (var stream = Files.list(binDir)) {
+                            stream.forEach(f -> f.toFile().setExecutable(true, false));
+                        }
+                    }
+                }
+
                 progressCallback.accept("✅ Portable Python set up.");
             } catch (Exception e) {
                 throw new RuntimeException("Error setting up Python: " + e.getMessage(), e);
             }
-        }).thenApply(v -> extractDir.resolve("python.exe"));
+        }).thenApply(v -> pythonExe);
     }
 
     /**
      * Installs pip into portable Python and activates site-packages.
      *
-     * @param pythonExe path to python.exe
+     * @param pythonExe path to python executable
      * @param progressCallback progress sink
      * @return completion future
      */
     public CompletableFuture<Void> installPip(Path pythonExe, Consumer<String> progressCallback) {
         return CompletableFuture.runAsync(() -> {
             try {
-                progressCallback.accept("📦 Preparing pip installation...");
+                if (PlatformUtils.isWindows()) {
+                    progressCallback.accept("📦 Preparing pip installation...");
 
-                Path pthFile = pythonExe.getParent().resolve("python311._pth");
-                if (Files.exists(pthFile)) {
-                    String content = Files.readString(pthFile);
-                    if (content.contains("#import site")) {
-                        content = content.replace("#import site", "import site");
-                        Files.writeString(pthFile, content);
-                        progressCallback.accept("🔧 site-packages enabled.");
+                    Path pthFile = pythonExe.getParent().resolve("python311._pth");
+                    if (Files.exists(pthFile)) {
+                        String content = Files.readString(pthFile);
+                        if (content.contains("#import site")) {
+                            content = content.replace("#import site", "import site");
+                            Files.writeString(pthFile, content);
+                            progressCallback.accept("🔧 site-packages enabled.");
+                        }
                     }
+
+                    Path getPipScript = pythonExe.getParent().resolve("get-pip.py");
+                    progressCallback.accept("📥 Downloading get-pip.py...");
+                    HttpRequest request = HttpRequest.newBuilder()
+                            .uri(URI.create("https://bootstrap.pypa.io/get-pip.py"))
+                            .GET().timeout(Duration.ofSeconds(30)).build();
+                    httpClient.send(request, HttpResponse.BodyHandlers.ofFile(getPipScript));
+
+                    progressCallback.accept("⚙️ Installing pip (this may take a moment)...");
+                    ProcessBuilder pb = new ProcessBuilder(pythonExe.toString(), getPipScript.toString());
+                    pb.directory(pythonExe.getParent().toFile());
+                    Process p = processTracker.start(pb);
+                    p.waitFor();
+
+                    Files.deleteIfExists(getPipScript);
+                    progressCallback.accept("✅ pip successfully installed.");
+                } else {
+                    progressCallback.accept("✅ Portable Python environment ready with pip.");
                 }
-
-                Path getPipScript = pythonExe.getParent().resolve("get-pip.py");
-                progressCallback.accept("📥 Downloading get-pip.py...");
-                HttpRequest request = HttpRequest.newBuilder()
-                        .uri(URI.create("https://bootstrap.pypa.io/get-pip.py"))
-                        .GET().timeout(Duration.ofSeconds(30)).build();
-                httpClient.send(request, HttpResponse.BodyHandlers.ofFile(getPipScript));
-
-                progressCallback.accept("⚙️ Installing pip (this may take a moment)...");
-                ProcessBuilder pb = new ProcessBuilder(pythonExe.toString(), getPipScript.toString());
-                pb.directory(pythonExe.getParent().toFile());
-                Process p = processTracker.start(pb);
-                p.waitFor();
-
-                Files.deleteIfExists(getPipScript);
-                progressCallback.accept("✅ pip successfully installed.");
             } catch (Exception e) {
                 throw new RuntimeException("Error during pip installation: " + e.getMessage(), e);
             }
@@ -228,5 +266,15 @@ public class EnvironmentBootstrapperImpl {
      */
     public void fixWslDependencies(Path comfyDir, Consumer<String> progressCallback) {
         pipRunner.fixWslDependencies(comfyDir, progressCallback);
+    }
+
+    private void deleteDirectory(Path dir) throws IOException {
+        if (Files.exists(dir)) {
+            try (var walk = Files.walk(dir)) {
+                walk.sorted(Comparator.reverseOrder())
+                    .map(Path::toFile)
+                    .forEach(File::delete);
+            }
+        }
     }
 }

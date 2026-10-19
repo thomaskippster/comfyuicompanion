@@ -1,6 +1,7 @@
 package de.tki.comfyuicompanion.service.impl;
 
 import de.tki.comfyuicompanion.service.IDownloadManager;
+import de.tki.comfyuicompanion.util.PlatformUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -139,13 +140,15 @@ public class AppLifecycleManager {
                     processTracker.destroyAll();
                 }
 
-                Thread wslShutdown = Thread.ofVirtual().name("wsl-shutdown").start(() -> {
-                    try {
-                        Runtime.getRuntime().exec(new String[]{"wsl", "--shutdown"});
-                    } catch (Exception e) {
-                        logger.error("Failed to execute wsl --shutdown: {}", e.getMessage());
-                    }
-                });
+                if (PlatformUtils.isWindows()) {
+                    Thread wslShutdown = Thread.ofVirtual().name("wsl-shutdown").start(() -> {
+                        try {
+                            Runtime.getRuntime().exec(new String[]{"wsl", "--shutdown"});
+                        } catch (Exception e) {
+                            logger.error("Failed to execute wsl --shutdown: {}", e.getMessage());
+                        }
+                    });
+                }
 
                 if (appContext != null) {
                     appContext.close();

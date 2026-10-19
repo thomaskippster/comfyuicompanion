@@ -166,8 +166,9 @@ public class PipCommandRunner {
      * @param progressCallback progress sink
      */
     public void installPyTorchCudaIfAvailable(Path pythonExe, Path comfyDir, Consumer<String> progressCallback) {
-        boolean isWindows = System.getProperty("os.name").toLowerCase().contains("win");
-        if (!isWindows) {
+        String osName = System.getProperty("os.name").toLowerCase();
+        boolean isSupportedOs = osName.contains("win") || osName.contains("nux") || osName.contains("nix");
+        if (!isSupportedOs) {
             return;
         }
 

@@ -54,7 +54,10 @@ public class ComfyAutoDiscoveryService {
         }
 
         // Priority 2: Check for python_embeded (Portable ComfyUI style)
-        File portablePython = new File(new File(comfyRoot).getParentFile(), "python_embeded/python.exe");
+        File portablePython = new File(new File(comfyRoot).getParentFile(), isWin ? "python_embeded/python.exe" : "python_embeded/bin/python3");
+        if (!portablePython.exists() && !isWin) {
+            portablePython = new File(new File(comfyRoot).getParentFile(), "python_embeded/bin/python");
+        }
         if (portablePython.exists()) {
             logger.info("📂 [Config] Found portable python at: {}", portablePython.getAbsolutePath());
             return portablePython.getAbsolutePath();

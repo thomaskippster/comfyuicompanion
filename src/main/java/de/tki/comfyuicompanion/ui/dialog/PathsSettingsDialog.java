@@ -3,6 +3,7 @@ package de.tki.comfyuicompanion.ui.dialog;
 import de.tki.comfyuicompanion.service.IComfyLifecycleService;
 import de.tki.comfyuicompanion.service.impl.ConfigService;
 import de.tki.comfyuicompanion.ui.StandardDialog;
+import de.tki.comfyuicompanion.util.PlatformUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -119,11 +120,15 @@ public final class PathsSettingsDialog {
             if (chooser.showOpenDialog(dialog) == JFileChooser.APPROVE_OPTION) {
                 File dir = chooser.getSelectedFile();
                 field3.setText(dir.getAbsolutePath());
-                File embeddedPy = new File(dir.getParentFile(), "python_embeded\\python.exe");
+                File embeddedPy = PlatformUtils.isWindows()
+                        ? new File(dir.getParentFile(), "python_embeded\\python.exe")
+                        : new File(dir.getParentFile(), "python_embeded/bin/python3");
                 if (embeddedPy.exists()) {
                     field4.setText(embeddedPy.getAbsolutePath());
                 } else {
-                    File venvPy = new File(dir, "venv\\Scripts\\python.exe");
+                    File venvPy = PlatformUtils.isWindows()
+                            ? new File(dir, "venv\\Scripts\\python.exe")
+                            : new File(dir, "venv/bin/python3");
                     if (venvPy.exists()) {
                         field4.setText(venvPy.getAbsolutePath());
                     }

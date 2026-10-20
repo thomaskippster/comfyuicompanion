@@ -23,7 +23,7 @@ jpackage ^
   --main-jar "comfyuicompanion.jar" ^
   --main-class "de.tki.comfyuicompanion.Main" ^
   --dest "dist" ^
-  --app-version "2.0.1" ^
+  --app-version "2.0.2" ^
   --vendor "TKI" ^
   --description "Enterprise AI Companion for ComfyUI"
 

@@ -54,7 +54,8 @@ public final class CivitaiModelActionsHelper {
                 try { size = Files.size(part0); } catch (Exception ignored) {}
             }
 
-            if (size > 0) {
+            boolean hasFragment = Files.exists(cmfd) || Files.exists(part0);
+            if (hasFragment) {
                 String s = size >= 1024 * 1024 * 1024
                         ? String.format(Locale.US, "%.1f GB", size / (1024.0 * 1024.0 * 1024.0))
                         : String.format(Locale.US, "%.0f MB", size / (1024.0 * 1024.0));

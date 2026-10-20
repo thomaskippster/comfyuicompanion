@@ -185,4 +185,47 @@ public class SegmentedDownloadEngineTest {
         assertTrue(Files.exists(target));
         assertTrue(statuses.stream().anyMatch(s -> s.contains("single stream") || s.contains("Downloading")));
     }
+
+    @Test
+    public void testSegmentedStatusIncludesProgressAndSpeed(@TempDir Path tempDir) throws Exception {
+        byte[] part0 = new byte[]{1, 2, 3, 4};
+        byte[] part1 = new byte[]{5, 6, 7, 8};
+
+        wireMockServer.stubFor(get(urlEqualTo("/test_speed.bin"))
+                .withHeader("Range", equalTo("bytes=0-3"))
+                .willReturn(aResponse()
+                        .withStatus(206)
+                        .withHeader("Content-Range", "bytes 0-3/8")
+                        .withHeader("Content-Length", "4")
+                        .withBody(part0)));
+
+        wireMockServer.stubFor(get(urlEqualTo("/test_speed.bin"))
+                .withHeader("Range", equalTo("bytes=4-7"))
+                .willReturn(aResponse()
+                        .withStatus(206)
+                        .withHeader("Content-Range", "bytes 4-7/8")
+                        .withHeader("Content-Length", "4")
+                        .withBody(part1)));
+
+        Path target = tempDir.resolve("test_speed.bin");
+        List<String> statuses = new ArrayList<>();
+        SegmentedDownloadEngine.DownloadControl ctrl = new SegmentedDownloadEngine.DownloadControl() {
+            public boolean isStopped() { return false; }
+            public boolean isPaused() { return false; }
+            public boolean isSelected() { return true; }
+        };
+
+        boolean result = engine.downloadMultiSegment(
+                wireMockServer.baseUrl() + "/test_speed.bin",
+                target,
+                8L,
+                2,
+                ctrl,
+                statuses::add
+        );
+
+        assertTrue(result);
+        assertTrue(Files.exists(target));
+        assertEquals(8L, Files.size(target));
+    }
 }

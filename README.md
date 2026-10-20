@@ -169,6 +169,10 @@ If you use [Pinokio](https://pinokio.co):
 * **Or via Pinokio App:** Open Pinokio, paste `https://github.com/thomaskippster/comfyuicompanion` into the address bar, and click **Download** -> **Install**.
 * The script automatically configures OpenJDK 21, Maven, automatically discovers existing ComfyUI installations, builds the JAR, and manages 1-click start/stop and updates.
 
+> [!TIP]
+> **Troubleshooting Existing Pinokio Installations:**
+> If you installed the app prior to v2.0.1 and your update fails with divergent branches or stays on v1.1.0, click **Reset** in Pinokio (or run `git fetch origin ; git checkout -B main origin/main ; git reset --hard origin/main` in your Pinokio app terminal), then click **Reinstall** or **Update**.
+
 ---
 
 ### Option 3: 🛠️ Manual Build (For Developers)

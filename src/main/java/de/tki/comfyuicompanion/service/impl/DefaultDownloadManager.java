@@ -102,13 +102,18 @@ public class DefaultDownloadManager implements IDownloadManager {
         try {
             String sub = (info.getSave_path() == null || info.getSave_path().isEmpty() || "default".equalsIgnoreCase(info.getSave_path())) ?
                     ModelFolder.fromString(info.getType()).getDefaultFolderName() : info.getSave_path();
+            if (sub.startsWith("models/") || sub.startsWith("models\\")) {
+                sub = sub.substring(7);
+            }
             Path base = (baseDir != null && !baseDir.isEmpty()) ? pathResolver.resolve(baseDir) : pathResolver.resolve(configService != null ? configService.getModelsPath() : null);
             String fileName = (info.getFilename() != null && !info.getFilename().isBlank()) ? info.getFilename() : info.getName();
             Path targetFile = base.resolve(sub).resolve(fileName);
             if (safePathValidator != null) safePathValidator.validateWithinBase(base, targetFile);
             Files.createDirectories(targetFile.getParent());
+            logger.info("Initiating download for model [{}] to destination: {}", fileName, targetFile);
             downloadWithResume(info, targetFile, index, statusUpdater, 0);
         } catch (Exception e) {
+            logger.error("Download processing failed for model [{}]: {}", info.getName(), e.getMessage(), e);
             if (!isStopped && isSelected(index)) safeUpdateStatus(index, "❌ Error: " + (e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName()), statusUpdater);
         }
     }

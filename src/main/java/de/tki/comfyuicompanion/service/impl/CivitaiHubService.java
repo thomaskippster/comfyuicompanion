@@ -307,9 +307,19 @@ public class CivitaiHubService implements ICivitaiHubService {
             JsonNode files = primaryVersion.path("files");
             if (files.isArray() && !files.isEmpty()) {
                 JsonNode primaryFile = files.get(0);
+                for (JsonNode f : files) {
+                    if (f.path("primary").asBoolean(false)) {
+                        primaryFile = f;
+                        break;
+                    }
+                }
                 String actualName = primaryFile.path("name").asText("");
                 if (!actualName.isBlank()) {
                     filename = actualName;
+                }
+                String directUrl = primaryFile.path("downloadUrl").asText("");
+                if (!directUrl.isBlank()) {
+                    downloadUrl = directUrl;
                 }
                 double sizeKb = primaryFile.path("sizeKB").asDouble(0.0);
                 fileSizeBytes = (long) (sizeKb * 1024.0);

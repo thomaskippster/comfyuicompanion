@@ -49,7 +49,11 @@ public class SegmentedDownloadEngine {
     @Autowired
     public SegmentedDownloadEngine(@Autowired(required = false) ConfigService configService) {
         this.configService = configService;
-        this.httpClient = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.ALWAYS).connectTimeout(Duration.ofSeconds(60)).build();
+        this.httpClient = HttpClient.newBuilder()
+                .version(HttpClient.Version.HTTP_1_1)
+                .followRedirects(HttpClient.Redirect.ALWAYS)
+                .connectTimeout(Duration.ofSeconds(30))
+                .build();
         this.segmentExecutor = Executors.newThreadPerTaskExecutor(Thread.ofVirtual().name("Download-Segment-", 0).factory());
     }
 
@@ -227,6 +231,11 @@ public class SegmentedDownloadEngine {
         }
 
         long lastUpdate = 0;
+        long lastSpeedTime = System.currentTimeMillis();
+        long lastBytes = initialDownloaded;
+        long lastProgressTime = System.currentTimeMillis();
+        long lastProgressBytes = initialDownloaded;
+
         while (!futures.stream().allMatch(CompletableFuture::isDone)) {
             if (failed.get() || control.isStopped() || !control.isSelected()) {
                 failed.set(true);
@@ -240,12 +249,38 @@ public class SegmentedDownloadEngine {
                 }
                 break;
             }
+
             long now = System.currentTimeMillis();
+            long cur = Math.min(total.get(), totalRemoteSize);
+
+            // Progress watchdog: detect connection stall if no bytes received for 30s
+            if (cur > lastProgressBytes) {
+                lastProgressBytes = cur;
+                lastProgressTime = now;
+            } else if (now - lastProgressTime > 30_000) {
+                logger.warn("Segmented download stall detected for {} (no bytes received for 30s). Cancelling to trigger fallback.", targetFile.getFileName());
+                failed.set(true);
+                errorMsg.set("Download stalled (no bytes received for 30s)");
+                for (CompletableFuture<Void> f : futures) {
+                    f.cancel(true);
+                }
+                synchronized (openStreams) {
+                    for (InputStream is : openStreams) {
+                        try { is.close(); } catch (Exception ignored) {}
+                    }
+                }
+                break;
+            }
+
             if (now - lastUpdate > 800) {
-                long cur = Math.min(total.get(), totalRemoteSize);
+                double speed = (now > lastSpeedTime) ? ((cur - lastBytes) / (1024.0 * 1024.0)) / ((now - lastSpeedTime) / 1000.0) : 0;
+                String speedStr = speed >= 1.0 ? String.format(Locale.US, "%.1f MB/s", speed) : String.format(Locale.US, "%.0f KB/s", speed * 1024);
                 String pct = totalRemoteSize > 0 ? (cur * 100 / totalRemoteSize) + "%" : "?%";
-                statusUpdater.accept("Downloading (Segmented): " + pct + " (" + formatSize(cur) + ")");
+                String size = totalRemoteSize > 0 ? formatSize(cur) + " / " + formatSize(totalRemoteSize) : formatSize(cur);
+                statusUpdater.accept("Downloading (Segmented): " + pct + " (" + size + ") - " + speedStr + formatEta(totalRemoteSize - cur, speed));
                 lastUpdate = now;
+                lastSpeedTime = now;
+                lastBytes = cur;
             }
             Thread.sleep(200);
         }

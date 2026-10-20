@@ -28,6 +28,13 @@ final class HelpDialog {
         JEditorPane editorPane = new JEditorPane();
         editorPane.setEditable(false);
         editorPane.setContentType("text/html");
+        editorPane.addHyperlinkListener(e -> {
+            if (e.getEventType() == javax.swing.event.HyperlinkEvent.EventType.ACTIVATED && Desktop.isDesktopSupported()) {
+                try {
+                    Desktop.getDesktop().browse(e.getURL().toURI());
+                } catch (Exception ignored) {}
+            }
+        });
 
         Color panelBg = UIManager.getColor("Panel.background");
         Color labelFg = UIManager.getColor("Label.foreground");
@@ -72,7 +79,15 @@ final class HelpDialog {
         sb.append("• <b>Launch Profiles:</b> Select from 10 optimized launch arguments (like CPU Mode, Low VRAM, Beast Mode, or FP8 Flux optimizations) matching your hardware.");
         sb.append("</div>");
 
-        sb.append("<p style='margin-top: 30px; color: #888; font-style: italic; text-align: center;'>Version 1.1.0 - Open Source Software developed by TKI</p>");
+        sb.append("<div style='background-color: ").append(boxBg).append("; padding: 15px; border-radius: 8px; margin-top: 20px; border: 1px solid ").append(boxBorder).append(";'>");
+        sb.append("<h3 style='color: ").append(accentColor).append("; margin-top: 0; margin-bottom: 8px;'>🌐 Project Links & Community</h3>");
+        sb.append("<p style='font-size: 13px; line-height: 1.6; margin: 0;'>");
+        sb.append("• <b>GitHub Repository:</b> <a href='https://github.com/thomaskippster/comfyuicompanion' style='color: ").append(accentColor).append(";'>https://github.com/thomaskippster/comfyuicompanion</a><br>");
+        sb.append("• <b>Pinokio AI App:</b> <a href='https://pinokio.co/apps/github-com-thomaskippster-comfyuicompanion' style='color: ").append(accentColor).append(";'>https://pinokio.co/apps/github-com-thomaskippster-comfyuicompanion</a><br>");
+        sb.append("• <b>Pinokio Official:</b> <a href='https://pinokio.co' style='color: ").append(accentColor).append(";'>https://pinokio.co</a>");
+        sb.append("</p></div>");
+
+        sb.append("<p style='margin-top: 30px; color: #888; font-style: italic; text-align: center;'>Version 2.0.1 - Open Source Software developed by TKI</p>");
         sb.append("</body></html>");
 
         editorPane.setText(sb.toString());

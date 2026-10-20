@@ -67,7 +67,16 @@ public class SegmentedDownloadEngine {
     public boolean download(String fileName, String downloadUrl, Path targetFile, long totalRemoteSize,
                             int numSegments, DownloadControl control, Consumer<String> statusUpdater) throws Exception {
         if (numSegments > 1 && totalRemoteSize > 100 * 1024 * 1024) {
-            return downloadMultiSegment(downloadUrl, targetFile, totalRemoteSize, numSegments, control, statusUpdater);
+            try {
+                return downloadMultiSegment(downloadUrl, targetFile, totalRemoteSize, numSegments, control, statusUpdater);
+            } catch (Exception e) {
+                if (control.isStopped() || !control.isSelected()) {
+                    throw e;
+                }
+                logger.warn("Multi-segment download failed ({}), falling back to single stream...", e.getMessage());
+                statusUpdater.accept("Retrying with single stream...");
+                return downloadSingleSegment(fileName, downloadUrl, targetFile, totalRemoteSize, control, statusUpdater);
+            }
         }
         return downloadSingleSegment(fileName, downloadUrl, targetFile, totalRemoteSize, control, statusUpdater);
     }
@@ -79,7 +88,8 @@ public class SegmentedDownloadEngine {
         File pFile = partFile.toFile();
         long existingSize = pFile.exists() ? pFile.length() : 0;
 
-        HttpRequest.Builder builder = HttpRequest.newBuilder().uri(URI.create(downloadUrl)).header("User-Agent", USER_AGENT);
+        HttpRequest.Builder builder = HttpRequest.newBuilder().uri(URI.create(downloadUrl)).header("User-Agent", USER_AGENT)
+                .timeout(Duration.ofSeconds(120));
         applyAuthHeaders(builder, downloadUrl);
         if (existingSize > 0) builder.header("Range", "bytes=" + existingSize + "-");
 
@@ -112,7 +122,7 @@ public class SegmentedDownloadEngine {
 
         try (InputStream is = response.body(); RandomAccessFile raf = new RandomAccessFile(pFile, "rw")) {
             raf.seek(existingSize);
-            boolean ok = streamBytes(is, raf, new byte[BUFFER_SIZE], control, limitBytesSec, statusUpdater, read -> {
+            boolean ok = streamBytes(is, raf, new byte[BUFFER_SIZE], control, limitBytesSec, -1L, statusUpdater, read -> {
                 progress[0] += read;
                 long now = System.currentTimeMillis();
                 if (now - progress[2] > 800) {
@@ -141,12 +151,22 @@ public class SegmentedDownloadEngine {
                                         int numSegments, DownloadControl control, Consumer<String> statusUpdater) throws Exception {
         long segmentSize = totalRemoteSize / numSegments;
         List<CompletableFuture<Void>> futures = new ArrayList<>();
+        List<InputStream> openStreams = Collections.synchronizedList(new ArrayList<>());
         Path[] partFiles = new Path[numSegments];
         long initialDownloaded = 0;
         for (int i = 0; i < numSegments; i++) {
             partFiles[i] = targetFile.resolveSibling(targetFile.getFileName().toString() + ".part" + i);
             File f = partFiles[i].toFile();
-            if (f.exists()) initialDownloaded += f.length();
+            if (f.exists()) {
+                final long start = i * segmentSize;
+                final long end = (i == numSegments - 1) ? totalRemoteSize - 1 : (start + segmentSize - 1);
+                long expectedSegmentBytes = end - start + 1;
+                if (f.length() > expectedSegmentBytes) {
+                    try { Files.deleteIfExists(partFiles[i]); } catch (Exception ignored) {}
+                } else {
+                    initialDownloaded += f.length();
+                }
+            }
         }
 
         var total = new AtomicLong(initialDownloaded);
@@ -156,23 +176,48 @@ public class SegmentedDownloadEngine {
 
         for (int i = 0; i < numSegments; i++) {
             final int segIdx = i;
-            final long start = i * segmentSize, end = (i == numSegments - 1) ? totalRemoteSize - 1 : (start + segmentSize - 1);
+            final long start = i * segmentSize;
+            final long end = (i == numSegments - 1) ? totalRemoteSize - 1 : (start + segmentSize - 1);
+            final long expectedSegmentBytes = end - start + 1;
             final Path partPath = partFiles[i];
+
             futures.add(CompletableFuture.runAsync(() -> {
                 try {
                     File pFile = partPath.toFile();
                     long existing = pFile.exists() ? pFile.length() : 0;
-                    if (existing >= end - start + 1 || control.isStopped() || failed.get()) return;
-                    HttpRequest.Builder b = HttpRequest.newBuilder().uri(URI.create(downloadUrl)).header("User-Agent", USER_AGENT)
-                            .header("Range", "bytes=" + (start + existing) + "-" + end);
-                    applyAuthHeaders(b, downloadUrl);
-                    HttpResponse<InputStream> res = httpClient.send(b.build(), HttpResponse.BodyHandlers.ofInputStream());
-                    if (res.statusCode() != 206 && (res.statusCode() != 200 || existing != 0)) {
-                        throw new IOException("Unexpected status " + res.statusCode() + " for segment " + segIdx);
+                    if (existing >= expectedSegmentBytes) {
+                        return;
                     }
+                    if (control.isStopped() || failed.get()) {
+                        return;
+                    }
+
+                    long bytesToRead = expectedSegmentBytes - existing;
+                    HttpRequest.Builder b = HttpRequest.newBuilder()
+                            .uri(URI.create(downloadUrl))
+                            .header("User-Agent", USER_AGENT)
+                            .header("Range", "bytes=" + (start + existing) + "-" + end)
+                            .timeout(Duration.ofSeconds(120));
+                    applyAuthHeaders(b, downloadUrl);
+
+                    HttpResponse<InputStream> res = httpClient.send(b.build(), HttpResponse.BodyHandlers.ofInputStream());
+                    if (res.statusCode() != 206) {
+                        throw new IOException("Server returned HTTP " + res.statusCode() + " instead of 206 Partial Content for segment " + segIdx);
+                    }
+
                     try (InputStream is = res.body(); RandomAccessFile raf = new RandomAccessFile(pFile, "rw")) {
+                        openStreams.add(is);
                         raf.seek(existing);
-                        streamBytes(is, raf, new byte[16384], control, limitSec, null, read -> total.addAndGet(read));
+                        boolean ok = streamBytes(is, raf, new byte[BUFFER_SIZE], control, limitSec, bytesToRead, null, read -> total.addAndGet(read));
+                        if (!ok && (control.isStopped() || !control.isSelected())) {
+                            failed.set(true);
+                        }
+                    } finally {
+                        openStreams.remove(res.body());
+                    }
+
+                    if (pFile.length() < expectedSegmentBytes && !control.isStopped() && !failed.get()) {
+                        throw new PrematureStreamEndException(pFile.length(), expectedSegmentBytes);
                     }
                 } catch (Exception e) {
                     failed.set(true);
@@ -183,7 +228,18 @@ public class SegmentedDownloadEngine {
 
         long lastUpdate = 0;
         while (!futures.stream().allMatch(CompletableFuture::isDone)) {
-            if (control.isStopped() || !control.isSelected()) { failed.set(true); break; }
+            if (failed.get() || control.isStopped() || !control.isSelected()) {
+                failed.set(true);
+                for (CompletableFuture<Void> f : futures) {
+                    f.cancel(true);
+                }
+                synchronized (openStreams) {
+                    for (InputStream is : openStreams) {
+                        try { is.close(); } catch (Exception ignored) {}
+                    }
+                }
+                break;
+            }
             long now = System.currentTimeMillis();
             if (now - lastUpdate > 800) {
                 long cur = Math.min(total.get(), totalRemoteSize);
@@ -205,6 +261,18 @@ public class SegmentedDownloadEngine {
             statusUpdater.accept(!control.isSelected() ? "Skipped (Unchecked)" : "Stopped");
             return false;
         }
+
+        for (int i = 0; i < numSegments; i++) {
+            final long start = i * segmentSize;
+            final long end = (i == numSegments - 1) ? totalRemoteSize - 1 : (start + segmentSize - 1);
+            long expectedBytes = end - start + 1;
+            File f = partFiles[i].toFile();
+            if (!f.exists() || f.length() != expectedBytes) {
+                for (Path p : partFiles) { try { Files.deleteIfExists(p); } catch (Exception ignored) {} }
+                throw new IOException("Segment " + i + " size mismatch: expected " + expectedBytes + ", found " + (f.exists() ? f.length() : "missing"));
+            }
+        }
+
         statusUpdater.accept("Merging segments...");
         stitchSegments(partFiles, targetFile);
         return true;
@@ -218,7 +286,13 @@ public class SegmentedDownloadEngine {
                 for (Path part : partFiles) {
                     if (Files.exists(part)) {
                         try (FileChannel in = FileChannel.open(part, StandardOpenOption.READ)) {
-                            in.transferTo(0, in.size(), out);
+                            long size = in.size();
+                            long pos = 0;
+                            while (pos < size) {
+                                long transferred = in.transferTo(pos, size - pos, out);
+                                if (transferred <= 0) break;
+                                pos += transferred;
+                            }
                         }
                         Files.deleteIfExists(part);
                     }
@@ -235,9 +309,15 @@ public class SegmentedDownloadEngine {
     private boolean streamBytes(InputStream is, RandomAccessFile raf, byte[] buf, DownloadControl control,
                                 long limitBytesSec, Consumer<String> statusUpdater, java.util.function.LongConsumer onRead)
             throws IOException, InterruptedException {
+        return streamBytes(is, raf, buf, control, limitBytesSec, -1L, statusUpdater, onRead);
+    }
+
+    private boolean streamBytes(InputStream is, RandomAccessFile raf, byte[] buf, DownloadControl control,
+                                long limitBytesSec, long maxBytesToRead, Consumer<String> statusUpdater, java.util.function.LongConsumer onRead)
+            throws IOException, InterruptedException {
         long startTime = System.currentTimeMillis(), written = 0;
         int read;
-        while ((read = is.read(buf)) != -1) {
+        while (true) {
             if (control.isStopped() || !control.isSelected() || Thread.currentThread().isInterrupted()) return false;
             if (control.isPaused()) {
                 while (control.isPaused() && !control.isStopped() && control.isSelected()) {
@@ -246,9 +326,33 @@ public class SegmentedDownloadEngine {
                 }
                 if (statusUpdater != null && !control.isStopped() && control.isSelected()) statusUpdater.accept("Resuming...");
             }
+
+            int toRead = buf.length;
+            if (maxBytesToRead > 0) {
+                long remaining = maxBytesToRead - written;
+                if (remaining <= 0) {
+                    break;
+                }
+                if (remaining < toRead) {
+                    toRead = (int) remaining;
+                }
+            }
+
+            read = is.read(buf, 0, toRead);
+            if (read == -1) {
+                break;
+            }
+
             raf.write(buf, 0, read);
-            onRead.accept(read);
+            if (onRead != null) {
+                onRead.accept(read);
+            }
             written += read;
+
+            if (maxBytesToRead > 0 && written >= maxBytesToRead) {
+                break;
+            }
+
             if (limitBytesSec > 0) {
                 long elapsed = System.currentTimeMillis() - startTime;
                 long sleep = (written * 1000L) / limitBytesSec - elapsed;

@@ -53,6 +53,7 @@ public class LocalGemmaService {
 
     private final ConfigService configService;
     private LlamaModel model = null;
+    private String loadedModelPath = null;
     private Timer unloadTimer = null;
     private final Object lock = new Object();
     private static final long INACTIVITY_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
@@ -64,27 +65,32 @@ public class LocalGemmaService {
         GEMMA_3_4B(
                 "google_gemma-3-4b-it-Q4_K_M.gguf",
                 "https://huggingface.co/bartowski/google_gemma-3-4b-it-GGUF/resolve/main/google_gemma-3-4b-it-Q4_K_M.gguf",
-                "Gemma 3 4B Instruct"
+                "Gemma-3-4B",
+                "~3.3 GB"
         ),
         QWEN_2_5_7B(
                 "Qwen2.5-7B-Instruct-Q4_K_M.gguf",
                 "https://huggingface.co/bartowski/Qwen2.5-7B-Instruct-GGUF/resolve/main/Qwen2.5-7B-Instruct-Q4_K_M.gguf",
-                "Qwen 2.5 7B Instruct"
+                "Qwen-2.5-7B",
+                "~4.7 GB"
         );
 
         private final String filename;
         private final String downloadUrl;
         private final String displayName;
+        private final String approxSize;
 
-        LlmModelPreset(String filename, String downloadUrl, String displayName) {
+        LlmModelPreset(String filename, String downloadUrl, String displayName, String approxSize) {
             this.filename = filename;
             this.downloadUrl = downloadUrl;
             this.displayName = displayName;
+            this.approxSize = approxSize;
         }
 
         public String getFilename() { return filename; }
         public String getDownloadUrl() { return downloadUrl; }
         public String getDisplayName() { return displayName; }
+        public String getApproxSize() { return approxSize; }
     }
 
     private final ExecutorService gemmaExecutor = Executors.newSingleThreadExecutor(r -> {
@@ -186,7 +192,7 @@ public class LocalGemmaService {
                 }
                 tempFile.renameTo(targetFile);
                 
-                logger.info("Gemma model download completed successfully.");
+                logger.info("{} model download completed successfully.", preset.getDisplayName());
                 onFinished.run();
                 
             } catch (Exception e) {
@@ -199,25 +205,28 @@ public class LocalGemmaService {
     }
 
     /**
-     * Initializes and loads the Gemma model in memory.
+     * Initializes and loads the configured LLM model in memory.
      * Note: Must be called from the gemmaExecutor thread.
      */
     private void ensureModelLoaded() throws IOException {
         synchronized (lock) {
             resetUnloadTimer();
+            File modelFile = getModelFile();
+            if (model != null && (loadedModelPath == null || !loadedModelPath.equals(modelFile.getAbsolutePath()))) {
+                unloadModelSync();
+            }
             if (model == null) {
-                File modelFile = getModelFile();
                 if (!modelFile.exists()) {
-                    throw new IOException("Gemma model file not found at: " + modelFile.getAbsolutePath());
+                    throw new IOException(getActivePreset().getDisplayName() + " model file not found at: " + modelFile.getAbsolutePath());
                 }
 
-                logger.info("Loading Gemma model from: " + modelFile.getAbsolutePath());
+                logger.info("Loading {} model from: {}", getActivePreset().getDisplayName(), modelFile.getAbsolutePath());
                 
                 // Attempt GPU acceleration first (offload all layers to GPU via CUDA / Vulkan / Metal)
                 boolean gpuLoaded = false;
                 try {
                     int gpuLayers = 99; // 99 layers offloads all transformer layers to GPU
-                    logger.info("Attempting to load Gemma model with GPU acceleration (gpuLayers=" + gpuLayers + ")...");
+                    logger.info("Attempting to load {} model with GPU acceleration (gpuLayers={})...", getActivePreset().getDisplayName(), gpuLayers);
                     
                     ModelParameters modelParams = new ModelParameters()
                         .setModel(modelFile.getAbsolutePath())
@@ -225,13 +234,15 @@ public class LocalGemmaService {
                         .setGpuLayers(gpuLayers);
                     
                     model = new LlamaModel(modelParams);
+                    loadedModelPath = modelFile.getAbsolutePath();
                     gpuLoaded = true;
-                    logger.info("✅ Gemma model loaded successfully with GPU acceleration.");
+                    logger.info("✅ {} model loaded successfully with GPU acceleration.", getActivePreset().getDisplayName());
                 } catch (Throwable t) {
-                    logger.warn("⚠️ GPU acceleration could not be initialized (" + t.getMessage() + "). Falling back to CPU...");
+                    logger.warn("⚠️ GPU acceleration could not be initialized ({}). Falling back to CPU...", t.getMessage());
                     if (model != null) {
                         try { model.close(); } catch (Exception ignored) {}
                         model = null;
+                        loadedModelPath = null;
                     }
                 }
                 
@@ -244,10 +255,11 @@ public class LocalGemmaService {
                             .setGpuLayers(0); // CPU fallback
                         
                         model = new LlamaModel(modelParams);
-                        logger.info("✅ Gemma model loaded successfully into RAM (CPU mode).");
+                        loadedModelPath = modelFile.getAbsolutePath();
+                        logger.info("✅ {} model loaded successfully into RAM (CPU mode).", getActivePreset().getDisplayName());
                     } catch (Throwable t) {
-                        logger.error("❌ Failed to load Gemma model on CPU: " + t.getMessage(), t);
-                        throw new IOException("Failed to load Gemma model: " + t.getMessage(), t);
+                        logger.error("❌ Failed to load {} model on CPU: {}", getActivePreset().getDisplayName(), t.getMessage(), t);
+                        throw new IOException("Failed to load " + getActivePreset().getDisplayName() + " model: " + t.getMessage(), t);
                     }
                 }
             }
@@ -339,6 +351,7 @@ public class LocalGemmaService {
                     logger.warn("Error closing LlamaModel: {}", e.getMessage());
                 } finally {
                     model = null;
+                    loadedModelPath = null;
                 }
             }
         }
@@ -353,13 +366,14 @@ public class LocalGemmaService {
             synchronized (lock) {
                 wasLoaded = model != null;
                 if (model != null) {
-                    logger.info("Unloading Gemma model from memory...");
+                    logger.info("Unloading LLM model from memory...");
                     model.close();
                     model = null;
+                    loadedModelPath = null;
                 }
             }
             if (wasLoaded) {
-                logger.info("Gemma model unloaded.");
+                logger.info("LLM model unloaded.");
             }
         });
     }

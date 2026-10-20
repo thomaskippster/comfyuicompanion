@@ -61,6 +61,13 @@ public final class LegalNoticeDialog {
         editorPane.setContentType("text/html");
         editorPane.setBackground(awtBg);
         editorPane.setOpaque(true);
+        editorPane.addHyperlinkListener(e -> {
+            if (e.getEventType() == javax.swing.event.HyperlinkEvent.EventType.ACTIVATED && Desktop.isDesktopSupported()) {
+                try {
+                    Desktop.getDesktop().browse(e.getURL().toURI());
+                } catch (Exception ignored) {}
+            }
+        });
 
         StringBuilder html = new StringBuilder();
         html.append("<html><body style='padding: 20px; font-family: sans-serif; background-color: ")
@@ -121,7 +128,8 @@ public final class LegalNoticeDialog {
         html.append("<h3 style='color: ").append(accentColor).append("; margin-top: 0; margin-bottom: 8px;'>7. Developer Information & Privacy Policy</h3>");
         html.append("<p style='font-size: 13px; line-height: 1.5; margin: 0; color: ").append(textColor).append(";'><b>Developer (About):</b><br>" +
                 "Thomas Kipp<br>" +
-                "Project Repository: https://github.com/thomaskippster/comfyuicompanion<br><br>" +
+                "Project Repository: <a href='https://github.com/thomaskippster/comfyuicompanion' style='color: ").append(accentColor).append(";'>https://github.com/thomaskippster/comfyuicompanion</a><br>" +
+                "Pinokio AI App: <a href='https://pinokio.co/apps/github-com-thomaskippster-comfyuicompanion' style='color: ").append(accentColor).append(";'>https://pinokio.co/apps/github-com-thomaskippster-comfyuicompanion</a><br><br>" +
                 "<b>Privacy Policy (according to GDPR):</b><br>" +
                 "This application is a locally executing desktop software. It does not collect, process, or transmit personal data (such as IP addresses, usage analytics, or telemetry) to the developer or third-party tracking services. " +
                 "When utilizing external integrations (e.g. CivitAI or Hugging Face APIs) to download models, your IP address is directly transmitted to these respective third-party providers. Please refer to the privacy policies of these providers for information on their data processing.</p>");

@@ -37,7 +37,7 @@ jobs:
             --main-jar "comfyuicompanion.jar" `
             --main-class "de.tki.comfyuicompanion.Main" `
             --dest "dist" `
-            --app-version "2.0.1" `
+            --app-version "2.0.2" `
             --vendor "TKI" `
             --description "Enterprise AI Companion for ComfyUI"
 
@@ -53,7 +53,7 @@ jobs:
             --main-jar "comfyuicompanion.jar" `
             --main-class "de.tki.comfyuicompanion.Main" `
             --dest "dist" `
-            --app-version "2.0.1" `
+            --app-version "2.0.2" `
             --vendor "TKI" `
             --description "Enterprise AI Companion for ComfyUI" `
             --win-dir-chooser `
@@ -99,7 +99,7 @@ jobs:
             --main-jar "comfyuicompanion.jar" \
             --main-class "de.tki.comfyuicompanion.Main" \
             --dest "dist" \
-            --app-version "2.0.1" \
+            --app-version "2.0.2" \
             --vendor "TKI" \
             --description "Enterprise AI Companion for ComfyUI"
 
@@ -139,7 +139,7 @@ jobs:
             --main-jar "comfyuicompanion.jar" \
             --main-class "de.tki.comfyuicompanion.Main" \
             --dest "dist" \
-            --app-version "2.0.1" \
+            --app-version "2.0.2" \
             --vendor "TKI" \
             --description "Enterprise AI Companion for ComfyUI"
           tar -czf dist/ComfyUICompanion-Linux-x64.tar.gz -C dist ComfyUICompanion
@@ -153,7 +153,7 @@ jobs:
             --main-jar "comfyuicompanion.jar" \
             --main-class "de.tki.comfyuicompanion.Main" \
             --dest "dist" \
-            --app-version "2.0.1" \
+            --app-version "2.0.2" \
             --vendor "TKI" \
             --description "Enterprise AI Companion for ComfyUI"
 

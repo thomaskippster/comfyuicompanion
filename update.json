@@ -4,8 +4,9 @@
       "method": "shell.run",
       "params": {
         "message": [
-          "git stash -u",
-          "git pull"
+          "git fetch origin",
+          "git checkout -B main origin/main",
+          "git reset --hard origin/main"
         ],
         "title": "Updating Source Code"
       }

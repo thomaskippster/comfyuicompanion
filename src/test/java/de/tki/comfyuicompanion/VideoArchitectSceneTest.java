@@ -125,9 +125,26 @@ public class VideoArchitectSceneTest {
         Gemma4Service gemmaService = new Gemma4Service(mockLocalGemma);
         assertFalse(gemmaService.isGemmaAvailable());
 
-        assertThrows(IllegalStateException.class, () -> {
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () -> {
             gemmaService.generateScript("Create a sci-fi video intro");
         });
+        assertTrue(ex.getMessage().contains("Gemma-3-4B"));
+    }
+
+    @Test
+    public void testGemma4ServiceWithQwenActivePreset() {
+        LocalGemmaService mockLocalGemma = Mockito.mock(LocalGemmaService.class);
+        Mockito.when(mockLocalGemma.getActivePreset()).thenReturn(LocalGemmaService.LlmModelPreset.QWEN_2_5_7B);
+        Mockito.when(mockLocalGemma.isModelDownloaded()).thenReturn(false);
+
+        Gemma4Service gemmaService = new Gemma4Service(mockLocalGemma);
+        assertEquals("Qwen-2.5-7B", gemmaService.getActiveModelDisplayName());
+        assertEquals("~4.7 GB", gemmaService.getActivePreset().getApproxSize());
+
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () -> {
+            gemmaService.generateScript("Create a sci-fi video intro");
+        });
+        assertTrue(ex.getMessage().contains("Qwen-2.5-7B"));
     }
 
     @Test

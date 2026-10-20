@@ -53,6 +53,27 @@ public class Gemma4Service {
         return localGemmaService;
     }
 
+    /**
+     * Retrieves the actively configured script LLM model preset.
+     *
+     * @return active LLM model preset
+     */
+    public LocalGemmaService.LlmModelPreset getActivePreset() {
+        if (localGemmaService != null && localGemmaService.getActivePreset() != null) {
+            return localGemmaService.getActivePreset();
+        }
+        return LocalGemmaService.LlmModelPreset.GEMMA_3_4B;
+    }
+
+    /**
+     * Retrieves the human-readable display name of the currently active script LLM.
+     *
+     * @return model display name (e.g. "Qwen-2.5-7B" or "Gemma-3-4B")
+     */
+    public String getActiveModelDisplayName() {
+        return getActivePreset().getDisplayName();
+    }
+
     public de.tki.comfyuicompanion.service.IVideoPromptOptimizer getPromptOptimizer() {
         return promptOptimizer;
     }
@@ -83,8 +104,9 @@ public class Gemma4Service {
      */
     public String generateScript(String idea, String targetModel, int width, int height, int sceneCount) throws Exception {
         if (localGemmaService == null || !localGemmaService.isModelDownloaded()) {
-            throw new IllegalStateException("Local Gemma model is not downloaded. " +
-                    "Please download the Gemma-3-4B model first to unlock AI storyboard deconstruction.");
+            String modelName = getActiveModelDisplayName();
+            throw new IllegalStateException("Local " + modelName + " model is not downloaded. " +
+                    "Please download the " + modelName + " model first to unlock AI storyboard deconstruction.");
         }
 
         int count = sceneCount > 0 ? sceneCount : 5;

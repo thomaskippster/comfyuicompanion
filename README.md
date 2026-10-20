@@ -6,7 +6,7 @@
 
 <p align="center">
   <a href="https://github.com/thomaskippster/comfyuicompanion/releases"><img src="https://img.shields.io/github/v/release/thomaskippster/comfyuicompanion?style=for-the-badge&color=blue" alt="Release" /></a>
-  <a href="https://pinokio.computer/item?uri=https://github.com/thomaskippster/comfyuicompanion"><img src="https://img.shields.io/badge/Pinokio-1--Click%20Install-FF6B6B?style=for-the-badge&logo=pinokio&logoColor=white" alt="Pinokio 1-Click Install" /></a>
+  <a href="https://pinokio.co/apps/github-com-thomaskippster-comfyuicompanion"><img src="https://img.shields.io/badge/Pinokio-1--Click%20Install-FF6B6B?style=for-the-badge&logo=pinokio&logoColor=white" alt="Pinokio 1-Click Install" /></a>
   <a href="https://www.oracle.com/java/technologies/downloads/#java21"><img src="https://img.shields.io/badge/Java-21+-ED8B00?style=for-the-badge&logo=openjdk&logoColor=white" alt="Java 21+" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="License" /></a>
 </p>
@@ -22,8 +22,8 @@
 > [!TIP]
 > **Quick Start & Installation:**
 > * **Pre-compiled JAR:** Download directly from [GitHub Releases](https://github.com/thomaskippster/comfyuicompanion/releases) or [SourceForge](https://sourceforge.net/projects/companion-for-comfyui/) — no compilation required!
-> * **Pinokio 1-Click Install:** Install and run seamlessly via the [Pinokio Package Post](https://pinokio.co/posts/01m0dh3d006qpf47dx546qrtpd).
-> * **Note:** There is also a direct Pinokio install and a pre-compiled JAR available – you can find those links on the GitHub repo.
+> * **Pinokio AI 1-Click Install:** Install and run seamlessly via the [Pinokio App Page](https://pinokio.co/apps/github-com-thomaskippster-comfyuicompanion) or the [Pinokio Package Post](https://pinokio.co/posts/01m0dh3d006qpf47dx546qrtpd).
+> * **Note:** Pre-compiled JARs, source code, and release notes are available on the [GitHub Repository](https://github.com/thomaskippster/comfyuicompanion).
 
 ComfyUI Companion is a local companion app designed to eliminate the manual frustration of managing model files for ComfyUI. Instead of hunting down models, downloading them to temporary folders, and manually moving them to `custom_nodes`, `checkpoints`, `loras`, or `vae` folders, ComfyUI Companion automates the entire process. 
 
@@ -144,7 +144,7 @@ The app comes with **10 pre-configured launch profiles**, ordered logically by u
 ## 🚀 Getting Started
 
 > [!NOTE]
-> There is also a direct Pinokio install and a pre-compiled JAR available – you can find those links on the GitHub repo.
+> Pre-compiled JARs and standalone launchers are available on the [GitHub Repository](https://github.com/thomaskippster/comfyuicompanion), as well as 1-click automated setup via [Pinokio AI](https://pinokio.co/apps/github-com-thomaskippster-comfyuicompanion).
 
 ### Prerequisites
 * **Java 21** or higher (required for pre-compiled JAR & manual build; Pinokio sets up OpenJDK automatically)
@@ -163,9 +163,9 @@ The app comes with **10 pre-configured launch profiles**, ordered logically by u
 
 ---
 
-### Option 2: ⚡ 1-Click Install (Pinokio)
-If you use [Pinokio](https://pinokio.computer):
-* **1-Click Install:** Open the [Pinokio Package Post](https://pinokio.co/posts/01m0dh3d006qpf47dx546qrtpd) or click [Install on Pinokio](pinokio://download?uri=https://github.com/thomaskippster/comfyuicompanion).
+### Option 2: ⚡ 1-Click Install (Pinokio AI)
+If you use [Pinokio](https://pinokio.co):
+* **1-Click Install:** Open the [Pinokio App Page](https://pinokio.co/apps/github-com-thomaskippster-comfyuicompanion), view the [Pinokio Package Post](https://pinokio.co/posts/01m0dh3d006qpf47dx546qrtpd), or click [Install on Pinokio](pinokio://download?uri=https://github.com/thomaskippster/comfyuicompanion).
 * **Or via Pinokio App:** Open Pinokio, paste `https://github.com/thomaskippster/comfyuicompanion` into the address bar, and click **Download** -> **Install**.
 * The script automatically configures OpenJDK 21, Maven, automatically discovers existing ComfyUI installations, builds the JAR, and manages 1-click start/stop and updates.
 

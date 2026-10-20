@@ -130,10 +130,10 @@ jobs:
               ```bash
               java -jar comfyuicompanion.jar
               ```
-            * **Pinokio 1-Click Install:** Install directly using [Pinokio](https://pinokio.computer/item?uri=https://github.com/thomaskippster/comfyuicompanion).
+            * **Pinokio 1-Click Install:** Install directly using [Pinokio](https://pinokio.co/apps/github-com-thomaskippster-comfyuicompanion).
             * **SourceForge:** Also available for download on [SourceForge](https://sourceforge.net/projects/companion-for-comfyui/).
 
-            > **Note:** There is also a direct Pinokio install and a pre-compiled JAR available – you can find those links on the GitHub repo.
+            > **Note:** Standalone launchers, pre-compiled JARs, and Pinokio 1-click installer links are maintained on the [GitHub repository](https://github.com/thomaskippster/comfyuicompanion).
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

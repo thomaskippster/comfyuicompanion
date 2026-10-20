@@ -116,12 +116,14 @@ public class VideoArchitectExecutionHandler {
         }
 
         if (gemma4Service != null && !gemma4Service.isGemmaAvailable()) {
+            String modelName = gemma4Service.getActiveModelDisplayName();
+            String approxSize = gemma4Service.getActivePreset().getApproxSize();
             int choice = JOptionPane.showConfirmDialog(
                     parent,
-                    "The local Gemma-3-4B AI model is not downloaded yet.\n\n" +
-                            "Would you like to download the Gemma-3-4B model (~3 GB) now to unlock intelligent AI script deconstruction, visual prompt engineering, and scene timing?\n\n" +
+                    "The local " + modelName + " AI model is not downloaded yet.\n\n" +
+                            "Would you like to download the " + modelName + " model (" + approxSize + ") now to unlock intelligent AI script deconstruction, visual prompt engineering, and scene timing?\n\n" +
                             "(Select 'No' to use standard rule-based segmentation)",
-                    "Gemma AI Storyboard Deconstruction",
+                    modelName + " Storyboard Deconstruction",
                     JOptionPane.YES_NO_CANCEL_OPTION,
                     JOptionPane.QUESTION_MESSAGE
             );
@@ -156,10 +158,11 @@ public class VideoArchitectExecutionHandler {
                                              Consumer<String> consoleLogger,
                                              Consumer<Scene> previewUpdater,
                                              Runnable storyboardJsonUpdater) {
+        String modelName = gemma4Service != null ? gemma4Service.getActiveModelDisplayName() : "LLM";
         buttonsDisabledSetter.accept(true);
         progressBar.setValue(0);
         progressBar.setVisible(true);
-        consoleLogger.accept("Downloading Gemma-3-4B model from Hugging Face...");
+        consoleLogger.accept("Downloading " + modelName + " model from Hugging Face...");
 
         gemma4Service.downloadGemmaModel(
                 (percent, msg) -> SwingUtilities.invokeLater(() -> {
@@ -168,7 +171,7 @@ public class VideoArchitectExecutionHandler {
                 }),
                 () -> SwingUtilities.invokeLater(() -> {
                     progressBar.setVisible(false);
-                    consoleLogger.accept("✅ Gemma model downloaded successfully! Starting AI script deconstruction...");
+                    consoleLogger.accept("✅ " + modelName + " model downloaded successfully! Starting AI script deconstruction...");
                     executeDeconstructScriptTask(parent, idea, targetModel, width, height, cfg, steps, motion,
                             timelineListModel, timelineListView, buttonsDisabledSetter,
                             consoleLogger, previewUpdater, storyboardJsonUpdater);
@@ -176,8 +179,8 @@ public class VideoArchitectExecutionHandler {
                 (errorMsg, ex) -> SwingUtilities.invokeLater(() -> {
                     progressBar.setVisible(false);
                     buttonsDisabledSetter.accept(false);
-                    consoleLogger.accept("❌ Gemma download failed: " + errorMsg);
-                    JOptionPane.showMessageDialog(parent, "Could not download Gemma AI model:\n" + errorMsg, "Gemma Download Failed", JOptionPane.ERROR_MESSAGE);
+                    consoleLogger.accept("❌ " + modelName + " download failed: " + errorMsg);
+                    JOptionPane.showMessageDialog(parent, "Could not download " + modelName + " AI model:\n" + errorMsg, modelName + " Download Failed", JOptionPane.ERROR_MESSAGE);
                 })
         );
     }
@@ -197,8 +200,9 @@ public class VideoArchitectExecutionHandler {
                                               Consumer<Scene> previewUpdater,
                                               Runnable storyboardJsonUpdater) {
         buttonsDisabledSetter.accept(true);
-        boolean usingGemma = gemma4Service != null && gemma4Service.isGemmaAvailable();
-        consoleLogger.accept(usingGemma ? "🤖 Gemma AI: Analyzing script and generating storyboard..." : "Analyzing script...");
+        boolean usingLlm = gemma4Service != null && gemma4Service.isGemmaAvailable();
+        String modelName = gemma4Service != null ? gemma4Service.getActiveModelDisplayName() : "AI";
+        consoleLogger.accept(usingLlm ? "🤖 " + modelName + ": Analyzing script and generating storyboard..." : "Analyzing script...");
 
         Thread.ofVirtual().start(() -> {
             try {
@@ -207,7 +211,7 @@ public class VideoArchitectExecutionHandler {
                     try {
                         jsonStr = gemma4Service.generateScript(idea, targetModel, width, height, 5);
                     } catch (Exception ex) {
-                        logger.warn("Gemma script generation threw: {}. Falling back to rule-based parser.", ex.getMessage());
+                        logger.warn("LLM script generation threw: {}. Falling back to rule-based parser.", ex.getMessage());
                     }
                 }
 
@@ -231,8 +235,8 @@ public class VideoArchitectExecutionHandler {
                         timelineListView.setSelectedIndex(0);
                         previewUpdater.accept(scenes.get(0));
                     }
-                    boolean usedGemma = usingGemma && !scenes.isEmpty();
-                    consoleLogger.accept(usedGemma ? "✅ Gemma AI: Successfully deconstructed script into " + scenes.size() + " scenes!"
+                    boolean usedLlm = usingLlm && !scenes.isEmpty();
+                    consoleLogger.accept(usedLlm ? "✅ " + modelName + ": Successfully deconstructed script into " + scenes.size() + " scenes!"
                             : "Script deconstructed into " + scenes.size() + " scenes.");
                 });
             } catch (Exception e) {
@@ -306,7 +310,7 @@ public class VideoArchitectExecutionHandler {
                         jsonStr = gemma4Service.generateScript(idea, targetModel, width, height, 5);
                     }
                 } catch (Exception ex) {
-                    logger.warn("Gemma script generation threw: {}. Using fallback deconstruction.", ex.getMessage());
+                    logger.warn("LLM script generation threw: {}. Using fallback deconstruction.", ex.getMessage());
                 }
 
                 List<Scene> generatedScenes = scriptParser.parseStoryboardJson(jsonStr, idea, width, height, promptOptimizer);

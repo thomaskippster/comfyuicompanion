@@ -171,7 +171,7 @@ public class VideoArchitectConfigPanel extends CardPanel {
         btnSuggestSubject.setFont(new Font("SansSerif", Font.BOLD, 12));
         btnSuggestSubject.putClientProperty("Button.background", ThemeManager.getAccentColor());
         btnSuggestSubject.putClientProperty("Button.foreground", Color.WHITE);
-        btnSuggestSubject.setToolTipText("Deconstruct script idea into cinematic scenes using Gemma AI or rule-based parser.");
+        btnSuggestSubject.setToolTipText("Deconstruct script idea into cinematic scenes using local AI (Gemma/Qwen) or rule-based parser.");
         subjectRow.add(btnSuggestSubject, BorderLayout.EAST);
 
         add(subjectRow);

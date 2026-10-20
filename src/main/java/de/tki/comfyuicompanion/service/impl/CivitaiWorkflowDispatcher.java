@@ -235,15 +235,24 @@ public class CivitaiWorkflowDispatcher {
         return null;
     }
 
-    private void ensureComfyUiHealthy() {
+    private void ensureComfyUiHealthy() throws Exception {
         if (lifecycleService == null) return;
-        try {
-            if (!lifecycleService.isHealthy()) {
-                log.info("ComfyUI is not currently healthy/running. Requesting boot...");
-                lifecycleService.start();
+        if (!lifecycleService.isHealthy()) {
+            log.info("ComfyUI is not currently healthy/running. Requesting boot and awaiting readiness...");
+            lifecycleService.start();
+            int maxWaitSeconds = 90;
+            boolean healthy = false;
+            for (int w = 0; w < maxWaitSeconds; w++) {
+                if (lifecycleService.isHealthy()) {
+                    healthy = true;
+                    break;
+                }
+                Thread.sleep(1000);
             }
-        } catch (Exception e) {
-            log.warn("Lifecycle check warning: {}", e.getMessage());
+            if (!healthy) {
+                throw new IOException("ComfyUI server could not be started or did not reach a healthy state within 90s.");
+            }
+            log.info("ComfyUI server is now running and healthy. Proceeding with workflow dispatch.");
         }
     }
 }

@@ -161,7 +161,7 @@ public class ComfyLifecycleService implements IComfyLifecycleService {
                         }
                         try { Thread.sleep(2000); } catch (InterruptedException e) { break; }
                     }
-                }).start();
+                });
 
                 status.set("Running (via Controller)");
             } else {

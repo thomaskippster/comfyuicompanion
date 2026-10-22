@@ -26,39 +26,91 @@ jobs:
       - name: Build Fat JAR
         run: mvn -B clean package -DskipTests
 
+      - name: Determine Version
+        shell: pwsh
+        run: |
+          $ver = if ($env:GITHUB_REF_NAME -match '^v?(\d+\.\d+\.\d+.*)') { $Matches[1] } else {
+            (mvn help:evaluate -Dexpression=project.version -q -DforceStdout).Trim()
+          }
+          Write-Host "Detected version: $ver"
+          "APP_VERSION=$ver" | Out-File -FilePath $env:GITHUB_ENV -Append
+
       - name: Package Standalone App Image (Zero Java Dependency)
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force -Path "dist"
+          New-Item -ItemType Directory -Force -Path "dist", "target/jpackage-input"
+          Copy-Item -Path "target/comfyuicompanion.jar" -Destination "target/jpackage-input"
+
+          $icoArg = @()
+          if (Test-Path "assets/icon.ico") {
+            $icoArg = @("--icon", "assets/icon.ico")
+          }
+
           jpackage `
             --type app-image `
             --name "ComfyUICompanion" `
-            --input "target" `
+            --input "target/jpackage-input" `
             --main-jar "comfyuicompanion.jar" `
             --main-class "de.tki.comfyuicompanion.Main" `
             --dest "dist" `
-            --app-version "2.0.2" `
+            --app-version "$env:APP_VERSION" `
             --vendor "TKI" `
-            --description "Enterprise AI Companion for ComfyUI"
+            --description "Enterprise AI Companion for ComfyUI" `
+            --java-options "--enable-native-access=ALL-UNNAMED" `
+            --java-options "-Dfile.encoding=UTF-8" `
+            @icoArg
 
           Compress-Archive -Path "dist/ComfyUICompanion" -DestinationPath "dist/ComfyUICompanion-Windows-x64-Portable.zip" -Force
 
-      - name: Package Native Windows MSI Installer
+      - name: Package Native Windows EXE Installer
         shell: pwsh
         run: |
+          $icoArg = @()
+          if (Test-Path "assets/icon.ico") {
+            $icoArg = @("--icon", "assets/icon.ico")
+          }
+
           jpackage `
-            --type msi `
+            --type exe `
             --name "ComfyUICompanion" `
-            --input "target" `
-            --main-jar "comfyuicompanion.jar" `
-            --main-class "de.tki.comfyuicompanion.Main" `
+            --app-image "dist/ComfyUICompanion" `
             --dest "dist" `
-            --app-version "2.0.2" `
+            --app-version "$env:APP_VERSION" `
             --vendor "TKI" `
             --description "Enterprise AI Companion for ComfyUI" `
             --win-dir-chooser `
             --win-menu `
-            --win-shortcut
+            --win-shortcut `
+            @icoArg
+
+      - name: Package Native Windows MSI Installer
+        shell: pwsh
+        run: |
+          $icoArg = @()
+          if (Test-Path "assets/icon.ico") {
+            $icoArg = @("--icon", "assets/icon.ico")
+          }
+
+          jpackage `
+            --type msi `
+            --name "ComfyUICompanion" `
+            --app-image "dist/ComfyUICompanion" `
+            --dest "dist" `
+            --app-version "$env:APP_VERSION" `
+            --vendor "TKI" `
+            --description "Enterprise AI Companion for ComfyUI" `
+            --win-dir-chooser `
+            --win-menu `
+            --win-shortcut `
+            @icoArg
+
+      - name: Generate Checksums
+        shell: pwsh
+        run: |
+          Get-ChildItem -Path "dist" -Include "*.exe", "*.msi", "*.zip" | ForEach-Object {
+            $h = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower()
+            "$h  $($_.Name)" | Set-Content "$($_.FullName).sha256"
+          }
 
       - name: Upload Windows Standalone Artifacts
         uses: actions/upload-artifact@v4
@@ -68,7 +120,55 @@ jobs:
             dist/*.zip
             dist/*.msi
             dist/*.exe
+            dist/*.sha256
           retention-days: 14
+
+      - name: Attach Windows Packages to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.exe
+            dist/*.msi
+            dist/*.zip
+            dist/*.sha256
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Deploy Windows Packages to SourceForge
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          SF_KEY: ${{ secrets.SF_SSH_KEY }}
+          SF_USER: ${{ secrets.SF_USERNAME }}
+          SF_PROJECT: ${{ secrets.SF_PROJECT_NAME }}
+        run: |
+          if (-not $env:SF_KEY) {
+            Write-Host "No SF_SSH_KEY found; skipping SourceForge upload."
+            exit 0
+          }
+          $sfUser = if ($env:SF_USER) { $env:SF_USER } else { "thomaskifree" }
+          $sfProject = if ($env:SF_PROJECT) { $env:SF_PROJECT } else { "companion-for-comfyui" }
+          $tag = $env:GITHUB_REF_NAME
+
+          $sshDir = "$HOME\.ssh"
+          New-Item -ItemType Directory -Force -Path $sshDir | Out-Null
+          $keyFile = "$sshDir\id_sf"
+          [System.IO.File]::WriteAllText($keyFile, ($env:SF_KEY -replace "`r", "") + "`n")
+          icacls $keyFile /inheritance:r /grant:r "$($env:USERNAME):(R)" | Out-Null
+
+          $batch = @(
+            "-mkdir /home/frs/project/$sfProject/$tag"
+          )
+          Get-ChildItem -Path "dist" -Include "*.exe", "*.msi", "*.zip", "*.sha256" | ForEach-Object {
+            $batch += "put `"$($_.FullName -replace '\\', '/')`" /home/frs/project/$sfProject/$tag/"
+          }
+          $batch += "quit"
+          $batchFile = "$env:TEMP\sftp_batch.txt"
+          $batch | Out-File -FilePath $batchFile -Encoding ascii
+
+          sftp -i $keyFile -o StrictHostKeyChecking=no -b $batchFile "$sfUser@frs.sourceforge.net"
+          Remove-Item -Force $keyFile, $batchFile
 
   build-macos:
     name: Build Standalone macOS DMG (.dmg)
@@ -89,6 +189,16 @@ jobs:
       - name: Build Fat JAR
         run: mvn -B clean package -DskipTests
 
+      - name: Determine Version
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            VER="${{ github.ref_name }}"
+            VER="${VER#v}"
+          else
+            VER=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)
+          fi
+          echo "APP_VERSION=$VER" >> $GITHUB_ENV
+
       - name: Package Native macOS DMG
         run: |
           mkdir -p dist
@@ -99,7 +209,7 @@ jobs:
             --main-jar "comfyuicompanion.jar" \
             --main-class "de.tki.comfyuicompanion.Main" \
             --dest "dist" \
-            --app-version "2.0.2" \
+            --app-version "$APP_VERSION" \
             --vendor "TKI" \
             --description "Enterprise AI Companion for ComfyUI"
 
@@ -109,6 +219,14 @@ jobs:
           name: ComfyUICompanion-macOS-DMG
           path: dist/*.dmg
           retention-days: 14
+
+      - name: Attach macOS DMG to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.dmg
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   build-linux:
     name: Build Standalone Linux Packages (.deb / .tar.gz)
@@ -129,6 +247,16 @@ jobs:
       - name: Build Fat JAR
         run: mvn -B clean package -DskipTests
 
+      - name: Determine Version
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            VER="${{ github.ref_name }}"
+            VER="${VER#v}"
+          else
+            VER=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)
+          fi
+          echo "APP_VERSION=$VER" >> $GITHUB_ENV
+
       - name: Package Linux App Image & Tarball
         run: |
           mkdir -p dist
@@ -139,7 +267,7 @@ jobs:
             --main-jar "comfyuicompanion.jar" \
             --main-class "de.tki.comfyuicompanion.Main" \
             --dest "dist" \
-            --app-version "2.0.2" \
+            --app-version "$APP_VERSION" \
             --vendor "TKI" \
             --description "Enterprise AI Companion for ComfyUI"
           tar -czf dist/ComfyUICompanion-Linux-x64.tar.gz -C dist ComfyUICompanion
@@ -153,7 +281,7 @@ jobs:
             --main-jar "comfyuicompanion.jar" \
             --main-class "de.tki.comfyuicompanion.Main" \
             --dest "dist" \
-            --app-version "2.0.2" \
+            --app-version "$APP_VERSION" \
             --vendor "TKI" \
             --description "Enterprise AI Companion for ComfyUI"
 
@@ -165,3 +293,13 @@ jobs:
             dist/*.tar.gz
             dist/*.deb
           retention-days: 14
+
+      - name: Attach Linux Packages to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.tar.gz
+            dist/*.deb
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

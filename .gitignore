@@ -1,7 +1,11 @@
 # Build artifacts
 target/
+dist/
 *.jar
 *.class
+*.exe
+*.msi
+*.zip
 dependency-reduced-pom.xml
 
 # IDE files

@@ -221,10 +221,14 @@ public class ComfyApiClient {
                     if (objectInfo != null) {
                         de.tki.comfyuicompanion.service.PromptBlueprintApiService.sanitizeModelInputs(promptObj, objectInfo);
                     }
-                } catch (Exception ignored) {}
+                } catch (Exception ignored) {
+            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+        }
                 safePayload = obj.toString();
             }
-        } catch (Exception ignored) {}
+        } catch (Exception ignored) {
+            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+        }
 
         HttpRequest promptReq = HttpRequest.newBuilder()
                 .uri(URI.create(comfyUrl + "/prompt"))
@@ -239,7 +243,7 @@ public class ComfyApiClient {
      * Forces ComfyUI to refresh its models list.
      */
     public HttpResponse<String> refreshModels(String comfyUrl, boolean forceReload) throws IOException, InterruptedException {
-        String json = "{\"force_reload\": " + forceReload + "}";
+        String json = de.tki.comfyuicompanion.dto.acl.RefreshModelsAclRequest.of(forceReload).toJson();
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(comfyUrl + "/cmfc/refresh-models"))
                 .timeout(java.time.Duration.ofSeconds(10))

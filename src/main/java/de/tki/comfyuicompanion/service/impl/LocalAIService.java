@@ -236,35 +236,72 @@ public class LocalAIService {
     public LocalGemmaService getLocalGemmaService() {
         return localGemmaService;
     }
+
+    /**
+     * Checks if a specific local LLM model preset is downloaded.
+     *
+     * @param preset the preset to check
+     * @return true if downloaded and valid
+     */
+    public boolean isLocalGemmaDownloaded(LocalGemmaService.LlmModelPreset preset) {
+        return localGemmaService != null && localGemmaService.isModelDownloaded(preset);
+    }
     
     /**
-     * Handles the get direct gemma completions operation.
-     * @param subjectText the subjectText
-     * @return the List<String> result
+     * Generates 4 diverse, highly optimized, and visually rich prompt completions for text-to-image models.
+     * Formulates scene composition, cinematic lighting, optical depth, camera lenses, and textures.
+     *
+     * @param subjectText raw user subject input
+     * @return list of 4 optimized prompt variations, or null if generation fails
      */
     public List<String> getDirectGemmaCompletions(String subjectText) {
-        if (localGemmaService == null || !localGemmaService.isModelDownloaded()) return null;
+        if (localGemmaService == null || !localGemmaService.isModelDownloaded()) {
+            return null;
+        }
         try {
             String systemInstruction = """
-                    You are a creative prompt engineer. Given a short core subject for an image generator, provide 3 different detailed visual suggestions/completions that expand this subject. Keep each suggestion to a single short descriptive sentence (maximum 15 words) focusing on visual details, textures, or character attributes. Format the response ONLY as a JSON array of strings, for example: ["Suggestion one...", "Suggestion two...", "Suggestion three..."]
-                    Do NOT wrap in markdown code blocks like ```json. Do NOT include any other text.""";
-            String userPrompt = "Core subject: " + subjectText;
-            
-            String resText = localGemmaService.generateCompletion(systemInstruction, userPrompt, 0.7f, 150);
+                    You are an elite visual prompt engineer specializing in state-of-the-art text-to-image diffusion and flow-matching models (FLUX.1, SDXL, Midjourney).
+                    Transform the user's raw subject into 4 distinct, highly optimized, and visually rich image generation prompts.
+
+                    CRITICAL IMAGE GENERATION RULES:
+                    1. VISUAL LAYERING: Detail tangible subject characteristics, specific lighting (e.g. dramatic chiaroscuro, golden hour rim lighting, volumetric rays through mist, moody neon ambient glow), environmental depth, camera optics (e.g. 35mm film still, 85mm f/1.4 portrait lens, shallow depth of field, anamorphic bokeh), and tactile textures (weathered brass, raw silk, wet cobblestone).
+                    2. NO EMPTY BUZZWORDS: Never use empty boilerplate words like "photorealistic", "hyperrealistic", "8k", "masterpiece", "trending on artstation", or "best quality". Quality must be evoked through concrete visual reality.
+                    3. MULTILINGUAL SUPPORT: If the input is in German or another language, seamlessly interpret its intent and generate rich, evocative English descriptions.
+                    4. DIVERSE PERSPECTIVES: Produce 4 contrasting artistic interpretations:
+                       - Variation 1: Cinematic photorealism with dramatic lighting and shallow depth of field.
+                       - Variation 2: Atmospheric storytelling with rich environmental depth and weather mood.
+                       - Variation 3: Stylized / High-end editorial concept art with striking composition and textures.
+                       - Variation 4: Dynamic action, intimate macro detail, or dramatic wide-angle perspective.
+
+                    OUTPUT FORMAT:
+                    Return EXCLUSIVELY a valid JSON array of exactly 4 strings.
+                    Example: ["Prompt 1...", "Prompt 2...", "Prompt 3...", "Prompt 4..."]
+                    Do NOT wrap in markdown code fences (no ```json). Do NOT add introductory or conversational text.""";
+
+            String userPrompt = "Subject to expand: " + subjectText;
+            String resText = localGemmaService.generateCompletion(systemInstruction, userPrompt, 0.7f, 480);
             if (resText != null) {
                 resText = resText.trim();
                 if (resText.startsWith("```")) {
-                    resText = resText.replaceAll("^```(json)?", "").replaceAll("```$", "").trim();
+                    resText = resText.replaceAll("^```(?:json)?\\s*", "").replaceAll("\\s*```$", "").trim();
+                }
+                int start = resText.indexOf('[');
+                int end = resText.lastIndexOf(']');
+                if (start >= 0 && end > start) {
+                    resText = resText.substring(start, end + 1);
                 }
                 JSONArray arr = new JSONArray(resText);
                 List<String> list = new ArrayList<>();
                 for (int i = 0; i < arr.length(); i++) {
-                    list.add(arr.getString(i));
+                    String s = arr.getString(i).trim();
+                    if (!s.isEmpty()) {
+                        list.add(s);
+                    }
                 }
                 return list;
             }
         } catch (Throwable e) {
-            logger.error("Direct local Gemma completions failed", e);
+            logger.error("Direct local LLM prompt suggestions failed: {}", e.getMessage(), e);
         }
         return null;
     }

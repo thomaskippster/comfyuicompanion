@@ -1,4 +1,6 @@
 # Build artifacts
+*.gguf
+models/llm/
 target/
 dist/
 *.jar
@@ -28,12 +30,18 @@ settings.vault
 *.vault
 gemini.bat
 boot.key
+*.key
+*.pem
+*.p12
+*.jks
+secrets*
 .env
 opencode.json
 
 # User Model List (internal DB) & Local Caches
 uploaded_models.json
 pending_downloads.json
+pending_*.json
 prompt_history.json
 dist/
 model_hashes.json
@@ -117,3 +125,5 @@ test-log*.txt
 tools/*
 !tools/package_windows.bat
 launch_kit/
+
+model_favorites.json

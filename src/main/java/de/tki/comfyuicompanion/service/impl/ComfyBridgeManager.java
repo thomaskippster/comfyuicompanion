@@ -61,7 +61,9 @@ public class ComfyBridgeManager {
                     Files.delete(conflictFile);
                     logger.info("Cleaned up legacy script: " + conflictFile);
                 }
-            } catch (IOException ignored) {}
+            } catch (IOException ignored) {
+            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+        }
         }
 
         try (Stream<Path> walk = Files.walk(customNodesDir, 2)) {

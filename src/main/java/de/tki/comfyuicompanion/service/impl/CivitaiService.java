@@ -44,7 +44,7 @@ public class CivitaiService {
     }
 
     public CompletableFuture<com.fasterxml.jackson.databind.JsonNode> searchModelsRaw(String query) {
-        String url = "https://civitai.com/api/v1/models?limit=20&query=" + java.net.URLEncoder.encode(query, java.nio.charset.StandardCharsets.UTF_8);
+        String url = "https://civitai.com/api/v1/models?limit=20&nsfw=false&query=" + java.net.URLEncoder.encode(query, java.nio.charset.StandardCharsets.UTF_8);
         
         HttpRequest.Builder builder = HttpRequest.newBuilder()
                 .uri(URI.create(url))
@@ -75,7 +75,7 @@ public class CivitaiService {
      * @return the CompletableFuture<List<ModelInfo>> result
      */
     public CompletableFuture<List<ModelInfo>> searchModels(String query) {
-        String url = "https://civitai.com/api/v1/models?limit=20&query=" + java.net.URLEncoder.encode(query, java.nio.charset.StandardCharsets.UTF_8);
+        String url = "https://civitai.com/api/v1/models?limit=20&nsfw=false&query=" + java.net.URLEncoder.encode(query, java.nio.charset.StandardCharsets.UTF_8);
         
         HttpRequest.Builder builder = HttpRequest.newBuilder()
                 .uri(URI.create(url))
@@ -97,7 +97,7 @@ public class CivitaiService {
                         JsonNode items = root.get("items");
                         if (items != null && items.isArray()) {
                             for (JsonNode item : items) {
-                                results.add(mapToModelInfo(item));
+                                ModelInfo info = mapToModelInfo(item); if (info != null) { results.add(info); }
                             }
                         }
                     } catch (Exception e) {
@@ -107,7 +107,7 @@ public class CivitaiService {
                 });
     }
 
-    private ModelInfo mapToModelInfo(JsonNode item) {
+    private ModelInfo mapToModelInfo(JsonNode item) { int nsfwLevel = item.path("nsfwLevel").asInt(1); boolean hasAdultContent = (nsfwLevel & (4 | 8 | 16 | 32)) != 0 || nsfwLevel > 3; if (item.path("nsfw").asBoolean(false) || hasAdultContent) { return null; }
         String name = item.get("name").asText();
         String type = item.get("type").asText();
         
@@ -142,7 +142,8 @@ public class CivitaiService {
             case "controlnet" -> "controlnet";
             case "upscaler" -> "upscale_models";
             case "vae" -> "vae";
-            case "embeddings" -> "embeddings";
+            case "embeddings", "textualinversion", "textual inversion", "textual_inversion" -> "embeddings";
+            case "workflows", "workflow" -> "workflows";
             default -> "unknown";
         };
     }

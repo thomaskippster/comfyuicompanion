@@ -25,7 +25,7 @@ import static org.mockito.Mockito.when;
 
 /**
  * Unit tests verifying CivitaiHubService model extraction, conversion,
- * and installation validation.
+ * direct resolution, and youth protection installation validation.
  */
 @ExtendWith(MockitoExtension.class)
 class CivitaiHubServiceTest {
@@ -102,8 +102,70 @@ class CivitaiHubServiceTest {
 
         assertThat(info).isNotNull();
         assertThat(info.getType()).isEqualTo("checkpoints");
+        assertThat(info.getSave_path()).isEqualTo("checkpoints");
         assertThat(info.getFilename()).isEqualTo("realisticVisionV60B1_v51VAE.safetensors");
         assertThat(info.getSize()).isEqualTo("2.13 GB");
+    }
+
+    @Test
+    void shouldRouteTextualInversionToEmbeddingsFolder_whenCreatedForDownload() {
+        CivitaiModelEntry entry = new CivitaiModelEntry(
+                112233L,
+                "Bad Hands Embedding",
+                "TextualInversion",
+                "NegativeArtist",
+                "SD 1.5",
+                "Fixes bad anatomy",
+                "https://image.civitai.com/badhands.jpg",
+                "https://civitai.com/api/download/models/112233",
+                "bad_hands_v5.pt",
+                "25.0 KB",
+                25600L,
+                12000,
+                4.7,
+                List.of("badhands"),
+                false
+        );
+
+        ModelInfo info = hubService.createModelInfoForDownload(entry);
+
+        assertThat(info).isNotNull();
+        assertThat(info.getType()).isEqualTo("embeddings");
+        assertThat(info.getSave_path()).isEqualTo("embeddings");
+        assertThat(info.getFilename()).isEqualTo("bad_hands_v5.pt");
+    }
+
+    @Test
+    void shouldRouteWorkflowsToWorkflowsFolder_andBuildCorrectQueryUri() {
+        CivitaiModelEntry entry = new CivitaiModelEntry(
+                445566L,
+                "Flux Realistic Canvas Workflow",
+                "Workflows",
+                "WorkflowMaster",
+                "Flux.1 D",
+                "Full ComfyUI Graph",
+                "https://image.civitai.com/fluxwf.jpg",
+                "https://civitai.com/api/download/models/445566",
+                "flux_canvas_workflow.json",
+                "45.2 KB",
+                46284L,
+                8900,
+                4.95,
+                List.of(),
+                false
+        );
+
+        ModelInfo info = hubService.createModelInfoForDownload(entry);
+
+        assertThat(info).isNotNull();
+        assertThat(info.getType()).isEqualTo("workflows");
+        assertThat(info.getSave_path()).isEqualTo("workflows");
+        assertThat(info.getFilename()).isEqualTo("flux_canvas_workflow.json");
+
+        URI queryUri = hubService.buildQueryUri("flux", "Workflows", "Flux.1 D", "Highest Rated", 20, 1, false);
+        assertThat(queryUri.toString()).contains("types=Workflows");
+        assertThat(queryUri.toString()).contains("baseModels=Flux.1+D");
+        assertThat(queryUri.toString()).contains("query=flux");
     }
 
     @Test
@@ -253,5 +315,95 @@ class CivitaiHubServiceTest {
 
         assertThat(entry).isNotNull();
         assertThat(entry.thumbnailUrl()).isEqualTo("https://image.civitai.com/root_preview.jpg");
+    }
+
+    @Test
+    void shouldAcceptSfwModel_whenNsfwLevelIs3_PG13Bitmask() throws Exception {
+        // Flux 3 Klein model case: nsfw is false, nsfwLevel is 3 (PG=1 | PG-13=2)
+        String sfwJson = """
+                {
+                    "id": 3003490,
+                    "name": "Flux 3 Klein INT8/INT6/INT4",
+                    "type": "Checkpoint",
+                    "nsfw": false,
+                    "nsfwLevel": 3,
+                    "modelVersions": [
+                        {
+                            "id": 3407393,
+                            "name": "Flux 3 Klein INT8",
+                            "baseModel": "Flux.3 Klein-base",
+                            "downloadUrl": "https://civitai.com/download/3407393",
+                            "images": [
+                                { "url": "https://image.civitai.com/angel_preview.jpg", "nsfwLevel": 1 }
+                            ],
+                            "files": [
+                                { "name": "flux3KleinINT8.safetensors", "sizeKB": 5672960.0 }
+                            ]
+                        }
+                    ]
+                }
+                """;
+        JsonNode node = objectMapper.readTree(sfwJson);
+        CivitaiModelEntry entry = hubService.parseModelEntry(node);
+
+        assertThat(entry).isNotNull();
+        assertThat(entry.id()).isEqualTo(3003490L);
+        assertThat(entry.name()).isEqualTo("Flux 3 Klein INT8/INT6/INT4");
+        assertThat(entry.thumbnailUrl()).isEqualTo("https://image.civitai.com/angel_preview.jpg");
+        assertThat(entry.nsfw()).isFalse();
+    }
+
+    @Test
+    void shouldRejectMatureModel_whenNsfwLevelIs4_R() throws Exception {
+        String rJson = """
+                {
+                    "id": 44444,
+                    "name": "Mature R-Rated Model",
+                    "type": "Checkpoint",
+                    "nsfw": false,
+                    "nsfwLevel": 4,
+                    "modelVersions": [
+                        { "id": 1, "downloadUrl": "https://civitai.com/download/1" }
+                    ]
+                }
+                """;
+        CivitaiModelEntry entry = hubService.parseModelEntry(objectMapper.readTree(rJson));
+        assertThat(entry).isNull();
+    }
+
+    @Test
+    void shouldRejectAdultModel_whenNsfwLevelIs8_X() throws Exception {
+        String xJson = """
+                {
+                    "id": 88888,
+                    "name": "Adult X-Rated Model",
+                    "type": "LORA",
+                    "nsfw": false,
+                    "nsfwLevel": 8,
+                    "modelVersions": [
+                        { "id": 2, "downloadUrl": "https://civitai.com/download/2" }
+                    ]
+                }
+                """;
+        CivitaiModelEntry entry = hubService.parseModelEntry(objectMapper.readTree(xJson));
+        assertThat(entry).isNull();
+    }
+
+    @Test
+    void shouldRejectExplicitModel_whenNsfwLevelIs16_XXX() throws Exception {
+        String xxxJson = """
+                {
+                    "id": 99999,
+                    "name": "Explicit XXX-Rated Model",
+                    "type": "LORA",
+                    "nsfw": false,
+                    "nsfwLevel": 16,
+                    "modelVersions": [
+                        { "id": 3, "downloadUrl": "https://civitai.com/download/3" }
+                    ]
+                }
+                """;
+        CivitaiModelEntry entry = hubService.parseModelEntry(objectMapper.readTree(xxxJson));
+        assertThat(entry).isNull();
     }
 }

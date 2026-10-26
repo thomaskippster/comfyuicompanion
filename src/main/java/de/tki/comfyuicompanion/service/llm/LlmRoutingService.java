@@ -9,6 +9,10 @@ import org.springframework.stereotype.Service;
 
 import java.io.IOException;
 
+/**
+ * Service that routes user generation requests through an embedded local LLM (Gemma),
+ * translating free-form intent into structured generation instructions.
+ */
 @Service
 public class LlmRoutingService implements ILlmRoutingService {
 
@@ -17,7 +21,7 @@ public class LlmRoutingService implements ILlmRoutingService {
     private final LocalGemmaService gemmaService;
     private final ObjectMapper objectMapper;
 
-    // Harter System-Prompt mit strenger JSON-Formatierung
+    // Strict system prompt enforcing schema-conformant JSON output
     private static final String SYSTEM_PROMPT = 
             "You are the orchestrator for ComfyUI. Analyze the user's request. " +
             "If they request precise text in the image, set requiresTextRendering=true and architecture=FLUX. " +
@@ -33,17 +37,16 @@ public class LlmRoutingService implements ILlmRoutingService {
             "}";
 
     public LlmRoutingService(LocalGemmaService gemmaService, ObjectMapper objectMapper) {
-        // Wir nutzen den bereits im System etablierten LocalGemmaService via llama.cpp (Java Wrapper)
         this.gemmaService = gemmaService;
         this.objectMapper = objectMapper;
     }
 
     /**
-     * Sendet den User-Input an das eingebettete lokale Gemma-Modell, 
-     * erzwingt ein JSON-Format via System-Prompt und parst die Antwort deterministisch.
-     * 
-     * @param userInput Der rohe Text-Wunsch des Nutzers
-     * @return GenerationIntent mit den strukturierten Architektur- und Prompt-Vorgaben
+     * Dispatches user intent to the embedded local Gemma model,
+     * enforces JSON format via system prompt, and parses the response deterministically.
+     *
+     * @param userInput the raw user intent text
+     * @return GenerationIntent containing structured architecture and prompt instructions
      */
     public GenerationIntent parseUserRequest(String userInput) {
         if (!gemmaService.isModelDownloaded()) {
@@ -52,15 +55,15 @@ public class LlmRoutingService implements ILlmRoutingService {
         }
 
         try {
-            // Wir lassen Gemma das strukturierte JSON generieren. 
-            // Max Tokens hoch genug für das gesamte JSON (ca. 300 Tokens).
-            // Temperatur sehr niedrig (0.1f) für deterministischen JSON Output.
+            // Instruct Gemma to generate structured JSON.
+            // Max tokens set sufficiently for complete JSON payload (~300 tokens).
+            // Very low temperature (0.1f) for deterministic structured output.
             String responseText = gemmaService.generateCompletion(SYSTEM_PROMPT, userInput, 0.1f, 300);
 
-            // Sanitize: Da LLMs manchmal Markdown Code-Blöcke (```json) drumherum packen
+            // Sanitize: Strip markdown code blocks (```json) if returned by LLM
             String cleanJson = responseText.replaceAll("```json", "").replaceAll("```", "").trim();
             
-            // Schneide alles ab, was vor der ersten oder nach der letzten geschweiften Klammer steht
+            // Extract balanced JSON payload between outermost braces
             int startIndex = cleanJson.indexOf('{');
             int endIndex = cleanJson.lastIndexOf('}');
             
@@ -82,7 +85,7 @@ public class LlmRoutingService implements ILlmRoutingService {
 
     private GenerationIntent generateFallback(String userInput) {
         GenerationIntent fallback = new GenerationIntent();
-        fallback.setArchitecture("SDXL"); // SDXL als sicherer moderner Standard
+        fallback.setArchitecture("SDXL"); // SDXL as safe modern baseline
         fallback.setOptimizedPositivePrompt(userInput);
         fallback.setRequiresFaceDetailer(false);
         fallback.setRequiresTextRendering(false);

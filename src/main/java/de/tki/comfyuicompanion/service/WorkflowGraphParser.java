@@ -117,7 +117,9 @@ public class WorkflowGraphParser {
                                         vl.originSlot = 0;
                                         vl.targetSlot = 0;
                                         links.add(vl);
-                                    } catch (NumberFormatException ignored) {}
+                                    } catch (NumberFormatException ignored) {
+            logger.trace("Invalid numeric format: {}", ignored.getMessage());
+        }
                                 }
                             }
                         }
@@ -144,7 +146,9 @@ public class WorkflowGraphParser {
                 idx++;
 
                 nodes.add(vn);
-            } catch (NumberFormatException ignored) {}
+            } catch (NumberFormatException ignored) {
+            logger.trace("Invalid numeric format: {}", ignored.getMessage());
+        }
         }
 
         for (VisualNode vn : nodes) {
@@ -162,7 +166,9 @@ public class WorkflowGraphParser {
                             vl.originSlot = arr.getInt(1);
                             vl.targetSlot = 0;
                             links.add(vl);
-                        } catch (Exception ignored) {}
+                        } catch (Exception ignored) {
+            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+        }
                     }
                 }
             }

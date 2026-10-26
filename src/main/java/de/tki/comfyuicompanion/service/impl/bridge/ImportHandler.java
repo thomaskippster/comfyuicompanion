@@ -32,13 +32,13 @@ public class ImportHandler implements HttpHandler {
             try (InputStream is = exchange.getRequestBody()) {
                 String body = new String(is.readAllBytes(), StandardCharsets.UTF_8);
                 if (channel.consumeWorkflow(body)) {
-                    http.sendJsonResponse(exchange, 200, "{\"status\": \"success\", \"message\": \"Workflow received\"}");
+                    http.sendJsonResponse(exchange, 200, de.tki.comfyuicompanion.dto.acl.BridgeActionAclResponse.success("Workflow received").toJson());
                 } else {
-                    http.sendJsonResponse(exchange, 503, "{\"status\": \"error\", \"message\": \"App not ready\"}");
+                    http.sendJsonResponse(exchange, 503, de.tki.comfyuicompanion.dto.acl.BridgeActionAclResponse.error("App not ready").toJson());
                 }
             }
         } catch (Exception e) {
-            http.sendJsonResponse(exchange, 500, "{\"status\": \"error\", \"message\": \"" + e.getMessage() + "\"}");
+            http.sendJsonResponse(exchange, 500, de.tki.comfyuicompanion.dto.acl.BridgeActionAclResponse.error(e.getMessage() != null ? e.getMessage() : "Internal error").toJson());
         } finally {
             exchange.close();
         }

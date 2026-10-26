@@ -1,5 +1,8 @@
 package de.tki.comfyuicompanion.service;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.springframework.stereotype.Service;
@@ -21,6 +24,7 @@ import java.util.Set;
  * Represents the prompt blueprint api service class.
  */
 public class PromptBlueprintApiService {
+    private static final Logger logger = LoggerFactory.getLogger(PromptBlueprintApiService.class);
 
     public record PromptLabInputs(
             String positivePrompt,
@@ -229,7 +233,9 @@ public class PromptBlueprintApiService {
                             if (is32Bit && numVal > 2147483647L) {
                                 inp.put(ik, Math.abs(numVal) % 2147483647L);
                             }
-                        } catch (NumberFormatException ignored) {}
+                        } catch (NumberFormatException ignored) {
+            logger.trace("Invalid numeric format: {}", ignored.getMessage());
+        }
                     }
                 }
             }

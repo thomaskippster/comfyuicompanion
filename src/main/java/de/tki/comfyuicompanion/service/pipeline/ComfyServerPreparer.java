@@ -5,6 +5,8 @@ import de.tki.comfyuicompanion.service.impl.ConfigService;
 import de.tki.comfyuicompanion.service.impl.EnvironmentBootstrapperImpl;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Component;
 
 import java.io.File;
 import java.nio.file.Path;
@@ -16,6 +18,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * Ensures the ComfyUI server is running and that required custom nodes
  * (ComfyUI-Video-Helper-Suite) are installed before a scene generation job is submitted.
  */
+@Component
 public class ComfyServerPreparer {
 
     private static final Logger logger = LoggerFactory.getLogger(ComfyServerPreparer.class);
@@ -33,8 +36,9 @@ public class ComfyServerPreparer {
      * @param inspectionClient client used to check node availability
      * @param bootstrapper     optional bootstrapper used to install custom nodes
      */
+    @Autowired
     public ComfyServerPreparer(ConfigService configService, ComfyNodeInspectionClient inspectionClient,
-                               EnvironmentBootstrapperImpl bootstrapper) {
+                               @Autowired(required = false) EnvironmentBootstrapperImpl bootstrapper) {
         this.configService = configService;
         this.inspectionClient = inspectionClient;
         this.bootstrapper = bootstrapper;

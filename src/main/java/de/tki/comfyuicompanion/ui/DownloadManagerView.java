@@ -1,5 +1,8 @@
 package de.tki.comfyuicompanion.ui;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import de.tki.comfyuicompanion.ui.icons.AppIcon;
 import de.tki.comfyuicompanion.ui.icons.SvgIconFactory;
 import org.springframework.stereotype.Component;
@@ -36,6 +39,7 @@ import java.util.List;
  */
 @Component
 public class DownloadManagerView extends JPanel {
+    private static final Logger logger = LoggerFactory.getLogger(DownloadManagerView.class);
 
     public interface DownloadManagerListener {
         void onVerifyLocalModels(boolean deepCheck);
@@ -46,6 +50,7 @@ public class DownloadManagerView extends JPanel {
         void onImportModelListFile(File file);
         void onAnalyzeJsonContent();
         default void onCheckMissingCustomNodes() {}
+        default void onShowApiKeysDialog() {}
         void onShowCivitaiSearchDialog(int modelRowIndex);
         void onUpdateDownloadManagerSelection();
         void onUpdateDownloadButtonsState();
@@ -260,6 +265,11 @@ public class DownloadManagerView extends JPanel {
                 int col = modelTable.columnAtPoint(e.getPoint());
                 if (row >= 0 && col == 4) {
                     if (listener != null) listener.onShowCivitaiSearchDialog(row);
+                } else if (row >= 0 && (col == 7 || e.getClickCount() == 2)) {
+                    String status = (String) modelTable.getValueAt(row, 7);
+                    if (status != null && (status.contains("Token Required") || status.contains("API Key Required") || status.contains("Auth Error"))) {
+                        if (listener != null) listener.onShowApiKeysDialog();
+                    }
                 }
             }
         });
@@ -342,7 +352,9 @@ public class DownloadManagerView extends JPanel {
                     if (!files.isEmpty() && listener != null) {
                         listener.onLoadWorkflowFile(files.get(0));
                     }
-                } catch (Exception ignored) {}
+                } catch (Exception ignored) {
+            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+        }
             }
         });
     }
@@ -364,3 +376,4 @@ public class DownloadManagerView extends JPanel {
         SwingUtilities.updateComponentTreeUI(this);
     }
 }
+

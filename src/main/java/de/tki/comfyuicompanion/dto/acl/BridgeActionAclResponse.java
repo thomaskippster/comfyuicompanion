@@ -54,4 +54,19 @@ public record BridgeActionAclResponse(String status, String message) {
     public static BridgeActionAclResponse error(String message) {
         return new BridgeActionAclResponse("error", message);
     }
+
+    private static final com.fasterxml.jackson.databind.ObjectMapper MAPPER = new com.fasterxml.jackson.databind.ObjectMapper();
+
+    /**
+     * Serializes this response object to a valid JSON string.
+     *
+     * @return serialized JSON payload
+     */
+    public String toJson() {
+        try {
+            return MAPPER.writeValueAsString(this);
+        } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+            return "{\"status\":\"" + status + "\"}";
+        }
+    }
 }

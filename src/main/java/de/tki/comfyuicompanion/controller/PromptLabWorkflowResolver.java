@@ -25,6 +25,7 @@ public class PromptLabWorkflowResolver {
 
     private static final Logger logger = LoggerFactory.getLogger(PromptLabWorkflowResolver.class);
 
+    private static final long MAX_WORKFLOW_FILE_SIZE = 50L * 1024 * 1024; // 50 MB safety guard
     private final ConfigService configService;
     private final IComfyTemplateService comfyTemplateService;
     private final IWorkflowDownloader workflowDownloader;
@@ -64,7 +65,7 @@ public class PromptLabWorkflowResolver {
             if (targetEntry.filePath != null) {
                 File localFile = new File(targetEntry.filePath);
                 if (localFile.exists()) {
-                    jsonContent = Files.readString(localFile.toPath(), StandardCharsets.UTF_8).trim();
+                    jsonContent = readWorkflowFileSafe(localFile.toPath());
                 }
             }
 
@@ -85,7 +86,7 @@ public class PromptLabWorkflowResolver {
                             if (targetEntry.registryWorkflow.getId() != null) {
                                 File registryFile = new File(dir, targetEntry.registryWorkflow.getId() + ".json");
                                 if (registryFile.exists()) {
-                                    jsonContent = Files.readString(registryFile.toPath(), StandardCharsets.UTF_8).trim();
+                                    jsonContent = readWorkflowFileSafe(registryFile.toPath());
                                     break;
                                 }
                             }
@@ -97,7 +98,7 @@ public class PromptLabWorkflowResolver {
                                         .toLowerCase(Locale.ROOT);
                                 File titleFile = new File(dir, sanitized + ".json");
                                 if (titleFile.exists()) {
-                                    jsonContent = Files.readString(titleFile.toPath(), StandardCharsets.UTF_8).trim();
+                                    jsonContent = readWorkflowFileSafe(titleFile.toPath());
                                     break;
                                 }
                             }
@@ -108,7 +109,7 @@ public class PromptLabWorkflowResolver {
                                 for (File f : files) {
                                     if (isBlueprintNameMatch(targetEntry.name, f.getName().replace(".json", ""))
                                             || (targetEntry.filename != null && f.getName().equalsIgnoreCase(targetEntry.filename))) {
-                                        jsonContent = Files.readString(f.toPath(), StandardCharsets.UTF_8).trim();
+                                        jsonContent = readWorkflowFileSafe(f.toPath());
                                         break;
                                     }
                                 }
@@ -126,7 +127,7 @@ public class PromptLabWorkflowResolver {
                 try {
                     File downloaded = workflowDownloader.downloadWorkflowAsync(targetEntry.registryWorkflow).get();
                     if (downloaded != null && downloaded.exists()) {
-                        jsonContent = Files.readString(downloaded.toPath(), StandardCharsets.UTF_8).trim();
+                        jsonContent = readWorkflowFileSafe(downloaded.toPath());
                     }
                 } catch (Exception dlEx) {
                     logger.warn("Failed to download workflow for blueprint {}: {}", targetEntry.name, dlEx.getMessage());
@@ -197,5 +198,16 @@ public class PromptLabWorkflowResolver {
             }
         }
         return matchCount >= Math.min(words1.length, words2.length);
+    }
+
+    private String readWorkflowFileSafe(java.nio.file.Path path) throws java.io.IOException {
+        if (path == null || !java.nio.file.Files.exists(path)) {
+            return null;
+        }
+        long size = java.nio.file.Files.size(path);
+        if (size > MAX_WORKFLOW_FILE_SIZE) {
+            throw new java.io.IOException("Workflow JSON file exceeds 50MB limit: " + path + " (" + size + " bytes)");
+        }
+        return java.nio.file.Files.readString(path, java.nio.charset.StandardCharsets.UTF_8).trim();
     }
 }

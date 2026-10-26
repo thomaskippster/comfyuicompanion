@@ -124,6 +124,17 @@ public class PromptLabExecutionHandler {
                     this.promptLabView, this.promptLabView, configService.getComfyUIUrl(),
                     this.promptLabController, this.modelInputSanitizer, false,
                     statusMsg -> ensureComfyServerOnline(configService.getComfyUIUrl(), statusMsg)));
+            if (this.promptLabView.getPromptAiModelCombo() != null && configService != null) {
+                String activeId = configService.getLocalLlmModel();
+                this.promptLabView.getPromptAiModelCombo().setSelectedItem(
+                        de.tki.comfyuicompanion.service.impl.LocalGemmaService.LlmModelPreset.fromId(activeId));
+                this.promptLabView.getPromptAiModelCombo().addActionListener(e -> {
+                    Object sel = this.promptLabView.getPromptAiModelCombo().getSelectedItem();
+                    if (sel instanceof de.tki.comfyuicompanion.service.impl.LocalGemmaService.LlmModelPreset preset) {
+                        configService.setLocalLlmModel(preset.getId());
+                    }
+                });
+            }
         }
     }
 

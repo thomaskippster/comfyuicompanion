@@ -130,12 +130,16 @@ public final class ExecutableLocator {
                     baseDir = codeSourceFile.getParentFile();
                 }
             }
-        } catch (Exception ignored) {}
+        } catch (Exception ignored) {
+            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+        }
 
         if (baseDir == null) {
             try {
                 baseDir = Paths.get("").toAbsolutePath().toFile();
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+        }
         }
         if (baseDir == null) {
             baseDir = new File(System.getProperty("user.dir"));

@@ -269,7 +269,9 @@ public class CustomNodeSnapshotService implements ICustomNodeSnapshotService {
         if (!Files.exists(dir)) return false;
         try (var walk = Files.walk(dir)) {
             walk.sorted(Comparator.reverseOrder()).forEach(p -> {
-                try { Files.deleteIfExists(p); } catch (Exception ignored) {}
+                try { Files.deleteIfExists(p); } catch (Exception ignored) {
+            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+        }
             });
             return true;
         } catch (Exception e) {

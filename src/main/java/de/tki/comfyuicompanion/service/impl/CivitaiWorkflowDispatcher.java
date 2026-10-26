@@ -64,6 +64,7 @@ public class CivitaiWorkflowDispatcher {
         this.httpClient = HttpClient.newBuilder()
                 .followRedirects(HttpClient.Redirect.ALWAYS)
                 .connectTimeout(Duration.ofSeconds(10))
+                .executor(java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor())
                 .build();
     }
 
@@ -197,7 +198,7 @@ public class CivitaiWorkflowDispatcher {
             HttpRequest refreshReq = HttpRequest.newBuilder()
                     .uri(URI.create(comfyUrl + "/cmfc/refresh-models"))
                     .header("Content-Type", "application/json")
-                    .POST(HttpRequest.BodyPublishers.ofString("{\"force_reload\":false}"))
+                    .POST(HttpRequest.BodyPublishers.ofString(de.tki.comfyuicompanion.dto.acl.RefreshModelsAclRequest.NORMAL.toJson()))
                     .timeout(Duration.ofSeconds(5))
                     .build();
             httpClient.send(refreshReq, HttpResponse.BodyHandlers.discarding());
@@ -230,7 +231,12 @@ public class CivitaiWorkflowDispatcher {
             if (imgOutput != null) {
                 return imgOutput;
             }
-            Thread.sleep(500);
+            try {
+                Thread.sleep(500);
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+                return null;
+            }
         }
         return null;
     }
@@ -247,7 +253,12 @@ public class CivitaiWorkflowDispatcher {
                     healthy = true;
                     break;
                 }
-                Thread.sleep(1000);
+                try {
+                    Thread.sleep(1000);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    throw new IOException("Interrupted while awaiting ComfyUI startup", ie);
+                }
             }
             if (!healthy) {
                 throw new IOException("ComfyUI server could not be started or did not reach a healthy state within 90s.");

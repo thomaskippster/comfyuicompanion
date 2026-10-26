@@ -286,7 +286,9 @@ public class FirstRunSetupDialog extends JDialog {
                 File spaceRef = Files.exists(base) ? base.toFile() : new File(System.getProperty("user.home"));
                 long freeGb = spaceRef.getUsableSpace() / (1024L * 1024L * 1024L);
                 result.add(new CandidateModelDir(pathStr, count, freeGb));
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+        }
         }
         result.sort((a, b) -> Integer.compare(b.modelCount(), a.modelCount()));
         return result;

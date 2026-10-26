@@ -1,8 +1,8 @@
 package de.tki.comfyuicompanion.domain;
 
 /**
- * Kapselt erkannte Hardwarespezifikationen (GPU, VRAM, RAM, Kerne)
- * und die zugehörige Leistungseinstufung (HardwareTier).
+ * Encapsulates detected hardware specifications (GPU, VRAM, RAM, CPU cores)
+ * and the corresponding performance tier (HardwareTier).
  *
  * @param gpuName        the name of the GPU
  * @param vramBytes      the amount of VRAM in bytes

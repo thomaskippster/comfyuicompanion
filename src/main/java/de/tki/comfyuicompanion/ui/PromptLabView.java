@@ -40,8 +40,8 @@ public class PromptLabView extends JPanel {
     private JLabel promptPresetLabel;
     private JTextField promptSubjectField;
     private JButton btnSuggestSubject;
-    private JPanel promptSubjectSuggestionsWrapper;
-    private JPanel promptSubjectSuggestionsPanel;
+    private JComboBox<de.tki.comfyuicompanion.service.impl.LocalGemmaService.LlmModelPreset> promptAiModelCombo;
+    private final PromptLabSuggestionsPanel suggestionsPanel = new PromptLabSuggestionsPanel();
     private CardPanel promptLabLeftPanel;
     private JTextField promptNegativeField;
     private JPanel promptImageInputPanel;
@@ -130,10 +130,30 @@ public class PromptLabView extends JPanel {
         leftPanel.add(Box.createVerticalStrut(6));
 
         Font promptSubLabelFont = new Font("SansSerif", Font.PLAIN, 12);
+        JPanel promptHeaderRow = new JPanel(new BorderLayout(5, 0));
+        promptHeaderRow.setOpaque(false);
+        promptHeaderRow.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        promptHeaderRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 26));
+
         JLabel lblSubject = new JLabel("Positive Prompt");
         lblSubject.setFont(promptSubLabelFont);
-        lblSubject.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
-        leftPanel.add(lblSubject);
+        promptHeaderRow.add(lblSubject, BorderLayout.WEST);
+
+        JPanel aiModelPanel = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 4, 0));
+        aiModelPanel.setOpaque(false);
+        JLabel lblAi = new JLabel("AI Model:");
+        lblAi.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        lblAi.setForeground(Color.GRAY);
+        aiModelPanel.add(lblAi);
+
+        promptAiModelCombo = new JComboBox<>(de.tki.comfyuicompanion.service.impl.LocalGemmaService.LlmModelPreset.values());
+        promptAiModelCombo.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        promptAiModelCombo.setPreferredSize(new Dimension(185, 24));
+        promptAiModelCombo.setToolTipText("Select on-demand local AI text model for prompt expansion and suggestions.");
+        aiModelPanel.add(promptAiModelCombo);
+
+        promptHeaderRow.add(aiModelPanel, BorderLayout.EAST);
+        leftPanel.add(promptHeaderRow);
         leftPanel.add(Box.createVerticalStrut(4));
 
         JPanel subjectRow = new JPanel(new BorderLayout(8, 0));
@@ -146,13 +166,14 @@ public class PromptLabView extends JPanel {
         promptSubjectField.setFont(new Font("SansSerif", Font.PLAIN, 14));
         promptSubjectField.setMinimumSize(new Dimension(80, 34));
         promptSubjectField.setPreferredSize(new Dimension(100, 34));
+        de.tki.comfyuicompanion.ui.autocomplete.PromptAutocompletePopup.install(promptSubjectField);
         subjectRow.add(promptSubjectField, BorderLayout.CENTER);
 
         btnSuggestSubject = new JButton("Suggest", SvgIconFactory.get(AppIcon.SUGGEST));
         btnSuggestSubject.setFont(new Font("SansSerif", Font.BOLD, 12));
         btnSuggestSubject.putClientProperty("Button.background", ThemeManager.getAccentColor());
         btnSuggestSubject.putClientProperty("Button.foreground", Color.WHITE);
-        btnSuggestSubject.setToolTipText("Suggest creative completions for this prompt using local Gemma AI.");
+        btnSuggestSubject.setToolTipText("Suggest creative completions for this prompt using local AI.");
         btnSuggestSubject.addActionListener(e -> {
             if (controller != null) controller.onSuggestSubject();
         });
@@ -161,48 +182,13 @@ public class PromptLabView extends JPanel {
         leftPanel.add(subjectRow);
         leftPanel.add(Box.createVerticalStrut(5));
 
-        // Hidden suggestions container
-        promptSubjectSuggestionsWrapper = new JPanel(new BorderLayout(5, 5));
-        promptSubjectSuggestionsWrapper.setOpaque(false);
-        promptSubjectSuggestionsWrapper.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
-        promptSubjectSuggestionsWrapper.setVisible(false);
-        promptSubjectSuggestionsWrapper.setBorder(BorderFactory.createEmptyBorder(5, 0, 10, 0));
-
-        JPanel headerPanel = new JPanel(new BorderLayout());
-        headerPanel.setOpaque(false);
-        JLabel sugTitle = new JLabel("AI Suggestions:");
-        sugTitle.setFont(new Font("SansSerif", Font.BOLD, 11));
-        sugTitle.setForeground(Color.GRAY);
-        headerPanel.add(sugTitle, BorderLayout.CENTER);
-
-        JButton btnCloseSug = new JButton(SvgIconFactory.get(AppIcon.CLOSE, 10));
-        btnCloseSug.setFont(new Font("SansSerif", Font.PLAIN, 10));
-        btnCloseSug.addActionListener(e -> {
-            promptSubjectSuggestionsWrapper.setVisible(false);
+        suggestionsPanel.setOnCloseAction(() -> {
             if (promptLabLeftPanel != null) {
                 promptLabLeftPanel.revalidate();
                 promptLabLeftPanel.repaint();
             }
         });
-        headerPanel.add(btnCloseSug, BorderLayout.EAST);
-        promptSubjectSuggestionsWrapper.add(headerPanel, BorderLayout.NORTH);
-
-        promptSubjectSuggestionsPanel = new JPanel();
-        promptSubjectSuggestionsPanel.setLayout(new BoxLayout(promptSubjectSuggestionsPanel, BoxLayout.Y_AXIS));
-        promptSubjectSuggestionsPanel.setOpaque(false);
-
-        JScrollPane sugScrollPane = new JScrollPane(promptSubjectSuggestionsPanel);
-        sugScrollPane.setOpaque(false);
-        sugScrollPane.getViewport().setOpaque(false);
-        sugScrollPane.setBorder(BorderFactory.createEmptyBorder(2, 2, 2, 2));
-        sugScrollPane.setPreferredSize(new Dimension(0, 120));
-        sugScrollPane.setMaximumSize(new Dimension(Integer.MAX_VALUE, 120));
-        sugScrollPane.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
-        sugScrollPane.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED);
-
-        promptSubjectSuggestionsWrapper.add(sugScrollPane, BorderLayout.CENTER);
-        promptSubjectSuggestionsWrapper.setMaximumSize(new Dimension(Integer.MAX_VALUE, 155));
-        leftPanel.add(promptSubjectSuggestionsWrapper);
+        leftPanel.add(suggestionsPanel);
         promptLabLeftPanel = leftPanel;
 
         // Negative Prompt Field
@@ -219,6 +205,7 @@ public class PromptLabView extends JPanel {
         promptNegativeField.setMinimumSize(new Dimension(80, 32));
         promptNegativeField.setPreferredSize(new Dimension(100, 32));
         promptNegativeField.setMaximumSize(new Dimension(Integer.MAX_VALUE, 32));
+        de.tki.comfyuicompanion.ui.autocomplete.PromptAutocompletePopup.install(promptNegativeField);
         leftPanel.add(promptNegativeField);
         leftPanel.add(Box.createVerticalStrut(10));
 
@@ -416,22 +403,7 @@ public class PromptLabView extends JPanel {
         if (img == null) return;
         boolean sameImage = (this.currentPreviewImage == img);
         this.currentPreviewImage = img;
-        int pw = Math.max(64, promptImagePreviewLabel.getWidth() > 8 ? promptImagePreviewLabel.getWidth() - 8 : 512);
-        int ph = Math.max(64, promptImagePreviewLabel.getHeight() > 8 ? promptImagePreviewLabel.getHeight() - 8 : 512);
-        int iw = img.getWidth(null);
-        int ih = img.getHeight(null);
-        if (iw <= 0 || ih <= 0) return;
-
-        double scale = Math.min((double) pw / iw, (double) ph / ih);
-        int tw = Math.max(1, (int) (iw * scale));
-        int th = Math.max(1, (int) (ih * scale));
-        if (sameImage && promptImagePreviewLabel.getIcon() instanceof ImageIcon existing
-                && Math.abs(existing.getIconWidth() - tw) <= 2 && Math.abs(existing.getIconHeight() - th) <= 2) {
-            return;
-        }
-        Image scaled = img.getScaledInstance(tw, th, Image.SCALE_SMOOTH);
-        promptImagePreviewLabel.setIcon(new ImageIcon(scaled));
-        promptImagePreviewLabel.setText("");
+        PromptLabImagePreviewScaler.scaleAndRender(promptImagePreviewLabel, img, sameImage);
     }
 
     @Override
@@ -460,8 +432,10 @@ public class PromptLabView extends JPanel {
     public JLabel getPromptPresetLabel() { return promptPresetLabel; }
     public JTextField getPromptSubjectField() { return promptSubjectField; }
     public JButton getBtnSuggestSubject() { return btnSuggestSubject; }
-    public JPanel getPromptSubjectSuggestionsWrapper() { return promptSubjectSuggestionsWrapper; }
-    public JPanel getPromptSubjectSuggestionsPanel() { return promptSubjectSuggestionsPanel; }
+    public JComboBox<de.tki.comfyuicompanion.service.impl.LocalGemmaService.LlmModelPreset> getPromptAiModelCombo() { return promptAiModelCombo; }
+    public PromptLabSuggestionsPanel getSuggestionsPanel() { return suggestionsPanel; }
+    public JPanel getPromptSubjectSuggestionsWrapper() { return suggestionsPanel; }
+    public JPanel getPromptSubjectSuggestionsPanel() { return suggestionsPanel.getListPanel(); }
     public CardPanel getPromptLabLeftPanel() { return promptLabLeftPanel; }
     public JTextField getPromptNegativeField() { return promptNegativeField; }
     public JPanel getPromptImageInputPanel() { return promptImageInputPanel; }

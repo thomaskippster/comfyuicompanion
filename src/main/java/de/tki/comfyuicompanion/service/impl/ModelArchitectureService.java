@@ -229,7 +229,9 @@ public class ModelArchitectureService implements IModelArchitectureService {
         for (BlueprintProgressListener listener : listeners) {
             try {
                 listener.onProgress(percent, currentFileName, completed);
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+        }
         }
     }
 

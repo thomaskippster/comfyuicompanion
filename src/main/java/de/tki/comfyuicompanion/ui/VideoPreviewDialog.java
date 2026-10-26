@@ -1,5 +1,8 @@
 package de.tki.comfyuicompanion.ui;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import javafx.application.Platform;
 import javafx.embed.swing.JFXPanel;
 import javafx.scene.Scene;
@@ -29,6 +32,7 @@ import java.net.URI;
  * is fully released on close to avoid leaking native resources.
  */
 public class VideoPreviewDialog extends JDialog {
+    private static final Logger logger = LoggerFactory.getLogger(VideoPreviewDialog.class);
 
     private MediaPlayer mediaPlayer;
 
@@ -149,14 +153,17 @@ public class VideoPreviewDialog extends JDialog {
                     try {
                         mediaPlayer.stop();
                     } catch (Exception ignored) {
-                    }
+            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+        }
                     try {
                         mediaPlayer.dispose();
                     } catch (Exception ignored) {
-                    }
+            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+        }
                 });
             } catch (Exception ignored) {
-            }
+            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+        }
             mediaPlayer = null;
         }
     }

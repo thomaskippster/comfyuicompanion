@@ -99,7 +99,9 @@ public class ComfyLifecycleService implements IComfyLifecycleService {
                 try {
                     // Truncate/create log file
                     java.nio.file.Files.writeString(logFile.toPath(), "", java.nio.charset.StandardCharsets.UTF_8);
-                } catch (java.io.IOException ignored) {}
+                } catch (java.io.IOException ignored) {
+            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+        }
 
                 final de.tki.comfyuicompanion.domain.LaunchProfile finalProfile = activeProfile;
                 processController.start(finalProfile, java.nio.file.Paths.get(comfyPath), pythonPath, log -> {
@@ -115,14 +117,16 @@ public class ComfyLifecycleService implements IComfyLifecycleService {
                             java.nio.file.StandardOpenOption.CREATE, 
                             java.nio.file.StandardOpenOption.APPEND
                         );
-                    } catch (java.io.IOException ignored) {}
+                    } catch (java.io.IOException ignored) {
+            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+        }
                 }).thenAccept(exitCode -> {
                     status.set("Stopped (Exit Code: " + exitCode + ")");
                 });
 
                 // Monitor for readiness and launch browser
                 Thread.ofVirtual().name("comfy-readiness-monitor").start(() -> {
-                    try { Thread.sleep(3000); } catch (InterruptedException ignored) {}
+                    try { Thread.sleep(3000); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); return; }
                     boolean launched = false;
                     while (!launched && isRunning()) {
                         if (isHealthy()) {
@@ -188,7 +192,9 @@ public class ComfyLifecycleService implements IComfyLifecycleService {
                     comfyProcess.descendants().forEach(ProcessHandle::destroyForcibly);
                     comfyProcess.destroyForcibly();
                     comfyProcess.waitFor(5, java.util.concurrent.TimeUnit.SECONDS);
-                } catch (Exception ignored) {}
+                } catch (Exception ignored) {
+            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+        }
                 comfyProcess = null;
             }
             browserLaunched.set(false);
@@ -215,7 +221,9 @@ public class ComfyLifecycleService implements IComfyLifecycleService {
             int port = 8188;
             try {
                 port = Integer.parseInt(url.substring(url.lastIndexOf(":") + 1));
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+        }
 
             if (de.tki.comfyuicompanion.util.PlatformUtils.isWindows()) {
                 // Find PID on port and kill it
@@ -233,10 +241,14 @@ public class ComfyLifecycleService implements IComfyLifecycleService {
                                         ProcessHandle.of(pid).ifPresent(ProcessHandle::destroyForcibly);
                                         try {
                                             Runtime.getRuntime().exec("taskkill /F /PID " + pid + " /T");
-                                        } catch (Exception ignored) {}
+                                        } catch (Exception ignored) {
+            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+        }
                                         logger.info("💀 Killed process " + pid + " listening on port " + port);
                                     }
-                                } catch (NumberFormatException ignored) {}
+                                } catch (NumberFormatException ignored) {
+            logger.trace("Invalid numeric format: {}", ignored.getMessage());
+        }
                             }
                         }
                     }
@@ -245,13 +257,15 @@ public class ComfyLifecycleService implements IComfyLifecycleService {
                 try {
                     Runtime.getRuntime().exec(new String[]{"wsl", "pkill", "-f", "main.py"});
                     Runtime.getRuntime().exec(new String[]{"wsl", "fuser", "-k", port + "/tcp"});
-                } catch (Exception ignored) {}
+                } catch (Exception ignored) {
+            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+        }
             } else {
                 // Linux/Mac fallback
                 Runtime.getRuntime().exec(new String[]{"sh", "-c", "fuser -k " + port + "/tcp"});
             }
             // Sleep a small duration to allow OS to release port & file locks
-            try { Thread.sleep(1000); } catch (InterruptedException ignored) {}
+            try { Thread.sleep(1000); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
         } catch (Exception e) {
             logger.error("Failed to kill process on port: " + e.getMessage());
         }
@@ -260,7 +274,7 @@ public class ComfyLifecycleService implements IComfyLifecycleService {
     @Override
     public void restart() {
         stop();
-        try { Thread.sleep(2000); } catch (InterruptedException ignored) {}
+        try { Thread.sleep(2000); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
         
         // Reload extra paths in case they were changed before restart
         configService.loadExtraModelPaths();
@@ -275,7 +289,7 @@ public class ComfyLifecycleService implements IComfyLifecycleService {
                     status.set("Running & Healthy");
                     return;
                 }
-                try { Thread.sleep(1000); } catch (InterruptedException ignored) {}
+                try { Thread.sleep(1000); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); return; }
             }
             status.set("Running (Healthy Check Timeout)");
         });
@@ -338,8 +352,9 @@ public class ComfyLifecycleService implements IComfyLifecycleService {
         }
 
         try {
-            java.nio.file.Path path = java.nio.file.Paths.get(workingDir);
-            java.nio.file.Path backup = java.nio.file.Paths.get(workingDir + "_backup_" + System.currentTimeMillis());
+            java.nio.file.Path path = de.tki.comfyuicompanion.util.PathGuard.safeCommandLinePath(workingDir);
+            java.nio.file.Path parent = path.getParent() != null ? path.getParent() : path;
+            java.nio.file.Path backup = parent.resolve(path.getFileName().toString() + "_backup_" + System.currentTimeMillis()).normalize();
             
             if (java.nio.file.Files.exists(path)) {
                 java.nio.file.Files.move(path, backup);

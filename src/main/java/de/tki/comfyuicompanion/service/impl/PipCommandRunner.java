@@ -186,12 +186,16 @@ public class PipCommandRunner {
                             if (cap > maxComputeCap) {
                                 maxComputeCap = cap;
                             }
-                        } catch (NumberFormatException ignored) {}
+                        } catch (NumberFormatException ignored) {
+            logger.trace("Invalid numeric format: {}", ignored.getMessage());
+        }
                     }
                 }
             }
             p.waitFor();
-        } catch (Exception ignored) {}
+        } catch (Exception ignored) {
+            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+        }
 
         if (hasNvidia) {
             String cudaVersion;

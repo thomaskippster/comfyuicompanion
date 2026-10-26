@@ -1,8 +1,8 @@
 package de.tki.comfyuicompanion.domain;
 
 /**
- * Vorkonfigurations-Parameter für den Video Architect basierend auf
- * den erkannten Hardwarefähigkeiten.
+ * Pre-configuration parameters for Video Architect based on
+ * detected hardware capabilities.
  *
  * @param recommendedModel     the recommended model to use
  * @param defaultWidth         the default width in pixels

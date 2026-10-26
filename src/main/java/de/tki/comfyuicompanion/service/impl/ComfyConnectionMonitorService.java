@@ -171,7 +171,9 @@ public class ComfyConnectionMonitorService implements IComfyConnectionMonitorSer
                 JSONObject sys = obj.getJSONObject("system");
                 return sys.optString("os", "Online");
             }
-        } catch (Exception ignored) {}
+        } catch (Exception ignored) {
+            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+        }
         return "Connected";
     }
 

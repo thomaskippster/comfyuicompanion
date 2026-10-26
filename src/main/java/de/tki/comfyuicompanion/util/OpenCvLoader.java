@@ -31,7 +31,9 @@ public class OpenCvLoader {
                 nu.pattern.OpenCV.loadShared();
                 logger.info("✅ [OpenCvLoader] OpenCV loaded successfully via loadShared()");
                 success = true;
-            } catch (Throwable ignored) {}
+            } catch (Throwable ignored) {
+            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+        }
         }
 
         if (!success) {

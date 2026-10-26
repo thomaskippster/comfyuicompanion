@@ -72,7 +72,8 @@ public class LocalModelCacheManager {
                                         list.add(info);
                                     }
                                 } catch (Exception ignored) {
-                                }
+            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+        }
                             });
                         }
                         if (!list.isEmpty() || cloudOnlyCache.getOrDefault(entry.getKey(), false)) {
@@ -99,7 +100,8 @@ public class LocalModelCacheManager {
                                         list.add(objectMapper.treeToValue(mNode, ModelInfo.class));
                                     }
                                 } catch (Exception ignored) {
-                                }
+            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+        }
                             });
                             if (!list.isEmpty()) {
                                 if (!scanName.isEmpty()) registryModelsCache.putIfAbsent(scanName, list);

@@ -130,7 +130,8 @@ public class CivitaiOperationalModelService implements ICivitaiOperationalModelS
         String baseLower = entry.baseModel() != null ? entry.baseModel().toLowerCase(Locale.ROOT) : "";
 
         // 2. Resolve Operational Dependencies based on Type and Architecture
-        if (typeLower.contains("lora") || typeLower.contains("locon") || typeLower.contains("controlnet")) {
+        if (typeLower.contains("lora") || typeLower.contains("locon") || typeLower.contains("controlnet")
+                || typeLower.contains("workflow") || typeLower.contains("textualinversion")) {
             resolveLoraAndControlDependencies(entry, baseLower, required);
         } else if (typeLower.contains("checkpoint")) {
             resolveCheckpointDependencies(baseLower, required);
@@ -169,7 +170,7 @@ public class CivitaiOperationalModelService implements ICivitaiOperationalModelS
         if (vae == null) {
             vae = localModelScanner.createRemoteModelInfo(
                     "ae.safetensors", "vae", "335 MB",
-                    "https://huggingface.co/black-forest-labs/FLUX.1-dev/resolve/main/ae.safetensors",
+                    "https://huggingface.co/receptektas/black-forest-labs-ae_safetensors/resolve/main/ae.safetensors",
                     "FLUX.1 VAE (Required by Flux pipeline)"
             );
         }
@@ -277,7 +278,7 @@ public class CivitaiOperationalModelService implements ICivitaiOperationalModelS
             if (vae == null) {
                 vae = localModelScanner.createRemoteModelInfo(
                         "ae.safetensors", "vae", "335 MB",
-                        "https://huggingface.co/black-forest-labs/FLUX.1-dev/resolve/main/ae.safetensors",
+                        "https://huggingface.co/receptektas/black-forest-labs-ae_safetensors/resolve/main/ae.safetensors",
                         "FLUX.1 VAE"
                 );
             }

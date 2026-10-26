@@ -6,6 +6,7 @@ import de.tki.comfyuicompanion.domain.CivitaiModelEntry;
 import de.tki.comfyuicompanion.domain.ModelFolder;
 import de.tki.comfyuicompanion.domain.ModelInfo;
 import de.tki.comfyuicompanion.service.ICivitaiHubService;
+import de.tki.comfyuicompanion.service.ICivitaiMetadataService;
 import de.tki.comfyuicompanion.service.IConfigService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -23,10 +24,13 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
- * Enterprise service providing high-level search, pagination, and download preparation
- * for the Civitai Model Hub gallery.
+ * Enterprise service providing high-level search, pagination, direct ID/hash lookup,
+ * and download preparation for the Civitai Model Hub gallery.
+ * Strictly enforces youth protection by filtering mature and NSFW content.
  */
 @Service
 public class CivitaiHubService implements ICivitaiHubService {
@@ -34,23 +38,33 @@ public class CivitaiHubService implements ICivitaiHubService {
     private static final Logger log = LoggerFactory.getLogger(CivitaiHubService.class);
     private static final String API_BASE = "https://civitai.com/api/v1/models";
 
+    private static final Pattern MODEL_URL_PATTERN = Pattern.compile("https?://civitai\\.com/models/(\\d+)");
+    private static final Pattern NUMERIC_ID_PATTERN = Pattern.compile("^\\d{4,10}$");
+    private static final Pattern HEX_HASH_PATTERN = Pattern.compile("^[0-9a-fA-F]{8,64}$");
+
     private final IConfigService configService;
     private final ModelListService modelListService;
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient;
+    private final ICivitaiMetadataService metadataService;
+    private final CivitaiModelJsonParser jsonParser;
 
     /**
-     * Constructs a new CivitaiHubService with injected dependencies.
+     * Constructs a new CivitaiHubService with full dependency injection.
      *
      * @param configService    configuration service for tokens and storage paths
      * @param modelListService optional local model registry service
      * @param objectMapper     Jackson object mapper for JSON deserialization
+     * @param metadataService  Civitai metadata service for dynamic enums
+     * @param jsonParser       parser component for Civitai JSON entries
      */
     @Autowired
     public CivitaiHubService(
             @Autowired(required = false) IConfigService configService,
             @Autowired(required = false) ModelListService modelListService,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            @Autowired(required = false) ICivitaiMetadataService metadataService,
+            @Autowired(required = false) CivitaiModelJsonParser jsonParser) {
         this.configService = configService;
         this.modelListService = modelListService;
         this.objectMapper = objectMapper != null ? objectMapper : new ObjectMapper();
@@ -58,6 +72,24 @@ public class CivitaiHubService implements ICivitaiHubService {
                 .followRedirects(HttpClient.Redirect.ALWAYS)
                 .connectTimeout(Duration.ofSeconds(10))
                 .build();
+        this.metadataService = metadataService != null
+                ? metadataService
+                : new CivitaiMetadataService(configService, this.objectMapper, this.httpClient);
+        this.jsonParser = jsonParser != null ? jsonParser : new CivitaiModelJsonParser();
+    }
+
+    /**
+     * Overloaded constructor for unit testing without Spring context.
+     *
+     * @param configService    configuration service
+     * @param modelListService optional model registry
+     * @param objectMapper     Jackson object mapper
+     */
+    public CivitaiHubService(
+            IConfigService configService,
+            ModelListService modelListService,
+            ObjectMapper objectMapper) {
+        this(configService, modelListService, objectMapper, null, null);
     }
 
     @Override
@@ -70,21 +102,109 @@ public class CivitaiHubService implements ICivitaiHubService {
             int page,
             boolean allowNsfw) {
 
-        URI uri = buildQueryUri(query, type, baseModel, sort, limit, page, allowNsfw);
-
-        HttpRequest.Builder reqBuilder = HttpRequest.newBuilder()
-                .uri(uri)
-                .header("Accept", "application/json")
-                .header("User-Agent", "ComfyUI-Companion/1.1.1 (Desktop)")
-                .timeout(Duration.ofSeconds(20))
-                .GET();
-
-        String apiKey = configService != null ? configService.getCivitaiApiKey() : null;
-        if (apiKey != null && !apiKey.trim().isEmpty()) {
-            reqBuilder.header("Authorization", "Bearer " + apiKey.trim());
+        String cleanQuery = query != null ? query.trim() : "";
+        if (!cleanQuery.isEmpty()) {
+            CompletableFuture<List<CivitaiModelEntry>> directFuture = tryDirectLookup(cleanQuery);
+            if (directFuture != null) {
+                return directFuture.thenCompose(directResults -> {
+                    if (!directResults.isEmpty()) {
+                        return CompletableFuture.completedFuture(directResults);
+                    }
+                    return executeCatalogQuery(cleanQuery, type, baseModel, sort, limit, page, allowNsfw);
+                });
+            }
         }
 
-        return httpClient.sendAsync(reqBuilder.build(), HttpResponse.BodyHandlers.ofString())
+        return executeCatalogQuery(cleanQuery, type, baseModel, sort, limit, page, allowNsfw);
+    }
+
+    @Override
+    public CompletableFuture<List<String>> getActiveBaseModels() {
+        return metadataService.getActiveBaseModels();
+    }
+
+    @Override
+    public CompletableFuture<List<String>> getModelTypes() {
+        return metadataService.getModelTypes();
+    }
+
+    private CompletableFuture<List<CivitaiModelEntry>> tryDirectLookup(String cleanQuery) {
+        Matcher urlMatcher = MODEL_URL_PATTERN.matcher(cleanQuery);
+        if (urlMatcher.find()) {
+            try {
+                long modelId = Long.parseLong(urlMatcher.group(1));
+                return fetchModelById(modelId);
+            } catch (NumberFormatException ignored) {
+                // Fall back to standard catalog search
+            }
+        }
+        if (NUMERIC_ID_PATTERN.matcher(cleanQuery).matches()) {
+            try {
+                long modelId = Long.parseLong(cleanQuery);
+                return fetchModelById(modelId);
+            } catch (NumberFormatException ignored) {
+                // Fall back to standard catalog search
+            }
+        }
+        if (HEX_HASH_PATTERN.matcher(cleanQuery).matches()) {
+            return fetchModelByHash(cleanQuery);
+        }
+        return null;
+    }
+
+    private CompletableFuture<List<CivitaiModelEntry>> fetchModelById(long modelId) {
+        String url = API_BASE + "/" + modelId;
+        HttpRequest request = buildAuthenticatedGetRequest(URI.create(url));
+        return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString())
+                .thenApply(response -> {
+                    if (response.statusCode() == 200) {
+                        try {
+                            JsonNode root = objectMapper.readTree(response.body());
+                            CivitaiModelEntry entry = parseModelEntry(root);
+                            if (entry != null) {
+                                return List.of(entry);
+                            }
+                        } catch (Exception e) {
+                            log.debug("Failed parsing direct Civitai model response: {}", e.getMessage());
+                        }
+                    }
+                    return List.of();
+                });
+    }
+
+    private CompletableFuture<List<CivitaiModelEntry>> fetchModelByHash(String hash) {
+        String url = "https://civitai.com/api/v1/model-versions/by-hash/" + hash;
+        HttpRequest request = buildAuthenticatedGetRequest(URI.create(url));
+        return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString())
+                .thenCompose(response -> {
+                    if (response.statusCode() == 200) {
+                        try {
+                            JsonNode root = objectMapper.readTree(response.body());
+                            long modelId = root.path("modelId").asLong(0);
+                            if (modelId > 0) {
+                                return fetchModelById(modelId);
+                            }
+                        } catch (Exception e) {
+                            log.debug("Failed resolving version hash {}: {}", hash, e.getMessage());
+                        }
+                    }
+                    return CompletableFuture.completedFuture(List.of());
+                });
+    }
+
+    private CompletableFuture<List<CivitaiModelEntry>> executeCatalogQuery(
+            String query,
+            String type,
+            String baseModel,
+            String sort,
+            int limit,
+            int page,
+            boolean allowNsfw) {
+
+        URI uri = buildQueryUri(query, type, baseModel, sort, limit, page, allowNsfw);
+        HttpRequest request = buildAuthenticatedGetRequest(uri);
+
+        return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString())
                 .thenApply(response -> {
                     List<CivitaiModelEntry> entries = new ArrayList<>();
                     if (response.statusCode() != 200) {
@@ -107,6 +227,21 @@ public class CivitaiHubService implements ICivitaiHubService {
                     }
                     return entries;
                 });
+    }
+
+    private HttpRequest buildAuthenticatedGetRequest(URI uri) {
+        HttpRequest.Builder reqBuilder = HttpRequest.newBuilder()
+                .uri(uri)
+                .header("Accept", "application/json")
+                .header("User-Agent", "ComfyUI-Companion/1.1.1 (Desktop)")
+                .timeout(Duration.ofSeconds(20))
+                .GET();
+
+        String apiKey = configService != null ? configService.getCivitaiApiKey() : null;
+        if (apiKey != null && !apiKey.trim().isEmpty()) {
+            reqBuilder.header("Authorization", "Bearer " + apiKey.trim());
+        }
+        return reqBuilder.build();
     }
 
     /**
@@ -143,7 +278,7 @@ public class CivitaiHubService implements ICivitaiHubService {
         }
 
         if (type != null && !type.trim().isEmpty() && !type.equalsIgnoreCase("All") && !type.equalsIgnoreCase("All Types")) {
-            urlBuilder.append("&types=").append(URLEncoder.encode(mapApiType(type.trim()), StandardCharsets.UTF_8));
+            urlBuilder.append("&types=").append(URLEncoder.encode(jsonParser.mapApiType(type.trim()), StandardCharsets.UTF_8));
         }
 
         if (baseModel != null && !baseModel.trim().isEmpty() && !baseModel.equalsIgnoreCase("All") && !baseModel.equalsIgnoreCase("All Bases")) {
@@ -211,6 +346,7 @@ public class CivitaiHubService implements ICivitaiHubService {
         String folderName = folder.getDefaultFolderName();
 
         ModelInfo info = new ModelInfo(folderName, entry.name(), entry.downloadUrl());
+        info.setSave_path(folderName);
         info.setFilename(entry.filename());
         info.setSize(entry.formattedSize());
         info.setByteSize(entry.fileSizeBytes());
@@ -224,148 +360,12 @@ public class CivitaiHubService implements ICivitaiHubService {
 
     /**
      * Parses a single Civitai model JSON node into a domain {@link CivitaiModelEntry}.
-     * Handles thumbs-based rating fallback and resolves thumbnails and file metadata.
-     * Strictly rejects mature/NSFW entries to prevent youth protection violations.
+     * Delegates to {@link CivitaiModelJsonParser}.
      *
-     * @param item the raw JSON node from the Civitai API models list or item response
-     * @return the parsed model entry, or {@code null} if the item cannot be converted or is NSFW
+     * @param item the raw JSON node
+     * @return the parsed model entry, or {@code null} if invalid or NSFW
      */
     public CivitaiModelEntry parseModelEntry(JsonNode item) {
-        try {
-            boolean nsfw = item.path("nsfw").asBoolean(false) || item.path("nsfwLevel").asInt(1) > 1;
-            if (nsfw) {
-                // Strictly exclude mature/NSFW models from the application
-                return null;
-            }
-
-            long id = item.path("id").asLong(0);
-            String name = item.path("name").asText("Unnamed Model");
-            String type = item.path("type").asText("Checkpoint");
-            String creator = item.path("creator").path("username").asText("Civitai Creator");
-            String description = item.path("description").asText("");
-            boolean poi = item.path("poi").asBoolean(false);
-
-            String commercialUse = "None";
-            JsonNode commNode = item.path("allowCommercialUse");
-            if (commNode.isTextual()) {
-                commercialUse = commNode.asText();
-            } else if (commNode.isArray()) {
-                List<String> list = new ArrayList<>();
-                for (JsonNode elem : commNode) {
-                    if (elem.isTextual()) list.add(elem.asText());
-                }
-                commercialUse = list.isEmpty() ? "None" : String.join(", ", list);
-            } else if (commNode.isBoolean()) {
-                commercialUse = commNode.asBoolean() ? "Commercial Allowed" : "None";
-            }
-            boolean allowNoCredit = item.path("allowNoCredit").asBoolean(false);
-            boolean allowDerivatives = item.path("allowDerivatives").asBoolean(true);
-
-            int downloadCount = item.path("stats").path("downloadCount").asInt(0);
-            double rating = item.path("stats").path("rating").asDouble(0.0);
-            if (rating <= 0.0) {
-                int thumbsUp = item.path("stats").path("thumbsUpCount").asInt(0);
-                int thumbsDown = item.path("stats").path("thumbsDownCount").asInt(0);
-                int totalThumbs = thumbsUp + thumbsDown;
-                if (totalThumbs > 0) {
-                    rating = Math.round((5.0 * thumbsUp / (double) totalThumbs) * 10.0) / 10.0;
-                }
-            }
-
-            JsonNode versions = item.path("modelVersions");
-            if (!versions.isArray() || versions.isEmpty()) {
-                return null;
-            }
-
-            JsonNode primaryVersion = versions.get(0);
-            String baseModel = primaryVersion.path("baseModel").asText("Unknown");
-            String downloadUrl = primaryVersion.path("downloadUrl").asText("");
-
-            List<String> triggerWords = new ArrayList<>();
-            JsonNode trainedWords = primaryVersion.path("trainedWords");
-            if (trainedWords.isArray()) {
-                for (JsonNode tw : trainedWords) {
-                    if (tw.isTextual() && !tw.asText().isBlank()) {
-                        triggerWords.add(tw.asText().trim());
-                    }
-                }
-            }
-
-            String thumbnailUrl = null;
-            JsonNode images = primaryVersion.path("images");
-            if (images.isArray() && !images.isEmpty()) {
-                thumbnailUrl = images.get(0).path("url").asText(null);
-            }
-            if (thumbnailUrl == null && item.path("images").isArray() && !item.path("images").isEmpty()) {
-                thumbnailUrl = item.path("images").get(0).path("url").asText(null);
-            }
-
-            String filename = name.replaceAll("[^a-zA-Z0-9_.-]", "_") + ".safetensors";
-            long fileSizeBytes = 0;
-            String formattedSize = "Unknown";
-
-            JsonNode files = primaryVersion.path("files");
-            if (files.isArray() && !files.isEmpty()) {
-                JsonNode primaryFile = files.get(0);
-                for (JsonNode f : files) {
-                    if (f.path("primary").asBoolean(false)) {
-                        primaryFile = f;
-                        break;
-                    }
-                }
-                String actualName = primaryFile.path("name").asText("");
-                if (!actualName.isBlank()) {
-                    filename = actualName;
-                }
-                String directUrl = primaryFile.path("downloadUrl").asText("");
-                if (!directUrl.isBlank()) {
-                    downloadUrl = directUrl;
-                }
-                double sizeKb = primaryFile.path("sizeKB").asDouble(0.0);
-                fileSizeBytes = (long) (sizeKb * 1024.0);
-                if (sizeKb >= 1024.0 * 1024.0) {
-                    formattedSize = String.format("%.2f GB", sizeKb / (1024.0 * 1024.0));
-                } else if (sizeKb > 0) {
-                    formattedSize = String.format("%.1f MB", sizeKb / 1024.0);
-                }
-            }
-
-            return new CivitaiModelEntry(
-                    id,
-                    name,
-                    type,
-                    creator,
-                    baseModel,
-                    description,
-                    thumbnailUrl,
-                    downloadUrl,
-                    filename,
-                    formattedSize,
-                    fileSizeBytes,
-                    downloadCount,
-                    rating,
-                    triggerWords,
-                    false, // Always safe / non-nsfw
-                    poi,
-                    commercialUse,
-                    allowNoCredit,
-                    allowDerivatives
-            );
-        } catch (Exception e) {
-            log.debug("Skipping unparseable Civitai item: {}", e.getMessage());
-            return null;
-        }
-    }
-
-    private String mapApiType(String inputType) {
-        return switch (inputType.toLowerCase()) {
-            case "checkpoint", "checkpoints" -> "Checkpoint";
-            case "lora", "loras", "locon" -> "LORA";
-            case "vae" -> "VAE";
-            case "controlnet" -> "Controlnet";
-            case "upscaler" -> "Upscaler";
-            case "textualinversion", "embeddings" -> "TextualInversion";
-            default -> inputType;
-        };
+        return jsonParser.parseModelEntry(item);
     }
 }

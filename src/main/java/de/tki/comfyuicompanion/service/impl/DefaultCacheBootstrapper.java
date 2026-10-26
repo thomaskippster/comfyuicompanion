@@ -120,7 +120,7 @@ public class DefaultCacheBootstrapper implements IDefaultCacheBootstrapper {
                 if ("cache/registry_index.json".equals(relativePath)) {
                     content = fetchRemoteRegistryIndex();
                 } else if ("templates/comfyui/model_architecture_mapping.json".equals(relativePath)) {
-                    content = "{\"sd15\":\"sd15\",\"sdxl\":\"sdxl\",\"flux\":\"flux\",\"wan\":\"wan\"}";
+                    content = new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(java.util.Map.of("sd15", "sd15", "sdxl", "sdxl", "flux", "flux", "wan", "wan"));
                 } else if (relativePath.endsWith("defaults.json")) {
                     content = "{}";
                 } else {

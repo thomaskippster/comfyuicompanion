@@ -15,9 +15,9 @@ public class GlassPanel extends JPanel {
      * Constructs a new GlassPanel and registers it for theme updates.
      */
     public GlassPanel() {
-        setOpaque(false); // Sehr wichtig für Transparenz in Swing
+        setOpaque(false); // Essential for true Swing transparency
         
-        // Registriere dieses Panel für dynamische Theme-Updates
+        // Register this panel for dynamic theme updates
         ThemeManager.registerObserver(this::repaint);
     }
 
@@ -43,13 +43,13 @@ public class GlassPanel extends JPanel {
 
     @Override
     protected void paintComponent(Graphics g) {
-        // Nicht super.paintComponent aufrufen, da wir custom zeichnen
+        // Do not call super.paintComponent; custom painting applied
         Graphics2D g2 = (Graphics2D) g.create();
         
-        // Anti-Aliasing für weiche Ecken
+        // Anti-aliasing for smooth rounded corners
         g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 
-        // 1. Hintergrund zeichnen (mit Alpha für Frosted Glass Effekt)
+        // 1. Draw background (with alpha transparency for frosted glass effect)
         g2.setColor(ThemeManager.getCardBackgroundColor());
         g2.fillRoundRect(0, 0, getWidth() - 1, getHeight() - 1, cornerRadius, cornerRadius);
 

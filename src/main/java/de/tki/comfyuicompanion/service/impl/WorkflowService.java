@@ -1,5 +1,8 @@
 package de.tki.comfyuicompanion.service.impl;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import de.tki.comfyuicompanion.service.IWorkflowService;
 import org.json.JSONObject;
 import org.springframework.stereotype.Service;
@@ -14,6 +17,7 @@ import java.util.zip.InflaterInputStream;
  * Represents the workflow service class.
  */
 public class WorkflowService implements IWorkflowService {
+    private static final Logger logger = LoggerFactory.getLogger(WorkflowService.class);
 
     @Override
     public String extractWorkflow(File file) throws IOException {
@@ -69,7 +73,9 @@ public class WorkflowService implements IWorkflowService {
             try {
                 JSONObject jo = new JSONObject(prompt);
                 if (jo.has("workflow")) return jo.get("workflow").toString();
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+        }
         }
         return workflow != null ? workflow : prompt;
     }

@@ -167,7 +167,7 @@ public class ComfyProcessController {
                     }
                 }
                 
-                // Dynamische Argument-Übergabe
+                // Dynamic argument dispatch
                 if (profile.cliArguments() != null) {
                     command.addAll(profile.cliArguments());
                 }
@@ -209,7 +209,9 @@ public class ComfyProcessController {
                         if (colonIndex != -1) {
                             port = Integer.parseInt(url.substring(colonIndex + 1));
                         }
-                    } catch (Exception ignored) {}
+                    } catch (Exception ignored) {
+            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+        }
                     command.add("--port");
                     command.add(String.valueOf(port));
                 }
@@ -307,7 +309,9 @@ public class ComfyProcessController {
                 while ((line = reader.readLine()) != null) {
                     consumer.accept(line);
                 }
-            } catch (IOException ignored) {}
+            } catch (IOException ignored) {
+            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+        }
         });
     }
 

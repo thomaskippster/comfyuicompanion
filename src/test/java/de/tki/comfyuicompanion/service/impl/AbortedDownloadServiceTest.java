@@ -2,7 +2,10 @@ package de.tki.comfyuicompanion.service.impl;
 
 import de.tki.comfyuicompanion.domain.AbortedDownloadItem;
 import de.tki.comfyuicompanion.service.ICivitaiHubService;
+import de.tki.comfyuicompanion.domain.HuggingFaceFileEntry;
+import de.tki.comfyuicompanion.domain.HuggingFaceModelEntry;
 import de.tki.comfyuicompanion.service.IDownloadManager;
+import de.tki.comfyuicompanion.service.IHuggingFaceHubService;
 import de.tki.comfyuicompanion.service.SafePathValidator;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -47,6 +50,9 @@ class AbortedDownloadServiceTest {
     @Mock
     private CivitaiService civitaiService;
 
+    @Mock
+    private IHuggingFaceHubService huggingFaceHubService;
+
     @TempDir
     Path tempModelsDir;
 
@@ -62,7 +68,8 @@ class AbortedDownloadServiceTest {
                 new SafePathValidator(),
                 downloadManager,
                 civitaiHubService,
-                civitaiService
+                civitaiService,
+                huggingFaceHubService
         );
     }
 
@@ -175,5 +182,106 @@ class AbortedDownloadServiceTest {
 
         verify(downloadManager, timeout(2000)).startQueue(any(), any(), any(), any(), any());
         assertThat(progressUpdates).isNotEmpty();
+    }
+    @Test
+    @DisplayName("Should exclude models currently being actively downloaded from aborted scans")
+    void testScanAbortedDownloadsExcludesActiveDownloads() throws IOException {
+        Path ckptDir = tempModelsDir.resolve("checkpoints");
+        Files.createDirectories(ckptDir);
+
+        Files.write(ckptDir.resolve("active_model.safetensors.part0"), new byte[5_000]);
+        Files.write(ckptDir.resolve("active_model.safetensors.part1"), new byte[5_000]);
+        Files.write(ckptDir.resolve("aborted_model.safetensors.cmfd"), new byte[8_000]);
+
+        when(downloadManager.isDownloading("active_model.safetensors")).thenReturn(true);
+        when(downloadManager.isDownloading("aborted_model.safetensors")).thenReturn(false);
+
+        List<AbortedDownloadItem> items = service.scanAbortedDownloads(tempModelsDir.toString());
+
+        assertThat(items).hasSize(1);
+        assertThat(items.get(0).targetFileName()).isEqualTo("aborted_model.safetensors");
+        assertThat(items.get(0).sizeBytes()).isEqualTo(8_000L);
+    }
+
+    @Test
+    @DisplayName("Should protect actively downloading files from being deleted")
+    void testDeleteAbortedDownloadsProtectsActiveDownloads() throws IOException {
+        Path ckptDir = tempModelsDir.resolve("checkpoints");
+        Files.createDirectories(ckptDir);
+
+        Path activePart = ckptDir.resolve("active_stream.safetensors.part0");
+        Files.write(activePart, new byte[12_000]);
+
+        AbortedDownloadItem item = new AbortedDownloadItem(
+                activePart,
+                "active_stream.safetensors",
+                "checkpoints",
+                12_000L,
+                java.time.Instant.now(),
+                ".part0",
+                null
+        );
+
+        when(downloadManager.isDownloading("active_stream.safetensors")).thenReturn(true);
+
+        long freed = service.deleteAbortedDownloads(List.of(item));
+
+        assertThat(freed).isEqualTo(0L);
+        assertThat(Files.exists(activePart)).isTrue();
+    }
+
+    @Test
+    @DisplayName("Should fallback to Hugging Face Hub if Civitai resolution fails")
+    void testResumeDownloadResolvesFromHuggingFace() throws IOException {
+        Path unetDir = tempModelsDir.resolve("unet");
+        Files.createDirectories(unetDir);
+        Path cmfd = unetDir.resolve("flux_q4.gguf.cmfd");
+        Files.write(cmfd, new byte[5_000]);
+
+        AbortedDownloadItem item = new AbortedDownloadItem(
+                cmfd,
+                "flux_q4.gguf",
+                "unet",
+                5_000L,
+                java.time.Instant.now(),
+                ".cmfd",
+                null
+        );
+
+        when(civitaiHubService.queryModels(anyString(), any(), any(), any(), anyInt(), anyInt(), anyBoolean()))
+                .thenReturn(CompletableFuture.completedFuture(List.of()));
+
+        HuggingFaceFileEntry hfFile = new HuggingFaceFileEntry(
+                "flux_q4.gguf",
+                "flux_q4.gguf",
+                1_000_000L,
+                "1.0 MB",
+                "https://huggingface.co/city96/flux/resolve/main/flux_q4.gguf?download=true",
+                "unet",
+                "~8 GB VRAM",
+                true
+        );
+        HuggingFaceModelEntry hfRepo = new HuggingFaceModelEntry(
+                "city96/flux",
+                "city96",
+                "flux",
+                100,
+                50,
+                "2026-10-24",
+                "text-to-image",
+                List.of("gguf"),
+                "false",
+                List.of(hfFile)
+        );
+
+        when(huggingFaceHubService.searchRepositories(anyString(), anyString(), anyString(), anyString(), anyInt()))
+                .thenReturn(CompletableFuture.completedFuture(List.of(hfRepo)));
+        when(huggingFaceHubService.getRepositoryFiles("city96/flux"))
+                .thenReturn(CompletableFuture.completedFuture(List.of(hfFile)));
+
+        List<String> progress = new ArrayList<>();
+        service.resumeDownload(item, progress::add);
+
+        verify(downloadManager, timeout(2000)).startQueue(any(), any(), any(), any(), any());
     }
 }

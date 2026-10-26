@@ -135,15 +135,16 @@ public class VideoSamplingParamsPanel extends JPanel {
         llmRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 30));
         JLabel lblLlm = new JLabel("Script LLM:");
         lblLlm.setFont(new Font("SansSerif", Font.PLAIN, 11));
-        cmbLocalLlm = new JComboBox<>(new String[]{"gemma-3-4b", "qwen-2.5-7b"});
+        cmbLocalLlm = new JComboBox<>(new String[]{
+                "qwen-2.5-1.5b",
+                "llama-3.2-3b",
+                "phi-3.5-mini",
+                "gemma-3-4b",
+                "qwen-2.5-7b"
+        });
         cmbLocalLlm.setFont(new Font("SansSerif", Font.PLAIN, 12));
         if (configService != null && configService.getLocalLlmModel() != null) {
-            String curr = configService.getLocalLlmModel();
-            if (curr.contains("qwen")) {
-                cmbLocalLlm.setSelectedItem("qwen-2.5-7b");
-            } else {
-                cmbLocalLlm.setSelectedItem("gemma-3-4b");
-            }
+            cmbLocalLlm.setSelectedItem(configService.getLocalLlmModel());
         }
         cmbLocalLlm.addActionListener(e -> {
             if (configService != null) {

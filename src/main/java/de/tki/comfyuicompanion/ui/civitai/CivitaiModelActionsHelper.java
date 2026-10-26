@@ -1,14 +1,19 @@
 package de.tki.comfyuicompanion.ui.civitai;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import de.tki.comfyuicompanion.domain.CivitaiModelEntry;
 import de.tki.comfyuicompanion.domain.ModelFolder;
 import de.tki.comfyuicompanion.domain.ModelInfo;
 import de.tki.comfyuicompanion.service.ICivitaiOperationalModelService;
+import de.tki.comfyuicompanion.service.IDownloadManager;
 import de.tki.comfyuicompanion.service.impl.ConfigService;
 import de.tki.comfyuicompanion.ui.icons.AppIcon;
 import de.tki.comfyuicompanion.ui.icons.SvgIconFactory;
 
 import javax.swing.*;
+import javax.swing.border.EmptyBorder;
 import java.awt.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -17,9 +22,10 @@ import java.util.Locale;
 
 /**
  * Enterprise action helper managing ComfyUI workflow dispatching, remote image generation,
- * and partial download fragment verification and cleanup for Civitai models.
+ * partial download fragment verification and cleanup, and download queue coordination for Civitai models.
  */
 public final class CivitaiModelActionsHelper {
+    private static final Logger logger = LoggerFactory.getLogger(CivitaiModelActionsHelper.class);
 
     private CivitaiModelActionsHelper() {
         // Utility helper
@@ -49,9 +55,13 @@ public final class CivitaiModelActionsHelper {
 
             long size = 0L;
             if (Files.exists(cmfd)) {
-                try { size = Files.size(cmfd); } catch (Exception ignored) {}
+                try { size = Files.size(cmfd); } catch (Exception ignored) {
+                    logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+                }
             } else if (Files.exists(part0)) {
-                try { size = Files.size(part0); } catch (Exception ignored) {}
+                try { size = Files.size(part0); } catch (Exception ignored) {
+                    logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+                }
             }
 
             boolean hasFragment = Files.exists(cmfd) || Files.exists(part0);
@@ -92,7 +102,9 @@ public final class CivitaiModelActionsHelper {
                     for (int i = 0; i < 16; i++) {
                         Files.deleteIfExists(target.resolveSibling(fname + ".part" + i));
                     }
-                } catch (Exception ignored) {}
+                } catch (Exception ignored) {
+                    logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+                }
                 info.setDescription("Missing");
             }
         }
@@ -121,15 +133,15 @@ public final class CivitaiModelActionsHelper {
             return;
         }
 
-        btnSendToComfy.setEnabled(false);
-        btnSendAndGenerate.setEnabled(false);
+        if (btnSendToComfy != null) btnSendToComfy.setEnabled(false);
+        if (btnSendAndGenerate != null) btnSendAndGenerate.setEnabled(false);
         btnSendToComfy.setText("Sending to ComfyUI... ⏳");
         btnSendToComfy.setIcon(SvgIconFactory.get(AppIcon.REFRESH, 14));
 
         operationalModelService.sendWorkflowToComfyUI(entry, requiredModels, customPrompt)
                 .thenAccept(success -> SwingUtilities.invokeLater(() -> {
-                    btnSendToComfy.setEnabled(true);
-                    btnSendAndGenerate.setEnabled(true);
+                    if (btnSendToComfy != null) btnSendToComfy.setEnabled(true);
+                    if (btnSendAndGenerate != null) btnSendAndGenerate.setEnabled(true);
                     btnSendToComfy.setText("Send to ComfyUI");
                     btnSendToComfy.setIcon(SvgIconFactory.get(AppIcon.SEND, 14));
 
@@ -148,8 +160,8 @@ public final class CivitaiModelActionsHelper {
                 }))
                 .exceptionally(ex -> {
                     SwingUtilities.invokeLater(() -> {
-                        btnSendToComfy.setEnabled(true);
-                        btnSendAndGenerate.setEnabled(true);
+                        if (btnSendToComfy != null) btnSendToComfy.setEnabled(true);
+                        if (btnSendAndGenerate != null) btnSendAndGenerate.setEnabled(true);
                         btnSendToComfy.setText("Send to ComfyUI");
                         btnSendToComfy.setIcon(SvgIconFactory.get(AppIcon.SEND, 14));
                         CivitaiActionLauncher.showComfyErrorMessage(parent, ex, "send workflow to ComfyUI");
@@ -179,15 +191,15 @@ public final class CivitaiModelActionsHelper {
             return;
         }
 
-        btnSendToComfy.setEnabled(false);
-        btnSendAndGenerate.setEnabled(false);
+        if (btnSendToComfy != null) btnSendToComfy.setEnabled(false);
+        if (btnSendAndGenerate != null) btnSendAndGenerate.setEnabled(false);
         btnSendAndGenerate.setText("Generating in ComfyUI... ⏳");
         btnSendAndGenerate.setIcon(SvgIconFactory.get(AppIcon.REFRESH, 14));
 
         operationalModelService.sendToComfyUIAndGenerate(entry, requiredModels, customPrompt)
                 .thenAccept(result -> SwingUtilities.invokeLater(() -> {
-                    btnSendToComfy.setEnabled(true);
-                    btnSendAndGenerate.setEnabled(true);
+                    if (btnSendToComfy != null) btnSendToComfy.setEnabled(true);
+                    if (btnSendAndGenerate != null) btnSendAndGenerate.setEnabled(true);
                     btnSendAndGenerate.setText("Regenerate Image");
                     btnSendAndGenerate.setIcon(SvgIconFactory.get(AppIcon.LAUNCH, 14));
 
@@ -221,13 +233,154 @@ public final class CivitaiModelActionsHelper {
                 }))
                 .exceptionally(ex -> {
                     SwingUtilities.invokeLater(() -> {
-                        btnSendToComfy.setEnabled(true);
-                        btnSendAndGenerate.setEnabled(true);
+                        if (btnSendToComfy != null) btnSendToComfy.setEnabled(true);
+                        if (btnSendAndGenerate != null) btnSendAndGenerate.setEnabled(true);
                         btnSendAndGenerate.setText("Regenerate Image");
                         btnSendAndGenerate.setIcon(SvgIconFactory.get(AppIcon.LAUNCH, 14));
                         CivitaiActionLauncher.showComfyErrorMessage(parent, ex, "generating in ComfyUI");
                     });
                     return null;
                 });
+    }
+
+    /**
+     * Builds the top header block for the Civitai model details dialog.
+     *
+     * @param entry         the model metadata entry
+     * @param parent        the parent window
+     * @param textPrimary   primary theme text color
+     * @param textSecondary secondary theme text color
+     * @return configured header JPanel
+     */
+    public static JPanel buildHeaderPanel(CivitaiModelEntry entry, Window parent, Color textPrimary, Color textSecondary) {
+        JPanel headerPanel = new JPanel(new BorderLayout(15, 0));
+        headerPanel.setOpaque(false);
+        headerPanel.setBorder(new EmptyBorder(16, 20, 10, 20));
+
+        JPanel titleBlock = new JPanel();
+        titleBlock.setLayout(new BoxLayout(titleBlock, BoxLayout.Y_AXIS));
+        titleBlock.setOpaque(false);
+
+        JLabel titleLbl = new JLabel(entry.name());
+        titleLbl.setFont(new Font("SansSerif", Font.BOLD, 18));
+        titleLbl.setForeground(textPrimary);
+        titleBlock.add(titleLbl);
+        titleBlock.add(Box.createVerticalStrut(4));
+
+        String subText = String.format("By %s  •  Type: %s  •  Base Architecture: %s  •  Size: %s  •  ⭐ %.1f",
+                entry.creator(), entry.type(),
+                entry.baseModel() != null && !entry.baseModel().isBlank() ? entry.baseModel() : "General",
+                entry.formattedSize(), entry.rating());
+        JLabel subLbl = new JLabel(subText);
+        subLbl.setFont(new Font("SansSerif", Font.PLAIN, 12));
+        subLbl.setForeground(textSecondary);
+        titleBlock.add(subLbl);
+        headerPanel.add(titleBlock, BorderLayout.CENTER);
+
+        JButton civitaiWebBtn = new JButton("Open on Civitai ↗");
+        civitaiWebBtn.setFont(new Font("SansSerif", Font.PLAIN, 12));
+        civitaiWebBtn.addActionListener(e -> CivitaiActionLauncher.openCivitaiWebPage(entry.id(), parent));
+        headerPanel.add(civitaiWebBtn, BorderLayout.EAST);
+
+        return headerPanel;
+    }
+
+    /**
+     * Dispatches the download queue for missing operational models and manages completion state.
+     *
+     * @param parent                  parent window
+     * @param missing                 list of missing models to download
+     * @param downloadManager         download manager service
+     * @param configService           configuration service
+     * @param operationalModelService operational models resolution service
+     * @param onProgress              callback per model status update
+     * @param onFinished              callback when download queue finishes
+     */
+    public static void executeDownloadQueue(
+            Window parent,
+            List<ModelInfo> missing,
+            IDownloadManager downloadManager,
+            ConfigService configService,
+            ICivitaiOperationalModelService operationalModelService,
+            java.util.function.BiConsumer<ModelInfo, String> onProgress,
+            Runnable onFinished) {
+
+        if (downloadManager == null || missing == null || missing.isEmpty()) return;
+
+        List<ModelInfo> validQueue = new java.util.ArrayList<>();
+        for (ModelInfo m : missing) {
+            if (operationalModelService != null && operationalModelService.isModelFilePresent(m)) {
+                m.setPopularity("installed");
+                m.setDescription("✅ Already exists");
+                continue;
+            }
+            String url = m.getUrl();
+            if (url == null || url.isBlank() || url.equalsIgnoreCase("LOCAL") || (!url.toLowerCase().startsWith("http://") && !url.toLowerCase().startsWith("https://"))) {
+                logger.warn("Cannot download model [{}] because it has no remote download URL.", m.getName());
+                m.setDescription("❌ No remote download URL available");
+                continue;
+            }
+            validQueue.add(m);
+        }
+
+        if (validQueue.isEmpty()) {
+            if (onFinished != null) onFinished.run();
+            return;
+        }
+
+        boolean[] selection = new boolean[validQueue.size()];
+        for (int i = 0; i < selection.length; i++) selection[i] = true;
+
+        String baseDir = configService != null ? configService.getModelsPath() : "models";
+
+        for (ModelInfo m : validQueue) {
+            m.setDescription("Starting...");
+            if (onProgress != null) {
+                onProgress.accept(m, "Starting...");
+            }
+        }
+
+        downloadManager.startQueue(
+                validQueue,
+                selection,
+                baseDir,
+                (index, status) -> SwingUtilities.invokeLater(() -> {
+                    if (index >= 0 && index < validQueue.size()) {
+                        ModelInfo currentInfo = validQueue.get(index);
+                        currentInfo.setDescription(status);
+                        if (onProgress != null) {
+                            onProgress.accept(currentInfo, status);
+                        }
+                    }
+                }),
+                () -> SwingUtilities.invokeLater(() -> {
+                    boolean allInstalled = true;
+                    boolean authFailure = false;
+                    for (ModelInfo m : missing) {
+                        boolean present = operationalModelService != null && operationalModelService.isModelFilePresent(m);
+                        if (present) {
+                            m.setPopularity("installed");
+                            m.setDescription("✅ Installed");
+                        } else {
+                            allInstalled = false;
+                            String desc = m.getDescription();
+                            if (desc != null && (desc.contains("Auth") || desc.contains("Token") || desc.contains("401") || desc.contains("API Key"))) {
+                                authFailure = true;
+                            }
+                        }
+                    }
+                    if (onFinished != null) {
+                        onFinished.run();
+                    }
+                    if (allInstalled) {
+                        downloadManager.notifyComfyUI(true);
+                        JOptionPane.showMessageDialog(parent,
+                                "All operational models successfully downloaded!\nYou can now send the workflow to ComfyUI.",
+                                "Download Finished", JOptionPane.INFORMATION_MESSAGE);
+                    } else if (authFailure) {
+                        CivitaiActionLauncher.showAuthFailureMessage(parent);
+                    }
+                })
+        );
     }
 }

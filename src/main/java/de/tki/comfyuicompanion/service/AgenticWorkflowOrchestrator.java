@@ -76,7 +76,7 @@ public class AgenticWorkflowOrchestrator {
         }
 
         // --- Schritt C: Dynamischer Graph-Bau ---
-        // Der Builder ist zustandsbehaftet für diesen spezifischen Workflow
+        // The builder is stateful for this specific workflow
         WorkflowBuilder builder = new WorkflowBuilder();
         
         // 1. Base Nodes
@@ -89,7 +89,7 @@ public class AgenticWorkflowOrchestrator {
 
         if ("FLUX".equalsIgnoreCase(intent.getArchitecture())) {
             logger.info("FLUX architecture detected. Injecting CLIPLoader (T5XXL) to prevent 'clip input is invalid: None' errors.");
-            // Nutzen wir den single CLIPLoader mit ltxv/t5, da wir wissen, dass der User clip_l.safetensors nicht hat
+            // Use single CLIPLoader with ltxv/t5 when clip_l.safetensors is not present
             clipSourceId = builder.addNode("CLIPLoader")
                     .param("clip_name", "t5\\t5xxl_fp16.safetensors")
                     .param("type", "ltxv") // 'ltxv' erlaubt t5xxl_fp16 im ComfyUI
@@ -116,7 +116,7 @@ public class AgenticWorkflowOrchestrator {
         String emptyLatentId = builder.addNode("EmptyLatentImage")
                 .param("width", width).param("height", height).param("batch_size", 1).getId();
 
-        // --- 2.5 Heuristik: KSampler Parameter für Turbo / LCM Modelle ---
+        // --- 2.5 Heuristics: KSampler parameters for Turbo / LCM models ---
         int steps = 20;
         double cfg = 7.0;
         String samplerName = "euler";
@@ -124,10 +124,10 @@ public class AgenticWorkflowOrchestrator {
 
         String lowerModelName = finalModelName.toLowerCase();
         if (lowerModelName.contains("turbo") || lowerModelName.contains("lcm") || lowerModelName.contains("lightning") || "z_image_turbo_bf16.safetensors".equals(lowerModelName)) {
-            logger.info("Turbo-Modell erkannt ({}). Reduziere Steps und CFG zur Vermeidung von Noise.", finalModelName);
+            logger.info("Turbo model detected ({}). Reducing steps and CFG to prevent noise artifacts.", finalModelName);
             steps = 4;
             cfg = 1.5;
-            samplerName = "lcm"; // Oft am besten für turbo/lcm, oder euler_ancestral
+            samplerName = "lcm"; // Optimal for turbo/lcm or euler_ancestral
             scheduler = "sgm_uniform";
         }
 
@@ -144,7 +144,7 @@ public class AgenticWorkflowOrchestrator {
                 .link("samples", samplerId, 0).link("vae", checkpointId, 2).getId();
 
         // 3. Conditional Routing: FaceDetailer
-        String finalOutputLink = vaeDecodeId; // Defaultmäßig geht das Bild direkt vom VAE in den SaveImage Node
+        String finalOutputLink = vaeDecodeId; // By default, the image flows directly from VAE into the SaveImage node
         
         if (intent.isRequiresFaceDetailer()) {
             logger.info("Conditional Routing: Injecting FaceDetailer and BboxDetector nodes.");
@@ -157,7 +157,7 @@ public class AgenticWorkflowOrchestrator {
                     .param("guide_size_for", true)
                     .param("max_size", 768)
                     .param("seed", System.currentTimeMillis() % 1000000)
-                    .param("steps", steps).param("cfg", cfg) // Nutze die gleichen Turbo-Settings!
+                    .param("steps", steps).param("cfg", cfg) // Apply identical turbo settings
                     .param("sampler_name", samplerName).param("scheduler", scheduler).param("denoise", 0.35)
                     .link("image", finalOutputLink, 0) // Baut auf dem bisherigen Output auf (VAE oder vorheriger Node)
                     .link("model", checkpointId, 0)
@@ -167,7 +167,7 @@ public class AgenticWorkflowOrchestrator {
                     .link("negative", negativeId, 0)
                     .link("bbox_detector", bboxDetectorId, 0).getId();
             
-            // Verbiege den finalen Link, sodass der nächste Knoten das FaceDetailer-Ergebnis abspeichert
+            // Re-route the final link so the next node captures FaceDetailer output
             finalOutputLink = faceDetailerId; 
         }
 
@@ -203,7 +203,7 @@ public class AgenticWorkflowOrchestrator {
                 .param("filename_prefix", "Cognitive_Router")
                 .link("images", finalOutputLink, 0);
 
-        // --- Schritt D: Ausführung via Auto-Provisioning Pipeline ---
+        // --- Step D: Execution via Auto-Provisioning Pipeline ---
         ComfyWorkflow workflow = builder.build();
         String clientId = UUID.randomUUID().toString();
         

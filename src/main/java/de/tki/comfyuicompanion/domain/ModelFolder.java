@@ -28,7 +28,8 @@ public enum ModelFolder {
     CONFIGS("configs"),
     MODEL_PATCHES("model_patches"),
     LATENT_UPSCALE_MODELS("latent_upscale_models"),
-    ARCHIVE("archive");
+    ARCHIVE("archive"),
+    WORKFLOWS("workflows");
 
     private final String defaultFolderName;
 
@@ -56,11 +57,15 @@ public enum ModelFolder {
         // Handle common variations
         String lower = text.toLowerCase();
         if (lower.contains("checkpoint")) return CHECKPOINTS;
-        if (lower.contains("lora")) return LORAS;
+        if (lower.contains("lora") || lower.contains("locon")) return LORAS;
         if (lower.contains("vae")) return VAE;
         if (lower.contains("controlnet")) return CONTROLNET;
-        if (lower.contains("embedding")) return EMBEDDINGS;
+        if (lower.contains("upscale") || lower.contains("esrgan")) return UPSCALE_MODELS;
+        if (lower.contains("embedding") || lower.contains("textualinversion") || lower.contains("textual inversion") || lower.contains("textual_inversion")) return EMBEDDINGS;
         if (lower.contains("text_encoder") || lower.contains("textencoder")) return TEXT_ENCODERS;
+        if (lower.contains("diffusion")) return DIFFUSION_MODELS;
+        if (lower.contains("unet")) return UNET;
+        if (lower.contains("workflow")) return WORKFLOWS;
         
         return CHECKPOINTS; // Default fallback
     }

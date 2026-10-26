@@ -1,5 +1,8 @@
 package de.tki.comfyuicompanion.ui.dialog;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import de.tki.comfyuicompanion.ui.StandardDialog;
 
 import javax.swing.*;
@@ -12,6 +15,7 @@ import java.awt.*;
  * local Python execution security, and zero-telemetry data privacy.
  */
 public final class LegalNoticeDialog {
+    private static final Logger logger = LoggerFactory.getLogger(LegalNoticeDialog.class);
 
     private LegalNoticeDialog() {
         // Utility class
@@ -65,7 +69,9 @@ public final class LegalNoticeDialog {
             if (e.getEventType() == javax.swing.event.HyperlinkEvent.EventType.ACTIVATED && Desktop.isDesktopSupported()) {
                 try {
                     Desktop.getDesktop().browse(e.getURL().toURI());
-                } catch (Exception ignored) {}
+                } catch (Exception ignored) {
+            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+        }
             }
         });
 

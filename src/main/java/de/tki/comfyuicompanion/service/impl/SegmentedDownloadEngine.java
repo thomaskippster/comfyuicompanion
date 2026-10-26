@@ -57,14 +57,54 @@ public class SegmentedDownloadEngine {
         this.segmentExecutor = Executors.newThreadPerTaskExecutor(Thread.ofVirtual().name("Download-Segment-", 0).factory());
     }
 
-    /** Probes remote Content-Length via HTTP HEAD request, returning -1 if auth required. */
+    /** Converts a raw URL string into a valid URI, encoding unescaped spaces and special characters. */
+    public static URI toSafeUri(String url) {
+        if (url == null) throw new IllegalArgumentException("URL cannot be null");
+        String trimmed = url.trim();
+        try { return URI.create(trimmed); } catch (IllegalArgumentException e) {
+            try {
+                return URI.create(trimmed.replace(" ", "%20").replace("[", "%5B").replace("]", "%5D").replace("|", "%7C"));
+            } catch (Exception ex) {
+                try {
+                    java.net.URL u = new java.net.URL(trimmed);
+                    return new URI(u.getProtocol(), u.getUserInfo(), u.getHost(), u.getPort(), u.getPath(), u.getQuery(), u.getRef());
+                } catch (Exception ex2) { throw new IllegalArgumentException("Invalid URL syntax: " + url, ex2); }
+            }
+        }
+    }
+
+    /** Probes remote Content-Length via HTTP HEAD with fallback to GET Range: 0-0, returning -1 if auth required. */
     public long probeRemoteSize(String url) throws Exception {
-        HttpRequest.Builder b = HttpRequest.newBuilder().uri(URI.create(url)).header("User-Agent", USER_AGENT)
-                .method("HEAD", HttpRequest.BodyPublishers.noBody()).timeout(Duration.ofSeconds(60));
-        applyAuthHeaders(b, url);
-        HttpResponse<Void> res = httpClient.send(b.build(), HttpResponse.BodyHandlers.discarding());
-        if (res.statusCode() == 401 || res.statusCode() == 403) return -1;
-        return res.headers().firstValueAsLong("Content-Length").orElse(0L);
+        URI uri = toSafeUri(url);
+        try {
+            HttpRequest.Builder b = HttpRequest.newBuilder().uri(uri).header("User-Agent", USER_AGENT)
+                    .method("HEAD", HttpRequest.BodyPublishers.noBody()).timeout(Duration.ofSeconds(15));
+            applyAuthHeaders(b, url);
+            HttpResponse<Void> res = httpClient.send(b.build(), HttpResponse.BodyHandlers.discarding());
+            int code = res.statusCode();
+            if (code == 200 || code == 206) {
+                long len = res.headers().firstValueAsLong("Content-Length").orElse(0L);
+                if (len > 0) return len;
+            }
+        } catch (Exception e) {
+            logger.debug("HEAD probe failed for {}: {}", url, e.getMessage());
+        }
+
+        HttpRequest.Builder getB = HttpRequest.newBuilder().uri(uri).header("User-Agent", USER_AGENT)
+                .header("Range", "bytes=0-0").GET().timeout(Duration.ofSeconds(20));
+        applyAuthHeaders(getB, url);
+        HttpResponse<InputStream> getRes = httpClient.send(getB.build(), HttpResponse.BodyHandlers.ofInputStream());
+        try (InputStream is = getRes.body()) {
+            int code = getRes.statusCode();
+            if (code == 401 || code == 403) return -1;
+            if (code == 206) {
+                Optional<String> cr = getRes.headers().firstValue("Content-Range");
+                if (cr.isPresent() && cr.get().contains("/")) {
+                    try { return Long.parseLong(cr.get().substring(cr.get().lastIndexOf('/') + 1).trim()); } catch (NumberFormatException ignored) {}
+                }
+            }
+            return getRes.headers().firstValueAsLong("Content-Length").orElse(0L);
+        }
     }
 
     /** Executes either a multi-segment or single-stream download based on segment configuration. */
@@ -92,7 +132,7 @@ public class SegmentedDownloadEngine {
         File pFile = partFile.toFile();
         long existingSize = pFile.exists() ? pFile.length() : 0;
 
-        HttpRequest.Builder builder = HttpRequest.newBuilder().uri(URI.create(downloadUrl)).header("User-Agent", USER_AGENT)
+        HttpRequest.Builder builder = HttpRequest.newBuilder().uri(toSafeUri(downloadUrl)).header("User-Agent", USER_AGENT)
                 .timeout(Duration.ofSeconds(120));
         applyAuthHeaders(builder, downloadUrl);
         if (existingSize > 0) builder.header("Range", "bytes=" + existingSize + "-");
@@ -119,7 +159,10 @@ public class SegmentedDownloadEngine {
             statusUpdater.accept("❌ LFS Stub detected (Token?)");
             return false;
         }
-        if (code == 200) existingSize = 0;
+        if (code == 200) {
+            existingSize = 0;
+            try (RandomAccessFile trunc = new RandomAccessFile(pFile, "rw")) { trunc.setLength(0); }
+        }
 
         long limitBytesSec = (configService != null ? configService.getDownloadSpeedLimit() : 0) * 1024L;
         long[] progress = new long[]{existingSize, System.currentTimeMillis(), 0L, existingSize}; // downloaded, lastSpeedTime, lastUpdate, lastDownloaded
@@ -166,7 +209,9 @@ public class SegmentedDownloadEngine {
                 final long end = (i == numSegments - 1) ? totalRemoteSize - 1 : (start + segmentSize - 1);
                 long expectedSegmentBytes = end - start + 1;
                 if (f.length() > expectedSegmentBytes) {
-                    try { Files.deleteIfExists(partFiles[i]); } catch (Exception ignored) {}
+                    try { Files.deleteIfExists(partFiles[i]); } catch (Exception ignored) {
+            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+        }
                 } else {
                     initialDownloaded += f.length();
                 }
@@ -198,7 +243,7 @@ public class SegmentedDownloadEngine {
 
                     long bytesToRead = expectedSegmentBytes - existing;
                     HttpRequest.Builder b = HttpRequest.newBuilder()
-                            .uri(URI.create(downloadUrl))
+                            .uri(toSafeUri(downloadUrl))
                             .header("User-Agent", USER_AGENT)
                             .header("Range", "bytes=" + (start + existing) + "-" + end)
                             .timeout(Duration.ofSeconds(120));
@@ -244,7 +289,9 @@ public class SegmentedDownloadEngine {
                 }
                 synchronized (openStreams) {
                     for (InputStream is : openStreams) {
-                        try { is.close(); } catch (Exception ignored) {}
+                        try { is.close(); } catch (Exception ignored) {
+            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+        }
                     }
                 }
                 break;
@@ -266,7 +313,9 @@ public class SegmentedDownloadEngine {
                 }
                 synchronized (openStreams) {
                     for (InputStream is : openStreams) {
-                        try { is.close(); } catch (Exception ignored) {}
+                        try { is.close(); } catch (Exception ignored) {
+            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+        }
                     }
                 }
                 break;
@@ -284,12 +333,11 @@ public class SegmentedDownloadEngine {
             }
             Thread.sleep(200);
         }
-        try { CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join(); } catch (Exception ignored) {}
+        try { CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join(); } catch (Exception ignored) {
+            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+        }
 
         if (failed.get()) {
-            if (!control.isStopped() && control.isSelected()) {
-                for (Path p : partFiles) { try { Files.deleteIfExists(p); } catch (Exception ignored) {} }
-            }
             throw new IOException("Segment download failed: " + errorMsg.get());
         }
         if (control.isStopped() || !control.isSelected()) {
@@ -303,7 +351,6 @@ public class SegmentedDownloadEngine {
             long expectedBytes = end - start + 1;
             File f = partFiles[i].toFile();
             if (!f.exists() || f.length() != expectedBytes) {
-                for (Path p : partFiles) { try { Files.deleteIfExists(p); } catch (Exception ignored) {} }
                 throw new IOException("Segment " + i + " size mismatch: expected " + expectedBytes + ", found " + (f.exists() ? f.length() : "missing"));
             }
         }
@@ -336,7 +383,6 @@ public class SegmentedDownloadEngine {
             Files.move(tempMerge, targetFile, StandardCopyOption.REPLACE_EXISTING);
         } catch (IOException e) {
             Files.deleteIfExists(tempMerge);
-            for (Path part : partFiles) { try { Files.deleteIfExists(part); } catch (IOException ignored) {} }
             throw new IOException("Failed to merge segments: " + e.getMessage(), e);
         }
     }
@@ -351,51 +397,62 @@ public class SegmentedDownloadEngine {
                                 long limitBytesSec, long maxBytesToRead, Consumer<String> statusUpdater, java.util.function.LongConsumer onRead)
             throws IOException, InterruptedException {
         long startTime = System.currentTimeMillis(), written = 0;
-        int read;
-        while (true) {
-            if (control.isStopped() || !control.isSelected() || Thread.currentThread().isInterrupted()) return false;
-            if (control.isPaused()) {
-                while (control.isPaused() && !control.isStopped() && control.isSelected()) {
-                    if (statusUpdater != null) statusUpdater.accept("Paused");
-                    Thread.sleep(200);
-                }
-                if (statusUpdater != null && !control.isStopped() && control.isSelected()) statusUpdater.accept("Resuming...");
-            }
-
-            int toRead = buf.length;
-            if (maxBytesToRead > 0) {
-                long remaining = maxBytesToRead - written;
-                if (remaining <= 0) {
+        AtomicLong lastReadTime = new AtomicLong(System.currentTimeMillis());
+        AtomicBoolean active = new AtomicBoolean(true);
+        Thread watchdog = Thread.ofVirtual().name("Download-Stall-Watchdog").start(() -> {
+            while (active.get()) {
+                try { Thread.sleep(2000); } catch (InterruptedException ie) { break; }
+                if (!active.get()) break;
+                if (control != null && control.isPaused()) { lastReadTime.set(System.currentTimeMillis()); continue; }
+                if (System.currentTimeMillis() - lastReadTime.get() > 45000) {
+                    logger.warn("Stream stall watchdog triggered: no bytes received for 45s. Closing stream.");
+                    try { is.close(); } catch (Exception ignored) {}
                     break;
                 }
-                if (remaining < toRead) {
-                    toRead = (int) remaining;
+            }
+        });
+
+        int read;
+        try {
+            while (true) {
+                if (control.isStopped() || !control.isSelected() || Thread.currentThread().isInterrupted()) return false;
+                if (control.isPaused()) {
+                    while (control.isPaused() && !control.isStopped() && control.isSelected()) {
+                        if (statusUpdater != null) statusUpdater.accept("Paused");
+                        Thread.sleep(200);
+                    }
+                    if (statusUpdater != null && !control.isStopped() && control.isSelected()) statusUpdater.accept("Resuming...");
+                }
+
+                int toRead = buf.length;
+                if (maxBytesToRead > 0) {
+                    long remaining = maxBytesToRead - written;
+                    if (remaining <= 0) break;
+                    if (remaining < toRead) toRead = (int) remaining;
+                }
+
+                read = is.read(buf, 0, toRead);
+                if (read == -1) break;
+                lastReadTime.set(System.currentTimeMillis());
+
+                raf.write(buf, 0, read);
+                if (onRead != null) onRead.accept(read);
+                written += read;
+
+                if (maxBytesToRead > 0 && written >= maxBytesToRead) break;
+
+                if (limitBytesSec > 0) {
+                    long elapsed = System.currentTimeMillis() - startTime;
+                    long sleep = (written * 1000L) / limitBytesSec - elapsed;
+                    if (sleep > 0) Thread.sleep(sleep);
+                    if (elapsed > 5000) { startTime = System.currentTimeMillis(); written = 0; }
                 }
             }
-
-            read = is.read(buf, 0, toRead);
-            if (read == -1) {
-                break;
-            }
-
-            raf.write(buf, 0, read);
-            if (onRead != null) {
-                onRead.accept(read);
-            }
-            written += read;
-
-            if (maxBytesToRead > 0 && written >= maxBytesToRead) {
-                break;
-            }
-
-            if (limitBytesSec > 0) {
-                long elapsed = System.currentTimeMillis() - startTime;
-                long sleep = (written * 1000L) / limitBytesSec - elapsed;
-                if (sleep > 0) Thread.sleep(sleep);
-                if (elapsed > 5000) { startTime = System.currentTimeMillis(); written = 0; }
-            }
+            return true;
+        } finally {
+            active.set(false);
+            watchdog.interrupt();
         }
-        return true;
     }
 
     /** Formats bytes into a human-readable size string. */
@@ -410,36 +467,21 @@ public class SegmentedDownloadEngine {
         if (remainingBytes <= 0 || speedMBs <= 0.02) return "";
         long s = (long) (remainingBytes / (speedMBs * 1024 * 1024));
         if (s > 3600) return " (ETA: " + (s / 3600) + "h " + ((s % 3600) / 60) + "m)";
-        if (s > 60) return " (ETA: " + (s / 60) + "m " + (s % 60) + "s)";
-        return " (ETA: " + s + "s)";
+        return (s > 60) ? " (ETA: " + (s / 60) + "m " + (s % 60) + "s)" : " (ETA: " + s + "s)";
     }
 
-    /**
-     * Injects appropriate authorization headers (Civitai API key or HuggingFace token) into the request builder.
-     *
-     * @param builder the HTTP request builder
-     * @param url     the destination URL
-     */
+    /** Injects appropriate authorization headers (Civitai API key or HuggingFace token) into the request builder. */
     private void applyAuthHeaders(HttpRequest.Builder builder, String url) {
         if (configService == null || url == null) return;
-        String hfToken = configService.getHfToken();
-        if (url.contains("huggingface.co") && hfToken != null && !hfToken.isBlank()) {
-            builder.header("Authorization", "Bearer " + hfToken.trim());
-        }
-        String civitaiKey = configService.getCivitaiApiKey();
-        if (url.contains("civitai.com") && civitaiKey != null && !civitaiKey.isBlank()) {
-            builder.header("Authorization", "Bearer " + civitaiKey.trim());
-        }
+        String hfToken = configService.getHfToken(), civKey = configService.getCivitaiApiKey();
+        if (url.contains("huggingface.co") && hfToken != null && !hfToken.isBlank()) builder.header("Authorization", "Bearer " + hfToken.trim());
+        if (url.contains("civitai.com") && civKey != null && !civKey.isBlank()) builder.header("Authorization", "Bearer " + civKey.trim());
     }
 
     /** Shuts down the segment executor pool. */
     @PreDestroy
     public void shutdown() {
-        try {
-            segmentExecutor.shutdownNow();
-            segmentExecutor.awaitTermination(2, TimeUnit.SECONDS);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
+        try { segmentExecutor.shutdownNow(); segmentExecutor.awaitTermination(2, TimeUnit.SECONDS); }
+        catch (InterruptedException e) { Thread.currentThread().interrupt(); }
     }
 }

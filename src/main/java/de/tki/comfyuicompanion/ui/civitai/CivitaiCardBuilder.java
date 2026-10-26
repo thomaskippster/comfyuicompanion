@@ -1,8 +1,6 @@
 package de.tki.comfyuicompanion.ui.civitai;
 
 import de.tki.comfyuicompanion.domain.CivitaiModelEntry;
-import de.tki.comfyuicompanion.ui.icons.AppIcon;
-import de.tki.comfyuicompanion.ui.icons.SvgIconFactory;
 
 import javax.imageio.ImageIO;
 import javax.swing.*;
@@ -22,18 +20,18 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 
 /**
- * Builds individual visual cards for displaying Civitai models in the Model Hub grid.
- * Features asynchronous thumbnail rendering, metadata badges, rating displays, and download triggers.
+ * Builds individual visual cards for displaying Civitai models in the gallery grid,
+ * matching the dimensions, responsive hover effects, status indicators, and design language of the Blueprint Gallery.
  */
 public class CivitaiCardBuilder {
 
-    private static final int CARD_WIDTH = 240;
-    private static final int CARD_HEIGHT = 330;
-    private static final int THUMBNAIL_HEIGHT = 150;
+    private static final int CARD_WIDTH = 220;
+    private static final int CARD_HEIGHT = 280;
+    private static final int THUMBNAIL_HEIGHT = 140;
 
-    private static final Color COLOR_INSTALLED = new Color(34, 197, 130);
-    private static final Color COLOR_PRIMARY = new Color(59, 130, 246);
-    private static final Color COLOR_NSFW = new Color(239, 68, 68);
+    private static final Color GREEN_READY = new Color(34, 197, 130);
+    private static final Color AMBER_PARTIAL = new Color(255, 153, 0);
+    private static final Color BLUE_DOWNLOADING = new Color(59, 130, 246);
 
     private static final Map<String, Image> IMAGE_CACHE = new ConcurrentHashMap<>();
     private static final HttpClient HTTP_CLIENT = HttpClient.newBuilder()
@@ -99,64 +97,83 @@ public class CivitaiCardBuilder {
                 Graphics2D g2 = (Graphics2D) g.create();
                 g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
                 g2.setColor(cardBg);
-                g2.fillRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 8, 8);
+                g2.fillRect(0, 0, getWidth(), getHeight());
+
+                g2.setStroke(new BasicStroke(hovered ? 2f : 1f));
+                if (hovered) {
+                    g2.setColor(new Color(hoverBorder.getRed(), hoverBorder.getGreen(), hoverBorder.getBlue(), 100));
+                    g2.drawRect(1, 1, getWidth() - 3, getHeight() - 3);
+                    g2.drawRect(2, 2, getWidth() - 5, getHeight() - 5);
+                }
 
                 g2.setColor(hovered ? hoverBorder : cardBorder);
-                g2.setStroke(new BasicStroke(hovered ? 2f : 1f));
-                g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 8, 8);
+                g2.drawRect(0, 0, getWidth() - 1, getHeight() - 1);
                 g2.dispose();
             }
         };
 
         card.setOpaque(false);
         card.setPreferredSize(new Dimension(CARD_WIDTH, CARD_HEIGHT));
-        card.setMinimumSize(new Dimension(200, CARD_HEIGHT));
-        card.setMaximumSize(new Dimension(360, CARD_HEIGHT));
+        card.setMinimumSize(new Dimension(160, CARD_HEIGHT));
+        card.setMaximumSize(new Dimension(400, CARD_HEIGHT));
 
-        // Thumbnail component (North)
+        // 1. Thumbnail Panel (North)
         JPanel thumbnailPanel = buildThumbnailPanel(entry, darkMode, onDetails);
         card.add(thumbnailPanel, BorderLayout.NORTH);
 
-        // Content Area (Center)
-        JPanel contentPanel = new JPanel();
-        contentPanel.setLayout(new BoxLayout(contentPanel, BoxLayout.Y_AXIS));
-        contentPanel.setOpaque(false);
-        contentPanel.setBorder(new EmptyBorder(8, 10, 8, 10));
+        // 2. Info / Content Panel (Center)
+        JPanel info = new JPanel();
+        info.setLayout(new BoxLayout(info, BoxLayout.Y_AXIS));
+        info.setOpaque(false);
+        info.setBorder(new EmptyBorder(8, 10, 8, 10));
 
-        // Model Title
-        JLabel titleLabel = new JLabel(truncate(entry.name(), 40));
+        // Title
+        JLabel titleLabel = new JLabel(truncate(entry.name(), 34));
         titleLabel.setFont(new Font("SansSerif", Font.BOLD, 12));
         titleLabel.setForeground(textPrimary);
         titleLabel.setToolTipText(entry.name());
         titleLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
-        contentPanel.add(titleLabel);
+        info.add(titleLabel);
+        info.add(Box.createVerticalStrut(3));
 
-        contentPanel.add(Box.createVerticalStrut(4));
+        // Subtitle (Type & Base Model)
+        String subtitleText = (entry.baseModel() != null && !entry.baseModel().isBlank())
+                ? entry.type() + " • " + entry.baseModel()
+                : entry.type();
+        JLabel subtitleLabel = new JLabel(subtitleText);
+        subtitleLabel.setFont(new Font("SansSerif", Font.PLAIN, 10));
+        subtitleLabel.setForeground(textDim);
+        subtitleLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        info.add(subtitleLabel);
+        info.add(Box.createVerticalStrut(6));
 
-        // Badges: Type and Base Model
-        JPanel badgeRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
-        badgeRow.setOpaque(false);
-        badgeRow.setAlignmentX(Component.LEFT_ALIGNMENT);
-
-        badgeRow.add(createPill(entry.type(), new Color(79, 70, 229, 210), Color.WHITE));
-        if (entry.baseModel() != null && !entry.baseModel().isBlank()) {
-            badgeRow.add(createPill(entry.baseModel(), new Color(14, 116, 144, 210), Color.WHITE));
+        // Status Row
+        String statusText;
+        Color statusColor;
+        if (isDownloading) {
+            statusText = "⏳  " + (downloadProgress != null && !downloadProgress.isBlank() ? downloadProgress : "Downloading...");
+            statusColor = BLUE_DOWNLOADING;
+        } else if (isInstalled) {
+            statusText = "✔  Ready to use";
+            statusColor = GREEN_READY;
+        } else {
+            statusText = "⚠  Needs download";
+            statusColor = AMBER_PARTIAL;
         }
-        if (entry.poi()) {
-            badgeRow.add(createPill("⚠️ POI", new Color(217, 119, 6, 220), Color.WHITE));
-        }
-        Color commColor = entry.isCommercialAllowed() ? new Color(16, 185, 129, 210) : new Color(107, 114, 128, 210);
-        badgeRow.add(createPill(entry.commercialBadgeLabel(), commColor, Color.WHITE));
-        contentPanel.add(badgeRow);
 
-        contentPanel.add(Box.createVerticalStrut(6));
+        JLabel statusLabel = new JLabel(statusText);
+        statusLabel.setFont(new Font("SansSerif", Font.PLAIN, 10));
+        statusLabel.setForeground(statusColor);
+        statusLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        info.add(statusLabel);
+        info.add(Box.createVerticalStrut(6));
 
-        // Stats: Rating, Downloads, and Creator
+        // Meta / Stats Row
         JPanel statsRow = new JPanel(new BorderLayout());
         statsRow.setOpaque(false);
         statsRow.setAlignmentX(Component.LEFT_ALIGNMENT);
 
-        String statsText = String.format("⭐ %.1f  •  ⬇ %s", entry.rating(), formatCount(entry.downloadCount()));
+        String statsText = String.format("⭐ %.1f • ⬇ %s", entry.rating(), formatCount(entry.downloadCount()));
         JLabel statsLabel = new JLabel(statsText);
         statsLabel.setFont(new Font("SansSerif", Font.PLAIN, 10));
         statsLabel.setForeground(textDim);
@@ -167,52 +184,14 @@ public class CivitaiCardBuilder {
         sizeLabel.setForeground(textDim);
         statsRow.add(sizeLabel, BorderLayout.EAST);
 
-        contentPanel.add(statsRow);
-        card.add(contentPanel, BorderLayout.CENTER);
-
-        // Actions Row (South)
-        JPanel actionsRow = new JPanel(new BorderLayout(6, 0));
-        actionsRow.setOpaque(false);
-        actionsRow.setBorder(new EmptyBorder(0, 10, 10, 10));
-
-        JButton detailsBtn = new JButton("Details");
-        detailsBtn.setFont(new Font("SansSerif", Font.PLAIN, 11));
-        detailsBtn.addActionListener(e -> {
-            if (onDetails != null) onDetails.accept(entry);
-        });
-        actionsRow.add(detailsBtn, BorderLayout.WEST);
-
-        JButton actionBtn;
-        if (isDownloading) {
-            actionBtn = new JButton(downloadProgress != null ? downloadProgress : "Downloading...");
-            actionBtn.setEnabled(false);
-            actionBtn.setFont(new Font("SansSerif", Font.PLAIN, 11));
-        } else if (isInstalled) {
-            actionBtn = new JButton("Ready / Run", SvgIconFactory.get(AppIcon.CHECK, 14));
-            actionBtn.setForeground(COLOR_INSTALLED);
-            actionBtn.setFont(new Font("SansSerif", Font.BOLD, 11));
-            actionBtn.setToolTipText("All operational models installed. Click to open details and send to ComfyUI.");
-            actionBtn.addActionListener(e -> {
-                if (onDetails != null) onDetails.accept(entry);
-            });
-        } else {
-            actionBtn = new JButton("Download & Run", SvgIconFactory.get(AppIcon.DOWNLOAD, 14));
-            actionBtn.setBackground(COLOR_PRIMARY);
-            actionBtn.setFont(new Font("SansSerif", Font.BOLD, 11));
-            actionBtn.setToolTipText("Open details to download missing operational models and generate in ComfyUI");
-            actionBtn.addActionListener(e -> {
-                if (onDownload != null) onDownload.accept(entry);
-            });
-        }
-        actionsRow.add(actionBtn, BorderLayout.CENTER);
-
-        card.add(actionsRow, BorderLayout.SOUTH);
+        info.add(statsRow);
+        card.add(info, BorderLayout.CENTER);
 
         return card;
     }
 
     private static JPanel buildThumbnailPanel(CivitaiModelEntry entry, boolean darkMode, Consumer<CivitaiModelEntry> onDetails) {
-        return new JPanel() {
+        return new JPanel(new BorderLayout()) {
             {
                 setPreferredSize(new Dimension(CARD_WIDTH, THUMBNAIL_HEIGHT));
                 setOpaque(false);
@@ -223,6 +202,15 @@ public class CivitaiCardBuilder {
                         if (onDetails != null) onDetails.accept(entry);
                     }
                 });
+
+                // Overlay badge for model type in top-left
+                JPanel badgeOverlay = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 4));
+                badgeOverlay.setOpaque(false);
+                badgeOverlay.add(createPill(entry.type(), new Color(79, 70, 229, 210), Color.WHITE));
+                if (entry.poi()) {
+                    badgeOverlay.add(createPill("POI", new Color(217, 119, 6, 220), Color.WHITE));
+                }
+                add(badgeOverlay, BorderLayout.NORTH);
             }
 
             @Override
@@ -234,13 +222,12 @@ public class CivitaiCardBuilder {
                 int w = getWidth();
                 int h = getHeight();
 
-                // Draw fallback gradient background
+                // Fallback gradient background
                 Color startGrad = darkMode ? new Color(30, 34, 48) : new Color(225, 230, 240);
                 Color endGrad = darkMode ? new Color(18, 20, 28) : new Color(200, 208, 225);
                 g2.setPaint(new GradientPaint(0, 0, startGrad, 0, h, endGrad));
-                g2.fillRoundRect(0, 0, w, h, 8, 8);
+                g2.fillRect(0, 0, w, h);
 
-                // Fetch or trigger image load
                 String url = entry.thumbnailUrl();
                 if (url != null && !url.isBlank()) {
                     Image cached = IMAGE_CACHE.get(url);
@@ -258,43 +245,21 @@ public class CivitaiCardBuilder {
                         }
                     } else {
                         triggerAsyncImageLoad(url, this);
-                        drawTypePlaceholder(g2, w, h, entry.type(), darkMode);
                     }
-                } else {
-                    drawTypePlaceholder(g2, w, h, entry.type(), darkMode);
                 }
-
-                // Person of Interest (POI) badge overlay for real persons
-                if (entry.poi()) {
-                    g2.setColor(new Color(217, 119, 6, 230));
-                    g2.fillRoundRect(w - 55, 6, 49, 16, 4, 4);
-                    g2.setColor(Color.WHITE);
-                    g2.setFont(new Font("SansSerif", Font.BOLD, 9));
-                    g2.drawString("PERSON", w - 50, 18);
-                }
-
                 g2.dispose();
+                super.paintComponent(g);
             }
         };
     }
 
-    private static void drawTypePlaceholder(Graphics2D g2, int w, int h, String type, boolean darkMode) {
-        g2.setColor(darkMode ? new Color(120, 130, 160) : new Color(80, 90, 120));
-        g2.setFont(new Font("SansSerif", Font.BOLD, 14));
-        FontMetrics fm = g2.getFontMetrics();
-        String display = type != null ? type.toUpperCase() : "MODEL";
-        int textW = fm.stringWidth(display);
-        g2.drawString(display, (w - textW) / 2, h / 2 + 5);
-    }
-
-    private static void triggerAsyncImageLoad(String url, Component repaintTarget) {
-        if (IMAGE_CACHE.containsKey(url)) return;
-
-        Thread.ofVirtual().name("Civitai-ImageLoad").start(() -> {
+    private static void triggerAsyncImageLoad(String url, JComponent repaintTarget) {
+        Thread.ofVirtual().name("CivitaiThumbLoad").start(() -> {
             try {
                 HttpRequest request = HttpRequest.newBuilder()
                         .uri(URI.create(url))
-                        .timeout(Duration.ofSeconds(12))
+                        .header("User-Agent", "ComfyUICompanion/1.0")
+                        .timeout(Duration.ofSeconds(10))
                         .GET()
                         .build();
 
@@ -309,7 +274,7 @@ public class CivitaiCardBuilder {
                     }
                 }
             } catch (Exception ignored) {
-                // Keep placeholder on image fetch error
+                // Ignore transient network thumbnail errors
             }
         });
     }
@@ -339,8 +304,8 @@ public class CivitaiCardBuilder {
         return String.valueOf(count);
     }
 
-    private static String truncate(String text, int maxLength) {
+    private static String truncate(String text, int maxChars) {
         if (text == null) return "";
-        return text.length() > maxLength ? text.substring(0, maxLength - 1) + "…" : text;
+        return text.length() <= maxChars ? text : text.substring(0, maxChars - 1) + "…";
     }
 }

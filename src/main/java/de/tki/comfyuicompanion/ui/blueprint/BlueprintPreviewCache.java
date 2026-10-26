@@ -46,10 +46,7 @@ public class BlueprintPreviewCache {
             .followRedirects(HttpClient.Redirect.ALWAYS)
             .build();
 
-    private static final ExecutorService imageLoadExecutor = Executors.newFixedThreadPool(
-            2,
-            Thread.ofVirtual().name("BlueprintPreviewLoader-", 1).factory()
-    );
+    private static final ExecutorService imageLoadExecutor = Executors.newVirtualThreadPerTaskExecutor();
 
     private final ConfigService configService;
     private final Map<String, Image> previewCache = new ConcurrentHashMap<>();
@@ -212,7 +209,9 @@ public class BlueprintPreviewCache {
                 try {
                     BufferedImage img = ImageIO.read(cachedFile);
                     if (img != null) return img;
-                } catch (Exception ignored) {}
+                } catch (Exception ignored) {
+            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+        }
             }
             return readImageFromFile(cachedFile, isVideo, urlStr);
         }
@@ -242,7 +241,9 @@ public class BlueprintPreviewCache {
                         try {
                             BufferedImage img = ImageIO.read(new ByteArrayInputStream(bytes));
                             if (img != null) return img;
-                        } catch (Exception ignored) {}
+                        } catch (Exception ignored) {
+            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+        }
                     }
 
                     return readImageFromFile(cachedFile, isVideo, urlStr);
@@ -271,7 +272,9 @@ public class BlueprintPreviewCache {
         try {
             try {
                 de.tki.comfyuicompanion.util.OpenCvLoader.load();
-            } catch (Throwable ignored) {}
+            } catch (Throwable ignored) {
+            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+        }
 
             if (isVideo) {
                 try {
@@ -306,7 +309,9 @@ public class BlueprintPreviewCache {
                         }
                         cap.release();
                     }
-                } catch (Throwable ignored) {}
+                } catch (Throwable ignored) {
+            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+        }
             }
         } catch (Throwable t) {
             logger.debug("OpenCV/Video processing failed for preview: " + originalUrl, t);

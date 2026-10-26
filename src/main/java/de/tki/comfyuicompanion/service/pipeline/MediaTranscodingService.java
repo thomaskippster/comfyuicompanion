@@ -71,7 +71,9 @@ public class MediaTranscodingService {
                     w = (bimg.getWidth() / 2) * 2;
                     h = (bimg.getHeight() / 2) * 2;
                 }
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+        }
         }
         if (w <= 0 || h <= 0) {
             w = 1920;

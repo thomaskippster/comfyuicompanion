@@ -8,23 +8,26 @@ import javax.swing.border.EmptyBorder;
 import java.awt.*;
 import java.awt.event.KeyAdapter;
 import java.awt.event.KeyEvent;
+import java.util.List;
 
 /**
  * Header toolbar for the Civitai Model Hub gallery containing search input,
  * type and architecture filters, sort controls, and refresh actions.
+ * Filter dropdowns are populated dynamically from Civitai metadata.
  */
 public class CivitaiHeaderToolbar extends JPanel {
 
     private final JTextField searchField = new JTextField();
     private final JComboBox<String> typeCombo = new JComboBox<>(new String[]{
-            "All Types", "Checkpoint", "LORA", "VAE", "ControlNet", "Upscaler", "TextualInversion"
+            "Workflows", "All Types", "Checkpoint", "LORA", "VAE", "ControlNet", "Upscaler", "TextualInversion"
     });
     private final JComboBox<String> baseModelCombo = new JComboBox<>(new String[]{
-            "All Bases", "Flux.1 D", "Flux.1 S", "SDXL 1.0", "SD 1.5", "SD 3.5", "Wan 2.1", "Pony"
+            "All Bases"
     });
     private final JComboBox<String> sortCombo = new JComboBox<>(new String[]{
             "Highest Rated", "Most Downloaded", "Newest"
     });
+    private final JToggleButton favoritesOnlyToggle = new JToggleButton("★ Favorites");
     private final JButton legalBtn = new JButton("⚖️ Legal & Licenses");
     private final JButton incompleteDownloadsBtn = new JButton("Incomplete Downloads", SvgIconFactory.get(AppIcon.STORAGE_OPTIMIZER, 14));
     private final JButton refreshBtn = new JButton("Refresh", SvgIconFactory.get(AppIcon.REFRESH, 16));
@@ -94,7 +97,7 @@ public class CivitaiHeaderToolbar extends JPanel {
         controlsRow.add(typeCombo, gbc);
 
         // Filter: Base Model
-        baseModelCombo.setPreferredSize(new Dimension(110, 32));
+        baseModelCombo.setPreferredSize(new Dimension(130, 32));
         baseModelCombo.addActionListener(e -> triggerFilterChange());
         gbc.gridx = 2;
         controlsRow.add(baseModelCombo, gbc);
@@ -105,28 +108,43 @@ public class CivitaiHeaderToolbar extends JPanel {
         gbc.gridx = 3;
         controlsRow.add(sortCombo, gbc);
 
+        // Favorites Toggle
+        favoritesOnlyToggle.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        favoritesOnlyToggle.setToolTipText("Filter and show only bookmarked favorite models");
+        favoritesOnlyToggle.putClientProperty("Button.arc", 999);
+        favoritesOnlyToggle.setFocusPainted(false);
+        favoritesOnlyToggle.addActionListener(e -> triggerFilterChange());
+        gbc.gridx = 4;
+        controlsRow.add(favoritesOnlyToggle, gbc);
+
         // Legal notice & compliance button
         legalBtn.setToolTipText("View legal notices, user liability disclaimer, youth protection filter, and CivitAI licenses");
         legalBtn.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        legalBtn.putClientProperty("Button.arc", 999);
+        legalBtn.setFocusPainted(false);
         legalBtn.addActionListener(e -> de.tki.comfyuicompanion.ui.dialog.LegalNoticeDialog.show(this));
-        gbc.gridx = 4;
+        gbc.gridx = 5;
         controlsRow.add(legalBtn, gbc);
 
         // Incomplete Downloads & Cleanup Button
         incompleteDownloadsBtn.setToolTipText("Inspect, resume, or clean up incomplete model downloads (.cmfd, .part, .tmp) to reclaim disk space");
         incompleteDownloadsBtn.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        incompleteDownloadsBtn.putClientProperty("Button.arc", 999);
+        incompleteDownloadsBtn.setFocusPainted(false);
         incompleteDownloadsBtn.addActionListener(e -> {
             if (incompleteDownloadsListener != null) {
                 incompleteDownloadsListener.run();
             }
         });
-        gbc.gridx = 5;
+        gbc.gridx = 6;
         controlsRow.add(incompleteDownloadsBtn, gbc);
 
         // Refresh Button
         refreshBtn.setPreferredSize(new Dimension(100, 32));
+        refreshBtn.putClientProperty("Button.arc", 999);
+        refreshBtn.setFocusPainted(false);
         refreshBtn.addActionListener(e -> triggerFilterChange());
-        gbc.gridx = 6;
+        gbc.gridx = 7;
         gbc.insets = new Insets(0, 0, 0, 0);
         controlsRow.add(refreshBtn, gbc);
 
@@ -137,6 +155,63 @@ public class CivitaiHeaderToolbar extends JPanel {
         if (filterChangedListener != null) {
             filterChangedListener.run();
         }
+    }
+
+    /**
+     * Dynamically updates the base models filter combo box with active architectures from Civitai.
+     * Preserves the current selection if it exists in the updated list.
+     *
+     * @param baseModels list of base model architectures retrieved from Civitai metadata
+     */
+    public void setAvailableBaseModels(List<String> baseModels) {
+        if (baseModels == null || baseModels.isEmpty()) {
+            return;
+        }
+        SwingUtilities.invokeLater(() -> {
+            String selected = (String) baseModelCombo.getSelectedItem();
+            baseModelCombo.removeAllItems();
+            baseModelCombo.addItem("All Bases");
+            for (String bm : baseModels) {
+                if (bm != null && !bm.isBlank() && !bm.equalsIgnoreCase("All Bases") && !bm.equalsIgnoreCase("All")) {
+                    baseModelCombo.addItem(bm.trim());
+                }
+            }
+            if (selected != null) {
+                baseModelCombo.setSelectedItem(selected);
+            }
+            if (baseModelCombo.getSelectedIndex() < 0) {
+                baseModelCombo.setSelectedIndex(0);
+            }
+        });
+    }
+
+    /**
+     * Dynamically updates the model type filter combo box with supported types from Civitai.
+     * Preserves the current selection if it exists in the updated list.
+     *
+     * @param types list of model types retrieved from Civitai metadata
+     */
+    public void setAvailableTypes(List<String> types) {
+        if (types == null || types.isEmpty()) {
+            return;
+        }
+        SwingUtilities.invokeLater(() -> {
+            String selected = (String) typeCombo.getSelectedItem();
+            typeCombo.removeAllItems();
+            typeCombo.addItem("Workflows");
+            typeCombo.addItem("All Types");
+            for (String t : types) {
+                if (t != null && !t.isBlank() && !t.equalsIgnoreCase("All Types") && !t.equalsIgnoreCase("All") && !t.equalsIgnoreCase("Workflows")) {
+                    typeCombo.addItem(t.trim());
+                }
+            }
+            if (selected != null) {
+                typeCombo.setSelectedItem(selected);
+            }
+            if (typeCombo.getSelectedIndex() < 0) {
+                typeCombo.setSelectedIndex(0);
+            }
+        });
     }
 
     /**
@@ -167,6 +242,26 @@ public class CivitaiHeaderToolbar extends JPanel {
     }
 
     /**
+     * Sets the query text in the search input field.
+     *
+     * @param query the search query
+     */
+    public void setSearchQuery(String query) {
+        if (searchField != null) {
+            searchField.setText(query != null ? query : "");
+        }
+    }
+
+    /**
+     * Returns the raw search text component.
+     *
+     * @return JTextField
+     */
+    public JTextField getSearchField() {
+        return searchField;
+    }
+
+    /**
      * Retrieves the selected model type filter.
      *
      * @return selected model type
@@ -191,6 +286,24 @@ public class CivitaiHeaderToolbar extends JPanel {
      */
     public String getSelectedSort() {
         return (String) sortCombo.getSelectedItem();
+    }
+
+    /**
+     * Checks whether the favorites-only filter toggle is active.
+     *
+     * @return true if only bookmarked models should be shown
+     */
+    public boolean isFavoritesOnly() {
+        return favoritesOnlyToggle.isSelected();
+    }
+
+    /**
+     * Sets the state of the favorites-only filter toggle.
+     *
+     * @param favoritesOnly true to filter by favorites
+     */
+    public void setFavoritesOnly(boolean favoritesOnly) {
+        favoritesOnlyToggle.setSelected(favoritesOnly);
     }
 
     /**
@@ -219,5 +332,15 @@ public class CivitaiHeaderToolbar extends JPanel {
      */
     public void setRefreshEnabled(boolean enabled) {
         refreshBtn.setEnabled(enabled);
+    }
+
+    /**
+     * Updates theme styling for header labels and visual elements.
+     *
+     * @param darkMode true for dark theme, false for light theme
+     */
+    public void updateTheme(boolean darkMode) {
+        statusLabel.setForeground(darkMode ? Color.LIGHT_GRAY : Color.DARK_GRAY);
+        repaint();
     }
 }

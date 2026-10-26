@@ -46,15 +46,23 @@ public class CivitaiGuiWorkflowBuilder {
      * @param configService optional configuration service for resolving local model directories
      * @param nodeFactory   optional factory for creating LiteGraph nodes and links
      */
+    public CivitaiGuiWorkflowBuilder(
+            ObjectMapper objectMapper,
+            IConfigService configService,
+            ComfyGraphNodeFactory nodeFactory,
+            CivitaiLocalModelScanner localModelScanner) {
+        this.objectMapper = objectMapper != null ? objectMapper : new ObjectMapper();
+        this.configService = configService;
+        this.nodeFactory = nodeFactory != null ? nodeFactory : new ComfyGraphNodeFactory(this.objectMapper);
+        this.localModelScanner = localModelScanner != null ? localModelScanner : new CivitaiLocalModelScanner(this.configService);
+    }
+
     @Autowired
     public CivitaiGuiWorkflowBuilder(
             ObjectMapper objectMapper,
             @Autowired(required = false) IConfigService configService,
             @Autowired(required = false) ComfyGraphNodeFactory nodeFactory) {
-        this.objectMapper = objectMapper != null ? objectMapper : new ObjectMapper();
-        this.configService = configService;
-        this.nodeFactory = nodeFactory != null ? nodeFactory : new ComfyGraphNodeFactory(this.objectMapper);
-        this.localModelScanner = new CivitaiLocalModelScanner(this.configService);
+        this(objectMapper, configService, nodeFactory, null);
     }
 
     /**

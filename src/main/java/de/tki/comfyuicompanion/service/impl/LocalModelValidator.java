@@ -246,7 +246,9 @@ public class LocalModelValidator implements ILocalModelValidator {
                     workflow.setHasAllModelsLocal(checkModelsPresent(parsedModels));
                     return CompletableFuture.completedFuture(null);
                 }
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+        }
         }
 
         String downloadUrl = workflow.getJsonDownloadUrl();
@@ -415,5 +417,17 @@ public class LocalModelValidator implements ILocalModelValidator {
      */
     public static boolean checkCloudOnly(String jsonText, List<ModelInfo> requiredModels) {
         return WorkflowCloudDetector.checkCloudOnly(jsonText, requiredModels);
+    }
+
+    /**
+     * Gracefully shuts down the background download executor on application shutdown.
+     */
+    @jakarta.annotation.PreDestroy
+    public void shutdown() {
+        try {
+            downloadExecutor.shutdownNow();
+        } catch (Exception e) {
+            logger.debug("Error shutting down downloadExecutor: {}", e.getMessage());
+        }
     }
 }

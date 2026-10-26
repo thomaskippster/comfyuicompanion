@@ -23,7 +23,10 @@ class CivitaiGuiWorkflowBuilderTest {
 
     @BeforeEach
     void setUp() {
-        builder = new CivitaiGuiWorkflowBuilder(objectMapper);
+        CivitaiLocalModelScanner scanner = org.mockito.Mockito.mock(CivitaiLocalModelScanner.class);
+        org.mockito.Mockito.when(scanner.findFallbackCheckpointName(org.mockito.ArgumentMatchers.anyString()))
+                .thenReturn("v1-5-pruned-emaonly.safetensors");
+        builder = new CivitaiGuiWorkflowBuilder(objectMapper, null, null, scanner);
     }
 
     @Test

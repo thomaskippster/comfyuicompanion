@@ -182,7 +182,9 @@ public class PromptLabStatusPoller {
             } finally {
                 try {
                     wsSession.close();
-                } catch (Exception ignored) {}
+                } catch (Exception ignored) {
+            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+        }
             }
         });
     }
@@ -432,13 +434,17 @@ public class PromptLabStatusPoller {
                 } catch (InterruptedException ie) {
                     Thread.currentThread().interrupt();
                     return null;
-                } catch (Exception ignored) {}
+                } catch (Exception e) {
+                    logger.debug("Polling attempt failed: {}", e.getMessage());
+                }
             }
             return null;
         } finally {
             try {
                 wsSession.close();
-            } catch (Exception ignored) {}
+            } catch (Exception e) {
+                logger.debug("Failed to close WebSocket session: {}", e.getMessage());
+            }
         }
     }
 }

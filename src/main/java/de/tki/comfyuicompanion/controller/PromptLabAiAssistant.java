@@ -1,27 +1,23 @@
 package de.tki.comfyuicompanion.controller;
 
 import de.tki.comfyuicompanion.service.impl.LocalAIService;
+import de.tki.comfyuicompanion.service.impl.LocalGemmaService;
 import de.tki.comfyuicompanion.ui.PromptLabView;
 import de.tki.comfyuicompanion.ui.icons.AppIcon;
 import de.tki.comfyuicompanion.ui.icons.SvgIconFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import javax.swing.Box;
+
 import javax.swing.JButton;
 import javax.swing.JOptionPane;
-import javax.swing.JPanel;
 import javax.swing.JTextArea;
-import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
 import java.awt.Component;
-import java.awt.Cursor;
-import java.awt.Dimension;
-import java.awt.Font;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 
 /**
- * Assistant component providing local Gemma AI subject completion suggestions
+ * Assistant component providing on-demand local AI subject completion suggestions
  * and managing model downloads for the Prompt Lab.
  */
 public class PromptLabAiAssistant {
@@ -31,6 +27,13 @@ public class PromptLabAiAssistant {
     private final ExecutorService backgroundExecutor;
     private final Runnable onAiModelDisplayUpdated;
 
+    /**
+     * Constructs a new PromptLabAiAssistant.
+     *
+     * @param localAIService          AI service for local inference
+     * @param backgroundExecutor      executor for async download and inference operations
+     * @param onAiModelDisplayUpdated callback triggered when model state changes
+     */
     public PromptLabAiAssistant(LocalAIService localAIService,
                                 ExecutorService backgroundExecutor,
                                 Runnable onAiModelDisplayUpdated) {
@@ -40,13 +43,28 @@ public class PromptLabAiAssistant {
     }
 
     /**
-     * Downloads the local Gemma model from Hugging Face for offline AI suggestions.
+     * Downloads the active local AI model preset on-demand from Hugging Face for offline prompt suggestions.
      *
-     * @param parent the parent component for dialogs
+     * @param parent        the parent component for dialogs
      * @param promptLabView prompt lab view
      */
     public void downloadLocalGemmaModel(Component parent, PromptLabView promptLabView) {
-        if (promptLabView == null) return;
+        LocalGemmaService.LlmModelPreset preset = resolveActivePreset(promptLabView);
+        downloadLocalModel(parent, promptLabView, preset);
+    }
+
+    /**
+     * Downloads a specific local AI model preset on-demand from Hugging Face.
+     * Ensures models are never pre-bundled, strictly adhering to licensing and copyright guidelines.
+     *
+     * @param parent        the parent component for dialogs
+     * @param promptLabView prompt lab view
+     * @param preset        the targeted model preset to fetch
+     */
+    public void downloadLocalModel(Component parent, PromptLabView promptLabView, LocalGemmaService.LlmModelPreset preset) {
+        if (promptLabView == null || preset == null || localAIService == null || localAIService.getLocalGemmaService() == null) {
+            return;
+        }
         JButton btnSuggest = promptLabView.getBtnSuggestSubject();
         JTextArea console = promptLabView.getPromptLabConsole();
 
@@ -56,10 +74,11 @@ public class PromptLabAiAssistant {
             btnSuggest.setIcon(SvgIconFactory.get(AppIcon.REFRESH));
         }
         if (console != null) {
-            console.append("Starting download of Gemma-3-4B GGUF model (3 GB) from Hugging Face...\n");
+            console.append("Starting on-demand download of " + preset.getDisplayName() + " (" + preset.getApproxSize() + ") from Hugging Face...\n");
         }
 
         localAIService.getLocalGemmaService().downloadModel(
+                preset,
                 (percent, status) -> SwingUtilities.invokeLater(() -> {
                     if (console != null) console.append("Download: " + status + "\n");
                 }),
@@ -69,9 +88,11 @@ public class PromptLabAiAssistant {
                         btnSuggest.setText("Suggest");
                         btnSuggest.setIcon(SvgIconFactory.get(AppIcon.SUGGEST));
                     }
-                    if (console != null) console.append("✅ Local Gemma model downloaded successfully!\n");
+                    if (console != null) {
+                        console.append("✅ " + preset.getDisplayName() + " downloaded successfully!\n");
+                    }
                     JOptionPane.showMessageDialog(parent,
-                            "Local Gemma model downloaded successfully!",
+                            preset.getDisplayName() + " downloaded successfully and ready for offline inference!",
                             "Download Complete", JOptionPane.INFORMATION_MESSAGE);
                     if (onAiModelDisplayUpdated != null) onAiModelDisplayUpdated.run();
                 }),
@@ -83,29 +104,34 @@ public class PromptLabAiAssistant {
                     }
                     if (console != null) console.append("❌ Download failed: " + errorMsg + "\n");
                     JOptionPane.showMessageDialog(parent,
-                            "Failed to download Gemma model: " + errorMsg,
+                            "Failed to download " + preset.getDisplayName() + ": " + errorMsg,
                             "Download Failed", JOptionPane.ERROR_MESSAGE);
                 })
         );
     }
 
     /**
-     * Uses the local Gemma model to generate subject completion suggestions based on the current prompt.
+     * Generates optimized visual prompt completions based on the user's input and active local LLM model.
      *
-     * @param parent the parent component for dialogs
+     * @param parent        the parent component for dialogs
      * @param promptLabView prompt lab view
      */
     public void suggestSubjectCompletions(Component parent, PromptLabView promptLabView) {
-        if (promptLabView == null) return;
+        if (promptLabView == null || localAIService == null || localAIService.getLocalGemmaService() == null) {
+            return;
+        }
 
-        boolean hasGemma = localAIService != null && localAIService.isLocalGemmaDownloaded();
-        if (!hasGemma) {
+        LocalGemmaService.LlmModelPreset activePreset = resolveActivePreset(promptLabView);
+        boolean hasModel = localAIService.isLocalGemmaDownloaded(activePreset);
+
+        if (!hasModel) {
             int choice = JOptionPane.showConfirmDialog(parent,
-                    "The local Gemma model is not downloaded.\n" +
-                            "Would you like to download the Gemma-3-4B GGUF model (approx. 3 GB) now to get suggestions?",
-                    "Download Local Gemma Model?", JOptionPane.YES_NO_OPTION, JOptionPane.QUESTION_MESSAGE);
+                    "The selected local AI model [" + activePreset.getDisplayName() + "] is not yet downloaded.\n" +
+                            "Would you like to download " + activePreset.getDisplayName() + " (" + activePreset.getApproxSize() + " GGUF) now?\n\n" +
+                            "Note: To comply with licensing guidelines, models are never pre-bundled and must be fetched on demand.",
+                    "Download " + activePreset.getDisplayName() + "?", JOptionPane.YES_NO_OPTION, JOptionPane.QUESTION_MESSAGE);
             if (choice == JOptionPane.YES_OPTION) {
-                downloadLocalGemmaModel(parent, promptLabView);
+                downloadLocalModel(parent, promptLabView, activePreset);
             }
             return;
         }
@@ -127,7 +153,7 @@ public class PromptLabAiAssistant {
             btnSuggest.setIcon(SvgIconFactory.get(AppIcon.REFRESH));
         }
         if (console != null) {
-            console.append("Generating prompt completion suggestions using local Gemma...\n");
+            console.append("Generating prompt completion suggestions using " + activePreset.getDisplayName() + "...\n");
         }
 
         backgroundExecutor.execute(() -> {
@@ -153,43 +179,43 @@ public class PromptLabAiAssistant {
                 }
 
                 if (finalSuggestions != null && !finalSuggestions.isEmpty()) {
-                    JPanel suggPanel = promptLabView.getPromptSubjectSuggestionsPanel();
-                    if (suggPanel != null) {
-                        suggPanel.removeAll();
-                        for (String suggestion : finalSuggestions) {
-                            JButton sugBtn = new JButton(suggestion);
-                            sugBtn.setHorizontalAlignment(SwingConstants.LEFT);
-                            sugBtn.setFont(new Font("SansSerif", Font.PLAIN, 11));
-                            sugBtn.putClientProperty("FlatLaf.style", "arc: 6; background: $TextField.background; border: 4,8,4,8,$Card.border,1,6");
-                            sugBtn.setCursor(new Cursor(Cursor.HAND_CURSOR));
-                            sugBtn.setToolTipText("Click to use: " + suggestion);
-                            sugBtn.setMaximumSize(new Dimension(Integer.MAX_VALUE, 30));
-                            sugBtn.setPreferredSize(new Dimension(300, 30));
-                            sugBtn.setAlignmentX(Component.LEFT_ALIGNMENT);
-                            sugBtn.addActionListener(e -> {
-                                promptLabView.getPromptSubjectField().setText(suggestion);
-                                promptLabView.getPromptSubjectSuggestionsWrapper().setVisible(false);
-                                promptLabView.getPromptLabLeftPanel().revalidate();
-                                promptLabView.getPromptLabLeftPanel().repaint();
-                            });
-                            suggPanel.add(sugBtn);
-                            suggPanel.add(Box.createVerticalStrut(4));
+                    promptLabView.getSuggestionsPanel().populateSuggestions(finalSuggestions, suggestion -> {
+                        promptLabView.getPromptSubjectField().setText(suggestion);
+                        if (promptLabView.getPromptLabLeftPanel() != null) {
+                            promptLabView.getPromptLabLeftPanel().revalidate();
+                            promptLabView.getPromptLabLeftPanel().repaint();
                         }
+                    });
+                    if (promptLabView.getPromptLabLeftPanel() != null) {
+                        promptLabView.getPromptLabLeftPanel().revalidate();
+                        promptLabView.getPromptLabLeftPanel().repaint();
                     }
-                    promptLabView.getPromptSubjectSuggestionsWrapper().setVisible(true);
-                    promptLabView.getPromptLabLeftPanel().revalidate();
-                    promptLabView.getPromptLabLeftPanel().repaint();
-                    if (console != null) console.append("Subject suggestions loaded successfully using local Gemma.\n");
+                    if (console != null) {
+                        console.append("Subject suggestions loaded successfully using " + activePreset.getDisplayName() + ".\n");
+                    }
                 } else {
                     if (console != null) {
                         console.append("❌ Error: Could not generate suggestions.\n");
                         if (!finalErrors.isEmpty()) console.append(finalErrors + "\n");
                     }
                     JOptionPane.showMessageDialog(parent,
-                            "Could not generate suggestions. Please ensure the local Gemma model is downloaded correctly.",
+                            "Could not generate suggestions. Please ensure " + activePreset.getDisplayName() + " is downloaded correctly.",
                             "Suggestions Failed", JOptionPane.WARNING_MESSAGE);
                 }
             });
         });
+    }
+
+    private LocalGemmaService.LlmModelPreset resolveActivePreset(PromptLabView promptLabView) {
+        if (promptLabView != null && promptLabView.getPromptAiModelCombo() != null) {
+            Object selected = promptLabView.getPromptAiModelCombo().getSelectedItem();
+            if (selected instanceof LocalGemmaService.LlmModelPreset preset) {
+                return preset;
+            }
+        }
+        if (localAIService != null && localAIService.getLocalGemmaService() != null) {
+            return localAIService.getLocalGemmaService().getActivePreset();
+        }
+        return LocalGemmaService.LlmModelPreset.GEMMA_3_4B;
     }
 }

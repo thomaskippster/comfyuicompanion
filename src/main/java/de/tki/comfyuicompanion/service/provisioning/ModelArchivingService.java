@@ -17,7 +17,7 @@ public class ModelArchivingService {
 
     private static final Logger logger = LoggerFactory.getLogger(ModelArchivingService.class);
     
-    // 8 MB Chunk size für I/O Operationen, um den RAM (Heap) nicht zu fluten
+    // 8 MB chunk size for I/O operations to prevent heap flooding
     private static final int BUFFER_SIZE = 8 * 1024 * 1024; 
 
     private final String modelsBasePath;
@@ -30,8 +30,8 @@ public class ModelArchivingService {
     }
 
     /**
-     * Verschiebt ein Modell extrem schnell innerhalb derselben Festplatte (NIO Move) 
-     * oder kopiert es asynchron, falls Partitionsgrenzen überschritten werden.
+     * Moves a model file within the same filesystem (atomic NIO move)
+     * or asynchronously copies it across partition boundaries.
      */
     public CompletableFuture<Boolean> moveToArchive(String relativeModelPath) {
         return CompletableFuture.supplyAsync(() -> {
@@ -71,8 +71,8 @@ public class ModelArchivingService {
     }
 
     /**
-     * Komprimiert ein extrem großes Modell (6-20 GB) in ein GZIP-Archiv,
-     * strikt gechunked, um OutOfMemoryError (OOM) zu vermeiden.
+     * Compresses large model files (6-20 GB) into a GZIP archive,
+     * strictly chunked to prevent OutOfMemoryError (OOM).
      */
     public CompletableFuture<Boolean> compressAndArchive(String relativeModelPath) {
         return CompletableFuture.supplyAsync(() -> {
@@ -119,8 +119,8 @@ public class ModelArchivingService {
 
             } catch (IOException e) {
                 logger.error("I/O error during chunked compression", e);
-                // Aufräumen bei Fehler
-                try { Files.deleteIfExists(target); } catch (IOException ignored) {}
+                // Clean up partially written target file on failure
+                try { Files.deleteIfExists(target); } catch (IOException cleanupEx) { logger.debug("Failed to clean up target: {}", cleanupEx.getMessage()); }
                 return false;
             }
         });

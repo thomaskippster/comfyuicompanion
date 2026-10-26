@@ -98,7 +98,14 @@ public class CustomNodeInstaller {
         }
     }
 
-    private void installPythonRequirements(Path targetDir, List<String> pipDependencies, Consumer<String> out) {
+    /**
+     * Installs Python requirements for an existing custom node directory using ComfyUI's configured Python environment.
+     *
+     * @param targetDir       custom node directory containing requirements.txt
+     * @param pipDependencies additional explicit pip package dependencies (optional)
+     * @param out             progress feedback consumer
+     */
+    public void installPythonRequirements(Path targetDir, List<String> pipDependencies, Consumer<String> out) {
         String pythonPath = configService.getPythonPath();
         if (pythonPath == null || pythonPath.isBlank() || !new File(pythonPath).exists()) {
             out.accept("⚠️ Python executable not configured or not found. Skipping pip install.");

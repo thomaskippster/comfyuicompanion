@@ -12,8 +12,8 @@ import org.springframework.stereotype.Service;
 import java.lang.management.ManagementFactory;
 
 /**
- * Enterprise-grade Spring Service zur Erkennung der System-Hardware,
- * Klassifizierung in Hardware-Tiers und Vorkonfiguration des Video Architects.
+ * Enterprise-grade Spring Service for detecting system hardware,
+ * classifying hardware performance tiers, and configuring Video Architect defaults.
  */
 @Service
 /**
@@ -95,7 +95,7 @@ public class HardwareProfileService implements IHardwareProfileService {
     }
 
     /**
-     * Reine Klassifizierungsfunktion zur deterministischen Testbarkeit ohne Systemabhängigkeiten.
+     * Pure classification function designed for deterministic testability without system dependencies.
      */
     public static HardwareTier classifyTier(long vramBytes, boolean hasNvidia) {
         if (vramBytes <= 0 && !hasNvidia) {

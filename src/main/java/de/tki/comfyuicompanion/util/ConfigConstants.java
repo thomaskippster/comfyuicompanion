@@ -1,8 +1,7 @@
 package de.tki.comfyuicompanion.util;
 
 /**
- * Zentrale Konstanten für die Anwendung.
- * Vermeidet Magic Numbers und Strings im gesamten Codebase.
+ * Central application constants avoiding magic numbers and strings across the codebase.
  */
 public final class ConfigConstants {
     
@@ -23,16 +22,16 @@ public final class ConfigConstants {
     /** Default ComfyUI Host */
     public static final String DEFAULT_COMFYUI_HOST = "127.0.0.1";
     
-    /** Alternative Ports für Auto-Discovery */
+    /** Alternative ports for auto-discovery */
     public static final int[] ALTERNATIVE_PORTS = {
         DEFAULT_COMFYUI_PORT, 8189, 8190, 8000, 3000, 8080
     };
     
-    /** Port-Range für erweiterte Auto-Discovery */
+    /** Port range for extended auto-discovery */
     public static final int DISCOVERY_RANGE_START = 8191;
     public static final int DISCOVERY_RANGE_END = 8199;
     
-    /** Legacy Port (wird migriert) */
+    /** Legacy port (migrated) */
     public static final int LEGACY_PORT = 8000;
     
     // ========================================
@@ -42,10 +41,10 @@ public final class ConfigConstants {
     /** HTTP Connection Timeout */
     public static final int HTTP_CONNECT_TIMEOUT_MS = 10_000;
     
-    /** HTTP Read Timeout für normale Requests */
+    /** HTTP read timeout for standard requests */
     public static final int HTTP_READ_TIMEOUT_MS = 30_000;
     
-    /** HTTP Timeout für kurze Checks (Port-Scan) */
+    /** HTTP timeout for quick port scans */
     public static final int HTTP_SHORT_TIMEOUT_MS = 300;
     
     /** Download Timeout pro Segment */
@@ -57,20 +56,20 @@ public final class ConfigConstants {
     /** Retry delay after error */
     public static final int RETRY_DELAY_MS = 50;
     
-    /** Thread Sleep für Polling */
+    /** Thread sleep duration for polling loops */
     public static final int POLL_SLEEP_MS = 3000;
     
     // ========================================
     // DOWNLOAD & STORAGE
     // ========================================
     
-    /** Buffer für Disk-Space Check (10 GB) */
+    /** Disk space reserve buffer (10 GB) */
     public static final long DISK_SPACE_BUFFER_BYTES = 10L * 1024 * 1024 * 1024;
     
-    /** Minimum File Size für Multi-Segment Download (100 MB) */
+    /** Minimum file size threshold for multi-segment downloads (100 MB) */
     public static final long MULTI_SEGMENT_THRESHOLD_BYTES = 100L * 1024 * 1024;
     
-    /** Default Buffer Size für File I/O (64 KB) */
+    /** Default buffer size for file I/O operations (64 KB) */
     public static final int IO_BUFFER_SIZE_BYTES = 65_536;
     
     /** Download Status Update Interval (800ms) */
@@ -148,7 +147,7 @@ public final class ConfigConstants {
     // USER AGENTS
     // ========================================
     
-    /** Default User Agent für HTTP Requests */
+    /** Default User-Agent header for HTTP requests */
     public static final String USER_AGENT = "Mozilla/5.0";
     
     // ============================================

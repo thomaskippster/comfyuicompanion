@@ -1,4 +1,7 @@
 package de.tki.comfyuicompanion.ui;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.json.JSONObject;
 import org.json.JSONArray;
 
@@ -26,6 +29,7 @@ import java.util.stream.Stream;
  * to the next line when they don't fit.
  */
 class WrapLayout extends FlowLayout {
+    private static final Logger logger = LoggerFactory.getLogger(WrapLayout.class);
     public WrapLayout(int align, int hgap, int vgap) { super(align, hgap, vgap); }
 
     @Override
@@ -88,6 +92,7 @@ class ScrollablePanel extends JPanel implements Scrollable {
  * Panel for displaying output gallery.
  */
 public class OutputGalleryPanel extends JPanel {
+    private static final Logger logger = LoggerFactory.getLogger(OutputGalleryPanel.class);
     private final ConfigService configService;
     private final JPanel galleryPanel;
     private final JLabel pathLabel;
@@ -398,7 +403,9 @@ public class OutputGalleryPanel extends JPanel {
                             imageLabel.setIcon(icon);
                         });
                     }
-                } catch (RuntimeException ignored) {}
+                } catch (RuntimeException ignored) {
+            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+        }
             });
             
             JLabel nameLabel = new JLabel(name, SwingConstants.CENTER);

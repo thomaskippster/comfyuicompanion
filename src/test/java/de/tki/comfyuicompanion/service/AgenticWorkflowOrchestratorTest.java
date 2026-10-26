@@ -41,7 +41,7 @@ public class AgenticWorkflowOrchestratorTest {
 
     @BeforeEach
     public void setUp() {
-        // Da der Orchestrator nun den gapAnalyzer anruft, mocken wir diesen.
+        // Mock gapAnalyzer called by orchestrator
         when(gapAnalyzer.resolveGapAndExecute(any(GenerationIntent.class), any(ComfyWorkflow.class), anyString()))
                 .thenReturn(Mono.just("mock_prompt_id"));
     }
@@ -49,7 +49,7 @@ public class AgenticWorkflowOrchestratorTest {
     @Test
     public void testConditionalRoutingForFluxAndFaceDetailer() {
         // Arrange
-        String userInput = "Ein Porträt eines Mannes, der ein Schild mit der Aufschrift 'Hallo' hält";
+        String userInput = "A portrait of a person holding a sign with 'Hello' written on it";
 
         // Mocken des LLM-Verhaltens
         GenerationIntent mockIntent = new GenerationIntent();
@@ -66,13 +66,13 @@ public class AgenticWorkflowOrchestratorTest {
         // Since we refactored it to be reactive, we must block to execute the pipeline in the test
         orchestrator.orchestrateAndRun(userInput).block();
 
-        // Assert: ArgumentCaptor greift den Graphen ab, bevor er an die Auto-Provisioning Engine geht
+        // Assert: ArgumentCaptor captures graph before auto-provisioning pipeline
         ArgumentCaptor<ComfyWorkflow> workflowCaptor = ArgumentCaptor.forClass(ComfyWorkflow.class);
         verify(gapAnalyzer).resolveGapAndExecute(any(GenerationIntent.class), workflowCaptor.capture(), anyString());
 
         ComfyWorkflow generatedWorkflow = workflowCaptor.getValue();
 
-        // Verifikation der dynamischen Graphen-Struktur
+        // Verify dynamic graph structure
         boolean hasFaceDetailer = false;
         boolean hasBboxDetector = false;
         boolean loadsFluxModel = false;

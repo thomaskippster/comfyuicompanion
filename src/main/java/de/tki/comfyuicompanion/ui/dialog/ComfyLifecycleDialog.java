@@ -67,7 +67,7 @@ public class ComfyLifecycleDialog {
             if (configService != null) configService.autoDiscoverPaths();
             backgroundExecutor.execute(() -> {
                 if (lifecycleService != null) lifecycleService.stop();
-                try { Thread.sleep(2000); } catch (InterruptedException ignored) {}
+                try { Thread.sleep(2000); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); return; }
                 if (startComfyAndReloadAction != null) startComfyAndReloadAction.run();
             });
         });

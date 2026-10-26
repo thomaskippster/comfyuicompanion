@@ -6,10 +6,14 @@ import de.tki.comfyuicompanion.domain.*;
 import de.tki.comfyuicompanion.service.*;
 import de.tki.comfyuicompanion.service.impl.*;
 import de.tki.comfyuicompanion.ui.blueprint.*;
+import de.tki.comfyuicompanion.ui.civitai.CivitaiGalleryTab;
+import de.tki.comfyuicompanion.ui.icons.AppIcon;
+import de.tki.comfyuicompanion.ui.icons.SvgIconFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import javax.swing.*;
+import javax.swing.border.EmptyBorder;
 import java.awt.*;
 import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;
@@ -21,8 +25,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
 /**
- * Blueprint Gallery tab for exploring, filtering, inspecting, and launching
- * workflow templates fetched from Comfy.org or bundled blueprints.
+ * Enterprise Blueprint Gallery tab providing unified exploration of Comfy.org workflow blueprints,
+ * Civitai Model Hub, and Hugging Face Hub under a single streamlined sub-tab interface.
  */
 @Component
 public class BlueprintGalleryTab extends JPanel {
@@ -36,9 +40,18 @@ public class BlueprintGalleryTab extends JPanel {
     private final IModelSearchService modelSearchService;
     private final BlueprintPreviewCache previewCache;
     private final BlueprintDataCoordinator dataCoordinator;
+
+    private CivitaiGalleryTab civitaiGalleryTab;
     private BlueprintHeaderToolbar headerToolbar;
     private BlueprintGridRenderer gridRenderer;
     private JPanel galleryWrapper;
+
+    private final CardLayout rootCardLayout = new CardLayout();
+    private final JPanel rootCardsPanel = new JPanel(rootCardLayout);
+    private final JPanel modelHubContainer = new JPanel(new BorderLayout());
+    private JToggleButton btnSubComfy;
+    private JToggleButton btnSubCivitai;
+    private JToggleButton btnSubHf;
 
     private final List<BlueprintEntry> allEntries = new CopyOnWriteArrayList<>();
     private final AtomicBoolean isRefreshing = new AtomicBoolean(false);
@@ -46,21 +59,26 @@ public class BlueprintGalleryTab extends JPanel {
     private boolean hasScanned = false;
     private Runnable onDataLoadedCallback;
     private Consumer<File> onWorkflowImportRequested;
+    private Consumer<List<ModelInfo>> onSwitchToDownloadManager;
 
-    /** Constructs a new BlueprintGalleryTab with necessary dependencies. */
+    /**
+     * Constructs a new BlueprintGalleryTab with necessary dependencies and optional CivitaiGalleryTab.
+     */
     @Autowired
     public BlueprintGalleryTab(ConfigService configService, IModelArchitectureService modelArchitectureService,
                                IComfyLifecycleService lifecycleService, IComfyRegistryClient registryClient,
                                ILocalModelValidator localModelValidator, IWorkflowDownloader workflowDownloader,
                                LocalModelScanner localModelScanner, ArchiveService archiveService,
                                LocalAIService localAIService, IModelSearchService modelSearchService,
-                               @Autowired(required = false) ProcessTracker processTracker) {
+                               @Autowired(required = false) ProcessTracker processTracker,
+                               @Autowired(required = false) CivitaiGalleryTab civitaiGalleryTab) {
         this.configService = configService;
         this.lifecycleService = lifecycleService;
         this.localModelValidator = localModelValidator;
         this.workflowDownloader = workflowDownloader;
         this.localAIService = localAIService;
         this.modelSearchService = modelSearchService;
+        this.civitaiGalleryTab = civitaiGalleryTab;
         this.previewCache = new BlueprintPreviewCache(configService);
         this.dataCoordinator = new BlueprintDataCoordinator(configService, localModelScanner, archiveService,
                 localModelValidator, modelArchitectureService, registryClient);
@@ -78,11 +96,63 @@ public class BlueprintGalleryTab extends JPanel {
         });
     }
 
+    /**
+     * Backward-compatible constructor for unit testing scenarios.
+     */
+    public BlueprintGalleryTab(ConfigService configService, IModelArchitectureService modelArchitectureService,
+                               IComfyLifecycleService lifecycleService, IComfyRegistryClient registryClient,
+                               ILocalModelValidator localModelValidator, IWorkflowDownloader workflowDownloader,
+                               LocalModelScanner localModelScanner, ArchiveService archiveService,
+                               LocalAIService localAIService, IModelSearchService modelSearchService,
+                               ProcessTracker processTracker) {
+        this(configService, modelArchitectureService, lifecycleService, registryClient, localModelValidator,
+                workflowDownloader, localModelScanner, archiveService, localAIService, modelSearchService,
+                processTracker, null);
+    }
+
     /** Registers a callback invoked when the user requests to import a workflow file. */
     public void setOnWorkflowImportRequested(Consumer<File> callback) { this.onWorkflowImportRequested = callback; }
 
     /** Registers a callback invoked when blueprint data finishes loading. */
     public void setOnDataLoadedCallback(Runnable callback) { this.onDataLoadedCallback = callback; }
+
+    /** Registers a callback invoked to transition into the Download Manager tab. */
+    public void setOnSwitchToDownloadManager(Consumer<List<ModelInfo>> callback) {
+        this.onSwitchToDownloadManager = callback;
+        if (civitaiGalleryTab != null) {
+            civitaiGalleryTab.setOnSwitchToDownloadManager(callback);
+        }
+    }
+
+    /**
+     * Injects or updates the embedded CivitaiGalleryTab component.
+     *
+     * @param tab the Civitai gallery tab
+     */
+    public void setCivitaiGalleryTab(CivitaiGalleryTab tab) {
+        this.civitaiGalleryTab = tab;
+        modelHubContainer.removeAll();
+        if (tab != null) {
+            tab.setProviderBarVisible(false);
+            tab.setVisible(true);
+            if (onSwitchToDownloadManager != null) {
+                tab.setOnSwitchToDownloadManager(onSwitchToDownloadManager);
+            }
+            if (btnSubHf != null && btnSubHf.isSelected()) {
+                tab.showHuggingFaceView();
+            } else if (btnSubCivitai != null && btnSubCivitai.isSelected()) {
+                tab.showCivitaiView();
+            }
+            modelHubContainer.add(tab, BorderLayout.CENTER);
+        } else {
+            JPanel fallbackPanel = new JPanel(new GridBagLayout());
+            fallbackPanel.setOpaque(false);
+            fallbackPanel.add(new JLabel("Model Hub is initializing or not available."));
+            modelHubContainer.add(fallbackPanel, BorderLayout.CENTER);
+        }
+        modelHubContainer.revalidate();
+        modelHubContainer.repaint();
+    }
 
     /** Triggers a debounced re-filter of visible blueprints. */
     public void requestFilterUpdate() {
@@ -91,16 +161,94 @@ public class BlueprintGalleryTab extends JPanel {
     }
 
     private void buildUI(boolean initialDark) {
+        // 1. Top Sub-Tab Switcher Bar
+        JPanel topSubTabBar = new JPanel(new BorderLayout(15, 0));
+        topSubTabBar.setOpaque(false);
+        topSubTabBar.setBorder(new EmptyBorder(10, 15, 6, 15));
+
+        JPanel switchPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
+        switchPanel.setOpaque(false);
+
+        btnSubComfy = new JToggleButton("Comfy.org Blueprints", SvgIconFactory.get(AppIcon.BLUEPRINT_GALLERY, 15), true);
+        btnSubComfy.setFont(new Font("SansSerif", Font.BOLD, 12));
+        btnSubComfy.setPreferredSize(new Dimension(185, 32));
+        btnSubComfy.putClientProperty("Button.arc", 999);
+        btnSubComfy.setFocusPainted(false);
+
+        btnSubCivitai = new JToggleButton("Civitai Model Hub", SvgIconFactory.get(AppIcon.DOWNLOAD_MANAGER, 15), false);
+        btnSubCivitai.setFont(new Font("SansSerif", Font.BOLD, 12));
+        btnSubCivitai.setPreferredSize(new Dimension(165, 32));
+        btnSubCivitai.putClientProperty("Button.arc", 999);
+        btnSubCivitai.setFocusPainted(false);
+
+        btnSubHf = new JToggleButton("Hugging Face Hub", SvgIconFactory.get(AppIcon.MODEL_HUB, 15), false);
+        btnSubHf.setFont(new Font("SansSerif", Font.BOLD, 12));
+        btnSubHf.setPreferredSize(new Dimension(165, 32));
+        btnSubHf.putClientProperty("Button.arc", 999);
+        btnSubHf.setFocusPainted(false);
+
+        ButtonGroup subGroup = new ButtonGroup();
+        subGroup.add(btnSubComfy);
+        subGroup.add(btnSubCivitai);
+        subGroup.add(btnSubHf);
+
+        btnSubComfy.addActionListener(e -> {
+            rootCardLayout.show(rootCardsPanel, "COMFY");
+            rootCardsPanel.revalidate();
+            rootCardsPanel.repaint();
+        });
+        btnSubCivitai.addActionListener(e -> {
+            rootCardLayout.show(rootCardsPanel, "MODEL_HUB");
+            if (civitaiGalleryTab != null) {
+                civitaiGalleryTab.setProviderBarVisible(false);
+                civitaiGalleryTab.showCivitaiView();
+            }
+            rootCardsPanel.revalidate();
+            rootCardsPanel.repaint();
+        });
+        btnSubHf.addActionListener(e -> {
+            rootCardLayout.show(rootCardsPanel, "MODEL_HUB");
+            if (civitaiGalleryTab != null) {
+                civitaiGalleryTab.setProviderBarVisible(false);
+                civitaiGalleryTab.showHuggingFaceView();
+            }
+            rootCardsPanel.revalidate();
+            rootCardsPanel.repaint();
+        });
+
+        switchPanel.add(btnSubComfy);
+        switchPanel.add(btnSubCivitai);
+        switchPanel.add(btnSubHf);
+        topSubTabBar.add(switchPanel, BorderLayout.WEST);
+        add(topSubTabBar, BorderLayout.NORTH);
+
+        // 2. Comfy.org Blueprints View
+        JPanel comfyViewPanel = new JPanel(new BorderLayout());
+        comfyViewPanel.setName("comfyViewPanel");
+        comfyViewPanel.setOpaque(false);
+
         headerToolbar = new BlueprintHeaderToolbar(initialDark);
         headerToolbar.setOnSearchChanged(this::requestFilterUpdate);
         headerToolbar.setOnCategoryChanged(this::applyFilter);
         headerToolbar.setOnReadyOnlyChanged(this::applyFilter);
         headerToolbar.setOnHideCloudChanged(this::applyFilter);
         headerToolbar.setOnRefreshClicked(() -> refreshAllData(true));
-        add(headerToolbar, BorderLayout.NORTH);
+        comfyViewPanel.add(headerToolbar, BorderLayout.NORTH);
+
         gridRenderer = new BlueprintGridRenderer(previewCache);
         this.galleryWrapper = gridRenderer.getComponent();
-        add(gridRenderer.getScrollPane(), BorderLayout.CENTER);
+        comfyViewPanel.add(gridRenderer.getScrollPane(), BorderLayout.CENTER);
+
+        // 3. Root Card Container
+        modelHubContainer.setName("modelHubContainer");
+        modelHubContainer.setOpaque(false);
+        rootCardsPanel.setOpaque(false);
+        rootCardsPanel.add(comfyViewPanel, "COMFY");
+        rootCardsPanel.add(modelHubContainer, "MODEL_HUB");
+
+        setCivitaiGalleryTab(this.civitaiGalleryTab);
+
+        add(rootCardsPanel, BorderLayout.CENTER);
     }
 
     /** Refreshes all blueprint data from online and bundled sources asynchronously. */
@@ -135,7 +283,9 @@ public class BlueprintGalleryTab extends JPanel {
                     applyFilter();
                     headerToolbar.setStatusText(" ");
                     if (localAIService != null) localAIService.setGemmaEnabled(true);
-                    if (onDataLoadedCallback != null) try { onDataLoadedCallback.run(); } catch (Exception ignored) {}
+                    if (onDataLoadedCallback != null) try { onDataLoadedCallback.run(); } catch (Exception ignored) {
+                        logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+                    }
                 });
             } catch (Exception e) {
                 logger.error("❌ [BlueprintGallery] Refresh failed: {}", e.getMessage(), e);
@@ -170,7 +320,9 @@ public class BlueprintGalleryTab extends JPanel {
                 (e, w) -> dataCoordinator.playVideoPreview(e, w, null));
         headerToolbar.updateSummary(allEntries, this::computeStatus);
         if (onDataLoadedCallback != null) {
-            try { onDataLoadedCallback.run(); } catch (Exception ignored) {}
+            try { onDataLoadedCallback.run(); } catch (Exception ignored) {
+                logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+            }
         }
     }
 
@@ -196,6 +348,7 @@ public class BlueprintGalleryTab extends JPanel {
         setBackground(darkMode ? new Color(15, 16, 21) : new Color(245, 247, 250));
         if (headerToolbar != null) headerToolbar.updateTheme(darkMode);
         if (gridRenderer != null) gridRenderer.updateTheme(darkMode);
+        if (civitaiGalleryTab != null) civitaiGalleryTab.updateTheme(darkMode);
         applyFilter();
         repaint();
     }
@@ -275,5 +428,68 @@ public class BlueprintGalleryTab extends JPanel {
     @SuppressWarnings("unused")
     private boolean isModelPresentDeep(ModelInfo info) {
         return dataCoordinator != null && dataCoordinator.isModelPresentDeep(info);
+    }
+
+    /**
+     * Returns the Comfy.org blueprints toggle button.
+     *
+     * @return JToggleButton
+     */
+    public JToggleButton getBtnSubComfy() {
+        return btnSubComfy;
+    }
+
+    /**
+     * Returns the Civitai model hub toggle button.
+     *
+     * @return JToggleButton
+     */
+    public JToggleButton getBtnSubCivitai() {
+        return btnSubCivitai;
+    }
+
+    /**
+     * Returns the Hugging Face hub toggle button.
+     *
+     * @return JToggleButton
+     */
+    public JToggleButton getBtnSubHf() {
+        return btnSubHf;
+    }
+
+    /**
+     * Returns the embedded CivitaiGalleryTab component.
+     *
+     * @return CivitaiGalleryTab
+     */
+    public CivitaiGalleryTab getCivitaiGalleryTab() {
+        return civitaiGalleryTab;
+    }
+
+    /**
+     * Returns the Comfy.org blueprints header toolbar.
+     *
+     * @return BlueprintHeaderToolbar
+     */
+    public BlueprintHeaderToolbar getHeaderToolbar() {
+        return headerToolbar;
+    }
+
+    /**
+     * Returns the Comfy.org blueprints grid renderer.
+     *
+     * @return BlueprintGridRenderer
+     */
+    public BlueprintGridRenderer getGridRenderer() {
+        return gridRenderer;
+    }
+
+    /**
+     * Returns a thread-safe snapshot list of all loaded blueprint entries.
+     *
+     * @return list of BlueprintEntry objects
+     */
+    public List<BlueprintEntry> getAllEntries() {
+        return new ArrayList<>(allEntries);
     }
 }

@@ -87,7 +87,7 @@ public class VaultStorageService {
             try {
                 String decrypted = encryptionUtils.decrypt(encrypted, password);
                 JSONObject decryptedJson = new JSONObject(decrypted);
-                logger.info("Vault unlocked successfully. Keys found: {}", decryptedJson.keySet());
+                logger.info("Vault unlocked successfully. Entries count: {}", decryptedJson.keySet().size());
 
                 boolean needsSave = sanitizeSettings(decryptedJson);
                 if (needsSave) {

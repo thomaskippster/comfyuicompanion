@@ -29,6 +29,7 @@ public class PromptLabWorkflowJsonResolver {
     private final ConfigService configService;
     private final IComfyTemplateService comfyTemplateService;
     private final IWorkflowDownloader workflowDownloader;
+    private static final long MAX_WORKFLOW_FILE_SIZE = 50L * 1024 * 1024; // 50 MB safety guard
     private final PromptLabModelResolver modelResolver;
     private final PromptLabBlueprintMatcher matcher;
 
@@ -69,7 +70,7 @@ public class PromptLabWorkflowJsonResolver {
             if (targetEntry.filePath != null) {
                 File localFile = new File(targetEntry.filePath);
                 if (localFile.exists()) {
-                    jsonContent = Files.readString(localFile.toPath(), StandardCharsets.UTF_8).trim();
+                    jsonContent = readWorkflowFileSafe(localFile.toPath());
                 }
             }
 
@@ -83,7 +84,7 @@ public class PromptLabWorkflowJsonResolver {
                 try {
                     File downloaded = workflowDownloader.downloadWorkflowAsync(targetEntry.registryWorkflow).get();
                     if (downloaded != null && downloaded.exists()) {
-                        jsonContent = Files.readString(downloaded.toPath(), StandardCharsets.UTF_8).trim();
+                        jsonContent = readWorkflowFileSafe(downloaded.toPath());
                     }
                 } catch (Exception dlEx) {
                     logger.warn("Failed to download workflow for blueprint {}: {}", targetEntry.name, dlEx.getMessage());
@@ -156,7 +157,7 @@ public class PromptLabWorkflowJsonResolver {
             if (targetEntry.registryWorkflow.getId() != null) {
                 File registryFile = new File(dir, targetEntry.registryWorkflow.getId() + ".json");
                 if (registryFile.exists()) {
-                    return Files.readString(registryFile.toPath(), StandardCharsets.UTF_8).trim();
+                    return readWorkflowFileSafe(registryFile.toPath());
                 }
             }
             if (targetEntry.registryWorkflow.getTitle() != null) {
@@ -167,7 +168,7 @@ public class PromptLabWorkflowJsonResolver {
                         .toLowerCase(Locale.ROOT);
                 File titleFile = new File(dir, sanitized + ".json");
                 if (titleFile.exists()) {
-                    return Files.readString(titleFile.toPath(), StandardCharsets.UTF_8).trim();
+                    return readWorkflowFileSafe(titleFile.toPath());
                 }
             }
         }
@@ -176,11 +177,22 @@ public class PromptLabWorkflowJsonResolver {
             for (File f : files) {
                 if (matcher.isBlueprintNameMatch(targetEntry.name, f.getName().replace(".json", ""))
                         || (targetEntry.filename != null && f.getName().equalsIgnoreCase(targetEntry.filename))) {
-                    jsonContent = Files.readString(f.toPath(), StandardCharsets.UTF_8).trim();
+                    jsonContent = readWorkflowFileSafe(f.toPath());
                     break;
                 }
             }
         }
         return jsonContent;
+    }
+
+    private String readWorkflowFileSafe(java.nio.file.Path path) throws java.io.IOException {
+        if (path == null || !Files.exists(path)) {
+            return null;
+        }
+        long size = Files.size(path);
+        if (size > MAX_WORKFLOW_FILE_SIZE) {
+            throw new java.io.IOException("Workflow JSON file exceeds 50MB limit: " + path + " (" + size + " bytes)");
+        }
+        return Files.readString(path, StandardCharsets.UTF_8).trim();
     }
 }

@@ -7,6 +7,7 @@ import de.tki.comfyuicompanion.domain.ModelInfo;
 import de.tki.comfyuicompanion.service.IAbortedDownloadService;
 import de.tki.comfyuicompanion.service.ICivitaiHubService;
 import de.tki.comfyuicompanion.service.IDownloadManager;
+import de.tki.comfyuicompanion.service.IHuggingFaceHubService;
 import de.tki.comfyuicompanion.service.SafePathValidator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -43,6 +44,7 @@ public class AbortedDownloadService implements IAbortedDownloadService {
     private final IDownloadManager downloadManager;
     private final ICivitaiHubService civitaiHubService;
     private final CivitaiService civitaiService;
+    private final IHuggingFaceHubService huggingFaceHubService;
 
     /**
      * Constructs a new AbortedDownloadService with required and optional dependencies.
@@ -61,13 +63,28 @@ public class AbortedDownloadService implements IAbortedDownloadService {
             @Autowired(required = false) SafePathValidator safePathValidator,
             IDownloadManager downloadManager,
             @Autowired(required = false) ICivitaiHubService civitaiHubService,
-            @Autowired(required = false) CivitaiService civitaiService) {
+            @Autowired(required = false) CivitaiService civitaiService,
+            @Autowired(required = false) IHuggingFaceHubService huggingFaceHubService) {
         this.configService = configService;
         this.pathResolver = pathResolver;
         this.safePathValidator = safePathValidator != null ? safePathValidator : new SafePathValidator();
         this.downloadManager = downloadManager;
         this.civitaiHubService = civitaiHubService;
         this.civitaiService = civitaiService;
+        this.huggingFaceHubService = huggingFaceHubService;
+    }
+
+    /**
+     * Backward-compatible constructor for existing tests and callers without HuggingFaceHubService.
+     */
+    public AbortedDownloadService(
+            ConfigService configService,
+            PathResolver pathResolver,
+            SafePathValidator safePathValidator,
+            IDownloadManager downloadManager,
+            ICivitaiHubService civitaiHubService,
+            CivitaiService civitaiService) {
+        this(configService, pathResolver, safePathValidator, downloadManager, civitaiHubService, civitaiService, null);
     }
 
     @Override
@@ -95,6 +112,14 @@ public class AbortedDownloadService implements IAbortedDownloadService {
         List<AbortedDownloadItem> results = new ArrayList<>();
         for (Map.Entry<Path, List<Path>> entry : groupedArtifacts.entrySet()) {
             Path targetPath = entry.getKey();
+            String targetFileName = targetPath.getFileName().toString();
+
+            // Exclude models that are currently actively being downloaded
+            if (downloadManager != null && downloadManager.isDownloading(targetFileName)) {
+                log.debug("Excluding currently active download from aborted list: {}", targetFileName);
+                continue;
+            }
+
             List<Path> fragments = entry.getValue();
             if (fragments.isEmpty()) continue;
 
@@ -111,7 +136,9 @@ public class AbortedDownloadService implements IAbortedDownloadService {
                         maxModified = mod;
                         extensionType = extractExtensionType(frag.getFileName().toString());
                     }
-                } catch (IOException ignored) {}
+                } catch (IOException ignored) {
+            log.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+        }
             }
 
             if (fragments.size() > 1) {
@@ -148,6 +175,12 @@ public class AbortedDownloadService implements IAbortedDownloadService {
                 if (base != null) safePathValidator.validateWithinBase(base, file);
                 Path dir = file.getParent();
                 String targetName = item.targetFileName();
+
+                // Guard against deleting partial fragments of an active download
+                if (downloadManager != null && downloadManager.isDownloading(targetName)) {
+                    log.warn("Cannot delete partial artifacts for model [{}] because it is currently actively downloading", targetName);
+                    continue;
+                }
 
                 // Delete the primary file
                 if (Files.exists(file)) {
@@ -219,7 +252,9 @@ public class AbortedDownloadService implements IAbortedDownloadService {
                     maxMod = m;
                     extType = extractExtensionType(frag.getFileName().toString());
                 }
-            } catch (IOException ignored) {}
+            } catch (IOException ignored) {
+            log.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+        }
         }
 
         if (matchingFragments.size() > 1) extType = matchingFragments.size() + " segments";
@@ -286,19 +321,58 @@ public class AbortedDownloadService implements IAbortedDownloadService {
         return future;
     }
 
-    private String resolveDownloadUrlForModel(String targetFileName) {
+        private String resolveDownloadUrlForModel(String targetFileName) {
+        if (targetFileName == null || targetFileName.isBlank()) return null;
         try {
+            // 1. Try CivitaiHubService (exact match or clean name match)
             if (civitaiHubService != null) {
-                String cleanQuery = targetFileName.replaceAll("\\.(safetensors|ckpt|pt|bin)$", "").replace("_", " ");
+                String cleanQuery = targetFileName.replaceAll("\\.(safetensors|ckpt|pt|bin|gguf)$", "")
+                        .replace("_", " ")
+                        .replace("-", " ")
+                        .trim();
                 List<CivitaiModelEntry> entries = civitaiHubService.queryModels(cleanQuery, null, null, null, 10, 1, false).join();
-                for (CivitaiModelEntry entry : entries) {
-                    if (targetFileName.equalsIgnoreCase(entry.filename()) || entry.downloadUrl() != null) {
-                        return entry.downloadUrl();
+                if (entries != null) {
+                    for (CivitaiModelEntry entry : entries) {
+                        if (targetFileName.equalsIgnoreCase(entry.filename()) && entry.downloadUrl() != null && !entry.downloadUrl().isBlank()) {
+                            return entry.downloadUrl();
+                        }
+                    }
+                    String targetBase = targetFileName.replaceAll("\\.(safetensors|ckpt|pt|bin|gguf)$", "");
+                    for (CivitaiModelEntry entry : entries) {
+                        String entryBase = entry.filename() != null ? entry.filename().replaceAll("\\.(safetensors|ckpt|pt|bin|gguf)$", "") : "";
+                        if (targetBase.equalsIgnoreCase(entryBase) && entry.downloadUrl() != null && !entry.downloadUrl().isBlank()) {
+                            return entry.downloadUrl();
+                        }
+                    }
+                }
+            }
+
+            // 2. Try HuggingFaceHubService if not found on Civitai
+            if (huggingFaceHubService != null) {
+                String cleanQuery = targetFileName.replaceAll("\\.(safetensors|ckpt|pt|bin|gguf)$", "")
+                        .replace("_", " ")
+                        .replace("-", " ")
+                        .trim();
+                List<de.tki.comfyuicompanion.domain.HuggingFaceModelEntry> repos =
+                        huggingFaceHubService.searchRepositories(cleanQuery, "all", "all", "downloads", 5).join();
+                if (repos != null) {
+                    for (de.tki.comfyuicompanion.domain.HuggingFaceModelEntry repo : repos) {
+                        List<de.tki.comfyuicompanion.domain.HuggingFaceFileEntry> files =
+                                huggingFaceHubService.getRepositoryFiles(repo.repoId()).join();
+                        if (files != null) {
+                            for (de.tki.comfyuicompanion.domain.HuggingFaceFileEntry file : files) {
+                                if (targetFileName.equalsIgnoreCase(file.filename())
+                                        || file.rfilename().endsWith("/" + targetFileName)
+                                        || file.rfilename().equalsIgnoreCase(targetFileName)) {
+                                    return file.downloadUrl();
+                                }
+                            }
+                        }
                     }
                 }
             }
         } catch (Exception ex) {
-            log.warn("Failed to resolve Civitai model by query for {}: {}", targetFileName, ex.getMessage());
+            log.warn("Failed to resolve download URL for {}: {}", targetFileName, ex.getMessage());
         }
         return null;
     }

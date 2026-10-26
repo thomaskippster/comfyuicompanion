@@ -98,7 +98,7 @@ class RestBridgeServiceTest {
         HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
 
         assertEquals(200, response.statusCode());
-        assertTrue(response.body().contains("\"status\": \"success\""));
+        assertTrue(response.body().contains("\"status\":\"success\"") || response.body().contains("\"status\": \"success\""));
         assertEquals(testWorkflow, receivedWorkflow.get());
     }
 

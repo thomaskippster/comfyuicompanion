@@ -84,7 +84,9 @@ public class FileSystemLinkService implements IFileSystemLinkService {
 
         try {
             Files.deleteIfExists(linkPath);
-        } catch (Exception ignored) {}
+        } catch (Exception ignored) {
+            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+        }
 
         if (isWindows) {
             // Windows: Prioritize NTFS Junctions as they do NOT require Administrator rights or Developer Mode
@@ -115,7 +117,9 @@ public class FileSystemLinkService implements IFileSystemLinkService {
 
         try {
             Files.deleteIfExists(linkPath);
-        } catch (Exception ignored) {}
+        } catch (Exception ignored) {
+            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+        }
 
         // 1. Try standard symbolic link first
         try {

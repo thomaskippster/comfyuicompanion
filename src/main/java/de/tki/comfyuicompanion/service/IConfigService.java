@@ -3,8 +3,8 @@ package de.tki.comfyuicompanion.service;
 import org.json.JSONObject;
 
 /**
- * Interface für Konfigurations- und Settings-Verwaltung.
- * Trennt Interface von Implementation für bessere Testbarkeit.
+ * Interface for configuration and settings management.
+ * Decouples interface contract from implementation for testability.
  */
 public interface IConfigService {
     

@@ -92,7 +92,9 @@ public final class BlueprintComfySender {
                             if (parsedObj.has("nodes") || parsedObj.has("last_node_id")) {
                                 isUIFormatDetected = true;
                             }
-                        } catch (Exception ignored) {}
+                        } catch (Exception ignored) {
+            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+        }
 
                         String comfyUrl = configService.getComfyUIUrl();
                         if (comfyUrl.endsWith("/")) {

@@ -10,6 +10,8 @@ import de.tki.comfyuicompanion.service.impl.LocalModelScanner;
 import de.tki.comfyuicompanion.ui.DownloadManagerView;
 import org.springframework.stereotype.Component;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import javax.swing.SwingUtilities;
 import javax.swing.table.DefaultTableModel;
 import java.nio.file.Files;
@@ -25,6 +27,8 @@ import java.util.Optional;
  */
 @Component
 public class DownloadWorkflowAnalyzer {
+
+    private static final Logger log = LoggerFactory.getLogger(DownloadWorkflowAnalyzer.class);
 
     /**
      * Analyzes JSON workflow text and populates the view's model table.
@@ -95,7 +99,9 @@ public class DownloadWorkflowAnalyzer {
                             inArchive = false;
                         }
                     }
-                } catch (Exception ignored) {}
+                } catch (Exception e) {
+                    log.debug("Failed checking archive size: {}", e.getMessage());
+                }
             }
 
             if (!inArchive && archive != null && !archive.isEmpty()) {
@@ -132,7 +138,9 @@ public class DownloadWorkflowAnalyzer {
                             }
                             info.setSave_path(normalizedFolder);
                         }
-                    } catch (Exception ignored) {}
+                    } catch (Exception e) {
+                        log.debug("Failed checking potential local model size: {}", e.getMessage());
+                    }
                 }
             }
 
@@ -150,7 +158,9 @@ public class DownloadWorkflowAnalyzer {
                             info.setByteSize(bytes);
                             info.setSize(searchService.formatSize(bytes));
                         }
-                    } catch (Exception ignored) {}
+                    } catch (Exception e) {
+                        log.debug("Failed measuring model file size: {}", e.getMessage());
+                    }
                 }
             }
 
@@ -230,7 +240,9 @@ public class DownloadWorkflowAnalyzer {
                         try {
                             Path rel = Paths.get(base).relativize(foundLocally.get());
                             tableModel.setValueAt("models/" + rel.getParent().toString().replace("\\", "/"), idx, 5);
-                        } catch (Exception ignored) {}
+                        } catch (Exception e) {
+                            log.debug("Failed relativizing model path: {}", e.getMessage());
+                        }
                     }
                 }
 

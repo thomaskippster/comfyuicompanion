@@ -54,8 +54,8 @@ public class ResourceGapAnalyzer {
     }
 
     /**
-     * Steuert den gesamten Flow nicht-blockierend und reaktiv:
-     * Gap erkannt -> Hugging Face reaktiv gesucht -> Modell gestreamt -> /cmfc/refresh-models getriggert -> Graph asynchron ausgeführt.
+     * Coordinates the entire reactive provisioning flow non-blockingly:
+     * Gap detected -> Hugging Face searched -> model streamed -> /cmfc/refresh-models triggered -> graph executed asynchronously.
      */
     public Mono<String> resolveGapAndExecute(GenerationIntent intent, ComfyWorkflow workflow, String clientId) {
         MissingResourceReport report = analyze(intent);
@@ -129,7 +129,7 @@ public class ResourceGapAnalyzer {
 
         if (Files.exists(checkpointsDir)) {
             try (Stream<Path> paths = Files.walk(checkpointsDir)) {
-                // Finde irgendein Modell, das die geforderte Architektur unterstützt
+                // Find a model matching the requested architecture
                 Path foundModel = paths
                         .filter(Files::isRegularFile)
                         .filter(p -> p.toString().endsWith(".safetensors"))
@@ -138,10 +138,10 @@ public class ResourceGapAnalyzer {
                         .orElse(null);
 
                 if (foundModel != null) {
-                    // Speichere den relativen Pfad für ComfyUI
+                    // Store relative path for ComfyUI
                     String relativePath = checkpointsDir.relativize(foundModel).toString();
                     report.setResolvedModelName(relativePath);
-                    return report; // Wir haben lokal das beste passende Modell gefunden!
+                    return report; // Best matching model found locally
                 }
             } catch (IOException e) {
                 logger.error("Error searching checkpoint directory: {}", checkpointsDir, e);

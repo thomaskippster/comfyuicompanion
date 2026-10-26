@@ -395,6 +395,17 @@ public class DownloadManagerController implements DownloadManagerView.DownloadMa
     }
 
     @Override
+    public void onShowApiKeysDialog() {
+        Window win = view != null ? SwingUtilities.getWindowAncestor(view) : null;
+        javax.swing.JFrame parent = win instanceof javax.swing.JFrame f ? f : null;
+        de.tki.comfyuicompanion.ui.dialog.MainSettingsDialogs.showApiKeysDialog(parent, configService, () -> {
+            JOptionPane.showMessageDialog(view,
+                    "API credentials successfully updated! You can now click 'Start queue' to resume your downloads.",
+                    "Credentials Updated", JOptionPane.INFORMATION_MESSAGE);
+        });
+    }
+
+    @Override
     public void onShowStorageCleanerDialog() {
         Window owner = view != null ? SwingUtilities.getWindowAncestor(view) : null;
         new de.tki.comfyuicompanion.ui.dialog.StorageCleanerDialog(

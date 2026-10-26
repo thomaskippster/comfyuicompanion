@@ -76,6 +76,7 @@ public class ComfyTtsNodeBootstrapper {
                 nodeAvailable = tempInfo.has("KokoroTTS") || tempInfo.has("Kokoro TTS") || tempInfo.has("GeekyKokoroTTS");
             }
         } catch (Exception ignored) {
+            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
         }
 
         if (!nodeAvailable) {
@@ -136,6 +137,7 @@ public class ComfyTtsNodeBootstrapper {
                         || info2.has("Qwen Audio TTS") || info2.has("QwenTTSNode");
             }
         } catch (Exception ignored) {
+            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
         }
 
         if (!qwenNodeAvailable) {

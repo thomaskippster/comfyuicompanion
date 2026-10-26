@@ -41,13 +41,13 @@ public class WorkflowReadyHandler implements HttpHandler {
             try (InputStream is = exchange.getRequestBody()) {
                 String body = new String(is.readAllBytes(), StandardCharsets.UTF_8);
                 if (channel.consumeWorkflowReady(body)) {
-                    http.sendJsonResponse(exchange, 200, "{\"status\": \"accepted\"}");
+                    http.sendJsonResponse(exchange, 200, de.tki.comfyuicompanion.dto.acl.BridgeActionAclResponse.accepted().toJson());
                 } else {
-                    http.sendJsonResponse(exchange, 409, "{\"status\": \"error\", \"message\": \"No pending conversion request\"}");
+                    http.sendJsonResponse(exchange, 409, de.tki.comfyuicompanion.dto.acl.BridgeActionAclResponse.error("No pending conversion request").toJson());
                 }
             }
         } catch (Exception e) {
-            try { http.sendJsonResponse(exchange, 500, "{\"status\": \"error\"}"); } catch (Exception ignored) {}
+            try { http.sendJsonResponse(exchange, 500, de.tki.comfyuicompanion.dto.acl.BridgeActionAclResponse.error("Internal server error").toJson()); } catch (Exception ex) { /* ignored on closed exchange */ }
         } finally {
             exchange.close();
         }

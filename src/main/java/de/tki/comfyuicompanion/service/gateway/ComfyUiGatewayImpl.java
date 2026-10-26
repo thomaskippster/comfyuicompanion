@@ -141,7 +141,9 @@ public class ComfyUiGatewayImpl implements ComfyUiGateway {
                 getObjectInfo().get();
                 List<String> refreshed = widgetCache.get(classType);
                 if (refreshed != null) return refreshed;
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+        }
         }
         return List.of();
     }
@@ -247,7 +249,7 @@ public class ComfyUiGatewayImpl implements ComfyUiGateway {
                 .uri(URI.create(getComfyBaseUrl() + "/cmfc/refresh-models"))
                 .header("Content-Type", "application/json")
                 .timeout(Duration.ofSeconds(10))
-                .POST(HttpRequest.BodyPublishers.ofString("{\"force_reload\": true}"))
+                .POST(HttpRequest.BodyPublishers.ofString(de.tki.comfyuicompanion.dto.acl.RefreshModelsAclRequest.FORCE.toJson()))
                 .build();
 
         return httpClient.sendAsync(request, HttpResponse.BodyHandlers.discarding())
@@ -267,7 +269,9 @@ public class ComfyUiGatewayImpl implements ComfyUiGateway {
                     if (response.statusCode() == 200) {
                         try {
                             return objectMapper.readTree(response.body());
-                        } catch (Exception ignored) {}
+                        } catch (Exception ignored) {
+            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+        }
                     }
                     return null;
                 });

@@ -146,6 +146,26 @@ public class BlueprintHeaderToolbar extends JPanel {
     }
 
     /**
+     * Sets the text in the search input field.
+     *
+     * @param text new search query
+     */
+    public void setSearchText(String text) {
+        if (txtSearch != null) {
+            txtSearch.setText(text != null ? text : "");
+        }
+    }
+
+    /**
+     * Returns the raw search text component.
+     *
+     * @return JTextField
+     */
+    public JTextField getSearchField() {
+        return txtSearch;
+    }
+
+    /**
      * Gets the currently selected category from the dropdown.
      *
      * @return the selected category name, or null if none selected

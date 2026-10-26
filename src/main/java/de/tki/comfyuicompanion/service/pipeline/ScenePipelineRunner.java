@@ -46,6 +46,7 @@ public class ScenePipelineRunner {
     private final WorkflowTransformationService workflowTransformationService;
     private final SceneBlueprintInjector blueprintInjector;
     private final SceneMediaPostProcessor mediaPostProcessor;
+    private final ComfyServerPreparer serverPreparer;
 
     public ScenePipelineRunner(
             ConfigService configService,
@@ -55,7 +56,7 @@ public class ScenePipelineRunner {
             ComfyJobPollingService jobPollingService,
             ComfyNodeInspectionClient inspectionClient) {
         this(configService, simulationService, mediaTranscodingService, workflowBuilder,
-                jobPollingService, inspectionClient, null, null, null, null, null, null);
+                jobPollingService, inspectionClient, null, null, null, null, null, null, null);
     }
 
     public ScenePipelineRunner(
@@ -69,7 +70,7 @@ public class ScenePipelineRunner {
             IComfyLifecycleService lifecycleService,
             ProcessTracker processTracker) {
         this(configService, simulationService, mediaTranscodingService, workflowBuilder,
-                jobPollingService, inspectionClient, bootstrapper, lifecycleService, processTracker, null, null, null);
+                jobPollingService, inspectionClient, bootstrapper, lifecycleService, processTracker, null, null, null, null);
     }
 
     public ScenePipelineRunner(
@@ -85,7 +86,7 @@ public class ScenePipelineRunner {
             WorkflowTransformationService workflowTransformationService) {
         this(configService, simulationService, mediaTranscodingService, workflowBuilder,
                 jobPollingService, inspectionClient, bootstrapper, lifecycleService, processTracker,
-                workflowTransformationService, null, null);
+                workflowTransformationService, null, null, null);
     }
 
     @Autowired
@@ -101,7 +102,8 @@ public class ScenePipelineRunner {
             @Autowired(required = false) ProcessTracker processTracker,
             @Autowired(required = false) WorkflowTransformationService workflowTransformationService,
             @Autowired(required = false) SceneBlueprintInjector blueprintInjector,
-            @Autowired(required = false) SceneMediaPostProcessor mediaPostProcessor) {
+            @Autowired(required = false) SceneMediaPostProcessor mediaPostProcessor,
+            @Autowired(required = false) ComfyServerPreparer serverPreparer) {
         this.configService = configService;
         this.simulationService = simulationService != null ? simulationService : new SceneSimulationService(processTracker);
         this.mediaTranscodingService = mediaTranscodingService != null ? mediaTranscodingService : new MediaTranscodingService(configService, processTracker);
@@ -118,6 +120,9 @@ public class ScenePipelineRunner {
         this.mediaPostProcessor = mediaPostProcessor != null
                 ? mediaPostProcessor
                 : new SceneMediaPostProcessor(configService, this.simulationService, this.mediaTranscodingService, processTracker);
+        this.serverPreparer = serverPreparer != null
+                ? serverPreparer
+                : new ComfyServerPreparer(configService, this.inspectionClient, bootstrapper);
     }
 
     /**
@@ -300,84 +305,14 @@ public class ScenePipelineRunner {
     }
 
     private void ensureComfyUiStarted(IComfyLifecycleService lifecycle) {
-        if (lifecycle != null && !lifecycle.isHealthy()) {
-            logger.info("🔄 [ScenePipelineRunner] ComfyUI server is offline. Attempting auto-start...");
-            lifecycle.start();
-
-            int maxWaitSeconds = 90;
-            boolean started = false;
-            for (int i = 0; i < maxWaitSeconds; i++) {
-                if (lifecycle.isHealthy()) {
-                    started = true;
-                    break;
-                }
-                try {
-                    Thread.sleep(1000);
-                } catch (InterruptedException ie) {
-                    Thread.currentThread().interrupt();
-                    throw new RuntimeException("Auto-start interrupted", ie);
-                }
-            }
-            if (!started) {
-                throw new RuntimeException("Failed to auto-start ComfyUI within " + maxWaitSeconds + " seconds.");
-            }
-            logger.info("✅ [ScenePipelineRunner] ComfyUI successfully started and healthy.");
+        if (serverPreparer != null) {
+            serverPreparer.ensureComfyUiStarted(lifecycle);
         }
     }
 
     private void ensureVideoHelperSuite(String serverUrl, IComfyLifecycleService lifecycle) {
-        if (lifecycle != null && lifecycle.isHealthy() && bootstrapper != null) {
-            String comfyPath = configService.getComfyUIPath();
-            boolean folderExists = false;
-            if (comfyPath != null && !comfyPath.trim().isEmpty()) {
-                File videoHelperDir = new File(new File(comfyPath, "custom_nodes"), "ComfyUI-Video-Helper-Suite");
-                if (videoHelperDir.exists() && videoHelperDir.isDirectory()) {
-                    folderExists = true;
-                }
-            }
-
-            boolean nodeAvailable = inspectionClient.isNodeClassAvailable(serverUrl, "VHS_VideoCombine");
-            if (!nodeAvailable) {
-                if (ATTEMPTED_INSTALLS.contains("VHS_VideoCombine")) {
-                    logger.info("⚠️ [ScenePipelineRunner] ComfyUI-Video-Helper-Suite installation already attempted. Skipping.");
-                } else {
-                    ATTEMPTED_INSTALLS.add("VHS_VideoCombine");
-                    if (!folderExists) {
-                        logger.info("⚠️ [ScenePipelineRunner] VHS_VideoCombine is missing. Installing ComfyUI-Video-Helper-Suite...");
-                        lifecycle.stop();
-
-                        String pythonPath = configService.getPythonPath();
-                        if (comfyPath != null && !comfyPath.trim().isEmpty()) {
-                            Path comfyDir = Paths.get(comfyPath);
-                            Path pythonExe = (pythonPath != null && !pythonPath.trim().isEmpty()) ? Paths.get(pythonPath) : null;
-                            bootstrapper.ensureVideoHelperSuiteInstalled(comfyDir, pythonExe, msg -> logger.info("[Bootstrap] {}", msg));
-                        }
-                        lifecycle.start();
-                    } else {
-                        logger.info("🔄 [ScenePipelineRunner] VHS_VideoCombine not active but folder exists. Restarting ComfyUI...");
-                        lifecycle.restart();
-                    }
-
-                    int maxWaitSeconds = 90;
-                    boolean started = false;
-                    for (int i = 0; i < maxWaitSeconds; i++) {
-                        if (lifecycle.isHealthy()) {
-                            started = true;
-                            break;
-                        }
-                        try {
-                            Thread.sleep(1000);
-                        } catch (InterruptedException ie) {
-                            Thread.currentThread().interrupt();
-                            throw new RuntimeException("Restart interrupted", ie);
-                        }
-                    }
-                    if (!started) {
-                        throw new RuntimeException("Failed to restart ComfyUI within " + maxWaitSeconds + " seconds.");
-                    }
-                    logger.info("✅ [ScenePipelineRunner] ComfyUI successfully restarted and healthy.");
-                }
-            }
+        if (serverPreparer != null) {
+            serverPreparer.ensureVideoHelperSuite(serverUrl, lifecycle);
         }
     }
 

@@ -82,10 +82,18 @@ public class ComfyPngMetadataReader {
             Map<String, String> textChunks = readPngTextChunks(pngFile);
             String promptStr = textChunks.get("prompt");
             String workflowStr = textChunks.get("workflow");
-            if ((promptStr == null || promptStr.isBlank()) && (workflowStr == null || workflowStr.isBlank())) {
-                return Optional.empty();
+            if ((promptStr != null && !promptStr.isBlank()) || (workflowStr != null && !workflowStr.isBlank())) {
+                return Optional.of(parseMetadataJson(promptStr, workflowStr));
             }
-            return Optional.of(parseMetadataJson(promptStr, workflowStr));
+            for (de.tki.comfyuicompanion.service.metadata.IImageMetadataStrategy strategy : java.util.List.of(
+                    new de.tki.comfyuicompanion.service.metadata.WebUiParametersMetadataStrategy(),
+                    new de.tki.comfyuicompanion.service.metadata.InvokeAiMetadataStrategy())) {
+                Optional<ExtractedPngWorkflow> fallback = strategy.extract(textChunks);
+                if (fallback.isPresent()) {
+                    return fallback;
+                }
+            }
+            return Optional.empty();
         } catch (Exception e) {
             logger.warn("Failed to read PNG metadata from {}: {}", pngFile.getName(), e.getMessage());
             return Optional.empty();

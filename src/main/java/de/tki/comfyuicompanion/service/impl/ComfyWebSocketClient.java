@@ -37,6 +37,7 @@ public class ComfyWebSocketClient {
         this.clientId = UUID.randomUUID().toString();
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(5))
+                .executor(java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor())
                 .build();
     }
 
@@ -78,7 +79,9 @@ public class ComfyWebSocketClient {
             return () -> {
                 try {
                     ws.sendClose(WebSocket.NORMAL_CLOSURE, "done");
-                } catch (Exception ignored) {}
+                } catch (Exception ignored) {
+            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+        }
             };
         } catch (Exception e) {
             logger.debug("WebSocket connection to ComfyUI unavailable (falling back to HTTP polling): {}", e.getMessage());
@@ -174,7 +177,9 @@ public class ComfyWebSocketClient {
                     String nodeId = (nodeObj != null && !JSONObject.NULL.equals(nodeObj)) ? nodeObj.toString() : null;
                     onExecutingNode.accept(nodeId);
                 }
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+        }
         }
 
         private void handleBinaryPreview(byte[] bytes) {
@@ -185,7 +190,9 @@ public class ComfyWebSocketClient {
                 if (img != null) {
                     onPreviewImage.accept(img);
                 }
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+        }
         }
     }
 }

@@ -114,7 +114,9 @@ public class PreviewHandler implements HttpHandler {
             if (lenOpt.isPresent()) {
                 try {
                     contentLength = Long.parseLong(lenOpt.get());
-                } catch (NumberFormatException ignored) {}
+                } catch (NumberFormatException ignored) {
+            logger.trace("Invalid numeric format: {}", ignored.getMessage());
+        }
             }
 
             exchange.sendResponseHeaders(200, contentLength > 0 ? contentLength : 0);

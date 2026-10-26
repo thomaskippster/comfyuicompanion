@@ -89,7 +89,9 @@ public class ComfyRegistryClient implements IComfyRegistryClient {
                     CompletableFuture.runAsync(() -> {
                         try {
                             java.nio.file.Files.writeString(cacheFile.toPath(), body, java.nio.charset.StandardCharsets.UTF_8);
-                        } catch (Exception ignored) {}
+                        } catch (Exception ignored) {
+            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+        }
                     });
                     return parseWorkflowsJson(body);
                 })

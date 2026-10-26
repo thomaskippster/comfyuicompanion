@@ -15,6 +15,11 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.concurrent.atomic.AtomicLong;
 
+/**
+ * High-performance non-blocking streaming download service for large model weights.
+ * Utilizes Netty HTTP client with transparent redirect handling and NIO asynchronous channels
+ * to write chunks directly to storage without heap memory overhead.
+ */
 @Service
 public class LargeFileDownloadService {
 
@@ -22,40 +27,38 @@ public class LargeFileDownloadService {
     private final WebClient webClient;
 
     public LargeFileDownloadService() {
-        // WICHTIG: Hugging Face (und viele LFS-Hoster) nutzen 302/301 Redirects auf ihre CDNs.
-        // Der Standard-WebClient folgt diesen nicht! Wir müssen den Netty HttpClient explizit 
-        // mit .followRedirect(true) konfigurieren.
+        // IMPORTANT: Hugging Face and LFS CDNs issue 302/301 redirects to their storage nodes.
+        // The default WebClient does not follow these; configure Netty HttpClient with followRedirect(true).
         HttpClient httpClient = HttpClient.create().followRedirect(true);
         ReactorClientHttpConnector connector = new ReactorClientHttpConnector(httpClient);
 
         this.webClient = WebClient.builder()
                 .clientConnector(connector)
-                // Speicherlimitierung aufheben, da wir sonst bei Giga-Byte Streams in eine 
-                // ExceededLimit-Exception des Codecs rennen könnten.
+                // Remove codec in-memory size limits to prevent ExceededLimitException on multi-gigabyte streams
                 .codecs(configurer -> configurer.defaultCodecs().maxInMemorySize(-1)) 
                 .build();
     }
 
     /**
-     * Zieht eine Datei non-blocking und chunked aus dem Netz direkt auf die NVMe/SSD,
-     * ohne den Java-Heap mit Gigabytes an Safetensors-Gewichten vollzumüllen.
-     * 
-     * @param fileUrl Die direkte (oder Redirect-) Download-URL
-     * @param targetDestination Wohin die Datei auf der Platte gespeichert werden soll
-     * @return Ein Stream aus Double-Werten, die den prozentualen Fortschritt [0.0 - 100.0] emittieren
+     * Streams a large remote file non-blocking and chunked directly to local storage,
+     * preventing Java heap saturation during multi-gigabyte weight downloads.
+     *
+     * @param fileUrl           the direct or redirecting download URL
+     * @param targetDestination local target destination path
+     * @return Flux emitting download progress percentages [0.0 - 100.0]
      */
     public Flux<Double> downloadModel(String fileUrl, Path targetDestination) {
         return webClient.get()
                 .uri(fileUrl)
                 .exchangeToFlux(response -> {
-                    // Versuche, den Content-Length Header auszulesen, um Prozente zu berechnen
+                    // Extract Content-Length header to compute progress percentages
                     long contentLength = response.headers().contentLength().orElse(-1L);
                     logger.info("Starting reactive download: {} bytes to {}", contentLength, targetDestination);
 
                     AtomicLong downloadedBytes = new AtomicLong(0L);
 
                     try {
-                        // NIO AsynchronousFileChannel öffnet den Kanal zur Festplatte direkt
+                        // Open asynchronous file channel directly to local storage
                         AsynchronousFileChannel channel = AsynchronousFileChannel.open(
                                 targetDestination,
                                 StandardOpenOption.CREATE,
@@ -63,27 +66,27 @@ public class LargeFileDownloadService {
                                 StandardOpenOption.TRUNCATE_EXISTING
                         );
 
-                        // Den reinen Byte-Stream der Netzwerkantwort abgreifen
+                        // Stream byte chunks from network response
                         Flux<DataBuffer> dataBufferFlux = response.bodyToFlux(DataBuffer.class);
 
-                        // DataBufferUtils.write pumpt die Chunks via NIO auf die Platte
+                        // Stream chunks to disk using NIO DataBufferUtils
                         return DataBufferUtils.write(dataBufferFlux, channel)
                                 .map(dataBuffer -> {
                                     int byteCount = dataBuffer.readableByteCount();
                                     long totalRead = downloadedBytes.addAndGet(byteCount);
 
-                                    // KRITISCH: Netty allokiert Off-Heap Memory für Buffers.
-                                    // Wenn wir diese nicht manuell freigeben, entsteht ein natives Memory Leak!
+                                    // CRITICAL: Netty allocates off-heap memory for buffers.
+                                    // Manually release them to prevent native memory leaks!
                                     DataBufferUtils.release(dataBuffer);
 
                                     if (contentLength > 0) {
                                         return ((double) totalRead / contentLength) * 100.0;
                                     } else {
-                                        return 0.0; // Fallback, falls der Server keinen Length-Header schickt
+                                        return 0.0; // Fallback if server provides no Content-Length header
                                     }
                                 })
                                 .doFinally(signalType -> {
-                                    // Am Ende oder bei Abbruch zwingend den Datei-Kanal schließen
+                                    // Ensure file channel is closed on completion or cancellation
                                     try {
                                         logger.info("Closing file stream for: {} (Signal: {})", targetDestination, signalType);
                                         channel.close();

@@ -1,5 +1,8 @@
 package de.tki.comfyuicompanion.ui.dialog;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import de.tki.comfyuicompanion.service.impl.ConfigService;
 
 import javax.swing.*;
@@ -9,6 +12,7 @@ import java.awt.*;
  * Modal dialog rendering the in-app user guide as themed HTML.
  */
 final class HelpDialog {
+    private static final Logger logger = LoggerFactory.getLogger(HelpDialog.class);
 
     private HelpDialog() {
     }
@@ -32,7 +36,9 @@ final class HelpDialog {
             if (e.getEventType() == javax.swing.event.HyperlinkEvent.EventType.ACTIVATED && Desktop.isDesktopSupported()) {
                 try {
                     Desktop.getDesktop().browse(e.getURL().toURI());
-                } catch (Exception ignored) {}
+                } catch (Exception ignored) {
+            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+        }
             }
         });
 

@@ -4,23 +4,27 @@ import de.tki.comfyuicompanion.domain.HardwareProfile;
 import de.tki.comfyuicompanion.domain.VideoPresetConfig;
 
 /**
- * Service-Schnittstelle zur System-Hardware-Erkennung, Profil-Einstufung
- * und Generierung optimaler Video-Architect-Konfigurationen.
+ * Service interface for hardware detection, performance tier classification,
+ * and generating optimal Video Architect configurations.
  */
 public interface IHardwareProfileService {
 
     /**
-     * Ermittelt oder liefert das gecachte Hardwareprofil des aktuellen Systems.
+     * Detects or retrieves the cached hardware profile of the current system.
+     *
+     * @return the hardware profile
      */
     HardwareProfile getHardwareProfile();
 
     /**
-     * Liefert die für das erkannte System empfohlene Video-Architect-Konfiguration.
+     * Returns the recommended Video Architect preset configuration for the detected system.
+     *
+     * @return the recommended preset configuration
      */
     VideoPresetConfig getRecommendedVideoConfig();
 
     /**
-     * Erzwingt eine erneute Hardware-Erkennung (z. B. nach GPU-Wechsel oder Treiber-Reload).
+     * Forces a hardware re-detection (e.g. after GPU swap or driver reload).
      */
     void refreshProfile();
 }

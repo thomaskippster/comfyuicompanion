@@ -117,12 +117,13 @@ public class DashboardConsolePanel extends JPanel {
      */
     public void appendLog(String text) {
         if (text == null) return;
+        String clean = de.tki.comfyuicompanion.util.ConsoleAnsiSanitizer.stripAnsiCodes(text);
         if (SwingUtilities.isEventDispatchThread()) {
-            comfyConsoleArea.append(text);
+            comfyConsoleArea.append(clean);
             comfyConsoleArea.setCaretPosition(comfyConsoleArea.getDocument().getLength());
         } else {
             SwingUtilities.invokeLater(() -> {
-                comfyConsoleArea.append(text);
+                comfyConsoleArea.append(clean);
                 comfyConsoleArea.setCaretPosition(comfyConsoleArea.getDocument().getLength());
             });
         }

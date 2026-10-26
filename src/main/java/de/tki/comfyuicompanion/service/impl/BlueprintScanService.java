@@ -303,7 +303,9 @@ public class BlueprintScanService {
                     String mediaType = ("mp4".equals(ext) || "webm".equals(ext) || "mov".equals(ext)) ? "video" : "image";
                     return new PreviewMetadata(targetPreviewFile.getAbsolutePath(), mediaType, ext);
                 }
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+        }
         }
         return new PreviewMetadata("", "image", "");
     }

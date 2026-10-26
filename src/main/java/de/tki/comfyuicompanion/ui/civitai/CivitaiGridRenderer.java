@@ -24,7 +24,7 @@ import java.util.function.Predicate;
 public class CivitaiGridRenderer {
 
     private static final int CARD_GAP = 14;
-    private static final int TARGET_CARD_WIDTH = 240;
+    private static final int TARGET_CARD_WIDTH = 220;
 
     private final ScrollablePanel contentWrapper;
     private final JScrollPane scrollPane;

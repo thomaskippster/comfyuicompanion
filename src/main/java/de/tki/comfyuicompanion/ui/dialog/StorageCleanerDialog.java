@@ -212,7 +212,9 @@ public class StorageCleanerDialog extends JDialog {
                         Files.createDirectories(target.getParent());
                         Files.move(c.fullPath(), target, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
                         moved++;
-                    } catch (Exception ignored) {}
+                    } catch (Exception ignored) {
+            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+        }
                 }
             }
             final int finalMoved = moved;

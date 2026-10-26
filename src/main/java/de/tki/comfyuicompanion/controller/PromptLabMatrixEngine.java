@@ -1,5 +1,8 @@
 package de.tki.comfyuicompanion.controller;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashSet;
@@ -13,6 +16,7 @@ import java.util.regex.Pattern;
  * and multi-parameter sweeps (CFG scales, step counts, seeds) into discrete execution cells.
  */
 public class PromptLabMatrixEngine {
+    private static final Logger logger = LoggerFactory.getLogger(PromptLabMatrixEngine.class);
 
     private static final int MAX_COMBINATIONS = 16;
     private static final Pattern BRACE_GROUP_PATTERN = Pattern.compile("\\{([^{}]+)\\}");
@@ -159,7 +163,9 @@ public class PromptLabMatrixEngine {
                     if (val >= 0.0 && val <= 50.0) {
                         result.add(val);
                     }
-                } catch (NumberFormatException ignored) {}
+                } catch (NumberFormatException ignored) {
+            logger.trace("Invalid numeric format: {}", ignored.getMessage());
+        }
             }
         }
         if (result.isEmpty()) {

@@ -106,7 +106,9 @@ public class CustomNodeDatabaseLoader {
                 if (ageHours < 24 * 7 && Files.size(cachedFile) > 0) {
                     cacheValid = true;
                 }
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+        }
         }
 
         if (cacheValid) {

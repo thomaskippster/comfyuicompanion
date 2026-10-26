@@ -83,7 +83,9 @@ public class BlueprintDataCoordinator {
                 if (res != null) {
                     scanResults = res;
                 }
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+        }
         }
 
         Map<String, Map<String, Object>> scanLookup = new HashMap<>();
@@ -207,7 +209,9 @@ public class BlueprintDataCoordinator {
             if (Files.exists(p) && Files.isRegularFile(p)) {
                 try {
                     return formatByteSize(Files.size(p));
-                } catch (Exception ignored) {}
+                } catch (Exception ignored) {
+            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+        }
             }
         }
 
@@ -218,7 +222,9 @@ public class BlueprintDataCoordinator {
             if (Files.exists(p) && Files.isRegularFile(p)) {
                 try {
                     return formatByteSize(Files.size(p));
-                } catch (Exception ignored) {}
+                } catch (Exception ignored) {
+            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+        }
             }
         }
 
@@ -228,7 +234,9 @@ public class BlueprintDataCoordinator {
                 if (cached.isPresent()) {
                     return formatByteSize(Files.size(cached.get()));
                 }
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+        }
         }
 
         return "Unknown";
@@ -364,7 +372,9 @@ public class BlueprintDataCoordinator {
                         Files.copy(tmp.toPath(), cachedFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
                         return cachedFile;
                     }
-                } catch (Exception ignored) {}
+                } catch (Exception ignored) {
+            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+        }
 
                 return tmp;
             } catch (Exception e) {
@@ -470,7 +480,9 @@ public class BlueprintDataCoordinator {
                     try {
                         ModelInfo info = mapper.convertValue(item, ModelInfo.class);
                         result.add(info);
-                    } catch (Exception ignored) {}
+                    } catch (Exception ignored) {
+            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+        }
                 }
             }
         }

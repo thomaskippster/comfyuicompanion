@@ -94,7 +94,9 @@ public class ComfyTemplateService implements IComfyTemplateService {
                     needsFluxUpgrade = true;
                     logger.info("🔄 [TemplateService] Old Flux template detected. Forcing upgrade...");
                 }
-            } catch (IOException ignored) {}
+            } catch (IOException ignored) {
+            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+        }
         }
 
         File luminaFile = new File(templatesDir, "lumina2_base_api.json");
@@ -106,7 +108,9 @@ public class ComfyTemplateService implements IComfyTemplateService {
                     needsLuminaWrite = true;
                     logger.info("🔄 [TemplateService] Old Lumina2 template without CFGNorm detected. Forcing upgrade...");
                 }
-            } catch (IOException ignored) {}
+            } catch (IOException ignored) {
+            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+        }
         }
 
         String[] defaultFileNames = {

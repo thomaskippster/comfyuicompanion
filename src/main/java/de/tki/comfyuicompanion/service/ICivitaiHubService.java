@@ -59,4 +59,18 @@ public interface ICivitaiHubService {
      * @return ModelInfo instance ready for queueing into IDownloadManager
      */
     ModelInfo createModelInfoForDownload(CivitaiModelEntry entry);
+
+    /**
+     * Retrieves the list of active base model architectures dynamically from Civitai.
+     *
+     * @return CompletableFuture resolving to the list of active base model names
+     */
+    CompletableFuture<List<String>> getActiveBaseModels();
+
+    /**
+     * Retrieves the list of supported model types dynamically from Civitai.
+     *
+     * @return CompletableFuture resolving to the list of model types
+     */
+    CompletableFuture<List<String>> getModelTypes();
 }

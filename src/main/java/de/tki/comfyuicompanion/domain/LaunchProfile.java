@@ -4,7 +4,7 @@ import java.util.Map;
 import java.util.List;
 
 /**
- * Repräsentiert ein Start-Profil für ComfyUI.
+ * Represents a launch profile configuration for ComfyUI.
  *
  * @param id           the unique identifier of the profile
  * @param name         the display name of the profile

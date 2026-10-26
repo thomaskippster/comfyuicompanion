@@ -1,5 +1,8 @@
 package de.tki.comfyuicompanion.ui.blueprint;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import de.tki.comfyuicompanion.domain.ModelInfo;
 import de.tki.comfyuicompanion.service.impl.ConfigService;
 import de.tki.comfyuicompanion.service.impl.HardwareMonitorService;
@@ -18,6 +21,7 @@ import java.util.regex.Pattern;
  * for a given workflow blueprint and produces traffic-light indicators.
  */
 public class BlueprintHardwareAdvisor {
+    private static final Logger logger = LoggerFactory.getLogger(BlueprintHardwareAdvisor.class);
 
     private static final long GB = 1024L * 1024L * 1024L;
     private static final long MB = 1024L * 1024L;
@@ -209,7 +213,9 @@ public class BlueprintHardwareAdvisor {
         if ((rawSize == null || rawSize.isBlank() || "Unknown".equalsIgnoreCase(rawSize)) && modelSizeResolver != null) {
             try {
                 rawSize = modelSizeResolver.apply(info);
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+        }
         }
 
         long parsed = parseFormattedSize(rawSize);
@@ -275,7 +281,9 @@ public class BlueprintHardwareAdvisor {
                     case "KB" -> (long) (val * 1024L);
                     default -> (long) val;
                 };
-            } catch (NumberFormatException ignored) {}
+            } catch (NumberFormatException ignored) {
+            logger.trace("Invalid numeric format: {}", ignored.getMessage());
+        }
         }
         return 0L;
     }
@@ -293,7 +301,9 @@ public class BlueprintHardwareAdvisor {
             if (f != null && f.exists()) {
                 return f.getUsableSpace();
             }
-        } catch (Exception ignored) {}
+        } catch (Exception ignored) {
+            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+        }
         return Long.MAX_VALUE;
     }
 }

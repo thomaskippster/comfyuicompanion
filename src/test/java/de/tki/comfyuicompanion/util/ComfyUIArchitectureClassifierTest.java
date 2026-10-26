@@ -89,7 +89,7 @@ public class ComfyUIArchitectureClassifierTest {
 
     @Test
     void testParseInnerArchitectureResponse_fallbackText() {
-        String rawTextResponse = "Der Workflow verwendet FLUX Nodes, daher ist es ARCH_FLUX.";
+        String rawTextResponse = "The workflow uses FLUX nodes, therefore it is ARCH_FLUX.";
         ModelArchitecture arch = classifier.parseInnerArchitectureResponse(rawTextResponse);
         assertEquals(ModelArchitecture.ARCH_FLUX, arch);
     }

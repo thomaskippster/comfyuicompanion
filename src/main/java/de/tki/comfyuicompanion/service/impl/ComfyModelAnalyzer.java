@@ -1,5 +1,8 @@
 package de.tki.comfyuicompanion.service.impl;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import de.tki.comfyuicompanion.domain.ModelInfo;
 import de.tki.comfyuicompanion.service.IModelAnalyzer;
 import org.json.JSONArray;
@@ -16,6 +19,7 @@ import java.util.regex.Pattern;
  * Represents the comfy model analyzer class.
  */
 public class ComfyModelAnalyzer implements IModelAnalyzer {
+    private static final Logger logger = LoggerFactory.getLogger(ComfyModelAnalyzer.class);
     
     private final LocalAIService aiService;
     private final ModelListService modelListService;
@@ -103,7 +107,9 @@ public class ComfyModelAnalyzer implements IModelAnalyzer {
                     }
                 }
             }
-        } catch (Exception e) {}
+        } catch (Exception e) {
+            logger.debug("Ignored non-fatal exception: {}", e.getMessage());
+        }
         return results;
     }
 
@@ -148,7 +154,9 @@ public class ComfyModelAnalyzer implements IModelAnalyzer {
             if (trimmed.startsWith("{")) return new JSONObject(trimmed);
             int s = trimmed.indexOf("{"), e = trimmed.lastIndexOf("}");
             if (s != -1 && e != -1) return new JSONObject(trimmed.substring(s, e + 1));
-        } catch (Exception e) {}
+        } catch (Exception e) {
+            logger.debug("Ignored non-fatal exception: {}", e.getMessage());
+        }
         return null;
     }
 

@@ -41,9 +41,6 @@ public final class MainWindowTabManager {
         if (configService.isBlueprintGalleryEnabled() && uiComponents.blueprintGalleryWrapper != null) {
             uiComponents.mainTabs.addTab("Blueprint Gallery", SvgIconFactory.get(AppIcon.BLUEPRINT_GALLERY, 16), uiComponents.blueprintGalleryWrapper);
         }
-        if (configService.isCivitaiGalleryEnabled() && uiComponents.civitaiHubWrapper != null) {
-            uiComponents.mainTabs.addTab("Model Hub", SvgIconFactory.get(AppIcon.MODEL_HUB, 16), uiComponents.civitaiHubWrapper);
-        }
         if (configService.isPromptLabEnabled() && uiComponents.promptLabPanel != null) {
             uiComponents.mainTabs.addTab("Image Lab", SvgIconFactory.get(AppIcon.IMAGE_LAB, 16), uiComponents.promptLabPanel);
         }

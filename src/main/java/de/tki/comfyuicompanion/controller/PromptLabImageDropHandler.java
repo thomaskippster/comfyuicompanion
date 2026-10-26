@@ -117,7 +117,9 @@ public class PromptLabImageDropHandler {
             if (img != null) {
                 SwingUtilities.invokeLater(() -> view.scaleAndSetImage(img));
             }
-        } catch (Exception ignored) {}
+        } catch (Exception ignored) {
+            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+        }
 
         Optional<ExtractedPngWorkflow> optMeta = ComfyPngMetadataReader.readMetadata(file);
         if (optMeta.isEmpty()) {

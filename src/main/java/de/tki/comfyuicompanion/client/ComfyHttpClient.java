@@ -131,7 +131,7 @@ public class ComfyHttpClient {
         return webClient.post()
                 .uri("/cmfc/refresh-models")
                 .header("Content-Type", "application/json")
-                .bodyValue("{\"force_reload\": true}")
+                .bodyValue(de.tki.comfyuicompanion.dto.acl.RefreshModelsAclRequest.FORCE.toJson())
                 .retrieve()
                 .bodyToMono(Void.class)
                 .retryWhen(retryPolicy())

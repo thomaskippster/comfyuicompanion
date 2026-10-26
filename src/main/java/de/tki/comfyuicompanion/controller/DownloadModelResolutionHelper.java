@@ -18,6 +18,8 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import java.util.Optional;
 
 /**
@@ -26,6 +28,7 @@ import java.util.Optional;
  */
 public class DownloadModelResolutionHelper {
 
+    private static final Logger log = LoggerFactory.getLogger(DownloadModelResolutionHelper.class);
     private final ConfigService configService;
     private final ArchiveService archiveService;
     private final LocalModelScanner localScanner;
@@ -64,7 +67,7 @@ public class DownloadModelResolutionHelper {
         String archive = configService != null ? configService.getArchivePath() : null;
 
         for (ModelInfo req : missingModels) {
-            String name = req.getName();
+            String name = (req.getFilename() != null && !req.getFilename().isBlank()) ? req.getFilename() : req.getName();
             String url = req.getUrl();
             if (name == null || name.isBlank()) continue;
 
@@ -104,7 +107,9 @@ public class DownloadModelResolutionHelper {
                             inArchive = false;
                         }
                     }
-                } catch (Exception ignored) {}
+                } catch (Exception e) {
+                    log.debug("Failed to verify archived file size: {}", e.getMessage());
+                }
             }
 
             if (!inArchive && archive != null && !archive.isEmpty() && localScanner != null) {
@@ -137,7 +142,9 @@ public class DownloadModelResolutionHelper {
                             }
                             req.setSave_path(normalizedFolder);
                         }
-                    } catch (Exception ignored) {}
+                    } catch (Exception e) {
+                        log.debug("Failed to inspect local candidate size: {}", e.getMessage());
+                    }
                 }
             }
 
@@ -200,6 +207,7 @@ public class DownloadModelResolutionHelper {
 
                     ModelInfo newInfo = new ModelInfo();
                     newInfo.setName(name);
+                    newInfo.setFilename(name);
                     newInfo.setType(req.getType());
                     newInfo.setSize(sizeStr);
                     newInfo.setUrl(dlUrl);
@@ -272,7 +280,9 @@ public class DownloadModelResolutionHelper {
                                     if (localExists) {
                                         try {
                                             localSizeMatch = (Files.size(local) == size);
-                                        } catch (IOException ignored) {}
+                                        } catch (IOException e) {
+                                            log.debug("Failed to check local model size match: {}", e.getMessage());
+                                        }
                                     }
 
                                     boolean inArchive = false;
@@ -284,7 +294,9 @@ public class DownloadModelResolutionHelper {
                                             } else if (localScanner != null) {
                                                 inArchive = localScanner.findModelWithPrefSize(Paths.get(archive), info.getName(), size).isPresent();
                                             }
-                                        } catch (IOException ignored) {}
+                                        } catch (IOException e) {
+                                            log.debug("Failed to check archive size match: {}", e.getMessage());
+                                        }
                                     }
 
                                     String newStatus;

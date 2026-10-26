@@ -67,18 +67,18 @@ public class TemplatesHandler implements HttpHandler {
 
             HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
 
+            ObjectMapper mapper = new ObjectMapper();
             if (response.statusCode() != 200) {
-                http.sendJsonResponse(exchange, response.statusCode(), "{\"error\": \"Failed to fetch templates index from ComfyUI\"}");
+                http.sendJsonResponse(exchange, response.statusCode(), de.tki.comfyuicompanion.dto.acl.BridgeActionAclResponse.error("Failed to fetch templates index from ComfyUI").toJson());
                 return;
             }
 
-            ObjectMapper mapper = new ObjectMapper();
             JsonNode rootNode = mapper.readTree(response.body());
             ObjectNode responseJson = catalogMapper.buildTemplatesResponse(rootNode, baseUrl, mapper);
 
             http.sendJsonResponse(exchange, 200, mapper.writeValueAsString(responseJson));
         } catch (Exception e) {
-            http.sendJsonResponse(exchange, 500, "{\"error\": \"" + e.getMessage() + "\"}");
+            http.sendJsonResponse(exchange, 500, de.tki.comfyuicompanion.dto.acl.BridgeActionAclResponse.error(e.getMessage() != null ? e.getMessage() : "Internal error").toJson());
         } finally {
             exchange.close();
         }

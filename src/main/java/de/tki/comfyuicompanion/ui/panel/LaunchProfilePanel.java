@@ -1,5 +1,8 @@
 package de.tki.comfyuicompanion.ui.panel;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import de.tki.comfyuicompanion.domain.LaunchProfile;
 import de.tki.comfyuicompanion.service.impl.ConfigService;
 import de.tki.comfyuicompanion.service.impl.ProfileManager;
@@ -22,6 +25,7 @@ import java.util.stream.Collectors;
  * Supports CRUD actions (New, Edit, Duplicate, Delete) integrated with {@link ProfileManager}.
  */
 public class LaunchProfilePanel extends GlassPanel {
+    private static final Logger logger = LoggerFactory.getLogger(LaunchProfilePanel.class);
 
     private final JFrame parentFrame;
     private final ConfigService configService;
@@ -239,7 +243,9 @@ public class LaunchProfilePanel extends GlassPanel {
             profiles.add(def);
             try {
                 profileManager.saveProfiles(profiles);
-            } catch (IOException ignored) {}
+            } catch (IOException ignored) {
+            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+        }
         }
 
         for (LaunchProfile p : profiles) {

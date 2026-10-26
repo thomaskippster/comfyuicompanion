@@ -183,18 +183,20 @@ public class MainWindowBuilder {
             components.blueprintGalleryWrapper.add(blueprintGalleryTab, BorderLayout.CENTER);
             blueprintGalleryTab.setOnDataLoadedCallback(main::refreshPromptLabModels);
             blueprintGalleryTab.setOnWorkflowImportRequested(main::importWorkflow);
+            blueprintGalleryTab.setOnSwitchToDownloadManager(main::focusDownloadTabAndSelectModels);
+            if (civitaiGalleryTab != null) {
+                blueprintGalleryTab.setCivitaiGalleryTab(civitaiGalleryTab);
+            }
         } else {
             components.blueprintGalleryWrapper.add(new JPanel(), BorderLayout.CENTER);
         }
 
-        // Civitai Model Hub
+        // Civitai Model Hub (embedded inside BlueprintGalleryTab)
         components.civitaiHubWrapper = new JPanel(new BorderLayout());
         components.civitaiHubWrapper.setName("civitaiHubWrapper");
         components.civitaiHubWrapper.setOpaque(true);
         if (civitaiGalleryTab != null) {
-            components.civitaiHubWrapper.add(civitaiGalleryTab, BorderLayout.CENTER);
-        } else {
-            components.civitaiHubWrapper.add(new JPanel(), BorderLayout.CENTER);
+            civitaiGalleryTab.setOnSwitchToDownloadManager(main::focusDownloadTabAndSelectModels);
         }
 
         // Prompt Lab

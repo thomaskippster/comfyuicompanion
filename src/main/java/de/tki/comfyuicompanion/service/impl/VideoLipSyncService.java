@@ -216,7 +216,9 @@ public class VideoLipSyncService implements IVideoLipSyncService {
         Thread errThread = Thread.ofVirtual().name("ffmpeg-lipsync-reader").start(() -> {
             try (BufferedReader r = new BufferedReader(new InputStreamReader(p.getErrorStream(), StandardCharsets.UTF_8))) {
                 while (r.readLine() != null) { /* discard */ }
-            } catch (IOException ignored) {}
+            } catch (IOException ignored) {
+            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+        }
         });
 
         int exit = p.waitFor();

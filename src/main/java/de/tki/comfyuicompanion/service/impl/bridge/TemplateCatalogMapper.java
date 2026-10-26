@@ -1,5 +1,8 @@
 package de.tki.comfyuicompanion.service.impl.bridge;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -17,6 +20,7 @@ import java.util.Map;
  * templates and enriches each entry with an internal preview-proxy URL.
  */
 public class TemplateCatalogMapper {
+    private static final Logger logger = LoggerFactory.getLogger(TemplateCatalogMapper.class);
 
     /**
      * Extracts and flattens template definitions from a hierarchical ComfyUI templates JSON tree.
@@ -55,7 +59,9 @@ public class TemplateCatalogMapper {
                     String clientPreviewUrl = "/api/preview?url="
                             + URLEncoder.encode(comfyuiInternalUrl, StandardCharsets.UTF_8).replace("+", "%20");
                     templateNode.put("previewUrl", clientPreviewUrl);
-                } catch (Exception ignored) {}
+                } catch (Exception ignored) {
+            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+        }
             }
             templatesArray.add(templateNode);
         }

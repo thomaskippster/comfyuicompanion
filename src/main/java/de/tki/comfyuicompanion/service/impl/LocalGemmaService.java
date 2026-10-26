@@ -36,22 +36,12 @@ public class LocalGemmaService {
     private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(LocalGemmaService.class);
 
     static {
-        String oldTmp = System.getProperty("java.io.tmpdir");
-        try {
-            Path customTmp = Files.createTempDirectory("llama_tmp");
-            System.setProperty("java.io.tmpdir", customTmp.toAbsolutePath().toString());
-            // Force initialization of LlamaModel (and LlamaLoader) so it extracts the DLL to the unique folder
-            Class.forName("de.kherud.llama.LlamaModel");
-        } catch (Throwable t) {
-            logger.error("Failed to pre-initialize LlamaModel native libraries", t);
-        } finally {
-            if (oldTmp != null) {
-                System.setProperty("java.io.tmpdir", oldTmp);
-            }
-        }
+        LlmGpuConfigurator.preInitializeNativeLlama();
     }
 
     private final ConfigService configService;
+    private final LlmGpuConfigurator gpuConfigurator;
+    private final LlmModelDownloadService downloadService;
     private LlamaModel model = null;
     private String loadedModelPath = null;
     private Timer unloadTimer = null;
@@ -59,58 +49,104 @@ public class LocalGemmaService {
     private static final long INACTIVITY_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 
     /**
-     * Supported GGUF LLM models for local execution.
+     * Supported GGUF LLM models for local prompt enhancement and image generation suggestions.
+     * All models are downloaded strictly on-demand directly from Hugging Face (never bundled with application).
      */
     public enum LlmModelPreset {
-        GEMMA_3_4B(
-                "google_gemma-3-4b-it-Q4_K_M.gguf",
+        QWEN_2_5_1_5B("qwen-2.5-1.5b", "Qwen2.5-1.5B-Instruct-Q4_K_M.gguf",
+                "https://huggingface.co/bartowski/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/Qwen2.5-1.5B-Instruct-Q4_K_M.gguf",
+                "Qwen-2.5-1.5B", "~1.1 GB", "Ultra Fast", ChatTemplate.CHATML),
+        LLAMA_3_2_3B("llama-3.2-3b", "Llama-3.2-3B-Instruct-Q4_K_M.gguf",
+                "https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF/resolve/main/Llama-3.2-3B-Instruct-Q4_K_M.gguf",
+                "Llama-3.2-3B", "~2.0 GB", "Creative", ChatTemplate.LLAMA3),
+        PHI_3_5_MINI("phi-3.5-mini", "Phi-3.5-mini-instruct-Q4_K_M.gguf",
+                "https://huggingface.co/bartowski/Phi-3.5-mini-instruct-GGUF/resolve/main/Phi-3.5-mini-instruct-Q4_K_M.gguf",
+                "Phi-3.5-mini", "~2.3 GB", "Reasoning", ChatTemplate.CHATML),
+        GEMMA_3_4B("gemma-3-4b", "google_gemma-3-4b-it-Q4_K_M.gguf",
                 "https://huggingface.co/bartowski/google_gemma-3-4b-it-GGUF/resolve/main/google_gemma-3-4b-it-Q4_K_M.gguf",
-                "Gemma-3-4B",
-                "~3.3 GB"
-        ),
-        QWEN_2_5_7B(
-                "Qwen2.5-7B-Instruct-Q4_K_M.gguf",
+                "Gemma-3-4B", "~3.3 GB", "Balanced (Default)", ChatTemplate.GEMMA),
+        QWEN_2_5_7B("qwen-2.5-7b", "Qwen2.5-7B-Instruct-Q4_K_M.gguf",
                 "https://huggingface.co/bartowski/Qwen2.5-7B-Instruct-GGUF/resolve/main/Qwen2.5-7B-Instruct-Q4_K_M.gguf",
-                "Qwen-2.5-7B",
-                "~4.7 GB"
-        );
+                "Qwen-2.5-7B", "~4.7 GB", "Pro Quality", ChatTemplate.CHATML);
 
+        private final String id;
         private final String filename;
         private final String downloadUrl;
         private final String displayName;
         private final String approxSize;
+        private final String description;
+        private final ChatTemplate chatTemplate;
 
-        LlmModelPreset(String filename, String downloadUrl, String displayName, String approxSize) {
+        LlmModelPreset(String id, String filename, String downloadUrl, String displayName, String approxSize, String description, ChatTemplate chatTemplate) {
+            this.id = id;
             this.filename = filename;
             this.downloadUrl = downloadUrl;
             this.displayName = displayName;
             this.approxSize = approxSize;
+            this.description = description;
+            this.chatTemplate = chatTemplate;
         }
 
+        public String getId() { return id; }
         public String getFilename() { return filename; }
         public String getDownloadUrl() { return downloadUrl; }
         public String getDisplayName() { return displayName; }
         public String getApproxSize() { return approxSize; }
+        public String getDescription() { return description; }
+        public ChatTemplate getChatTemplate() { return chatTemplate; }
+
+        @Override
+        public String toString() {
+            return displayName + " (" + approxSize + " - " + description + ")";
+        }
+
+        /**
+         * Resolves a preset by identifier with fallback to GEMMA_3_4B.
+         *
+         * @param id preset identifier
+         * @return matching LlmModelPreset
+         */
+        public static LlmModelPreset fromId(String id) {
+            if (id != null && !id.trim().isEmpty()) {
+                String clean = id.trim().toLowerCase();
+                for (LlmModelPreset p : values()) {
+                    if (p.id.equalsIgnoreCase(clean) || p.name().equalsIgnoreCase(clean)) {
+                        return p;
+                    }
+                }
+                if (clean.contains("qwen") && clean.contains("1.5")) return QWEN_2_5_1_5B;
+                if (clean.contains("qwen")) return QWEN_2_5_7B;
+                if (clean.contains("llama")) return LLAMA_3_2_3B;
+                if (clean.contains("phi")) return PHI_3_5_MINI;
+                if (clean.contains("gemma")) return GEMMA_3_4B;
+            }
+            return GEMMA_3_4B;
+        }
     }
 
-    private final ExecutorService gemmaExecutor = Executors.newSingleThreadExecutor(r -> {
-        Thread t = new Thread(r, "LocalGemma-Worker");
-        t.setDaemon(true);
-        t.setPriority(Thread.MIN_PRIORITY);
-        return t;
-    });
+    private final ExecutorService gemmaExecutor = Executors.newSingleThreadExecutor(
+            Thread.ofVirtual().name("LocalGemma-Worker-", 1).factory()
+    );
+
+    public LocalGemmaService(ConfigService configService) {
+        this(configService, new LlmGpuConfigurator(), new LlmModelDownloadService());
+    }
 
     @Autowired
-    public LocalGemmaService(ConfigService configService) {
+    public LocalGemmaService(ConfigService configService,
+                             @Autowired(required = false) LlmGpuConfigurator gpuConfigurator,
+                             @Autowired(required = false) LlmModelDownloadService downloadService) {
         this.configService = configService;
+        this.gpuConfigurator = gpuConfigurator != null ? gpuConfigurator : new LlmGpuConfigurator();
+        this.downloadService = downloadService != null ? downloadService : new LlmModelDownloadService();
     }
 
     /**
      * Gets the actively configured LLM model preset.
      */
     public LlmModelPreset getActivePreset() {
-        if (configService != null && "qwen-2.5-7b".equalsIgnoreCase(configService.getLocalLlmModel())) {
-            return LlmModelPreset.QWEN_2_5_7B;
+        if (configService != null) {
+            return LlmModelPreset.fromId(configService.getLocalLlmModel());
         }
         return LlmModelPreset.GEMMA_3_4B;
     }
@@ -119,7 +155,16 @@ public class LocalGemmaService {
      * Gets the location where the active local GGUF model should be stored.
      */
     public File getModelFile() {
-        LlmModelPreset preset = getActivePreset();
+        return getModelFile(getActivePreset());
+    }
+
+    /**
+     * Gets the storage file location for a specific model preset.
+     *
+     * @param preset model preset
+     * @return target file on disk
+     */
+    public File getModelFile(LlmModelPreset preset) {
         String modelsPathStr = configService != null ? configService.getModelsPath() : null;
         Path path;
         if (modelsPathStr != null && !modelsPathStr.trim().isEmpty()) {
@@ -132,75 +177,43 @@ public class LocalGemmaService {
     }
 
     /**
-     * Checks if the local GGUF model file exists and is of correct size.
+     * Checks if the active local GGUF model file exists and is of valid size.
      */
     public boolean isModelDownloaded() {
-        File file = getModelFile();
-        return file.exists() && file.isFile() && file.length() > 500_000_000L; // Basic check: > 500 MB
+        return isModelDownloaded(getActivePreset());
+    }
+
+    /**
+     * Checks if a specific local GGUF model file exists and is of valid size.
+     *
+     * @param preset model preset to check
+     * @return true if downloaded and valid
+     */
+    public boolean isModelDownloaded(LlmModelPreset preset) {
+        if (preset == null) return false;
+        File file = getModelFile(preset);
+        return file.exists() && file.isFile() && file.length() > 500_000_000L;
     }
 
     /**
      * Downloads the active GGUF model in a background thread, updating progress.
      */
     public void downloadModel(BiConsumer<Double, String> progressListener, Runnable onFinished, BiConsumer<String, Exception> onError) {
+        downloadModel(getActivePreset(), progressListener, onFinished, onError);
+    }
+
+    /**
+     * Downloads a specific GGUF model preset on-demand in a background thread, updating progress.
+     *
+     * @param preset           model preset to download
+     * @param progressListener callback for download percentage and status text
+     * @param onFinished       callback executed on successful download
+     * @param onError          callback executed on download failure
+     */
+    public void downloadModel(LlmModelPreset preset, BiConsumer<Double, String> progressListener, Runnable onFinished, BiConsumer<String, Exception> onError) {
         gemmaExecutor.submit(() -> {
-            LlmModelPreset preset = getActivePreset();
-            File targetFile = getModelFile();
-            File parentDir = targetFile.getParentFile();
-            if (!parentDir.exists()) {
-                parentDir.mkdirs();
-            }
-
-            File tempFile = new File(parentDir, preset.getFilename() + ".download");
-            
-            try {
-                logger.info("Downloading LLM GGUF ({}) from: {}", preset.getDisplayName(), preset.getDownloadUrl());
-                URL url = new URL(preset.getDownloadUrl());
-                URLConnection connection = url.openConnection();
-                connection.setConnectTimeout(15000);
-                connection.setReadTimeout(30000);
-                
-                long totalBytes = connection.getContentLengthLong();
-                
-                try (BufferedInputStream in = new BufferedInputStream(connection.getInputStream());
-                     FileOutputStream out = new FileOutputStream(tempFile)) {
-                    
-                    byte[] buffer = new byte[8192];
-                    long bytesRead = 0;
-                    int count;
-                    long lastUpdateTime = System.currentTimeMillis();
-                    
-                    while ((count = in.read(buffer)) != -1) {
-                        out.write(buffer, 0, count);
-                        bytesRead += count;
-                        
-                        long now = System.currentTimeMillis();
-                        if (now - lastUpdateTime > 1000 && totalBytes > 0) {
-                            double percent = (double) bytesRead / totalBytes;
-                            double mbRead = (double) bytesRead / (1024 * 1024);
-                            double mbTotal = (double) totalBytes / (1024 * 1024);
-                            String status = String.format("Downloaded %.1f / %.1f MB (%.1f%%)", mbRead, mbTotal, percent * 100);
-                            progressListener.accept(percent, status);
-                            lastUpdateTime = now;
-                        }
-                    }
-                }
-
-                // Rename temp file to final file
-                if (targetFile.exists()) {
-                    targetFile.delete();
-                }
-                tempFile.renameTo(targetFile);
-                
-                logger.info("{} model download completed successfully.", preset.getDisplayName());
-                onFinished.run();
-                
-            } catch (Exception e) {
-                if (tempFile != null && tempFile.exists()) {
-                    tempFile.delete();
-                }
-                onError.accept("Download failed: " + e.getMessage(), e);
-            }
+            File targetFile = getModelFile(preset);
+            downloadService.downloadModelFile(preset.getDisplayName(), preset.getDownloadUrl(), targetFile, progressListener, onFinished, onError);
         });
     }
 
@@ -222,25 +235,20 @@ public class LocalGemmaService {
 
                 logger.info("Loading {} model from: {}", getActivePreset().getDisplayName(), modelFile.getAbsolutePath());
                 
-                // Attempt GPU acceleration first (offload all layers to GPU via CUDA / Vulkan / Metal)
+                // Attempt FULL GPU acceleration first (100% of layers offloaded to GPU via CUDA / Tensor Cores)
                 boolean gpuLoaded = false;
                 try {
-                    int gpuLayers = 99; // 99 layers offloads all transformer layers to GPU
-                    logger.info("Attempting to load {} model with GPU acceleration (gpuLayers={})...", getActivePreset().getDisplayName(), gpuLayers);
-                    
-                    ModelParameters modelParams = new ModelParameters()
-                        .setModel(modelFile.getAbsolutePath())
-                        .setCtxSize(2048)
-                        .setGpuLayers(gpuLayers);
-                    
+                    ModelParameters modelParams = gpuConfigurator.createFullGpuParameters(modelFile);
                     model = new LlamaModel(modelParams);
                     loadedModelPath = modelFile.getAbsolutePath();
                     gpuLoaded = true;
-                    logger.info("✅ {} model loaded successfully with GPU acceleration.", getActivePreset().getDisplayName());
+                    logger.info("✅ {} model loaded successfully with FULL GPU acceleration.", getActivePreset().getDisplayName());
                 } catch (Throwable t) {
-                    logger.warn("⚠️ GPU acceleration could not be initialized ({}). Falling back to CPU...", t.getMessage());
+                    logger.warn("⚠️ Full GPU acceleration could not be initialized ({}). Falling back to CPU...", t.getMessage());
                     if (model != null) {
-                        try { model.close(); } catch (Exception ignored) {}
+                        try { model.close(); } catch (Exception ignored) {
+                            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+                        }
                         model = null;
                         loadedModelPath = null;
                     }
@@ -249,11 +257,7 @@ public class LocalGemmaService {
                 // Fallback to CPU execution if GPU loading was not successful
                 if (!gpuLoaded || model == null) {
                     try {
-                        ModelParameters modelParams = new ModelParameters()
-                            .setModel(modelFile.getAbsolutePath())
-                            .setCtxSize(2048)
-                            .setGpuLayers(0); // CPU fallback
-                        
+                        ModelParameters modelParams = gpuConfigurator.createCpuFallbackParameters(modelFile);
                         model = new LlamaModel(modelParams);
                         loadedModelPath = modelFile.getAbsolutePath();
                         logger.info("✅ {} model loaded successfully into RAM (CPU mode).", getActivePreset().getDisplayName());
@@ -275,39 +279,16 @@ public class LocalGemmaService {
             return gemmaExecutor.submit(() -> {
                 ensureModelLoaded();
                 
-                // Build instruction format based on active model architecture (Qwen ChatML vs Gemma)
-                boolean isQwen = getActivePreset() == LlmModelPreset.QWEN_2_5_7B
-                        || getModelFile().getName().toLowerCase().contains("qwen");
-                StringBuilder promptBuilder = new StringBuilder();
-
-                if (isQwen) {
-                    if (systemInstruction != null && !systemInstruction.trim().isEmpty()) {
-                        promptBuilder.append("<|im_start|>system\n").append(systemInstruction.trim()).append("<|im_end|>\n");
-                    }
-                    promptBuilder.append("<|im_start|>user\n").append(userPrompt.trim()).append("<|im_end|>\n");
-                    promptBuilder.append("<|im_start|>assistant\n");
-                } else {
-                    if (systemInstruction != null && !systemInstruction.trim().isEmpty()) {
-                        promptBuilder.append("<start_of_turn>user\n")
-                                     .append(systemInstruction.trim())
-                                     .append("\n\n")
-                                     .append(userPrompt.trim())
-                                     .append("<end_of_turn>\n")
-                                     .append("<start_of_turn>model\n");
-                    } else {
-                        promptBuilder.append("<start_of_turn>user\n")
-                                     .append(userPrompt.trim())
-                                     .append("<end_of_turn>\n")
-                                     .append("<start_of_turn>model\n");
-                    }
-                }
+                LlmModelPreset activePreset = getActivePreset();
+                String prompt = activePreset.getChatTemplate().format(systemInstruction, userPrompt);
                 
                 synchronized (lock) {
                     resetUnloadTimer();
                     
-                    InferenceParameters inferParams = new InferenceParameters(promptBuilder.toString())
+                    InferenceParameters inferParams = new InferenceParameters(prompt)
                         .setTemperature(temperature)
-                        .setNPredict(maxTokens);
+                        .setNPredict(maxTokens)
+                        .setCachePrompt(true);
                     
                     StringBuilder response = new StringBuilder();
                     try {
@@ -361,21 +342,7 @@ public class LocalGemmaService {
      * Unloads the model to release RAM.
      */
     public void unloadModel() {
-        gemmaExecutor.submit(() -> {
-            boolean wasLoaded;
-            synchronized (lock) {
-                wasLoaded = model != null;
-                if (model != null) {
-                    logger.info("Unloading LLM model from memory...");
-                    model.close();
-                    model = null;
-                    loadedModelPath = null;
-                }
-            }
-            if (wasLoaded) {
-                logger.info("LLM model unloaded.");
-            }
-        });
+        gemmaExecutor.submit(this::unloadModelSync);
     }
 
     @PreDestroy

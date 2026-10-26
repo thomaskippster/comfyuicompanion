@@ -142,7 +142,9 @@ public class LocalModelScanner {
                 if (preferredSize <= 0) return cached;
                 try {
                     if (Files.size(cached.get()) == preferredSize) return cached;
-                } catch (Exception ignored) {}
+                } catch (Exception ignored) {
+            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+        }
             }
         }
 
@@ -194,7 +196,9 @@ public class LocalModelScanner {
                 for (Path p : matches) {
                     try {
                         if (Files.size(p) == preferredSize) return Optional.of(p);
-                    } catch (IOException ignored) {}
+                    } catch (IOException ignored) {
+            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+        }
                 }
             }
             return Optional.of(matches.get(0));
@@ -227,7 +231,9 @@ public class LocalModelScanner {
                     return true;
                 }
             }
-        } catch (Exception ignored) {}
+        } catch (Exception ignored) {
+            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+        }
 
         // 3. Fallback: ignore any subfolder named "archive" or ".venv"
         for (int i = 0; i < path.getNameCount(); i++) {

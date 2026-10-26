@@ -141,7 +141,9 @@ public class ModelStorageCleanerService {
                 long lastTouch = Math.max(attrs.lastModifiedTime().toMillis(), attrs.lastAccessTime().toMillis());
                 long days = Math.max(0L, ChronoUnit.DAYS.between(Instant.ofEpochMilli(lastTouch), Instant.ofEpochMilli(nowMillis)));
                 daysOldMap.put(p, days);
-            } catch (IOException ignored) {}
+            } catch (IOException ignored) {
+            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+        }
         }
 
         Set<Path> flaggedAsDuplicate = new java.util.HashSet<>();
@@ -227,7 +229,9 @@ public class ModelStorageCleanerService {
                     return true;
                 }
             }
-        } catch (Exception ignored) {}
+        } catch (Exception ignored) {
+            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+        }
         return false;
     }
 

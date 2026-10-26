@@ -145,13 +145,15 @@ public class ConfigDirectoryManager {
                 List<String> parsedCmd = PlatformUtils.parseCommandLine(launchCmd);
                 for (int i = 0; i < parsedCmd.size() - 1; i++) {
                     if (parsedCmd.get(i).equals("--output-directory")) {
-                        Path p = Paths.get(parsedCmd.get(i + 1));
+                        Path p = de.tki.comfyuicompanion.util.PathGuard.safeCommandLinePath(parsedCmd.get(i + 1));
                         if (Files.exists(p) && Files.isDirectory(p)) {
                             return p.toAbsolutePath().toString();
                         }
                     }
                 }
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+        }
         }
 
         if (modelsPath != null && !modelsPath.isEmpty()) {
@@ -163,7 +165,9 @@ public class ConfigDirectoryManager {
                         return siblingOutput.toAbsolutePath().toString();
                     }
                 }
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+        }
         }
 
         if (comfyUIRoot != null && !comfyUIRoot.isEmpty()) {

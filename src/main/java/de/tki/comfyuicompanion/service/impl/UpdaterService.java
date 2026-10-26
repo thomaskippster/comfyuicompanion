@@ -1,5 +1,8 @@
 package de.tki.comfyuicompanion.service.impl;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.Repository;
@@ -21,6 +24,7 @@ import java.util.function.Consumer;
  * Represents the updater service class.
  */
 public class UpdaterService {
+    private static final Logger logger = LoggerFactory.getLogger(UpdaterService.class);
 
     public static class RepoStatus {
         public String name;
@@ -302,12 +306,16 @@ public class UpdaterService {
                             try {
                                 double cap = Double.parseDouble(line.trim());
                                 if (cap > maxComputeCap) maxComputeCap = cap;
-                            } catch (NumberFormatException ignored) {}
+                            } catch (NumberFormatException ignored) {
+            logger.trace("Invalid numeric format: {}", ignored.getMessage());
+        }
                         }
                     }
                 }
                 p.waitFor();
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+        }
 
             if (hasNvidia) {
                 String cudaVersion = (maxComputeCap >= 12.0) ? "cu128" : ((maxComputeCap >= 8.9) ? "cu124" : "cu121");

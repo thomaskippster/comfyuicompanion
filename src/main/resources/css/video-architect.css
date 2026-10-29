@@ -214,6 +214,57 @@
     -fx-effect: dropshadow(gaussian, rgba(239, 68, 68, 0.4), 4, 0.0, 0, 0);
 }
 
+/* --- Toggle Buttons --- */
+.toggle-button {
+    -fx-background-color: #21252d;
+    -fx-text-fill: -fx-custom-text-color;
+    -fx-background-radius: 8px;
+    -fx-border-color: -fx-custom-border-color;
+    -fx-border-radius: 8px;
+    -fx-padding: 7px 14px;
+    -fx-cursor: hand;
+    -fx-font-weight: 600;
+}
+.toggle-button:hover {
+    -fx-background-color: #2a2e38;
+    -fx-border-color: -fx-custom-accent-color;
+    -fx-text-fill: #ffffff;
+}
+.toggle-button:focused {
+    -fx-border-color: -fx-custom-accent-color;
+    -fx-effect: dropshadow(gaussian, rgba(30, 190, 170, 0.4), 4, 0.0, 0, 0);
+}
+.toggle-button:selected {
+    -fx-background-color: rgba(30, 190, 170, 0.22);
+    -fx-text-fill: -fx-custom-accent-color;
+    -fx-border-color: -fx-custom-accent-color;
+    -fx-font-weight: bold;
+}
+.toggle-button:selected:hover {
+    -fx-background-color: rgba(30, 190, 170, 0.35);
+    -fx-text-fill: #28ffd0;
+    -fx-border-color: #28ffd0;
+}
+.toggle-button:pressed {
+    -fx-background-color: #181b21;
+}
+
+.root.light-theme .toggle-button {
+    -fx-background-color: #e9e9ee;
+    -fx-text-fill: -fx-custom-text-color;
+    -fx-border-color: -fx-custom-border-color;
+}
+.root.light-theme .toggle-button:hover {
+    -fx-background-color: #d8d8de;
+    -fx-border-color: -fx-custom-accent-color;
+    -fx-text-fill: #000000;
+}
+.root.light-theme .toggle-button:selected {
+    -fx-background-color: rgba(0, 120, 215, 0.16);
+    -fx-text-fill: #0078d7;
+    -fx-border-color: #0078d7;
+}
+
 /* --- Standalone Panels --- */
 .header-panel {
     -fx-background-color: -fx-custom-card-bg;

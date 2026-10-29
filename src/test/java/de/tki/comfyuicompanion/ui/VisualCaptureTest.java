@@ -10,6 +10,7 @@ import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.ProgressBar;
 import javafx.scene.control.Slider;
+import javafx.scene.control.ToggleButton;
 import javafx.scene.image.WritableImage;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
@@ -104,6 +105,10 @@ public class VisualCaptureTest {
                 Button btnStop = new Button("\u25A0 Stop");
                 btnStop.getStyleClass().add("button");
 
+                ToggleButton btnLoop = new ToggleButton("\uD83D\uDD01 Loop");
+                btnLoop.getStyleClass().add("toggle-button");
+                btnLoop.setSelected(true);
+
                 Region spacer = new Region();
                 HBox.setHgrow(spacer, Priority.ALWAYS);
 
@@ -121,7 +126,7 @@ public class VisualCaptureTest {
                 Button btnClose = new Button("Close");
                 btnClose.getStyleClass().addAll("button", "danger-button");
 
-                HBox controls = new HBox(8, btnPlay, btnPause, btnStop, spacer, volumeBox, btnClose);
+                HBox controls = new HBox(8, btnPlay, btnPause, btnStop, btnLoop, spacer, volumeBox, btnClose);
                 controls.setAlignment(Pos.CENTER_LEFT);
 
                 VBox bottomContainer = new VBox(8, timeline, controls);
@@ -186,5 +191,15 @@ public class VisualCaptureTest {
         assertEquals(0.5, VideoPreviewDialog.clampVolume(0.5));
         assertEquals(1.0, VideoPreviewDialog.clampVolume(1.0));
         assertEquals(1.0, VideoPreviewDialog.clampVolume(2.5));
+    }
+
+    /**
+     * Verifies cycle count resolution between continuous loop and single-play modes.
+     */
+    @Test
+    @DisplayName("Verify cycle count resolution for loop playback")
+    public void testResolveCycleCount() {
+        assertEquals(javafx.scene.media.MediaPlayer.INDEFINITE, VideoPreviewDialog.resolveCycleCount(true));
+        assertEquals(1, VideoPreviewDialog.resolveCycleCount(false));
     }
 }

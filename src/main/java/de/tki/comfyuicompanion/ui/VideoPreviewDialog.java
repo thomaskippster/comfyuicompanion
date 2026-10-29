@@ -19,6 +19,7 @@ import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.ProgressBar;
 import javafx.scene.control.Slider;
+import javafx.scene.control.ToggleButton;
 import javafx.scene.control.Tooltip;
 import javafx.scene.layout.StackPane;
 import javafx.util.Duration;
@@ -90,6 +91,7 @@ public class VideoPreviewDialog extends JDialog {
                 Media media = new Media(uri.toString());
                 mediaPlayer = new MediaPlayer(media);
                 mediaPlayer.setAutoPlay(true);
+                mediaPlayer.setCycleCount(MediaPlayer.INDEFINITE);
 
                 MediaView mediaView = new MediaView(mediaPlayer);
                 mediaView.setPreserveRatio(true);
@@ -175,7 +177,33 @@ public class VideoPreviewDialog extends JDialog {
                 Button btnStop = new Button("\u25A0 Stop");
                 btnStop.getStyleClass().add("button");
 
-                btnPlay.setOnAction(e -> mediaPlayer.play());
+                ToggleButton btnLoop = new ToggleButton("\uD83D\uDD01 Loop");
+                btnLoop.getStyleClass().add("toggle-button");
+                btnLoop.setSelected(true);
+                btnLoop.setTooltip(new Tooltip("Toggle continuous playback loop"));
+                btnLoop.setOnAction(e -> {
+                    if (mediaPlayer != null) {
+                        mediaPlayer.setCycleCount(resolveCycleCount(btnLoop.isSelected()));
+                    }
+                });
+
+                mediaPlayer.setOnEndOfMedia(() -> {
+                    if (!btnLoop.isSelected()) {
+                        mediaPlayer.stop();
+                        timeSlider.setValue(0);
+                        currentTimeLabel.setText("00:00");
+                        statusLabel.setText("Finished: " + videoFile.getName());
+                    }
+                });
+
+                btnPlay.setOnAction(e -> {
+                    if (mediaPlayer != null) {
+                        if (mediaPlayer.getStatus() == javafx.scene.media.MediaPlayer.Status.STOPPED) {
+                            mediaPlayer.seek(Duration.ZERO);
+                        }
+                        mediaPlayer.play();
+                    }
+                });
                 btnPause.setOnAction(e -> mediaPlayer.pause());
                 btnStop.setOnAction(e -> {
                     mediaPlayer.stop();
@@ -229,7 +257,7 @@ public class VideoPreviewDialog extends JDialog {
                 Region spacer = new Region();
                 HBox.setHgrow(spacer, Priority.ALWAYS);
 
-                HBox controls = new HBox(8, btnPlay, btnPause, btnStop, spacer, volumeBox, btnClose);
+                HBox controls = new HBox(8, btnPlay, btnPause, btnStop, btnLoop, spacer, volumeBox, btnClose);
                 controls.setAlignment(Pos.CENTER_LEFT);
 
                 VBox bottomContainer = new VBox(8, timeline, controls);
@@ -325,6 +353,16 @@ public class VideoPreviewDialog extends JDialog {
             return 0.0;
         }
         return Math.min(1.0, volume);
+    }
+
+    /**
+     * Resolves the JavaFX MediaPlayer cycle count based on loop toggle state.
+     *
+     * @param loopEnabled whether continuous looping is active
+     * @return {@link MediaPlayer#INDEFINITE} if true, else 1
+     */
+    static int resolveCycleCount(boolean loopEnabled) {
+        return loopEnabled ? MediaPlayer.INDEFINITE : 1;
     }
 
     @Override

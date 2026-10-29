@@ -92,8 +92,9 @@
     -fx-font-size: 11px;
     -fx-font-weight: bold;
     -fx-text-fill: -fx-custom-text-muted;
-    -fx-min-width: 26px;
-    -fx-alignment: center-left;
+    -fx-min-width: 32px;
+    -fx-pref-width: 32px;
+    -fx-alignment: center-right;
 }
 
 /* --- Text Inputs --- */
@@ -336,9 +337,48 @@
     -fx-spacing: 5px;
 }
 
-.volume-slider {
-    -fx-pref-width: 55px;
+.volume-slider-stack {
+    -fx-pref-width: 58px;
     -fx-max-width: 65px;
+    -fx-alignment: center;
+}
+
+.volume-progress-bar {
+    -fx-pref-height: 5px;
+    -fx-min-height: 5px;
+    -fx-max-height: 5px;
+    -fx-pref-width: 58px;
+    -fx-max-width: 65px;
+}
+.volume-progress-bar .track {
+    -fx-background-color: -fx-custom-input-bg;
+    -fx-background-radius: 5px;
+    -fx-border-color: -fx-custom-border-color;
+    -fx-border-radius: 5px;
+}
+.volume-progress-bar .bar {
+    -fx-background-color: linear-gradient(to right, -fx-custom-accent-color, -fx-custom-accent-hover);
+    -fx-background-radius: 5px;
+    -fx-padding: 0;
+}
+.root.light-theme .volume-progress-bar .track {
+    -fx-background-color: #e9e9ee;
+    -fx-border-color: -fx-custom-border-color;
+}
+.root.light-theme .volume-progress-bar .bar {
+    -fx-background-color: linear-gradient(to right, -fx-custom-accent-color, -fx-custom-accent-hover);
+}
+
+.volume-slider {
+    -fx-pref-width: 58px;
+    -fx-max-width: 65px;
+}
+.volume-slider .track {
+    -fx-background-color: transparent;
+    -fx-background-radius: 5px;
+    -fx-border-color: transparent;
+    -fx-border-radius: 5px;
+    -fx-pref-height: 5px;
 }
 
 .timeline-progress-bar {

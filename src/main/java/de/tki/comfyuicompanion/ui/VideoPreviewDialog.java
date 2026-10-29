@@ -268,6 +268,17 @@ public class VideoPreviewDialog extends JDialog {
         return VideoPlayerUtils.calculateSeekFromClick(clickX, trackWidth, totalMillis);
     }
 
+    /**
+     * Calculates the normalized audio volume fraction [0.0, 1.0] from a mouse click coordinate along the volume track.
+     *
+     * @param clickX horizontal click position in local coordinates
+     * @param trackWidth width of the volume slider track
+     * @return clamped volume fraction between 0.0 and 1.0
+     */
+    static double calculateVolumeFromClick(double clickX, double trackWidth) {
+        return VideoPlayerUtils.calculateVolumeFromClick(clickX, trackWidth);
+    }
+
     @Override
     public void dispose() {
         stopPlayer();

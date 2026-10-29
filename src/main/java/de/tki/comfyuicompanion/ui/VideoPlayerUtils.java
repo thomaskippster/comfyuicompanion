@@ -227,6 +227,22 @@ public final class VideoPlayerUtils {
     }
 
     /**
+     * Calculates the normalized audio volume fraction [0.0, 1.0] from a mouse click coordinate along the volume track.
+     * Safely clamps boundary overruns and guards against zero widths or invalid numerical values.
+     *
+     * @param clickX horizontal click position in local coordinates
+     * @param trackWidth width of the volume slider track
+     * @return clamped volume fraction between 0.0 and 1.0
+     */
+    public static double calculateVolumeFromClick(double clickX, double trackWidth) {
+        if (Double.isNaN(clickX) || Double.isNaN(trackWidth) || trackWidth <= 0.0) {
+            return 0.0;
+        }
+        double ratio = clickX / trackWidth;
+        return Math.clamp(ratio, 0.0, 1.0);
+    }
+
+    /**
      * Resolves the CSS style class name corresponding to a MediaPlayer status state.
      *
      * @param status current MediaPlayer status

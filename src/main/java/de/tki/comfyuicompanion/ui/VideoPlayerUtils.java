@@ -173,6 +173,60 @@ public final class VideoPlayerUtils {
     }
 
     /**
+     * Resolves an expressive Unicode speaker glyph corresponding to audio volume level and mute state.
+     *
+     * @param volume volume level fraction between 0.0 and 1.0
+     * @param muted whether media audio is currently muted
+     * @return Unicode speaker glyph (\uD83D\uDD07 for mute/0%, \uD83D\uDD08 for low, \uD83D\uDD09 for mid, \uD83D\uDD0A for high)
+     */
+    public static String resolveVolumeGlyph(double volume, boolean muted) {
+        if (muted || Double.isNaN(volume) || volume <= 0.0) {
+            return "\uD83D\uDD07"; // 🔇
+        }
+        if (volume < 0.35) {
+            return "\uD83D\uDD08"; // 🔈
+        }
+        if (volume < 0.70) {
+            return "\uD83D\uDD09"; // 🔉
+        }
+        return "\uD83D\uDD0A"; // 🔊
+    }
+
+    /**
+     * Calculates the normalized progress ratio [0.0, 1.0] from current playback position and total duration.
+     * Guards against division by zero, negative offsets, and NaN values.
+     *
+     * @param currentMillis current playback position in milliseconds
+     * @param totalMillis total media duration in milliseconds
+     * @return clamped progress fraction between 0.0 and 1.0
+     */
+    public static double calculateProgress(double currentMillis, double totalMillis) {
+        if (Double.isNaN(currentMillis) || Double.isNaN(totalMillis) || totalMillis <= 0.0 || currentMillis <= 0.0) {
+            return 0.0;
+        }
+        double progress = currentMillis / totalMillis;
+        return Math.clamp(progress, 0.0, 1.0);
+    }
+
+    /**
+     * Calculates the seek destination timestamp in milliseconds from a mouse click coordinate along the timeline track.
+     * Clamps the target between 0.0 and total duration.
+     *
+     * @param clickX horizontal click position in local coordinates
+     * @param trackWidth width of the slider or timeline component
+     * @param totalMillis total media duration in milliseconds
+     * @return clamped destination timestamp in milliseconds
+     */
+    public static double calculateSeekFromClick(double clickX, double trackWidth, double totalMillis) {
+        if (Double.isNaN(clickX) || Double.isNaN(trackWidth) || Double.isNaN(totalMillis)
+                || trackWidth <= 0.0 || totalMillis <= 0.0) {
+            return 0.0;
+        }
+        double ratio = Math.clamp(clickX / trackWidth, 0.0, 1.0);
+        return ratio * totalMillis;
+    }
+
+    /**
      * Resolves the CSS style class name corresponding to a MediaPlayer status state.
      *
      * @param status current MediaPlayer status

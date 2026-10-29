@@ -234,6 +234,40 @@ public class VideoPreviewDialog extends JDialog {
         return VideoPlayerUtils.resolveStatusBadgeStyle(status);
     }
 
+    /**
+     * Resolves an expressive Unicode speaker glyph corresponding to audio volume level and mute state.
+     *
+     * @param volume volume level fraction between 0.0 and 1.0
+     * @param muted whether media audio is currently muted
+     * @return Unicode speaker glyph
+     */
+    static String resolveVolumeGlyph(double volume, boolean muted) {
+        return VideoPlayerUtils.resolveVolumeGlyph(volume, muted);
+    }
+
+    /**
+     * Calculates the normalized progress ratio [0.0, 1.0] from current playback position and total duration.
+     *
+     * @param currentMillis current playback position in milliseconds
+     * @param totalMillis total media duration in milliseconds
+     * @return clamped progress fraction between 0.0 and 1.0
+     */
+    static double calculateProgress(double currentMillis, double totalMillis) {
+        return VideoPlayerUtils.calculateProgress(currentMillis, totalMillis);
+    }
+
+    /**
+     * Calculates the seek destination timestamp in milliseconds from a mouse click coordinate along the timeline track.
+     *
+     * @param clickX horizontal click position in local coordinates
+     * @param trackWidth width of the slider or timeline component
+     * @param totalMillis total media duration in milliseconds
+     * @return clamped destination timestamp in milliseconds
+     */
+    static double calculateSeekFromClick(double clickX, double trackWidth, double totalMillis) {
+        return VideoPlayerUtils.calculateSeekFromClick(clickX, trackWidth, totalMillis);
+    }
+
     @Override
     public void dispose() {
         stopPlayer();

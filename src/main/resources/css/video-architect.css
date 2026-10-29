@@ -229,6 +229,23 @@
     -fx-border-color: #f87171;
     -fx-effect: dropshadow(gaussian, rgba(239, 68, 68, 0.4), 4, 0.0, 0, 0);
 }
+.button.danger-button:pressed {
+    -fx-background-color: rgba(239, 68, 68, 0.40);
+    -fx-border-color: #ef4444;
+}
+
+.root.light-theme .button.danger-button {
+    -fx-background-color: rgba(220, 38, 38, 0.10);
+    -fx-text-fill: #dc2626;
+    -fx-border-color: rgba(220, 38, 38, 0.35);
+}
+.root.light-theme .button.danger-button:hover {
+    -fx-background-color: rgba(220, 38, 38, 0.22);
+    -fx-text-fill: #b91c1c;
+}
+.root.light-theme .button.danger-button:pressed {
+    -fx-background-color: rgba(220, 38, 38, 0.35);
+}
 
 /* --- Toggle Buttons --- */
 .toggle-button {
@@ -324,10 +341,34 @@
     -fx-max-width: 65px;
 }
 
-.timeline-slider .track {
+.timeline-progress-bar {
+    -fx-pref-height: 5px;
+    -fx-min-height: 5px;
+    -fx-max-height: 5px;
+}
+.timeline-progress-bar .track {
     -fx-background-color: -fx-custom-input-bg;
     -fx-background-radius: 5px;
     -fx-border-color: -fx-custom-border-color;
+    -fx-border-radius: 5px;
+}
+.timeline-progress-bar .bar {
+    -fx-background-color: linear-gradient(to right, -fx-custom-accent-color, -fx-custom-accent-hover);
+    -fx-background-radius: 5px;
+    -fx-padding: 0;
+}
+.root.light-theme .timeline-progress-bar .track {
+    -fx-background-color: #e9e9ee;
+    -fx-border-color: -fx-custom-border-color;
+}
+.root.light-theme .timeline-progress-bar .bar {
+    -fx-background-color: linear-gradient(to right, -fx-custom-accent-color, -fx-custom-accent-hover);
+}
+
+.timeline-slider .track {
+    -fx-background-color: transparent;
+    -fx-background-radius: 5px;
+    -fx-border-color: transparent;
     -fx-border-radius: 5px;
     -fx-pref-height: 5px;
 }

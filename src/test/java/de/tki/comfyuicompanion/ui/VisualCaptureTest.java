@@ -9,6 +9,7 @@ import javafx.scene.Scene;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.ProgressBar;
+import javafx.scene.control.Slider;
 import javafx.scene.image.WritableImage;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
@@ -28,6 +29,7 @@ import java.net.URL;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -78,10 +80,19 @@ public class VisualCaptureTest {
                 videoContainer.getChildren().add(placeholder);
                 root.setCenter(videoContainer);
 
-                // Playback progress indicator
-                ProgressBar progressBar = new ProgressBar(0.35);
-                progressBar.setMaxWidth(Double.MAX_VALUE);
-                progressBar.getStyleClass().add("progress-bar");
+                // Playback timeline with current/total time labels and interactive seeking slider
+                Label currentTimeLabel = new Label("00:15");
+                currentTimeLabel.getStyleClass().add("label-time");
+
+                Slider timeSlider = new Slider(0, 100, 35);
+                timeSlider.setMaxWidth(Double.MAX_VALUE);
+                HBox.setHgrow(timeSlider, Priority.ALWAYS);
+
+                Label totalTimeLabel = new Label("00:43");
+                totalTimeLabel.getStyleClass().add("label-time");
+
+                HBox timeline = new HBox(10, currentTimeLabel, timeSlider, totalTimeLabel);
+                timeline.setAlignment(Pos.CENTER);
 
                 // Playback control buttons
                 Button btnPlay = new Button("\u25B6 Play");
@@ -101,9 +112,9 @@ public class VisualCaptureTest {
 
                 HBox controls = new HBox(8, btnPlay, btnPause, btnStop, spacer, btnClose);
                 controls.setAlignment(Pos.CENTER_LEFT);
-                controls.getStyleClass().add("button-bar");
 
-                VBox bottomContainer = new VBox(progressBar, controls);
+                VBox bottomContainer = new VBox(8, timeline, controls);
+                bottomContainer.getStyleClass().add("media-controls-panel");
                 root.setBottom(bottomContainer);
 
                 Scene scene = new Scene(root, 720, 540, Color.BLACK);
@@ -136,5 +147,19 @@ public class VisualCaptureTest {
         if (errorRef[0] != null) {
             throw new RuntimeException("Capture error", errorRef[0]);
         }
+    }
+
+    /**
+     * Verifies time formatting for media player timestamps including edge cases.
+     */
+    @Test
+    @DisplayName("Verify mm:ss time formatting edge cases")
+    public void testFormatTimeEdgeCases() {
+        assertEquals("00:00", VideoPreviewDialog.formatTime(-100));
+        assertEquals("00:00", VideoPreviewDialog.formatTime(Double.NaN));
+        assertEquals("00:00", VideoPreviewDialog.formatTime(0));
+        assertEquals("00:05", VideoPreviewDialog.formatTime(5000));
+        assertEquals("01:15", VideoPreviewDialog.formatTime(75000));
+        assertEquals("12:34", VideoPreviewDialog.formatTime(754000));
     }
 }

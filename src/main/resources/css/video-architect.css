@@ -317,6 +317,106 @@
     -fx-max-width: 65px;
 }
 
+.timeline-slider .track {
+    -fx-background-color: -fx-custom-input-bg;
+    -fx-background-radius: 5px;
+    -fx-border-color: -fx-custom-border-color;
+    -fx-border-radius: 5px;
+    -fx-pref-height: 5px;
+}
+
+.timeline-slider .thumb {
+    -fx-background-color: -fx-custom-accent-color;
+    -fx-background-radius: 12px;
+    -fx-pref-width: 13px;
+    -fx-pref-height: 13px;
+    -fx-cursor: hand;
+}
+
+.timeline-slider .thumb:hover {
+    -fx-background-color: -fx-custom-accent-hover;
+    -fx-pref-width: 15px;
+    -fx-pref-height: 15px;
+    -fx-effect: dropshadow(gaussian, rgba(30, 190, 170, 0.5), 5, 0.0, 0, 0);
+}
+
+/* --- Badges & Pills --- */
+.badge-pill {
+    -fx-font-family: "Consolas", "Segoe UI", monospace;
+    -fx-font-size: 11px;
+    -fx-font-weight: bold;
+    -fx-padding: 3px 8px;
+    -fx-background-radius: 12px;
+    -fx-border-radius: 12px;
+}
+
+.badge-format {
+    -fx-background-color: #21252d;
+    -fx-text-fill: -fx-custom-text-muted;
+    -fx-border-color: -fx-custom-border-color;
+}
+
+.status-badge {
+    -fx-background-color: #21252d;
+    -fx-text-fill: -fx-custom-text-muted;
+    -fx-border-color: -fx-custom-border-color;
+}
+
+.status-badge-ready {
+    -fx-background-color: rgba(140, 163, 168, 0.12);
+    -fx-text-fill: #8ca3a8;
+    -fx-border-color: rgba(140, 163, 168, 0.35);
+}
+
+.status-badge-playing {
+    -fx-background-color: rgba(30, 190, 170, 0.16);
+    -fx-text-fill: #28ffd0;
+    -fx-border-color: #1ebeaa;
+    -fx-effect: dropshadow(gaussian, rgba(30, 190, 170, 0.35), 4, 0.0, 0, 0);
+}
+
+.status-badge-paused {
+    -fx-background-color: rgba(245, 158, 11, 0.16);
+    -fx-text-fill: #fbbf24;
+    -fx-border-color: #f59e0b;
+}
+
+.status-badge-stopped {
+    -fx-background-color: rgba(107, 114, 128, 0.16);
+    -fx-text-fill: #9ca3af;
+    -fx-border-color: #4b5563;
+}
+
+.status-badge-buffering {
+    -fx-background-color: rgba(56, 189, 248, 0.16);
+    -fx-text-fill: #38bdf8;
+    -fx-border-color: #0284c7;
+}
+
+.root.light-theme .badge-format {
+    -fx-background-color: #e9e9ee;
+    -fx-text-fill: -fx-custom-text-muted;
+    -fx-border-color: -fx-custom-border-color;
+}
+
+.root.light-theme .status-badge-playing {
+    -fx-background-color: rgba(0, 120, 215, 0.14);
+    -fx-text-fill: #0078d7;
+    -fx-border-color: #0078d7;
+}
+
+.root.light-theme .status-badge-paused {
+    -fx-background-color: rgba(217, 119, 6, 0.14);
+    -fx-text-fill: #b45309;
+    -fx-border-color: #d97706;
+}
+
+.root.light-theme .status-badge-stopped {
+    -fx-background-color: rgba(107, 114, 128, 0.14);
+    -fx-text-fill: #4b5563;
+    -fx-border-color: #9ca3af;
+}
+
 .media-separator {
     -fx-padding: 2px 2px;
 }

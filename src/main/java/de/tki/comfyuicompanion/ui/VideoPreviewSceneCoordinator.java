@@ -322,50 +322,9 @@ public class VideoPreviewSceneCoordinator {
             }
         });
 
-        // Volume controls with dynamic acoustic level glyphs and dual-layer progress bar
-        Button btnMute = new Button(VideoPlayerUtils.resolveVolumeGlyph(0.8, false));
-        btnMute.getStyleClass().addAll("button", "icon-button");
-        btnMute.setTooltip(new Tooltip("Mute / Unmute (M)"));
-
-        ProgressBar volumeProgress = new ProgressBar(0.8);
-        volumeProgress.getStyleClass().add("volume-progress-bar");
-
-        Slider volumeSlider = new Slider(0, 100, 80);
-        volumeSlider.getStyleClass().add("volume-slider");
-        volumeSlider.setTooltip(new Tooltip("Volume (\u2191/\u2193)"));
-        mediaPlayer.setVolume(0.8);
-
-        StackPane volumeSliderStack = new StackPane(volumeProgress, volumeSlider);
-        volumeSliderStack.getStyleClass().add("volume-slider-stack");
-        volumeSliderStack.setAlignment(Pos.CENTER);
-
-        Label volumePercentLabel = new Label(VideoPlayerUtils.formatVolumePercent(0.8, false));
-        volumePercentLabel.getStyleClass().add("label-volume");
-        volumePercentLabel.setTooltip(new Tooltip("Current volume level"));
-
-        btnMute.setOnAction(e -> toggleMute(btnMute, volumePercentLabel, volumeProgress));
-
-        volumeSlider.setOnMouseClicked(e -> {
-            double targetVol = VideoPlayerUtils.calculateVolumeFromClick(e.getX(), volumeSlider.getWidth());
-            volumeSlider.setValue(targetVol * 100.0);
-        });
-
-        volumeSlider.valueProperty().addListener((obs, oldVal, newVal) -> {
-            double vol = VideoPlayerUtils.clampVolume(newVal.doubleValue() / 100.0);
-            mediaPlayer.setVolume(vol);
-            if (vol > 0 && mediaPlayer.isMute()) {
-                mediaPlayer.setMute(false);
-            } else if (vol == 0 && !mediaPlayer.isMute()) {
-                mediaPlayer.setMute(true);
-            }
-            volumeProgress.setProgress(mediaPlayer.isMute() ? 0.0 : vol);
-            btnMute.setText(VideoPlayerUtils.resolveVolumeGlyph(vol, mediaPlayer.isMute()));
-            volumePercentLabel.setText(VideoPlayerUtils.formatVolumePercent(vol, mediaPlayer.isMute()));
-        });
-
-        HBox volumeBox = new HBox(6, btnMute, volumeSliderStack, volumePercentLabel);
-        volumeBox.getStyleClass().add("volume-control-box");
-        volumeBox.setAlignment(Pos.CENTER);
+        // Volume subsystem delegated to specialized coordinator
+        VideoVolumeControlCoordinator volumeCoordinator = new VideoVolumeControlCoordinator(mediaPlayer);
+        HBox volumeBox = volumeCoordinator.getVolumeBox();
 
         Separator separatorTransport = createMediaSeparator();
         Separator separatorPlayback = createMediaSeparator();
@@ -403,7 +362,7 @@ public class VideoPreviewSceneCoordinator {
 
         // Keyboard shortcuts delegated to specialized handler
         scene.setOnKeyPressed(new VideoPreviewShortcutHandler(
-                mediaPlayer, btnMute, volumeSlider, volumePercentLabel, volumeProgress,
+                mediaPlayer, volumeCoordinator,
                 btnFullscreen, timeSlider, timelineProgress, currentTimeLabel,
                 btnLoop, speedCombo,
                 () -> toggleFullscreen(btnFullscreen),
@@ -436,17 +395,6 @@ public class VideoPreviewSceneCoordinator {
             timeSlider.setValue(target);
             timelineProgress.setProgress(VideoPlayerUtils.calculateProgress(target, total));
             currentTimeLabel.setText(VideoPlayerUtils.formatTime(target));
-        }
-    }
-
-    private void toggleMute(Button btnMute, Label volumePercentLabel, ProgressBar volumeProgress) {
-        if (mediaPlayer != null) {
-            boolean muted = !mediaPlayer.isMute();
-            mediaPlayer.setMute(muted);
-            double vol = mediaPlayer.getVolume();
-            volumeProgress.setProgress(muted ? 0.0 : vol);
-            btnMute.setText(VideoPlayerUtils.resolveVolumeGlyph(vol, muted));
-            volumePercentLabel.setText(VideoPlayerUtils.formatVolumePercent(vol, muted));
         }
     }
 

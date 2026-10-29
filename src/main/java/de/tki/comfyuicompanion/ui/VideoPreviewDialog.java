@@ -278,6 +278,16 @@ public class VideoPreviewDialog extends JDialog {
     }
 
     /**
+     * Resolves the descriptive tooltip text for the audio mute button.
+     *
+     * @param muted whether media audio is currently muted
+     * @return contextual tooltip string
+     */
+    static String resolveMuteTooltip(boolean muted) {
+        return VideoPlayerUtils.resolveMuteTooltip(muted);
+    }
+
+    /**
      * Calculates the normalized progress ratio [0.0, 1.0] from current playback position and total duration.
      *
      * @param currentMillis current playback position in milliseconds

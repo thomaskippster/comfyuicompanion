@@ -275,4 +275,24 @@ public final class VideoPlayerUtils {
             default -> "status-badge-ready";
         };
     }
+
+    /**
+     * Resolves the Unicode glyph for the fullscreen toggle button based on current fullscreen state.
+     *
+     * @param isFullscreen whether the window is currently in fullscreen or maximized mode
+     * @return Unicode glyph string (\u26F6 for windowed, \u27C6 for active fullscreen)
+     */
+    public static String resolveFullscreenGlyph(boolean isFullscreen) {
+        return isFullscreen ? "\u27C6" : "\u26F6";
+    }
+
+    /**
+     * Resolves the descriptive tooltip text for the fullscreen toggle button.
+     *
+     * @param isFullscreen whether the window is currently in fullscreen mode
+     * @return tooltip string
+     */
+    public static String resolveFullscreenTooltip(boolean isFullscreen) {
+        return isFullscreen ? "Exit Fullscreen (Esc / F11)" : "Toggle Fullscreen / Maximize (F11)";
+    }
 }

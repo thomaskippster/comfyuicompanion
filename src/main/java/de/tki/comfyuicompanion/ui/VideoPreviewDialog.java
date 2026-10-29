@@ -290,6 +290,26 @@ public class VideoPreviewDialog extends JDialog {
         return VideoPlayerUtils.calculateVolumeFromClick(clickX, trackWidth);
     }
 
+    /**
+     * Resolves the Unicode glyph for the fullscreen toggle button based on current fullscreen state.
+     *
+     * @param isFullscreen whether the window is currently in fullscreen mode
+     * @return Unicode glyph string
+     */
+    static String resolveFullscreenGlyph(boolean isFullscreen) {
+        return VideoPlayerUtils.resolveFullscreenGlyph(isFullscreen);
+    }
+
+    /**
+     * Resolves the descriptive tooltip text for the fullscreen toggle button.
+     *
+     * @param isFullscreen whether the window is currently in fullscreen mode
+     * @return tooltip string
+     */
+    static String resolveFullscreenTooltip(boolean isFullscreen) {
+        return VideoPlayerUtils.resolveFullscreenTooltip(isFullscreen);
+    }
+
     @Override
     public void dispose() {
         stopPlayer();

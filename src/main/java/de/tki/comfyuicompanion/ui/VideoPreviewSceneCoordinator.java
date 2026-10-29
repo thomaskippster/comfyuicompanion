@@ -1,5 +1,6 @@
 package de.tki.comfyuicompanion.ui;
 
+import javafx.application.Platform;
 import javafx.collections.FXCollections;
 import javafx.geometry.Insets;
 import javafx.geometry.Orientation;
@@ -13,8 +14,6 @@ import javafx.scene.control.Separator;
 import javafx.scene.control.Slider;
 import javafx.scene.control.ToggleButton;
 import javafx.scene.control.Tooltip;
-import javafx.scene.input.KeyCode;
-import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
@@ -350,14 +349,17 @@ public class VideoPreviewSceneCoordinator {
         volumeBox.getStyleClass().add("volume-control-box");
         volumeBox.setAlignment(Pos.CENTER);
 
+        Separator separatorVolume = new Separator(Orientation.VERTICAL);
+        separatorVolume.getStyleClass().add("media-separator");
+
         // Fullscreen button
-        Button btnFullscreen = new Button("\u26F6");
+        Button btnFullscreen = new Button(VideoPlayerUtils.resolveFullscreenGlyph(false));
         btnFullscreen.getStyleClass().addAll("button", "icon-button", "fullscreen-button");
-        btnFullscreen.setTooltip(new Tooltip("Toggle Fullscreen / Maximize (F11)"));
+        btnFullscreen.setTooltip(new Tooltip(VideoPlayerUtils.resolveFullscreenTooltip(false)));
         btnFullscreen.setOnAction(e -> toggleFullscreen(btnFullscreen));
 
-        Separator separator = new Separator(Orientation.VERTICAL);
-        separator.getStyleClass().add("media-separator");
+        Separator separatorClose = new Separator(Orientation.VERTICAL);
+        separatorClose.getStyleClass().add("media-separator");
 
         Button btnClose = new Button("Close");
         btnClose.getStyleClass().addAll("button", "danger-button");
@@ -367,8 +369,8 @@ public class VideoPreviewSceneCoordinator {
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
 
-        HBox controls = new HBox(6, btnPlay, btnPause, btnStop, btnRewind, btnForward, btnLoop, speedCombo,
-                spacer, volumeBox, btnFullscreen, separator, btnClose);
+        HBox controls = new HBox(5, btnPlay, btnPause, btnStop, btnRewind, btnForward, btnLoop, speedCombo,
+                spacer, volumeBox, separatorVolume, btnFullscreen, separatorClose, btnClose);
         controls.setAlignment(Pos.CENTER_LEFT);
 
         VBox bottomContainer = new VBox(8, timeline, controls);
@@ -381,9 +383,19 @@ public class VideoPreviewSceneCoordinator {
             scene.getStylesheets().add(cssUrl.toExternalForm());
         }
 
-        // Keyboard shortcuts
-        scene.setOnKeyPressed(event -> handleKeyEvent(event, btnMute, volumeSlider, volumePercentLabel, volumeProgress,
-                btnFullscreen, timeSlider, timelineProgress, currentTimeLabel));
+        // Keyboard shortcuts delegated to specialized handler
+        scene.setOnKeyPressed(new VideoPreviewShortcutHandler(
+                mediaPlayer, btnMute, volumeSlider, volumePercentLabel, volumeProgress,
+                btnFullscreen, timeSlider, timelineProgress, currentTimeLabel,
+                () -> toggleFullscreen(btnFullscreen),
+                () -> {
+                    if (isFullscreen) {
+                        toggleFullscreen(btnFullscreen);
+                    } else {
+                        closeHandler.run();
+                    }
+                }
+        ));
 
         // Double click on video container toggles fullscreen
         videoContainer.setOnMouseClicked(e -> {
@@ -435,50 +447,17 @@ public class VideoPreviewSceneCoordinator {
                 }
                 isFullscreen = false;
             }
-        });
-    }
-
-    private void handleKeyEvent(KeyEvent event, Button btnMute, Slider volumeSlider, Label volumePercentLabel,
-                                ProgressBar volumeProgress, Button btnFullscreen, Slider timeSlider,
-                                ProgressBar timelineProgress, Label currentTimeLabel) {
-        KeyCode code = event.getCode();
-        if (code == KeyCode.SPACE) {
-            if (mediaPlayer.getStatus() == MediaPlayer.Status.PLAYING) {
-                mediaPlayer.pause();
-            } else {
-                if (mediaPlayer.getStatus() == MediaPlayer.Status.STOPPED) {
-                    mediaPlayer.seek(Duration.ZERO);
+            Platform.runLater(() -> {
+                btnFullscreen.setText(VideoPlayerUtils.resolveFullscreenGlyph(isFullscreen));
+                btnFullscreen.setTooltip(new Tooltip(VideoPlayerUtils.resolveFullscreenTooltip(isFullscreen)));
+                if (isFullscreen) {
+                    if (!btnFullscreen.getStyleClass().contains("fullscreen-active")) {
+                        btnFullscreen.getStyleClass().add("fullscreen-active");
+                    }
+                } else {
+                    btnFullscreen.getStyleClass().remove("fullscreen-active");
                 }
-                mediaPlayer.play();
-            }
-            event.consume();
-        } else if (code == KeyCode.M) {
-            toggleMute(btnMute, volumePercentLabel, volumeProgress);
-            event.consume();
-        } else if (code == KeyCode.LEFT) {
-            seekRelative(-5.0, timeSlider, timelineProgress, currentTimeLabel);
-            event.consume();
-        } else if (code == KeyCode.RIGHT) {
-            seekRelative(5.0, timeSlider, timelineProgress, currentTimeLabel);
-            event.consume();
-        } else if (code == KeyCode.UP) {
-            double newVol = VideoPlayerUtils.clampVolume(mediaPlayer.getVolume() + 0.05);
-            volumeSlider.setValue(newVol * 100.0);
-            event.consume();
-        } else if (code == KeyCode.DOWN) {
-            double newVol = VideoPlayerUtils.clampVolume(mediaPlayer.getVolume() - 0.05);
-            volumeSlider.setValue(newVol * 100.0);
-            event.consume();
-        } else if (code == KeyCode.F || code == KeyCode.F11) {
-            toggleFullscreen(btnFullscreen);
-            event.consume();
-        } else if (code == KeyCode.ESCAPE) {
-            if (isFullscreen) {
-                toggleFullscreen(btnFullscreen);
-            } else {
-                closeHandler.run();
-            }
-            event.consume();
-        }
+            });
+        });
     }
 }

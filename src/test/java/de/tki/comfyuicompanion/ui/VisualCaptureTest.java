@@ -14,6 +14,7 @@ import javafx.scene.control.ProgressBar;
 import javafx.scene.control.Separator;
 import javafx.scene.control.Slider;
 import javafx.scene.control.ToggleButton;
+import javafx.scene.control.Tooltip;
 import javafx.scene.image.WritableImage;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
@@ -121,15 +122,18 @@ public class VisualCaptureTest {
                 HBox timeline = new HBox(10, currentTimeLabel, timelineStack, totalTimeLabel);
                 timeline.setAlignment(Pos.CENTER);
 
-                // Playback control buttons
+                // Playback control buttons with dynamic status-aware styling
                 Button btnPlay = new Button("\u25B6 Play");
-                btnPlay.getStyleClass().addAll("button", "primary-button");
+                btnPlay.getStyleClass().add("button");
+                btnPlay.setTooltip(new Tooltip(VideoPlayerUtils.resolvePlayButtonTooltip(javafx.scene.media.MediaPlayer.Status.PLAYING)));
 
                 Button btnPause = new Button("\u23F8 Pause");
-                btnPause.getStyleClass().add("button");
+                btnPause.getStyleClass().addAll("button", "primary-button");
+                btnPause.setTooltip(new Tooltip(VideoPlayerUtils.resolvePauseButtonTooltip(javafx.scene.media.MediaPlayer.Status.PLAYING)));
 
                 Button btnStop = new Button("\u25A0 Stop");
                 btnStop.getStyleClass().add("button");
+                btnStop.setTooltip(new Tooltip("Stop playback"));
 
                 Button btnRewind = new Button("\u23EA");
                 btnRewind.getStyleClass().addAll("button", "icon-button");
@@ -213,6 +217,12 @@ public class VisualCaptureTest {
                 int timelineTealRgb = awtImage.getRGB(100, timelineY);
                 int timelineGreen = (timelineTealRgb >> 8) & 0xff;
                 assertTrue(timelineGreen > 120, "Timeline progress fill must render visible accent color");
+
+                // Verify that unplayed timeline scrubber track renders with elevated contrast surface tone
+                int unplayedX = awtImage.getWidth() - 100;
+                int unplayedRgb = awtImage.getRGB(unplayedX, timelineY);
+                int unplayedBlue = unplayedRgb & 0xff;
+                assertTrue(unplayedBlue >= 40, "Unplayed scrubber track must render visible surface tone (#21252d)");
 
                 // Verify that vertical separator renders with crisp high-contrast hairline
                 javafx.geometry.Bounds sepBounds = separatorClose.localToScene(separatorClose.getBoundsInLocal());

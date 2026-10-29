@@ -78,6 +78,9 @@
     -fx-font-size: 11px;
     -fx-font-weight: bold;
     -fx-text-fill: -fx-custom-text-muted;
+    -fx-min-width: 44px;
+    -fx-pref-width: 48px;
+    -fx-alignment: center;
 }
 
 .label-time-interactive {
@@ -358,9 +361,9 @@
 }
 .progress-bar.volume-progress-bar > .track,
 .volume-progress-bar .track {
-    -fx-background-color: -fx-custom-input-bg;
+    -fx-background-color: #21252d;
     -fx-background-radius: 5px;
-    -fx-border-color: -fx-custom-border-color;
+    -fx-border-color: #353b47;
     -fx-border-radius: 5px;
     -fx-background-insets: 0;
 }
@@ -372,8 +375,8 @@
     -fx-padding: 0;
 }
 .root.light-theme .volume-progress-bar .track {
-    -fx-background-color: #e9e9ee;
-    -fx-border-color: -fx-custom-border-color;
+    -fx-background-color: #dcdce2;
+    -fx-border-color: rgba(0, 0, 0, 0.15);
     -fx-background-insets: 0;
 }
 .root.light-theme .volume-progress-bar .bar {
@@ -415,9 +418,9 @@
 }
 .progress-bar.timeline-progress-bar > .track,
 .timeline-progress-bar .track {
-    -fx-background-color: -fx-custom-input-bg;
+    -fx-background-color: #21252d;
     -fx-background-radius: 5px;
-    -fx-border-color: -fx-custom-border-color;
+    -fx-border-color: #353b47;
     -fx-border-radius: 5px;
     -fx-background-insets: 0;
 }
@@ -429,8 +432,8 @@
     -fx-padding: 0;
 }
 .root.light-theme .timeline-progress-bar .track {
-    -fx-background-color: #e9e9ee;
-    -fx-border-color: -fx-custom-border-color;
+    -fx-background-color: #dcdce2;
+    -fx-border-color: rgba(0, 0, 0, 0.15);
     -fx-background-insets: 0;
 }
 .root.light-theme .timeline-progress-bar .bar {
@@ -867,5 +870,25 @@
 .volume-slider .track {
     -fx-background-color: transparent;
     -fx-border-color: transparent;
+}
+
+/* --- Enterprise Tooltips --- */
+.tooltip {
+    -fx-background-color: #1c2027;
+    -fx-text-fill: #e0f8f5;
+    -fx-font-family: "Segoe UI", "Inter", -apple-system, sans-serif;
+    -fx-font-size: 11px;
+    -fx-font-weight: 500;
+    -fx-border-color: #2a2e38;
+    -fx-border-radius: 6px;
+    -fx-background-radius: 6px;
+    -fx-padding: 4px 8px;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.45), 6, 0.0, 0, 2);
+}
+
+.root.light-theme .tooltip {
+    -fx-background-color: #ffffff;
+    -fx-text-fill: #28282d;
+    -fx-border-color: rgba(0, 0, 0, 0.15);
 }
 

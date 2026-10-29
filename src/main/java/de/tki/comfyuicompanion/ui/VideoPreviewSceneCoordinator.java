@@ -133,6 +133,17 @@ public class VideoPreviewSceneCoordinator {
         timelineStack.setAlignment(Pos.CENTER);
         HBox.setHgrow(timelineStack, Priority.ALWAYS);
 
+        Tooltip seekTooltip = new Tooltip("00:00");
+        seekTooltip.setShowDelay(Duration.millis(50));
+        timeSlider.setTooltip(seekTooltip);
+        timeSlider.setOnMouseMoved(e -> {
+            Duration tot = mediaPlayer.getTotalDuration();
+            if (tot != null && !tot.isUnknown()) {
+                double target = VideoPlayerUtils.calculateSeekFromClick(e.getX(), timeSlider.getWidth(), tot.toMillis());
+                seekTooltip.setText(VideoPlayerUtils.formatTime(target));
+            }
+        });
+
         Label totalTimeLabel = new Label("00:00");
         totalTimeLabel.getStyleClass().addAll("label-time", "label-time-interactive");
         totalTimeLabel.setTooltip(new Tooltip("Click to toggle remaining time"));
@@ -219,10 +230,39 @@ public class VideoPreviewSceneCoordinator {
         };
         mediaPlayer.setOnReady(updateResolution);
 
+        // Playback buttons
+        Button btnPlay = new Button("\u25B6 Play");
+        btnPlay.getStyleClass().addAll("button", "primary-button");
+        btnPlay.setTooltip(new Tooltip("Play video (Space)"));
+        btnPlay.setOnAction(e -> {
+            if (mediaPlayer.getStatus() == MediaPlayer.Status.STOPPED) {
+                mediaPlayer.seek(Duration.ZERO);
+            }
+            mediaPlayer.play();
+        });
+
+        Button btnPause = new Button("\u23F8 Pause");
+        btnPause.getStyleClass().add("button");
+        btnPause.setTooltip(new Tooltip("Pause (Space)"));
+        btnPause.setOnAction(e -> mediaPlayer.pause());
+
+        Button btnStop = new Button("\u25A0 Stop");
+        btnStop.getStyleClass().add("button");
+        btnStop.setTooltip(new Tooltip("Stop playback"));
+        btnStop.setOnAction(e -> {
+            mediaPlayer.stop();
+            timeSlider.setValue(0);
+            timelineProgress.setProgress(0.0);
+            currentTimeLabel.setText("00:00");
+            updatePlayPauseButtonState(MediaPlayer.Status.STOPPED, btnPlay, btnPause);
+        });
+
         mediaPlayer.statusProperty().addListener((obs, oldStatus, newStatus) -> {
             statusBadge.setText(VideoPlayerUtils.resolveStatusBadgeText(newStatus));
             statusBadge.getStyleClass().removeIf(s -> s.startsWith("status-badge-"));
             statusBadge.getStyleClass().add(VideoPlayerUtils.resolveStatusBadgeStyle(newStatus));
+
+            updatePlayPauseButtonState(newStatus, btnPlay, btnPause);
 
             if (newStatus == MediaPlayer.Status.READY || newStatus == MediaPlayer.Status.PLAYING) {
                 updateResolution.run();
@@ -237,29 +277,6 @@ public class VideoPreviewSceneCoordinator {
         mediaPlayer.setOnError(() -> {
             String err = mediaPlayer.getError() != null ? mediaPlayer.getError().getMessage() : "Unknown media error";
             titleLabel.setText("\u26A0\uFE0F Error: " + err);
-        });
-
-        // Playback buttons
-        Button btnPlay = new Button("\u25B6 Play");
-        btnPlay.getStyleClass().addAll("button", "primary-button");
-        btnPlay.setOnAction(e -> {
-            if (mediaPlayer.getStatus() == MediaPlayer.Status.STOPPED) {
-                mediaPlayer.seek(Duration.ZERO);
-            }
-            mediaPlayer.play();
-        });
-
-        Button btnPause = new Button("\u23F8 Pause");
-        btnPause.getStyleClass().add("button");
-        btnPause.setOnAction(e -> mediaPlayer.pause());
-
-        Button btnStop = new Button("\u25A0 Stop");
-        btnStop.getStyleClass().add("button");
-        btnStop.setOnAction(e -> {
-            mediaPlayer.stop();
-            timeSlider.setValue(0);
-            timelineProgress.setProgress(0.0);
-            currentTimeLabel.setText("00:00");
         });
 
         Button btnRewind = new Button("\u23EA");
@@ -450,14 +467,28 @@ public class VideoPreviewSceneCoordinator {
             Platform.runLater(() -> {
                 btnFullscreen.setText(VideoPlayerUtils.resolveFullscreenGlyph(isFullscreen));
                 btnFullscreen.setTooltip(new Tooltip(VideoPlayerUtils.resolveFullscreenTooltip(isFullscreen)));
-                if (isFullscreen) {
-                    if (!btnFullscreen.getStyleClass().contains("fullscreen-active")) {
-                        btnFullscreen.getStyleClass().add("fullscreen-active");
-                    }
-                } else {
+                if (isFullscreen && !btnFullscreen.getStyleClass().contains("fullscreen-active")) {
+                    btnFullscreen.getStyleClass().add("fullscreen-active");
+                } else if (!isFullscreen) {
                     btnFullscreen.getStyleClass().remove("fullscreen-active");
                 }
             });
         });
+    }
+
+    private void updatePlayPauseButtonState(MediaPlayer.Status status, Button btnPlay, Button btnPause) {
+        if (VideoPlayerUtils.isPausePrimaryAction(status)) {
+            btnPlay.getStyleClass().remove("primary-button");
+            if (!btnPause.getStyleClass().contains("primary-button")) {
+                btnPause.getStyleClass().add("primary-button");
+            }
+        } else {
+            btnPause.getStyleClass().remove("primary-button");
+            if (!btnPlay.getStyleClass().contains("primary-button")) {
+                btnPlay.getStyleClass().add("primary-button");
+            }
+        }
+        btnPlay.setTooltip(new Tooltip(VideoPlayerUtils.resolvePlayButtonTooltip(status)));
+        btnPause.setTooltip(new Tooltip(VideoPlayerUtils.resolvePauseButtonTooltip(status)));
     }
 }

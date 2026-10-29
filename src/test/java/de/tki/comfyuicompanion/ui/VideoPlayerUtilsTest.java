@@ -1,9 +1,12 @@
 package de.tki.comfyuicompanion.ui;
 
+import javafx.scene.media.MediaPlayer;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Enterprise unit tests verifying mathematical, formatting, parsing, and boundary validation
@@ -325,5 +328,36 @@ public class VideoPlayerUtilsTest {
 
         assertEquals("Toggle Fullscreen / Maximize (F11)", VideoPlayerUtils.resolveFullscreenTooltip(false));
         assertEquals("Exit Fullscreen (Esc / F11)", VideoPlayerUtils.resolveFullscreenTooltip(true));
+    }
+
+    /**
+     * Verifies determination of Pause as the primary action based on MediaPlayer status.
+     */
+    @Test
+    @DisplayName("Verify Pause primary action resolution based on status")
+    public void testIsPausePrimaryAction() {
+        assertTrue(VideoPlayerUtils.isPausePrimaryAction(MediaPlayer.Status.PLAYING));
+        assertFalse(VideoPlayerUtils.isPausePrimaryAction(MediaPlayer.Status.PAUSED));
+        assertFalse(VideoPlayerUtils.isPausePrimaryAction(MediaPlayer.Status.STOPPED));
+        assertFalse(VideoPlayerUtils.isPausePrimaryAction(MediaPlayer.Status.READY));
+        assertFalse(VideoPlayerUtils.isPausePrimaryAction(MediaPlayer.Status.HALTED));
+        assertFalse(VideoPlayerUtils.isPausePrimaryAction(null));
+    }
+
+    /**
+     * Verifies resolution of Play and Pause button tooltips across playback states.
+     */
+    @Test
+    @DisplayName("Verify Play and Pause button tooltips across states")
+    public void testResolvePlayPauseTooltips() {
+        assertEquals("Playing", VideoPlayerUtils.resolvePlayButtonTooltip(MediaPlayer.Status.PLAYING));
+        assertEquals("Play video (Space)", VideoPlayerUtils.resolvePlayButtonTooltip(MediaPlayer.Status.PAUSED));
+        assertEquals("Play video (Space)", VideoPlayerUtils.resolvePlayButtonTooltip(MediaPlayer.Status.STOPPED));
+        assertEquals("Play video (Space)", VideoPlayerUtils.resolvePlayButtonTooltip(MediaPlayer.Status.READY));
+
+        assertEquals("Pause playback (Space)", VideoPlayerUtils.resolvePauseButtonTooltip(MediaPlayer.Status.PLAYING));
+        assertEquals("Pause", VideoPlayerUtils.resolvePauseButtonTooltip(MediaPlayer.Status.PAUSED));
+        assertEquals("Pause", VideoPlayerUtils.resolvePauseButtonTooltip(MediaPlayer.Status.STOPPED));
+        assertEquals("Pause", VideoPlayerUtils.resolvePauseButtonTooltip(MediaPlayer.Status.READY));
     }
 }

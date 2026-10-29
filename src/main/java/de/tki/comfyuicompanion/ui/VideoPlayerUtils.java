@@ -295,4 +295,35 @@ public final class VideoPlayerUtils {
     public static String resolveFullscreenTooltip(boolean isFullscreen) {
         return isFullscreen ? "Exit Fullscreen (Esc / F11)" : "Toggle Fullscreen / Maximize (F11)";
     }
+
+    /**
+     * Determines whether the Pause action should be highlighted as the primary button.
+     * When playback is actively running (PLAYING), pausing is the primary user interaction.
+     *
+     * @param status current MediaPlayer status
+     * @return true if status is {@link MediaPlayer.Status#PLAYING}, false otherwise
+     */
+    public static boolean isPausePrimaryAction(MediaPlayer.Status status) {
+        return status == MediaPlayer.Status.PLAYING;
+    }
+
+    /**
+     * Resolves the descriptive tooltip text for the Play button based on playback state.
+     *
+     * @param status current MediaPlayer status
+     * @return tooltip string
+     */
+    public static String resolvePlayButtonTooltip(MediaPlayer.Status status) {
+        return (status == MediaPlayer.Status.PLAYING) ? "Playing" : "Play video (Space)";
+    }
+
+    /**
+     * Resolves the descriptive tooltip text for the Pause button based on playback state.
+     *
+     * @param status current MediaPlayer status
+     * @return tooltip string
+     */
+    public static String resolvePauseButtonTooltip(MediaPlayer.Status status) {
+        return (status == MediaPlayer.Status.PLAYING) ? "Pause playback (Space)" : "Pause";
+    }
 }

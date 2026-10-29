@@ -8,23 +8,27 @@ import javafx.embed.swing.JFXPanel;
 import javafx.scene.Scene;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
+import javafx.scene.layout.Priority;
+import javafx.scene.layout.Region;
+import javafx.scene.layout.VBox;
 import javafx.scene.media.Media;
 import javafx.scene.media.MediaPlayer;
 import javafx.scene.media.MediaView;
 import javafx.scene.paint.Color;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
+import javafx.scene.control.ProgressBar;
 import javafx.geometry.Pos;
 import javafx.geometry.Insets;
 
 import javax.swing.JDialog;
-import javax.swing.JFrame;
 import javax.swing.SwingUtilities;
 import java.awt.Frame;
 import java.awt.Window;
 import javax.swing.WindowConstants;
 import java.io.File;
 import java.net.URI;
+import java.net.URL;
 
 /**
  * Self-contained video preview dialog. Embeds a JavaFX MediaView inside a
@@ -36,10 +40,26 @@ public class VideoPreviewDialog extends JDialog {
 
     private MediaPlayer mediaPlayer;
 
+    /**
+     * Constructs a VideoPreviewDialog with an AWT Frame owner.
+     *
+     * @param owner parent frame
+     * @param title dialog title
+     * @param videoFile video file to play
+     * @param darkMode whether dark theme tokens should be applied
+     */
     public VideoPreviewDialog(Frame owner, String title, File videoFile, boolean darkMode) {
         this((Window) owner, title, videoFile, darkMode);
     }
 
+    /**
+     * Constructs a VideoPreviewDialog with a Window owner.
+     *
+     * @param owner parent window
+     * @param title dialog title
+     * @param videoFile video file to play
+     * @param darkMode whether dark theme tokens should be applied
+     */
     public VideoPreviewDialog(Window owner, String title, File videoFile, boolean darkMode) {
         super(owner, "Preview: " + title, ModalityType.MODELESS);
         setSize(720, 540);
@@ -70,10 +90,26 @@ public class VideoPreviewDialog extends JDialog {
                 MediaView mediaView = new MediaView(mediaPlayer);
                 mediaView.setPreserveRatio(true);
                 mediaView.setFitWidth(680);
-                mediaView.setFitHeight(440);
+                mediaView.setFitHeight(420);
 
                 Label statusLabel = new Label("Loading preview...");
-                statusLabel.setTextFill(darkMode ? Color.web("#e2e8f0") : Color.web("#1e293b"));
+                statusLabel.getStyleClass().add("label-title");
+
+                HBox header = new HBox(statusLabel);
+                header.getStyleClass().add("header-panel");
+                header.setAlignment(Pos.CENTER_LEFT);
+
+                ProgressBar progressBar = new ProgressBar(0);
+                progressBar.setMaxWidth(Double.MAX_VALUE);
+                progressBar.getStyleClass().add("progress-bar");
+
+                mediaPlayer.currentTimeProperty().addListener((obs, oldTime, newTime) -> {
+                    if (mediaPlayer.getTotalDuration() != null && !mediaPlayer.getTotalDuration().isUnknown()) {
+                        double progress = newTime.toMillis() / mediaPlayer.getTotalDuration().toMillis();
+                        progressBar.setProgress(progress);
+                    }
+                });
+
                 mediaPlayer.statusProperty().addListener((obs, oldStatus, newStatus) -> {
                     javafx.scene.media.MediaPlayer.Status st = newStatus;
                     if (st == javafx.scene.media.MediaPlayer.Status.READY
@@ -96,39 +132,49 @@ public class VideoPreviewDialog extends JDialog {
                 });
 
                 Button btnPlay = new Button("\u25B6 Play");
+                btnPlay.getStyleClass().addAll("button", "primary-button");
+
                 Button btnPause = new Button("\u23F8 Pause");
+                btnPause.getStyleClass().add("button");
+
                 Button btnStop = new Button("\u25A0 Stop");
+                btnStop.getStyleClass().add("button");
+
                 btnPlay.setOnAction(e -> mediaPlayer.play());
                 btnPause.setOnAction(e -> mediaPlayer.pause());
                 btnStop.setOnAction(e -> mediaPlayer.stop());
 
                 Button btnClose = new Button("Close");
+                btnClose.getStyleClass().addAll("button", "danger-button");
                 btnClose.setOnAction(e -> {
                     stopPlayer();
                     dispose();
                 });
 
-                HBox controls = new HBox(8,
-                        btnPlay, btnPause, btnStop,
-                        new javafx.scene.layout.Region(),
-                        btnClose);
+                Region spacer = new Region();
+                HBox.setHgrow(spacer, Priority.ALWAYS);
+
+                HBox controls = new HBox(8, btnPlay, btnPause, btnStop, spacer, btnClose);
                 controls.setAlignment(Pos.CENTER_LEFT);
-                HBox.setHgrow(controls.getChildren().get(3), javafx.scene.layout.Priority.ALWAYS);
-                controls.setPadding(new Insets(8, 8, 8, 8));
-                controls.setStyle(darkMode
-                        ? "-fx-background-color: #1a1d27;"
-                        : "-fx-background-color: #e5e7eb;");
+                controls.getStyleClass().add("button-bar");
+
+                VBox bottomContainer = new VBox(progressBar, controls);
 
                 BorderPane root = new BorderPane();
+                root.getStyleClass().add("root");
+                if (!darkMode) {
+                    root.getStyleClass().add("light-theme");
+                }
+                root.setTop(header);
                 root.setCenter(mediaView);
-                root.setBottom(controls);
-                root.setTop(statusLabel);
-                BorderPane.setMargin(statusLabel, new Insets(6, 8, 0, 8));
-                root.setStyle(darkMode
-                        ? "-fx-background-color: #0f1117;"
-                        : "-fx-background-color: #f8fafc;");
+                root.setBottom(bottomContainer);
 
                 Scene scene = new Scene(root, Color.BLACK);
+                URL cssUrl = getClass().getResource("/css/video-architect.css");
+                if (cssUrl != null) {
+                    scene.getStylesheets().add(cssUrl.toExternalForm());
+                }
+
                 fxPanel.setScene(scene);
 
                 SwingUtilities.invokeLater(() -> {
@@ -136,12 +182,18 @@ public class VideoPreviewDialog extends JDialog {
                     requestFocus();
                 });
             } catch (Exception ex) {
-                javafx.scene.control.Label error = new javafx.scene.control.Label(
-                        "Could not open video preview: " + ex.getMessage());
+                Label error = new Label("Could not open video preview: " + ex.getMessage());
+                error.getStyleClass().add("label-title");
                 error.setTextFill(Color.RED);
                 BorderPane errRoot = new BorderPane(error);
-                errRoot.setStyle("-fx-padding: 20; -fx-background-color: #1a1d27;");
-                fxPanel.setScene(new Scene(errRoot));
+                errRoot.getStyleClass().add("root");
+                errRoot.setPadding(new Insets(20));
+                Scene errScene = new Scene(errRoot);
+                URL cssUrl = getClass().getResource("/css/video-architect.css");
+                if (cssUrl != null) {
+                    errScene.getStylesheets().add(cssUrl.toExternalForm());
+                }
+                fxPanel.setScene(errScene);
             }
         });
     }
@@ -153,17 +205,17 @@ public class VideoPreviewDialog extends JDialog {
                     try {
                         mediaPlayer.stop();
                     } catch (Exception ignored) {
-            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
-        }
+                        logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+                    }
                     try {
                         mediaPlayer.dispose();
                     } catch (Exception ignored) {
-            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
-        }
+                        logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+                    }
                 });
             } catch (Exception ignored) {
-            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
-        }
+                logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+            }
             mediaPlayer = null;
         }
     }

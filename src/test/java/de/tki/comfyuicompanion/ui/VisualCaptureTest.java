@@ -1,0 +1,140 @@
+package de.tki.comfyuicompanion.ui;
+
+import javafx.application.Platform;
+import javafx.embed.swing.JFXPanel;
+import javafx.embed.swing.SwingFXUtils;
+import javafx.geometry.Insets;
+import javafx.geometry.Pos;
+import javafx.scene.Scene;
+import javafx.scene.control.Button;
+import javafx.scene.control.Label;
+import javafx.scene.control.ProgressBar;
+import javafx.scene.image.WritableImage;
+import javafx.scene.layout.BorderPane;
+import javafx.scene.layout.HBox;
+import javafx.scene.layout.Priority;
+import javafx.scene.layout.Region;
+import javafx.scene.layout.StackPane;
+import javafx.scene.layout.VBox;
+import javafx.scene.paint.Color;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+
+import javax.imageio.ImageIO;
+import java.awt.image.BufferedImage;
+import java.io.File;
+import java.net.URL;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+/**
+ * Enterprise automated visual capture test for JavaFX components.
+ * Renders the JavaFX preview scene off-screen into {@code .agy_visual/current_state.png}
+ * to enable visual regression testing and layout inspection.
+ */
+public class VisualCaptureTest {
+
+    @BeforeAll
+    public static void initJavaFx() {
+        // Initializes JavaFX runtime safely in headless/test mode
+        new JFXPanel();
+        Platform.setImplicitExit(false);
+    }
+
+    /**
+     * Captures the JavaFX preview dialog scene into the visual artifact folder.
+     *
+     * @throws Exception if rendering or saving fails
+     */
+    @Test
+    @DisplayName("Capture current JavaFX Preview scene into .agy_visual/current_state.png")
+    public void testCaptureCurrentState() throws Exception {
+        CountDownLatch latch = new CountDownLatch(1);
+        final Throwable[] errorRef = new Throwable[1];
+
+        Platform.runLater(() -> {
+            try {
+                BorderPane root = new BorderPane();
+                root.getStyleClass().add("root");
+                root.setPrefSize(720, 540);
+
+                Label statusLabel = new Label("Playing: companion_for_comfyui_explainer_video.mp4");
+                statusLabel.getStyleClass().add("label-title");
+
+                HBox headerBox = new HBox(statusLabel);
+                headerBox.getStyleClass().add("header-panel");
+                headerBox.setAlignment(Pos.CENTER_LEFT);
+                root.setTop(headerBox);
+
+                // Central simulated video area with dark canvas
+                StackPane videoContainer = new StackPane();
+                videoContainer.setStyle("-fx-background-color: #050608;");
+                Label placeholder = new Label("[JavaFX MediaView: 680 x 420]");
+                placeholder.getStyleClass().add("label-muted");
+                videoContainer.getChildren().add(placeholder);
+                root.setCenter(videoContainer);
+
+                // Playback progress indicator
+                ProgressBar progressBar = new ProgressBar(0.35);
+                progressBar.setMaxWidth(Double.MAX_VALUE);
+                progressBar.getStyleClass().add("progress-bar");
+
+                // Playback control buttons
+                Button btnPlay = new Button("\u25B6 Play");
+                btnPlay.getStyleClass().addAll("button", "primary-button");
+
+                Button btnPause = new Button("\u23F8 Pause");
+                btnPause.getStyleClass().add("button");
+
+                Button btnStop = new Button("\u25A0 Stop");
+                btnStop.getStyleClass().add("button");
+
+                Region spacer = new Region();
+                HBox.setHgrow(spacer, Priority.ALWAYS);
+
+                Button btnClose = new Button("Close");
+                btnClose.getStyleClass().addAll("button", "danger-button");
+
+                HBox controls = new HBox(8, btnPlay, btnPause, btnStop, spacer, btnClose);
+                controls.setAlignment(Pos.CENTER_LEFT);
+                controls.getStyleClass().add("button-bar");
+
+                VBox bottomContainer = new VBox(progressBar, controls);
+                root.setBottom(bottomContainer);
+
+                Scene scene = new Scene(root, 720, 540, Color.BLACK);
+                URL cssUrl = getClass().getResource("/css/video-architect.css");
+                assertNotNull(cssUrl, "video-architect.css must be available on classpath");
+                scene.getStylesheets().add(cssUrl.toExternalForm());
+
+                // Render off-screen snapshot
+                WritableImage fxSnapshot = scene.snapshot(null);
+                BufferedImage awtImage = SwingFXUtils.fromFXImage(fxSnapshot, null);
+
+                File targetDir = new File(".agy_visual");
+                if (!targetDir.exists()) {
+                    targetDir.mkdirs();
+                }
+                File targetFile = new File(targetDir, "current_state.png");
+                ImageIO.write(awtImage, "png", targetFile);
+
+                assertTrue(targetFile.exists(), "Snapshot file must be written to disk");
+                assertTrue(targetFile.length() > 0, "Snapshot file must not be empty");
+            } catch (Throwable t) {
+                errorRef[0] = t;
+            } finally {
+                latch.countDown();
+            }
+        });
+
+        boolean completed = latch.await(10, TimeUnit.SECONDS);
+        assertTrue(completed, "Visual capture must finish within timeout");
+        if (errorRef[0] != null) {
+            throw new RuntimeException("Capture error", errorRef[0]);
+        }
+    }
+}

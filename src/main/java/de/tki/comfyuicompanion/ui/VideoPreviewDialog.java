@@ -6,28 +6,11 @@ import org.slf4j.LoggerFactory;
 import javafx.application.Platform;
 import javafx.embed.swing.JFXPanel;
 import javafx.scene.Scene;
+import javafx.scene.control.Label;
 import javafx.scene.layout.BorderPane;
-import javafx.scene.layout.HBox;
-import javafx.scene.layout.Priority;
-import javafx.scene.layout.Region;
-import javafx.scene.layout.VBox;
 import javafx.scene.media.Media;
 import javafx.scene.media.MediaPlayer;
-import javafx.scene.media.MediaView;
 import javafx.scene.paint.Color;
-import javafx.collections.FXCollections;
-import javafx.scene.control.Button;
-import javafx.scene.control.ComboBox;
-import javafx.scene.control.Label;
-import javafx.scene.control.ProgressBar;
-import javafx.scene.control.Separator;
-import javafx.scene.control.Slider;
-import javafx.scene.control.ToggleButton;
-import javafx.scene.control.Tooltip;
-import javafx.scene.layout.StackPane;
-import javafx.util.Duration;
-import javafx.geometry.Orientation;
-import javafx.geometry.Pos;
 import javafx.geometry.Insets;
 
 import javax.swing.JDialog;
@@ -43,6 +26,8 @@ import java.net.URL;
  * Self-contained video preview dialog. Embeds a JavaFX MediaView inside a
  * JFXPanel so it runs alongside the rest of the Swing UI. The MediaPlayer
  * is fully released on close to avoid leaking native resources.
+ * Scene composition, layout controls, and shortcuts are coordinated via
+ * {@link VideoPreviewSceneCoordinator}.
  */
 public class VideoPreviewDialog extends JDialog {
     private static final Logger logger = LoggerFactory.getLogger(VideoPreviewDialog.class);
@@ -93,261 +78,18 @@ public class VideoPreviewDialog extends JDialog {
                 mediaPlayer.setAutoPlay(true);
                 mediaPlayer.setCycleCount(MediaPlayer.INDEFINITE);
 
-                MediaView mediaView = new MediaView(mediaPlayer);
-                mediaView.setPreserveRatio(true);
-                mediaView.setFitWidth(680);
-                mediaView.setFitHeight(420);
-
-                Label titleLabel = new Label("\uD83C\uDFAC " + videoFile.getName());
-                titleLabel.getStyleClass().add("label-title");
-
-                Region headerSpacer = new Region();
-                HBox.setHgrow(headerSpacer, Priority.ALWAYS);
-
-                Label formatBadge = new Label(extractFormatBadge(videoFile.getName()));
-                formatBadge.getStyleClass().addAll("badge-pill", "badge-format");
-
-                Label statusBadge = new Label(resolveStatusBadgeText(MediaPlayer.Status.READY));
-                statusBadge.getStyleClass().addAll("badge-pill", "status-badge", "status-badge-ready");
-
-                HBox headerBadges = new HBox(8, formatBadge, statusBadge);
-                headerBadges.setAlignment(Pos.CENTER_RIGHT);
-
-                HBox header = new HBox(12, titleLabel, headerSpacer, headerBadges);
-                header.getStyleClass().add("header-panel");
-                header.setAlignment(Pos.CENTER_LEFT);
-
-                Label currentTimeLabel = new Label("00:00");
-                currentTimeLabel.getStyleClass().add("label-time");
-
-                Slider timeSlider = new Slider(0, 100, 0);
-                timeSlider.getStyleClass().add("timeline-slider");
-                timeSlider.setMaxWidth(Double.MAX_VALUE);
-                HBox.setHgrow(timeSlider, Priority.ALWAYS);
-
-                Label totalTimeLabel = new Label("00:00");
-                totalTimeLabel.getStyleClass().add("label-time");
-
-                HBox timeline = new HBox(10, currentTimeLabel, timeSlider, totalTimeLabel);
-                timeline.setAlignment(Pos.CENTER);
-
-                final boolean[] isSeeking = new boolean[]{false};
-                timeSlider.setOnMousePressed(e -> isSeeking[0] = true);
-                timeSlider.setOnMouseReleased(e -> {
-                    isSeeking[0] = false;
-                    if (mediaPlayer != null && mediaPlayer.getTotalDuration() != null) {
-                        mediaPlayer.seek(Duration.millis(timeSlider.getValue()));
-                    }
-                });
-                timeSlider.valueProperty().addListener((obs, oldVal, newVal) -> {
-                    if (isSeeking[0] && newVal != null) {
-                        currentTimeLabel.setText(formatTime(newVal.doubleValue()));
-                    }
-                });
-
-                mediaPlayer.currentTimeProperty().addListener((obs, oldTime, newTime) -> {
-                    if (!isSeeking[0] && newTime != null) {
-                        currentTimeLabel.setText(formatTime(newTime.toMillis()));
-                        if (mediaPlayer.getTotalDuration() != null && !mediaPlayer.getTotalDuration().isUnknown()) {
-                            timeSlider.setValue(newTime.toMillis());
+                VideoPreviewSceneCoordinator coordinator = new VideoPreviewSceneCoordinator(
+                        this,
+                        videoFile,
+                        mediaPlayer,
+                        darkMode,
+                        () -> {
+                            stopPlayer();
+                            dispose();
                         }
-                    }
-                });
+                );
 
-                mediaPlayer.totalDurationProperty().addListener((obs, oldDur, newDur) -> {
-                    if (newDur != null && !newDur.isUnknown()) {
-                        timeSlider.setMax(newDur.toMillis());
-                        totalTimeLabel.setText(formatTime(newDur.toMillis()));
-                    }
-                });
-
-                mediaPlayer.statusProperty().addListener((obs, oldStatus, newStatus) -> {
-                    javafx.scene.media.MediaPlayer.Status st = newStatus;
-                    statusBadge.setText(resolveStatusBadgeText(st));
-                    statusBadge.getStyleClass().removeIf(s -> s.startsWith("status-badge-"));
-                    statusBadge.getStyleClass().add(resolveStatusBadgeStyle(st));
-
-                    if (st == javafx.scene.media.MediaPlayer.Status.READY
-                            || st == javafx.scene.media.MediaPlayer.Status.PLAYING) {
-                        if (mediaPlayer.getTotalDuration() != null && !mediaPlayer.getTotalDuration().isUnknown()) {
-                            timeSlider.setMax(mediaPlayer.getTotalDuration().toMillis());
-                            totalTimeLabel.setText(formatTime(mediaPlayer.getTotalDuration().toMillis()));
-                        }
-                    } else if (st == javafx.scene.media.MediaPlayer.Status.HALTED) {
-                        titleLabel.setText("\u26A0\uFE0F Unsupported media codec or format");
-                    }
-                });
-                mediaPlayer.setOnError(() -> {
-                    String err = mediaPlayer.getError() != null
-                        ? mediaPlayer.getError().getMessage() : "Unknown media error";
-                    titleLabel.setText("\u26A0\uFE0F Error: " + err);
-                });
-
-                Button btnPlay = new Button("\u25B6 Play");
-                btnPlay.getStyleClass().addAll("button", "primary-button");
-
-                Button btnPause = new Button("\u23F8 Pause");
-                btnPause.getStyleClass().add("button");
-
-                Button btnStop = new Button("\u25A0 Stop");
-                btnStop.getStyleClass().add("button");
-
-                Button btnRewind = new Button("\u23EA");
-                btnRewind.getStyleClass().addAll("button", "icon-button");
-                btnRewind.setTooltip(new Tooltip("Rewind 5 seconds"));
-                btnRewind.setOnAction(e -> {
-                    if (mediaPlayer != null) {
-                        double current = mediaPlayer.getCurrentTime() != null ? mediaPlayer.getCurrentTime().toMillis() : 0.0;
-                        double total = mediaPlayer.getTotalDuration() != null && !mediaPlayer.getTotalDuration().isUnknown()
-                                ? mediaPlayer.getTotalDuration().toMillis() : 0.0;
-                        double target = calculateSeekTarget(current, -5.0, total);
-                        mediaPlayer.seek(Duration.millis(target));
-                        timeSlider.setValue(target);
-                        currentTimeLabel.setText(formatTime(target));
-                    }
-                });
-
-                Button btnForward = new Button("\u23E9");
-                btnForward.getStyleClass().addAll("button", "icon-button");
-                btnForward.setTooltip(new Tooltip("Fast-forward 5 seconds"));
-                btnForward.setOnAction(e -> {
-                    if (mediaPlayer != null) {
-                        double current = mediaPlayer.getCurrentTime() != null ? mediaPlayer.getCurrentTime().toMillis() : 0.0;
-                        double total = mediaPlayer.getTotalDuration() != null && !mediaPlayer.getTotalDuration().isUnknown()
-                                ? mediaPlayer.getTotalDuration().toMillis() : 0.0;
-                        double target = calculateSeekTarget(current, 5.0, total);
-                        mediaPlayer.seek(Duration.millis(target));
-                        timeSlider.setValue(target);
-                        currentTimeLabel.setText(formatTime(target));
-                    }
-                });
-
-                ToggleButton btnLoop = new ToggleButton("\uD83D\uDD01 Loop");
-                btnLoop.getStyleClass().add("toggle-button");
-                btnLoop.setSelected(true);
-                btnLoop.setTooltip(new Tooltip("Toggle continuous playback loop"));
-                btnLoop.setOnAction(e -> {
-                    if (mediaPlayer != null) {
-                        mediaPlayer.setCycleCount(resolveCycleCount(btnLoop.isSelected()));
-                    }
-                });
-
-                ComboBox<String> speedCombo = new ComboBox<>(FXCollections.observableArrayList(
-                        "0.25x", "0.5x", "0.75x", "1.0x", "1.25x", "1.5x", "2.0x"));
-                speedCombo.setValue("1.0x");
-                speedCombo.getStyleClass().add("speed-combo-box");
-                speedCombo.setTooltip(new Tooltip("Playback speed multiplier"));
-                speedCombo.valueProperty().addListener((obs, oldVal, newVal) -> {
-                    if (mediaPlayer != null) {
-                        mediaPlayer.setRate(parsePlaybackRate(newVal));
-                    }
-                });
-
-                mediaPlayer.setOnEndOfMedia(() -> {
-                    if (!btnLoop.isSelected()) {
-                        mediaPlayer.stop();
-                        timeSlider.setValue(0);
-                        currentTimeLabel.setText("00:00");
-                        statusBadge.setText(resolveStatusBadgeText(javafx.scene.media.MediaPlayer.Status.STOPPED));
-                        statusBadge.getStyleClass().removeIf(s -> s.startsWith("status-badge-"));
-                        statusBadge.getStyleClass().add(resolveStatusBadgeStyle(javafx.scene.media.MediaPlayer.Status.STOPPED));
-                    }
-                });
-
-                btnPlay.setOnAction(e -> {
-                    if (mediaPlayer != null) {
-                        if (mediaPlayer.getStatus() == javafx.scene.media.MediaPlayer.Status.STOPPED) {
-                            mediaPlayer.seek(Duration.ZERO);
-                        }
-                        mediaPlayer.play();
-                    }
-                });
-                btnPause.setOnAction(e -> mediaPlayer.pause());
-                btnStop.setOnAction(e -> {
-                    mediaPlayer.stop();
-                    timeSlider.setValue(0);
-                    currentTimeLabel.setText("00:00");
-                });
-
-                Button btnClose = new Button("Close");
-                btnClose.getStyleClass().addAll("button", "danger-button");
-                btnClose.setOnAction(e -> {
-                    stopPlayer();
-                    dispose();
-                });
-
-                // Volume, mute controls, and percentage label
-                Button btnMute = new Button("\uD83D\uDD0A");
-                btnMute.getStyleClass().addAll("button", "icon-button");
-                btnMute.setTooltip(new Tooltip("Mute / Unmute"));
-
-                Slider volumeSlider = new Slider(0, 100, 80);
-                volumeSlider.getStyleClass().add("volume-slider");
-                volumeSlider.setTooltip(new Tooltip("Volume"));
-                mediaPlayer.setVolume(0.8);
-
-                Label volumePercentLabel = new Label(formatVolumePercent(0.8, false));
-                volumePercentLabel.getStyleClass().add("label-volume");
-                volumePercentLabel.setTooltip(new Tooltip("Current volume level"));
-
-                btnMute.setOnAction(e -> {
-                    if (mediaPlayer != null) {
-                        boolean muted = !mediaPlayer.isMute();
-                        mediaPlayer.setMute(muted);
-                        btnMute.setText(muted ? "\uD83D\uDD07" : "\uD83D\uDD0A");
-                        volumePercentLabel.setText(formatVolumePercent(mediaPlayer.getVolume(), muted));
-                    }
-                });
-
-                volumeSlider.valueProperty().addListener((obs, oldVal, newVal) -> {
-                    if (mediaPlayer != null) {
-                        double vol = clampVolume(newVal.doubleValue() / 100.0);
-                        mediaPlayer.setVolume(vol);
-                        if (vol > 0 && mediaPlayer.isMute()) {
-                            mediaPlayer.setMute(false);
-                            btnMute.setText("\uD83D\uDD0A");
-                        } else if (vol == 0 && !mediaPlayer.isMute()) {
-                            mediaPlayer.setMute(true);
-                            btnMute.setText("\uD83D\uDD07");
-                        }
-                        volumePercentLabel.setText(formatVolumePercent(vol, mediaPlayer.isMute()));
-                    }
-                });
-
-                HBox volumeBox = new HBox(6, btnMute, volumeSlider, volumePercentLabel);
-                volumeBox.getStyleClass().add("volume-control-box");
-                volumeBox.setAlignment(Pos.CENTER);
-
-                Separator separator = new Separator(Orientation.VERTICAL);
-                separator.getStyleClass().add("media-separator");
-
-                Region spacer = new Region();
-                HBox.setHgrow(spacer, Priority.ALWAYS);
-
-                HBox controls = new HBox(6, btnPlay, btnPause, btnStop, btnRewind, btnForward, btnLoop, speedCombo, spacer, volumeBox, separator, btnClose);
-                controls.setAlignment(Pos.CENTER_LEFT);
-
-                VBox bottomContainer = new VBox(8, timeline, controls);
-                bottomContainer.getStyleClass().add("media-controls-panel");
-
-                StackPane videoContainer = new StackPane(mediaView);
-                videoContainer.getStyleClass().add("video-viewport");
-
-                BorderPane root = new BorderPane();
-                root.getStyleClass().add("root");
-                if (!darkMode) {
-                    root.getStyleClass().add("light-theme");
-                }
-                root.setTop(header);
-                root.setCenter(videoContainer);
-                root.setBottom(bottomContainer);
-
-                Scene scene = new Scene(root, Color.BLACK);
-                URL cssUrl = getClass().getResource("/css/video-architect.css");
-                if (cssUrl != null) {
-                    scene.getStylesheets().add(cssUrl.toExternalForm());
-                }
-
+                Scene scene = coordinator.buildScene();
                 fxPanel.setScene(scene);
 
                 SwingUtilities.invokeLater(() -> {
@@ -355,6 +97,7 @@ public class VideoPreviewDialog extends JDialog {
                     requestFocus();
                 });
             } catch (Exception ex) {
+                logger.error("Failed to initialize video preview scene for file: {}", videoFile.getName(), ex);
                 Label error = new Label("Could not open video preview: " + ex.getMessage());
                 error.getStyleClass().add("label-title");
                 error.setTextFill(Color.RED);
@@ -393,6 +136,17 @@ public class VideoPreviewDialog extends JDialog {
      */
     static String formatTime(double millis) {
         return VideoPlayerUtils.formatTime(millis);
+    }
+
+    /**
+     * Formats the remaining playback duration as a countdown string (e.g. "-00:28").
+     *
+     * @param currentMillis current playback position in milliseconds
+     * @param totalMillis total duration in milliseconds
+     * @return formatted remaining time string prefixed with "-" (e.g. "-01:23"), or "-00:00" for invalid values
+     */
+    static String formatRemainingTime(double currentMillis, double totalMillis) {
+        return VideoPlayerUtils.formatRemainingTime(currentMillis, totalMillis);
     }
 
     /**

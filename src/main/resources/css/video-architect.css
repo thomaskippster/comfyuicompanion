@@ -80,6 +80,13 @@
     -fx-text-fill: -fx-custom-text-muted;
 }
 
+.label-time-interactive {
+    -fx-cursor: hand;
+}
+.label-time-interactive:hover {
+    -fx-text-fill: -fx-custom-accent-hover;
+}
+
 .label-volume {
     -fx-font-family: "Consolas", "Courier New", monospace;
     -fx-font-size: 11px;
@@ -418,12 +425,19 @@
 }
 
 .media-separator {
-    -fx-padding: 2px 2px;
+    -fx-pref-height: 22px;
+    -fx-max-height: 22px;
+    -fx-padding: 0 4px;
 }
 .media-separator *.line {
     -fx-border-color: -fx-custom-border-color;
     -fx-border-style: solid;
-    -fx-border-width: 0 0.5px 0 0.5px;
+    -fx-border-width: 0 1px 0 0;
+}
+
+.fullscreen-button {
+    -fx-font-size: 13px;
+    -fx-padding: 6px 9px;
 }
 
 /* --- ComboBox --- */

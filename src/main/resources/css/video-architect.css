@@ -237,6 +237,26 @@
     -fx-spacing: 8px;
 }
 
+.volume-control-box {
+    -fx-alignment: center;
+    -fx-spacing: 6px;
+}
+
+.volume-slider {
+    -fx-pref-width: 85px;
+    -fx-max-width: 100px;
+}
+
+.button.icon-button {
+    -fx-padding: 6px 10px;
+    -fx-font-size: 13px;
+}
+
+.video-viewport {
+    -fx-background-color: #050608;
+    -fx-alignment: center;
+}
+
 /* --- Dialogs --- */
 .dialog-pane {
     -fx-background-color: -fx-custom-panel-bg;

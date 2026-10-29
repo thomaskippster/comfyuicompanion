@@ -74,7 +74,7 @@ public class VisualCaptureTest {
 
                 // Central simulated video area with dark canvas
                 StackPane videoContainer = new StackPane();
-                videoContainer.setStyle("-fx-background-color: #050608;");
+                videoContainer.getStyleClass().add("video-viewport");
                 Label placeholder = new Label("[JavaFX MediaView: 680 x 420]");
                 placeholder.getStyleClass().add("label-muted");
                 videoContainer.getChildren().add(placeholder);
@@ -107,10 +107,21 @@ public class VisualCaptureTest {
                 Region spacer = new Region();
                 HBox.setHgrow(spacer, Priority.ALWAYS);
 
+                // Volume and mute controls
+                Button btnMute = new Button("\uD83D\uDD0A");
+                btnMute.getStyleClass().addAll("button", "icon-button");
+
+                Slider volumeSlider = new Slider(0, 100, 80);
+                volumeSlider.getStyleClass().add("volume-slider");
+
+                HBox volumeBox = new HBox(6, btnMute, volumeSlider);
+                volumeBox.getStyleClass().add("volume-control-box");
+                volumeBox.setAlignment(Pos.CENTER);
+
                 Button btnClose = new Button("Close");
                 btnClose.getStyleClass().addAll("button", "danger-button");
 
-                HBox controls = new HBox(8, btnPlay, btnPause, btnStop, spacer, btnClose);
+                HBox controls = new HBox(8, btnPlay, btnPause, btnStop, spacer, volumeBox, btnClose);
                 controls.setAlignment(Pos.CENTER_LEFT);
 
                 VBox bottomContainer = new VBox(8, timeline, controls);
@@ -161,5 +172,19 @@ public class VisualCaptureTest {
         assertEquals("00:05", VideoPreviewDialog.formatTime(5000));
         assertEquals("01:15", VideoPreviewDialog.formatTime(75000));
         assertEquals("12:34", VideoPreviewDialog.formatTime(754000));
+    }
+
+    /**
+     * Verifies volume level clamping between 0.0 and 1.0 including boundary and NaN values.
+     */
+    @Test
+    @DisplayName("Verify volume level clamping boundary values")
+    public void testClampVolume() {
+        assertEquals(0.0, VideoPreviewDialog.clampVolume(-0.5));
+        assertEquals(0.0, VideoPreviewDialog.clampVolume(Double.NaN));
+        assertEquals(0.0, VideoPreviewDialog.clampVolume(0.0));
+        assertEquals(0.5, VideoPreviewDialog.clampVolume(0.5));
+        assertEquals(1.0, VideoPreviewDialog.clampVolume(1.0));
+        assertEquals(1.0, VideoPreviewDialog.clampVolume(2.5));
     }
 }

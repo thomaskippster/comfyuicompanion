@@ -98,6 +98,43 @@ public class VideoPlayerUtilsTest {
     }
 
     /**
+     * Verifies detection of non-standard playback rates.
+     */
+    @Test
+    @DisplayName("Verify custom playback rate detection")
+    public void testIsCustomPlaybackRate() {
+        assertFalse(VideoPreviewDialog.isCustomPlaybackRate(null));
+        assertFalse(VideoPreviewDialog.isCustomPlaybackRate(""));
+        assertFalse(VideoPreviewDialog.isCustomPlaybackRate("1.0x"));
+        assertFalse(VideoPreviewDialog.isCustomPlaybackRate("1.0"));
+        assertFalse(VideoPreviewDialog.isCustomPlaybackRate(" 1.0X "));
+        assertTrue(VideoPreviewDialog.isCustomPlaybackRate("0.5x"));
+        assertTrue(VideoPreviewDialog.isCustomPlaybackRate("0.75x"));
+        assertTrue(VideoPreviewDialog.isCustomPlaybackRate("1.25x"));
+        assertTrue(VideoPreviewDialog.isCustomPlaybackRate("1.5x"));
+        assertTrue(VideoPreviewDialog.isCustomPlaybackRate("2.0x"));
+    }
+
+    /**
+     * Verifies bidirectional stepping through playback rate presets.
+     */
+    @Test
+    @DisplayName("Verify bidirectional discrete playback rate stepping")
+    public void testStepPlaybackRate() {
+        assertEquals("1.0x", VideoPreviewDialog.stepPlaybackRate(null, true));
+        assertEquals("1.0x", VideoPreviewDialog.stepPlaybackRate("invalid", true));
+        assertEquals("1.25x", VideoPreviewDialog.stepPlaybackRate("1.0x", true));
+        assertEquals("1.5x", VideoPreviewDialog.stepPlaybackRate("1.25x", true));
+        assertEquals("2.0x", VideoPreviewDialog.stepPlaybackRate("1.5x", true));
+        assertEquals("2.0x", VideoPreviewDialog.stepPlaybackRate("2.0x", true)); // Clamped at max
+
+        assertEquals("0.75x", VideoPreviewDialog.stepPlaybackRate("1.0x", false));
+        assertEquals("0.5x", VideoPreviewDialog.stepPlaybackRate("0.75x", false));
+        assertEquals("0.25x", VideoPreviewDialog.stepPlaybackRate("0.5x", false));
+        assertEquals("0.25x", VideoPreviewDialog.stepPlaybackRate("0.25x", false)); // Clamped at min
+    }
+
+    /**
      * Verifies seek destination calculation with positive/negative offsets, zero bounds, and total duration clamping.
      */
     @Test

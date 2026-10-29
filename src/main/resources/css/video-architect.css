@@ -328,16 +328,25 @@
 .media-controls-panel .button {
     -fx-padding: 5px 8px;
     -fx-font-size: 12px;
+    -fx-pref-height: 28px;
+    -fx-min-height: 28px;
+    -fx-max-height: 28px;
 }
 
 .media-controls-panel .toggle-button {
     -fx-padding: 5px 8px;
     -fx-font-size: 12px;
+    -fx-pref-height: 28px;
+    -fx-min-height: 28px;
+    -fx-max-height: 28px;
 }
 
 .media-controls-panel .button.icon-button {
     -fx-padding: 5px 7px;
     -fx-font-size: 12px;
+    -fx-pref-height: 28px;
+    -fx-min-height: 28px;
+    -fx-max-height: 28px;
 }
 
 .volume-control-box {
@@ -658,7 +667,32 @@
 .speed-combo-box {
     -fx-pref-width: 68px;
     -fx-max-width: 72px;
-    -fx-pref-height: 29px;
+    -fx-pref-height: 28px;
+    -fx-min-height: 28px;
+    -fx-max-height: 28px;
+}
+
+.speed-combo-box.speed-combo-active {
+    -fx-border-color: -fx-custom-accent-color;
+    -fx-background-color: rgba(30, 190, 170, 0.18);
+}
+.speed-combo-box.speed-combo-active .cell {
+    -fx-text-fill: -fx-custom-accent-color;
+    -fx-font-weight: bold;
+}
+.speed-combo-box.speed-combo-active .arrow {
+    -fx-background-color: -fx-custom-accent-color;
+}
+
+.root.light-theme .speed-combo-box.speed-combo-active {
+    -fx-border-color: #0078d7;
+    -fx-background-color: rgba(0, 120, 215, 0.12);
+}
+.root.light-theme .speed-combo-box.speed-combo-active .cell {
+    -fx-text-fill: #0078d7;
+}
+.root.light-theme .speed-combo-box.speed-combo-active .arrow {
+    -fx-background-color: #0078d7;
 }
 
 .root.light-theme .combo-box {

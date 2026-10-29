@@ -73,6 +73,13 @@
     -fx-text-fill: -fx-custom-text-muted;
 }
 
+.label-time {
+    -fx-font-family: "Consolas", "Courier New", monospace;
+    -fx-font-size: 11px;
+    -fx-font-weight: bold;
+    -fx-text-fill: -fx-custom-text-muted;
+}
+
 /* --- Text Inputs --- */
 .text-input {
     -fx-text-fill: -fx-custom-text-color;
@@ -222,6 +229,14 @@
     -fx-padding: 10px 14px;
 }
 
+.media-controls-panel {
+    -fx-background-color: -fx-custom-card-bg;
+    -fx-border-color: -fx-custom-border-color;
+    -fx-border-width: 1 0 0 0;
+    -fx-padding: 10px 14px;
+    -fx-spacing: 8px;
+}
+
 /* --- Dialogs --- */
 .dialog-pane {
     -fx-background-color: -fx-custom-panel-bg;
@@ -337,18 +352,32 @@
 }
 
 /* --- Slider --- */
+.slider {
+    -fx-padding: 2px 0;
+}
 .slider .track {
     -fx-background-color: -fx-custom-input-bg;
-    -fx-background-radius: 4px;
+    -fx-background-radius: 6px;
     -fx-border-color: -fx-custom-border-color;
-    -fx-border-radius: 4px;
+    -fx-border-radius: 6px;
+    -fx-pref-height: 6px;
 }
 .slider .thumb {
     -fx-background-color: -fx-custom-accent-color;
-    -fx-background-radius: 8px;
+    -fx-background-radius: 10px;
+    -fx-pref-width: 14px;
+    -fx-pref-height: 14px;
+    -fx-cursor: hand;
 }
 .slider .thumb:hover {
     -fx-background-color: -fx-custom-accent-hover;
+    -fx-effect: dropshadow(gaussian, rgba(30, 190, 170, 0.4), 4, 0.0, 0, 0);
+}
+.slider .thumb:pressed {
+    -fx-background-color: -fx-custom-accent-pressed;
+}
+.slider:focused .thumb {
+    -fx-effect: dropshadow(gaussian, rgba(30, 190, 170, 0.6), 5, 0.0, 0, 0);
 }
 
 /* --- ScrollBar --- */

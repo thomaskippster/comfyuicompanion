@@ -18,6 +18,8 @@ import javafx.scene.paint.Color;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.ProgressBar;
+import javafx.scene.control.Slider;
+import javafx.util.Duration;
 import javafx.geometry.Pos;
 import javafx.geometry.Insets;
 
@@ -99,14 +101,41 @@ public class VideoPreviewDialog extends JDialog {
                 header.getStyleClass().add("header-panel");
                 header.setAlignment(Pos.CENTER_LEFT);
 
-                ProgressBar progressBar = new ProgressBar(0);
-                progressBar.setMaxWidth(Double.MAX_VALUE);
-                progressBar.getStyleClass().add("progress-bar");
+                Label currentTimeLabel = new Label("00:00");
+                currentTimeLabel.getStyleClass().add("label-time");
+
+                Slider timeSlider = new Slider(0, 100, 0);
+                timeSlider.setMaxWidth(Double.MAX_VALUE);
+                HBox.setHgrow(timeSlider, Priority.ALWAYS);
+
+                Label totalTimeLabel = new Label("00:00");
+                totalTimeLabel.getStyleClass().add("label-time");
+
+                HBox timeline = new HBox(10, currentTimeLabel, timeSlider, totalTimeLabel);
+                timeline.setAlignment(Pos.CENTER);
+
+                final boolean[] isSeeking = new boolean[]{false};
+                timeSlider.setOnMousePressed(e -> isSeeking[0] = true);
+                timeSlider.setOnMouseReleased(e -> {
+                    isSeeking[0] = false;
+                    if (mediaPlayer != null && mediaPlayer.getTotalDuration() != null) {
+                        mediaPlayer.seek(Duration.millis(timeSlider.getValue()));
+                    }
+                });
 
                 mediaPlayer.currentTimeProperty().addListener((obs, oldTime, newTime) -> {
-                    if (mediaPlayer.getTotalDuration() != null && !mediaPlayer.getTotalDuration().isUnknown()) {
-                        double progress = newTime.toMillis() / mediaPlayer.getTotalDuration().toMillis();
-                        progressBar.setProgress(progress);
+                    if (!isSeeking[0] && newTime != null) {
+                        currentTimeLabel.setText(formatTime(newTime.toMillis()));
+                        if (mediaPlayer.getTotalDuration() != null && !mediaPlayer.getTotalDuration().isUnknown()) {
+                            timeSlider.setValue(newTime.toMillis());
+                        }
+                    }
+                });
+
+                mediaPlayer.totalDurationProperty().addListener((obs, oldDur, newDur) -> {
+                    if (newDur != null && !newDur.isUnknown()) {
+                        timeSlider.setMax(newDur.toMillis());
+                        totalTimeLabel.setText(formatTime(newDur.toMillis()));
                     }
                 });
 
@@ -115,6 +144,10 @@ public class VideoPreviewDialog extends JDialog {
                     if (st == javafx.scene.media.MediaPlayer.Status.READY
                             || st == javafx.scene.media.MediaPlayer.Status.PLAYING) {
                         statusLabel.setText("Playing: " + videoFile.getName());
+                        if (mediaPlayer.getTotalDuration() != null && !mediaPlayer.getTotalDuration().isUnknown()) {
+                            timeSlider.setMax(mediaPlayer.getTotalDuration().toMillis());
+                            totalTimeLabel.setText(formatTime(mediaPlayer.getTotalDuration().toMillis()));
+                        }
                     } else if (st == javafx.scene.media.MediaPlayer.Status.PAUSED) {
                         statusLabel.setText("Paused: " + videoFile.getName());
                     } else if (st == javafx.scene.media.MediaPlayer.Status.STALLED) {
@@ -142,7 +175,11 @@ public class VideoPreviewDialog extends JDialog {
 
                 btnPlay.setOnAction(e -> mediaPlayer.play());
                 btnPause.setOnAction(e -> mediaPlayer.pause());
-                btnStop.setOnAction(e -> mediaPlayer.stop());
+                btnStop.setOnAction(e -> {
+                    mediaPlayer.stop();
+                    timeSlider.setValue(0);
+                    currentTimeLabel.setText("00:00");
+                });
 
                 Button btnClose = new Button("Close");
                 btnClose.getStyleClass().addAll("button", "danger-button");
@@ -156,9 +193,9 @@ public class VideoPreviewDialog extends JDialog {
 
                 HBox controls = new HBox(8, btnPlay, btnPause, btnStop, spacer, btnClose);
                 controls.setAlignment(Pos.CENTER_LEFT);
-                controls.getStyleClass().add("button-bar");
 
-                VBox bottomContainer = new VBox(progressBar, controls);
+                VBox bottomContainer = new VBox(8, timeline, controls);
+                bottomContainer.getStyleClass().add("media-controls-panel");
 
                 BorderPane root = new BorderPane();
                 root.getStyleClass().add("root");
@@ -218,6 +255,22 @@ public class VideoPreviewDialog extends JDialog {
             }
             mediaPlayer = null;
         }
+    }
+
+    /**
+     * Formats a duration in milliseconds into a standard mm:ss format.
+     *
+     * @param millis duration in milliseconds
+     * @return formatted time string, or "00:00" for invalid values
+     */
+    static String formatTime(double millis) {
+        if (Double.isNaN(millis) || millis < 0) {
+            return "00:00";
+        }
+        long totalSeconds = (long) Math.floor(millis / 1000.0);
+        long minutes = totalSeconds / 60;
+        long seconds = totalSeconds % 60;
+        return String.format("%02d:%02d", minutes, seconds);
     }
 
     @Override

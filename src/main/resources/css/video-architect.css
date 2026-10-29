@@ -294,8 +294,8 @@
 }
 
 .volume-slider {
-    -fx-pref-width: 85px;
-    -fx-max-width: 100px;
+    -fx-pref-width: 75px;
+    -fx-max-width: 90px;
 }
 
 /* --- ComboBox --- */
@@ -387,6 +387,11 @@
 .button.icon-button {
     -fx-padding: 6px 10px;
     -fx-font-size: 13px;
+}
+
+.button.step-button {
+    -fx-padding: 7px 10px;
+    -fx-font-size: 12px;
 }
 
 .video-viewport {

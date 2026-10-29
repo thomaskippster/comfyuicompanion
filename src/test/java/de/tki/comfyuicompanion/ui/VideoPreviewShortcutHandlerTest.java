@@ -62,4 +62,42 @@ public class VideoPreviewShortcutHandlerTest {
         handler.handle(escKey);
         assertTrue(closeTriggered.get(), "Escape key must trigger close action");
     }
+
+    @Test
+    @DisplayName("Verify loop toggle and speed step shortcuts")
+    public void testLoopAndSpeedShortcuts() {
+        javafx.scene.control.ToggleButton btnLoop = new javafx.scene.control.ToggleButton("Loop");
+        btnLoop.setSelected(true);
+
+        javafx.scene.control.ComboBox<String> speedCombo = new javafx.scene.control.ComboBox<>(
+                javafx.collections.FXCollections.observableArrayList("0.5x", "1.0x", "1.5x", "2.0x"));
+        speedCombo.setValue("1.0x");
+
+        VideoPreviewShortcutHandler handler = new VideoPreviewShortcutHandler(
+                null, new Button(), new Slider(), new Label(), new ProgressBar(),
+                new Button(), new Slider(), new ProgressBar(), new Label(),
+                btnLoop, speedCombo, () -> {}, () -> {}
+        );
+
+        // Test L key toggles loop
+        KeyEvent lKey = new KeyEvent(KeyEvent.KEY_PRESSED, "", "", KeyCode.L, false, false, false, false);
+        handler.handle(lKey);
+        org.junit.jupiter.api.Assertions.assertFalse(btnLoop.isSelected(), "L key must toggle loop off");
+
+        handler.handle(lKey);
+        assertTrue(btnLoop.isSelected(), "L key must toggle loop back on");
+
+        // Test [ key steps speed down
+        KeyEvent speedDownKey = new KeyEvent(KeyEvent.KEY_PRESSED, "", "", KeyCode.OPEN_BRACKET, false, false, false, false);
+        handler.handle(speedDownKey);
+        org.junit.jupiter.api.Assertions.assertEquals("0.75x", speedCombo.getValue(), "[ key must step speed down from 1.0x to 0.75x");
+
+        // Test ] key steps speed up
+        KeyEvent speedUpKey = new KeyEvent(KeyEvent.KEY_PRESSED, "", "", KeyCode.CLOSE_BRACKET, false, false, false, false);
+        handler.handle(speedUpKey);
+        org.junit.jupiter.api.Assertions.assertEquals("1.0x", speedCombo.getValue(), "] key must step speed up from 0.75x to 1.0x");
+
+        handler.handle(speedUpKey);
+        org.junit.jupiter.api.Assertions.assertEquals("1.25x", speedCombo.getValue(), "] key must step speed up from 1.0x to 1.25x");
+    }
 }

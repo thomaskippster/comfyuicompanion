@@ -110,6 +110,41 @@ public final class VideoPlayerUtils {
     }
 
     /**
+     * Determines whether the specified playback rate represents a non-standard multiplier differing from normal 1.0x speed.
+     *
+     * @param rateLabel textual representation of playback speed
+     * @return true if rate differs from 1.0x, false otherwise
+     */
+    public static boolean isCustomPlaybackRate(String rateLabel) {
+        if (rateLabel == null || rateLabel.isBlank()) {
+            return false;
+        }
+        double rate = parsePlaybackRate(rateLabel);
+        return Math.abs(rate - 1.0) > 0.001;
+    }
+
+    /**
+     * Steps the playback speed up or down to the nearest preset from standard multipliers.
+     * Supported presets: 0.25x, 0.5x, 0.75x, 1.0x, 1.25x, 1.5x, 2.0x.
+     *
+     * @param currentRate current rate string (e.g. "1.0x")
+     * @param stepUp true to step up, false to step down
+     * @return adjacent rate preset string
+     */
+    public static String stepPlaybackRate(String currentRate, boolean stepUp) {
+        java.util.List<String> presets = java.util.List.of("0.25x", "0.5x", "0.75x", "1.0x", "1.25x", "1.5x", "2.0x");
+        if (currentRate == null || currentRate.isBlank()) {
+            return "1.0x";
+        }
+        int index = presets.indexOf(currentRate.trim().toLowerCase());
+        if (index == -1) {
+            return "1.0x";
+        }
+        int nextIndex = stepUp ? Math.min(presets.size() - 1, index + 1) : Math.max(0, index - 1);
+        return presets.get(nextIndex);
+    }
+
+    /**
      * Calculates the destination seek timestamp in milliseconds when jumping by a relative time offset.
      * Safely clamps the resulting position within [0.0, totalDurationMillis] and guards against NaN or negative boundaries.
      *

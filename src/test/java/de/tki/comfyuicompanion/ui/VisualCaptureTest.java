@@ -174,6 +174,12 @@ public class VisualCaptureTest {
                 volumeBox.getStyleClass().add("volume-control-box");
                 volumeBox.setAlignment(Pos.CENTER);
 
+                Separator separatorTransport = new Separator(javafx.geometry.Orientation.VERTICAL);
+                separatorTransport.getStyleClass().add("media-separator");
+
+                Separator separatorPlayback = new Separator(javafx.geometry.Orientation.VERTICAL);
+                separatorPlayback.getStyleClass().add("media-separator");
+
                 Separator separatorVolume = new Separator(javafx.geometry.Orientation.VERTICAL);
                 separatorVolume.getStyleClass().add("media-separator");
 
@@ -186,7 +192,9 @@ public class VisualCaptureTest {
                 Button btnClose = new Button("Close");
                 btnClose.getStyleClass().addAll("button", "danger-button");
 
-                HBox controls = new HBox(5, btnPlay, btnPause, btnStop, btnRewind, btnForward, btnLoop, speedCombo, spacer, volumeBox, separatorVolume, btnFullscreen, separatorClose, btnClose);
+                HBox controls = new HBox(5, btnPlay, btnPause, btnStop, separatorTransport,
+                        btnRewind, btnForward, separatorPlayback,
+                        btnLoop, speedCombo, spacer, volumeBox, separatorVolume, btnFullscreen, separatorClose, btnClose);
                 controls.setAlignment(Pos.CENTER_LEFT);
 
                 VBox bottomContainer = new VBox(8, timeline, controls);
@@ -241,6 +249,24 @@ public class VisualCaptureTest {
                     }
                 }
                 assertTrue(foundDivider, "Media separator hairline must render visible divider tone");
+
+                // Verify that playback group vertical separator renders with crisp high-contrast hairline
+                javafx.geometry.Bounds sepPlaybackBounds = separatorPlayback.localToScene(separatorPlayback.getBoundsInLocal());
+                int sepPlaybackX = (int) Math.round(sepPlaybackBounds.getCenterX());
+                int sepPlaybackY = (int) Math.round(sepPlaybackBounds.getCenterY());
+                boolean foundPlaybackDivider = false;
+                for (int dx = -3; dx <= 3; dx++) {
+                    int sampleX = sepPlaybackX + dx;
+                    if (sampleX >= 0 && sampleX < awtImage.getWidth()) {
+                        int rgb = awtImage.getRGB(sampleX, sepPlaybackY);
+                        int blue = rgb & 0xff;
+                        if (blue > 50) {
+                            foundPlaybackDivider = true;
+                            break;
+                        }
+                    }
+                }
+                assertTrue(foundPlaybackDivider, "Playback media separator hairline must render visible divider tone");
             } catch (Throwable t) {
                 errorRef[0] = t;
             } finally {

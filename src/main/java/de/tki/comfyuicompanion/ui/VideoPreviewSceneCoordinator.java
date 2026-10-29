@@ -2,7 +2,6 @@ package de.tki.comfyuicompanion.ui;
 
 import javafx.application.Platform;
 import javafx.collections.FXCollections;
-import javafx.geometry.Insets;
 import javafx.geometry.Orientation;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
@@ -299,8 +298,17 @@ public class VideoPreviewSceneCoordinator {
                 "0.25x", "0.5x", "0.75x", "1.0x", "1.25x", "1.5x", "2.0x"));
         speedCombo.setValue("1.0x");
         speedCombo.getStyleClass().add("speed-combo-box");
-        speedCombo.setTooltip(new Tooltip("Playback speed multiplier"));
-        speedCombo.valueProperty().addListener((obs, oldVal, newVal) -> mediaPlayer.setRate(VideoPlayerUtils.parsePlaybackRate(newVal)));
+        speedCombo.setTooltip(new Tooltip("Playback speed multiplier ([ / ])"));
+        speedCombo.valueProperty().addListener((obs, oldVal, newVal) -> {
+            mediaPlayer.setRate(VideoPlayerUtils.parsePlaybackRate(newVal));
+            if (VideoPlayerUtils.isCustomPlaybackRate(newVal)) {
+                if (!speedCombo.getStyleClass().contains("speed-combo-active")) {
+                    speedCombo.getStyleClass().add("speed-combo-active");
+                }
+            } else {
+                speedCombo.getStyleClass().remove("speed-combo-active");
+            }
+        });
 
         mediaPlayer.setOnEndOfMedia(() -> {
             if (!btnLoop.isSelected()) {
@@ -340,13 +348,6 @@ public class VideoPreviewSceneCoordinator {
         volumeSlider.setOnMouseClicked(e -> {
             double targetVol = VideoPlayerUtils.calculateVolumeFromClick(e.getX(), volumeSlider.getWidth());
             volumeSlider.setValue(targetVol * 100.0);
-            mediaPlayer.setVolume(targetVol);
-            if (targetVol > 0 && mediaPlayer.isMute()) {
-                mediaPlayer.setMute(false);
-            }
-            volumeProgress.setProgress(mediaPlayer.isMute() ? 0.0 : targetVol);
-            btnMute.setText(VideoPlayerUtils.resolveVolumeGlyph(targetVol, mediaPlayer.isMute()));
-            volumePercentLabel.setText(VideoPlayerUtils.formatVolumePercent(targetVol, mediaPlayer.isMute()));
         });
 
         volumeSlider.valueProperty().addListener((obs, oldVal, newVal) -> {
@@ -366,17 +367,16 @@ public class VideoPreviewSceneCoordinator {
         volumeBox.getStyleClass().add("volume-control-box");
         volumeBox.setAlignment(Pos.CENTER);
 
-        Separator separatorVolume = new Separator(Orientation.VERTICAL);
-        separatorVolume.getStyleClass().add("media-separator");
+        Separator separatorTransport = createMediaSeparator();
+        Separator separatorPlayback = createMediaSeparator();
+        Separator separatorVolume = createMediaSeparator();
+        Separator separatorClose = createMediaSeparator();
 
         // Fullscreen button
         Button btnFullscreen = new Button(VideoPlayerUtils.resolveFullscreenGlyph(false));
         btnFullscreen.getStyleClass().addAll("button", "icon-button", "fullscreen-button");
         btnFullscreen.setTooltip(new Tooltip(VideoPlayerUtils.resolveFullscreenTooltip(false)));
         btnFullscreen.setOnAction(e -> toggleFullscreen(btnFullscreen));
-
-        Separator separatorClose = new Separator(Orientation.VERTICAL);
-        separatorClose.getStyleClass().add("media-separator");
 
         Button btnClose = new Button("Close");
         btnClose.getStyleClass().addAll("button", "danger-button");
@@ -386,8 +386,9 @@ public class VideoPreviewSceneCoordinator {
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
 
-        HBox controls = new HBox(5, btnPlay, btnPause, btnStop, btnRewind, btnForward, btnLoop, speedCombo,
-                spacer, volumeBox, separatorVolume, btnFullscreen, separatorClose, btnClose);
+        HBox controls = new HBox(5, btnPlay, btnPause, btnStop, separatorTransport,
+                btnRewind, btnForward, separatorPlayback,
+                btnLoop, speedCombo, spacer, volumeBox, separatorVolume, btnFullscreen, separatorClose, btnClose);
         controls.setAlignment(Pos.CENTER_LEFT);
 
         VBox bottomContainer = new VBox(8, timeline, controls);
@@ -404,6 +405,7 @@ public class VideoPreviewSceneCoordinator {
         scene.setOnKeyPressed(new VideoPreviewShortcutHandler(
                 mediaPlayer, btnMute, volumeSlider, volumePercentLabel, volumeProgress,
                 btnFullscreen, timeSlider, timelineProgress, currentTimeLabel,
+                btnLoop, speedCombo,
                 () -> toggleFullscreen(btnFullscreen),
                 () -> {
                     if (isFullscreen) {
@@ -467,28 +469,26 @@ public class VideoPreviewSceneCoordinator {
             Platform.runLater(() -> {
                 btnFullscreen.setText(VideoPlayerUtils.resolveFullscreenGlyph(isFullscreen));
                 btnFullscreen.setTooltip(new Tooltip(VideoPlayerUtils.resolveFullscreenTooltip(isFullscreen)));
-                if (isFullscreen && !btnFullscreen.getStyleClass().contains("fullscreen-active")) {
+                btnFullscreen.getStyleClass().remove("fullscreen-active");
+                if (isFullscreen) {
                     btnFullscreen.getStyleClass().add("fullscreen-active");
-                } else if (!isFullscreen) {
-                    btnFullscreen.getStyleClass().remove("fullscreen-active");
                 }
             });
         });
     }
 
     private void updatePlayPauseButtonState(MediaPlayer.Status status, Button btnPlay, Button btnPause) {
-        if (VideoPlayerUtils.isPausePrimaryAction(status)) {
-            btnPlay.getStyleClass().remove("primary-button");
-            if (!btnPause.getStyleClass().contains("primary-button")) {
-                btnPause.getStyleClass().add("primary-button");
-            }
-        } else {
-            btnPause.getStyleClass().remove("primary-button");
-            if (!btnPlay.getStyleClass().contains("primary-button")) {
-                btnPlay.getStyleClass().add("primary-button");
-            }
-        }
+        boolean isPause = VideoPlayerUtils.isPausePrimaryAction(status);
+        btnPlay.getStyleClass().remove("primary-button");
+        btnPause.getStyleClass().remove("primary-button");
+        (isPause ? btnPause : btnPlay).getStyleClass().add("primary-button");
         btnPlay.setTooltip(new Tooltip(VideoPlayerUtils.resolvePlayButtonTooltip(status)));
         btnPause.setTooltip(new Tooltip(VideoPlayerUtils.resolvePauseButtonTooltip(status)));
+    }
+
+    private Separator createMediaSeparator() {
+        Separator separator = new Separator(Orientation.VERTICAL);
+        separator.getStyleClass().add("media-separator");
+        return separator;
     }
 }

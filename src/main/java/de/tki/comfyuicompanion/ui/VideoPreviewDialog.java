@@ -192,6 +192,27 @@ public class VideoPreviewDialog extends JDialog {
     }
 
     /**
+     * Determines whether the specified playback rate represents a non-standard multiplier.
+     *
+     * @param rateLabel textual representation of playback speed
+     * @return true if rate differs from 1.0x, false otherwise
+     */
+    static boolean isCustomPlaybackRate(String rateLabel) {
+        return VideoPlayerUtils.isCustomPlaybackRate(rateLabel);
+    }
+
+    /**
+     * Steps the playback speed up or down to the nearest preset.
+     *
+     * @param currentRate current rate string (e.g. "1.0x")
+     * @param stepUp true to step up, false to step down
+     * @return adjacent rate preset string
+     */
+    static String stepPlaybackRate(String currentRate, boolean stepUp) {
+        return VideoPlayerUtils.stepPlaybackRate(currentRate, stepUp);
+    }
+
+    /**
      * Calculates the destination seek timestamp in milliseconds when jumping by a relative time offset.
      * Safely clamps the resulting position within [0.0, totalDurationMillis] and guards against NaN or negative boundaries.
      *

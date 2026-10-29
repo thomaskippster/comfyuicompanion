@@ -2,9 +2,11 @@ package de.tki.comfyuicompanion.ui;
 
 import javafx.event.EventHandler;
 import javafx.scene.control.Button;
+import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.ProgressBar;
 import javafx.scene.control.Slider;
+import javafx.scene.control.ToggleButton;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.media.MediaPlayer;
@@ -13,7 +15,8 @@ import javafx.util.Duration;
 /**
  * Autonomous keyboard shortcut event handler for the JavaFX video preview dialog.
  * Dispatches standard media hotkeys including Space (Play/Pause), M (Mute),
- * Left/Right (Seek jump), Up/Down (Volume), F/F11 (Fullscreen), and Esc (Exit/Close).
+ * Left/Right (Seek jump), Up/Down (Volume), L (Loop toggle),
+ * [/] (Speed down/up), F/F11 (Fullscreen), and Esc (Exit/Close).
  */
 public class VideoPreviewShortcutHandler implements EventHandler<KeyEvent> {
 
@@ -26,6 +29,8 @@ public class VideoPreviewShortcutHandler implements EventHandler<KeyEvent> {
     private final Slider timeSlider;
     private final ProgressBar timelineProgress;
     private final Label currentTimeLabel;
+    private final ToggleButton btnLoop;
+    private final ComboBox<String> speedCombo;
     private final Runnable toggleFullscreenAction;
     private final Runnable closeAction;
 
@@ -49,6 +54,33 @@ public class VideoPreviewShortcutHandler implements EventHandler<KeyEvent> {
                                       Button btnFullscreen, Slider timeSlider, ProgressBar timelineProgress,
                                       Label currentTimeLabel, Runnable toggleFullscreenAction,
                                       Runnable closeAction) {
+        this(mediaPlayer, btnMute, volumeSlider, volumePercentLabel, volumeProgress,
+                btnFullscreen, timeSlider, timelineProgress, currentTimeLabel,
+                null, null, toggleFullscreenAction, closeAction);
+    }
+
+    /**
+     * Constructs a comprehensive keyboard shortcut handler including loop toggle and playback speed controls.
+     *
+     * @param mediaPlayer active MediaPlayer instance
+     * @param btnMute mute/unmute button
+     * @param volumeSlider volume slider
+     * @param volumePercentLabel volume percentage indicator label
+     * @param volumeProgress volume progress bar
+     * @param btnFullscreen fullscreen toggle button
+     * @param timeSlider timeline seek slider
+     * @param timelineProgress timeline progress bar
+     * @param currentTimeLabel current playback time label
+     * @param btnLoop loop toggle button
+     * @param speedCombo playback speed multiplier combo box
+     * @param toggleFullscreenAction callback invoked to toggle fullscreen mode
+     * @param closeAction callback invoked to exit fullscreen or close the dialog
+     */
+    public VideoPreviewShortcutHandler(MediaPlayer mediaPlayer, Button btnMute, Slider volumeSlider,
+                                      Label volumePercentLabel, ProgressBar volumeProgress,
+                                      Button btnFullscreen, Slider timeSlider, ProgressBar timelineProgress,
+                                      Label currentTimeLabel, ToggleButton btnLoop, ComboBox<String> speedCombo,
+                                      Runnable toggleFullscreenAction, Runnable closeAction) {
         this.mediaPlayer = mediaPlayer;
         this.btnMute = btnMute;
         this.volumeSlider = volumeSlider;
@@ -58,6 +90,8 @@ public class VideoPreviewShortcutHandler implements EventHandler<KeyEvent> {
         this.timeSlider = timeSlider;
         this.timelineProgress = timelineProgress;
         this.currentTimeLabel = currentTimeLabel;
+        this.btnLoop = btnLoop;
+        this.speedCombo = speedCombo;
         this.toggleFullscreenAction = toggleFullscreenAction;
         this.closeAction = closeAction;
     }
@@ -86,6 +120,15 @@ public class VideoPreviewShortcutHandler implements EventHandler<KeyEvent> {
             event.consume();
         } else if (code == KeyCode.DOWN) {
             adjustVolume(-0.05);
+            event.consume();
+        } else if (code == KeyCode.L) {
+            handleLoopKey();
+            event.consume();
+        } else if (code == KeyCode.OPEN_BRACKET) {
+            handleSpeedStep(false);
+            event.consume();
+        } else if (code == KeyCode.CLOSE_BRACKET) {
+            handleSpeedStep(true);
             event.consume();
         } else if (code == KeyCode.F || code == KeyCode.F11) {
             if (toggleFullscreenAction != null) {
@@ -130,6 +173,26 @@ public class VideoPreviewShortcutHandler implements EventHandler<KeyEvent> {
         if (volumePercentLabel != null) {
             volumePercentLabel.setText(VideoPlayerUtils.formatVolumePercent(vol, muted));
         }
+    }
+
+    private void handleLoopKey() {
+        if (btnLoop == null) {
+            return;
+        }
+        boolean nextLoop = !btnLoop.isSelected();
+        btnLoop.setSelected(nextLoop);
+        if (mediaPlayer != null) {
+            mediaPlayer.setCycleCount(VideoPlayerUtils.resolveCycleCount(nextLoop));
+        }
+    }
+
+    private void handleSpeedStep(boolean stepUp) {
+        if (speedCombo == null) {
+            return;
+        }
+        String current = speedCombo.getValue();
+        String next = VideoPlayerUtils.stepPlaybackRate(current, stepUp);
+        speedCombo.setValue(next);
     }
 
     private void seekRelative(double deltaSeconds) {

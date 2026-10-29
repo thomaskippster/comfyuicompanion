@@ -170,16 +170,19 @@ public class VisualCaptureTest {
                 volumeBox.getStyleClass().add("volume-control-box");
                 volumeBox.setAlignment(Pos.CENTER);
 
-                Button btnFullscreen = new Button("\u26F6");
+                Separator separatorVolume = new Separator(javafx.geometry.Orientation.VERTICAL);
+                separatorVolume.getStyleClass().add("media-separator");
+
+                Button btnFullscreen = new Button(VideoPlayerUtils.resolveFullscreenGlyph(false));
                 btnFullscreen.getStyleClass().addAll("button", "icon-button", "fullscreen-button");
 
-                Separator separator = new Separator(javafx.geometry.Orientation.VERTICAL);
-                separator.getStyleClass().add("media-separator");
+                Separator separatorClose = new Separator(javafx.geometry.Orientation.VERTICAL);
+                separatorClose.getStyleClass().add("media-separator");
 
                 Button btnClose = new Button("Close");
                 btnClose.getStyleClass().addAll("button", "danger-button");
 
-                HBox controls = new HBox(6, btnPlay, btnPause, btnStop, btnRewind, btnForward, btnLoop, speedCombo, spacer, volumeBox, btnFullscreen, separator, btnClose);
+                HBox controls = new HBox(5, btnPlay, btnPause, btnStop, btnRewind, btnForward, btnLoop, speedCombo, spacer, volumeBox, separatorVolume, btnFullscreen, separatorClose, btnClose);
                 controls.setAlignment(Pos.CENTER_LEFT);
 
                 VBox bottomContainer = new VBox(8, timeline, controls);
@@ -210,6 +213,24 @@ public class VisualCaptureTest {
                 int timelineTealRgb = awtImage.getRGB(100, timelineY);
                 int timelineGreen = (timelineTealRgb >> 8) & 0xff;
                 assertTrue(timelineGreen > 120, "Timeline progress fill must render visible accent color");
+
+                // Verify that vertical separator renders with crisp high-contrast hairline
+                javafx.geometry.Bounds sepBounds = separatorClose.localToScene(separatorClose.getBoundsInLocal());
+                int sepX = (int) Math.round(sepBounds.getCenterX());
+                int sepY = (int) Math.round(sepBounds.getCenterY());
+                boolean foundDivider = false;
+                for (int dx = -3; dx <= 3; dx++) {
+                    int sampleX = sepX + dx;
+                    if (sampleX >= 0 && sampleX < awtImage.getWidth()) {
+                        int rgb = awtImage.getRGB(sampleX, sepY);
+                        int blue = rgb & 0xff;
+                        if (blue > 50) {
+                            foundDivider = true;
+                            break;
+                        }
+                    }
+                }
+                assertTrue(foundDivider, "Media separator hairline must render visible divider tone");
             } catch (Throwable t) {
                 errorRef[0] = t;
             } finally {

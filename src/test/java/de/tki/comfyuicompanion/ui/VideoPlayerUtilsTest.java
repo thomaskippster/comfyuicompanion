@@ -300,4 +300,30 @@ public class VideoPlayerUtilsTest {
         // Direct utility equivalence
         assertEquals(0.5, VideoPlayerUtils.calculateVolumeFromClick(25.0, 50.0), 0.001);
     }
+
+    /**
+     * Verifies fullscreen toggle glyph resolution for windowed and fullscreen states.
+     */
+    @Test
+    @DisplayName("Verify fullscreen toggle glyph resolution")
+    public void testResolveFullscreenGlyph() {
+        assertEquals("\u26F6", VideoPreviewDialog.resolveFullscreenGlyph(false));
+        assertEquals("\u27C6", VideoPreviewDialog.resolveFullscreenGlyph(true));
+
+        assertEquals("\u26F6", VideoPlayerUtils.resolveFullscreenGlyph(false));
+        assertEquals("\u27C6", VideoPlayerUtils.resolveFullscreenGlyph(true));
+    }
+
+    /**
+     * Verifies fullscreen toggle tooltip text resolution for windowed and fullscreen states.
+     */
+    @Test
+    @DisplayName("Verify fullscreen toggle tooltip resolution")
+    public void testResolveFullscreenTooltip() {
+        assertEquals("Toggle Fullscreen / Maximize (F11)", VideoPreviewDialog.resolveFullscreenTooltip(false));
+        assertEquals("Exit Fullscreen (Esc / F11)", VideoPreviewDialog.resolveFullscreenTooltip(true));
+
+        assertEquals("Toggle Fullscreen / Maximize (F11)", VideoPlayerUtils.resolveFullscreenTooltip(false));
+        assertEquals("Exit Fullscreen (Esc / F11)", VideoPlayerUtils.resolveFullscreenTooltip(true));
+    }
 }

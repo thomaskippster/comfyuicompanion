@@ -8,6 +8,7 @@ import javafx.scene.Scene;
 import javafx.scene.control.Button;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
+import javafx.scene.control.ProgressBar;
 import javafx.scene.control.Separator;
 import javafx.scene.control.Slider;
 import javafx.scene.control.ToggleButton;
@@ -112,20 +113,27 @@ public class VideoPreviewSceneCoordinator {
         mediaView.fitHeightProperty().bind(videoContainer.heightProperty().subtract(16));
         root.setCenter(videoContainer);
 
-        // Timeline controls
+        // Timeline controls with dual-layer progress bar and interactive seeking slider
         Label currentTimeLabel = new Label("00:00");
         currentTimeLabel.getStyleClass().add("label-time");
+
+        ProgressBar timelineProgress = new ProgressBar(0.0);
+        timelineProgress.getStyleClass().add("timeline-progress-bar");
+        timelineProgress.setMaxWidth(Double.MAX_VALUE);
 
         Slider timeSlider = new Slider(0, 100, 0);
         timeSlider.getStyleClass().add("timeline-slider");
         timeSlider.setMaxWidth(Double.MAX_VALUE);
-        HBox.setHgrow(timeSlider, Priority.ALWAYS);
+
+        StackPane timelineStack = new StackPane(timelineProgress, timeSlider);
+        timelineStack.setAlignment(Pos.CENTER);
+        HBox.setHgrow(timelineStack, Priority.ALWAYS);
 
         Label totalTimeLabel = new Label("00:00");
         totalTimeLabel.getStyleClass().addAll("label-time", "label-time-interactive");
         totalTimeLabel.setTooltip(new Tooltip("Click to toggle remaining time"));
 
-        HBox timeline = new HBox(10, currentTimeLabel, timeSlider, totalTimeLabel);
+        HBox timeline = new HBox(10, currentTimeLabel, timelineStack, totalTimeLabel);
         timeline.setAlignment(Pos.CENTER);
 
         final boolean[] isSeeking = new boolean[]{false};
@@ -136,9 +144,23 @@ public class VideoPreviewSceneCoordinator {
                 mediaPlayer.seek(Duration.millis(timeSlider.getValue()));
             }
         });
+        timeSlider.setOnMouseClicked(e -> {
+            Duration tot = mediaPlayer.getTotalDuration();
+            if (tot != null && !tot.isUnknown()) {
+                double target = VideoPlayerUtils.calculateSeekFromClick(e.getX(), timeSlider.getWidth(), tot.toMillis());
+                timeSlider.setValue(target);
+                mediaPlayer.seek(Duration.millis(target));
+                currentTimeLabel.setText(VideoPlayerUtils.formatTime(target));
+                timelineProgress.setProgress(VideoPlayerUtils.calculateProgress(target, tot.toMillis()));
+            }
+        });
         timeSlider.valueProperty().addListener((obs, oldVal, newVal) -> {
             if (isSeeking[0] && newVal != null) {
                 currentTimeLabel.setText(VideoPlayerUtils.formatTime(newVal.doubleValue()));
+                Duration tot = mediaPlayer.getTotalDuration();
+                if (tot != null && !tot.isUnknown()) {
+                    timelineProgress.setProgress(VideoPlayerUtils.calculateProgress(newVal.doubleValue(), tot.toMillis()));
+                }
             }
         });
 
@@ -164,6 +186,7 @@ public class VideoPreviewSceneCoordinator {
                 currentTimeLabel.setText(VideoPlayerUtils.formatTime(newTime.toMillis()));
                 if (mediaPlayer.getTotalDuration() != null && !mediaPlayer.getTotalDuration().isUnknown()) {
                     timeSlider.setValue(newTime.toMillis());
+                    timelineProgress.setProgress(VideoPlayerUtils.calculateProgress(newTime.toMillis(), mediaPlayer.getTotalDuration().toMillis()));
                     if (showRemainingTime) {
                         updateDurationLabel.run();
                     }
@@ -216,18 +239,19 @@ public class VideoPreviewSceneCoordinator {
         btnStop.setOnAction(e -> {
             mediaPlayer.stop();
             timeSlider.setValue(0);
+            timelineProgress.setProgress(0.0);
             currentTimeLabel.setText("00:00");
         });
 
         Button btnRewind = new Button("\u23EA");
         btnRewind.getStyleClass().addAll("button", "icon-button");
         btnRewind.setTooltip(new Tooltip("Rewind 5 seconds (\u2190)"));
-        btnRewind.setOnAction(e -> seekRelative(-5.0, timeSlider, currentTimeLabel));
+        btnRewind.setOnAction(e -> seekRelative(-5.0, timeSlider, timelineProgress, currentTimeLabel));
 
         Button btnForward = new Button("\u23E9");
         btnForward.getStyleClass().addAll("button", "icon-button");
         btnForward.setTooltip(new Tooltip("Fast-forward 5 seconds (\u2192)"));
-        btnForward.setOnAction(e -> seekRelative(5.0, timeSlider, currentTimeLabel));
+        btnForward.setOnAction(e -> seekRelative(5.0, timeSlider, timelineProgress, currentTimeLabel));
 
         ToggleButton btnLoop = new ToggleButton("\uD83D\uDD01 Loop");
         btnLoop.getStyleClass().add("toggle-button");
@@ -246,6 +270,7 @@ public class VideoPreviewSceneCoordinator {
             if (!btnLoop.isSelected()) {
                 mediaPlayer.stop();
                 timeSlider.setValue(0);
+                timelineProgress.setProgress(0.0);
                 currentTimeLabel.setText("00:00");
                 statusBadge.setText(VideoPlayerUtils.resolveStatusBadgeText(MediaPlayer.Status.STOPPED));
                 statusBadge.getStyleClass().removeIf(s -> s.startsWith("status-badge-"));
@@ -253,14 +278,14 @@ public class VideoPreviewSceneCoordinator {
             }
         });
 
-        // Volume controls
-        Button btnMute = new Button("\uD83D\uDD0A");
+        // Volume controls with dynamic acoustic level glyphs
+        Button btnMute = new Button(VideoPlayerUtils.resolveVolumeGlyph(0.8, false));
         btnMute.getStyleClass().addAll("button", "icon-button");
         btnMute.setTooltip(new Tooltip("Mute / Unmute (M)"));
 
         Slider volumeSlider = new Slider(0, 100, 80);
         volumeSlider.getStyleClass().add("volume-slider");
-        volumeSlider.setTooltip(new Tooltip("Volume"));
+        volumeSlider.setTooltip(new Tooltip("Volume (\u2191/\u2193)"));
         mediaPlayer.setVolume(0.8);
 
         Label volumePercentLabel = new Label(VideoPlayerUtils.formatVolumePercent(0.8, false));
@@ -274,11 +299,10 @@ public class VideoPreviewSceneCoordinator {
             mediaPlayer.setVolume(vol);
             if (vol > 0 && mediaPlayer.isMute()) {
                 mediaPlayer.setMute(false);
-                btnMute.setText("\uD83D\uDD0A");
             } else if (vol == 0 && !mediaPlayer.isMute()) {
                 mediaPlayer.setMute(true);
-                btnMute.setText("\uD83D\uDD07");
             }
+            btnMute.setText(VideoPlayerUtils.resolveVolumeGlyph(vol, mediaPlayer.isMute()));
             volumePercentLabel.setText(VideoPlayerUtils.formatVolumePercent(vol, mediaPlayer.isMute()));
         });
 
@@ -318,8 +342,8 @@ public class VideoPreviewSceneCoordinator {
         }
 
         // Keyboard shortcuts
-        scene.setOnKeyPressed(event -> handleKeyEvent(event, btnMute, volumePercentLabel, btnFullscreen,
-                timeSlider, currentTimeLabel));
+        scene.setOnKeyPressed(event -> handleKeyEvent(event, btnMute, volumeSlider, volumePercentLabel, btnFullscreen,
+                timeSlider, timelineProgress, currentTimeLabel));
 
         // Double click on video container toggles fullscreen
         videoContainer.setOnMouseClicked(e -> {
@@ -331,7 +355,7 @@ public class VideoPreviewSceneCoordinator {
         return scene;
     }
 
-    private void seekRelative(double deltaSeconds, Slider timeSlider, Label currentTimeLabel) {
+    private void seekRelative(double deltaSeconds, Slider timeSlider, ProgressBar timelineProgress, Label currentTimeLabel) {
         if (mediaPlayer != null) {
             double current = mediaPlayer.getCurrentTime() != null ? mediaPlayer.getCurrentTime().toMillis() : 0.0;
             double total = mediaPlayer.getTotalDuration() != null && !mediaPlayer.getTotalDuration().isUnknown()
@@ -339,6 +363,7 @@ public class VideoPreviewSceneCoordinator {
             double target = VideoPlayerUtils.calculateSeekTarget(current, deltaSeconds, total);
             mediaPlayer.seek(Duration.millis(target));
             timeSlider.setValue(target);
+            timelineProgress.setProgress(VideoPlayerUtils.calculateProgress(target, total));
             currentTimeLabel.setText(VideoPlayerUtils.formatTime(target));
         }
     }
@@ -347,7 +372,7 @@ public class VideoPreviewSceneCoordinator {
         if (mediaPlayer != null) {
             boolean muted = !mediaPlayer.isMute();
             mediaPlayer.setMute(muted);
-            btnMute.setText(muted ? "\uD83D\uDD07" : "\uD83D\uDD0A");
+            btnMute.setText(VideoPlayerUtils.resolveVolumeGlyph(mediaPlayer.getVolume(), muted));
             volumePercentLabel.setText(VideoPlayerUtils.formatVolumePercent(mediaPlayer.getVolume(), muted));
         }
     }
@@ -371,8 +396,9 @@ public class VideoPreviewSceneCoordinator {
         });
     }
 
-    private void handleKeyEvent(KeyEvent event, Button btnMute, Label volumePercentLabel, Button btnFullscreen,
-                                Slider timeSlider, Label currentTimeLabel) {
+    private void handleKeyEvent(KeyEvent event, Button btnMute, Slider volumeSlider, Label volumePercentLabel,
+                                Button btnFullscreen, Slider timeSlider, ProgressBar timelineProgress,
+                                Label currentTimeLabel) {
         KeyCode code = event.getCode();
         if (code == KeyCode.SPACE) {
             if (mediaPlayer.getStatus() == MediaPlayer.Status.PLAYING) {
@@ -388,10 +414,18 @@ public class VideoPreviewSceneCoordinator {
             toggleMute(btnMute, volumePercentLabel);
             event.consume();
         } else if (code == KeyCode.LEFT) {
-            seekRelative(-5.0, timeSlider, currentTimeLabel);
+            seekRelative(-5.0, timeSlider, timelineProgress, currentTimeLabel);
             event.consume();
         } else if (code == KeyCode.RIGHT) {
-            seekRelative(5.0, timeSlider, currentTimeLabel);
+            seekRelative(5.0, timeSlider, timelineProgress, currentTimeLabel);
+            event.consume();
+        } else if (code == KeyCode.UP) {
+            double newVol = VideoPlayerUtils.clampVolume(mediaPlayer.getVolume() + 0.05);
+            volumeSlider.setValue(newVol * 100.0);
+            event.consume();
+        } else if (code == KeyCode.DOWN) {
+            double newVol = VideoPlayerUtils.clampVolume(mediaPlayer.getVolume() - 0.05);
+            volumeSlider.setValue(newVol * 100.0);
             event.consume();
         } else if (code == KeyCode.F || code == KeyCode.F11) {
             toggleFullscreen(btnFullscreen);

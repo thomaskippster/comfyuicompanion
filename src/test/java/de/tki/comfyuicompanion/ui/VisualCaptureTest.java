@@ -96,19 +96,26 @@ public class VisualCaptureTest {
                 videoContainer.getChildren().add(placeholder);
                 root.setCenter(videoContainer);
 
-                // Playback timeline with current/total time labels and interactive seeking slider
+                // Playback timeline with dual-layer progress bar, time labels, and interactive slider
                 Label currentTimeLabel = new Label("00:15");
                 currentTimeLabel.getStyleClass().add("label-time");
+
+                ProgressBar timelineProgress = new ProgressBar(0.35);
+                timelineProgress.getStyleClass().add("timeline-progress-bar");
+                timelineProgress.setMaxWidth(Double.MAX_VALUE);
 
                 Slider timeSlider = new Slider(0, 100, 35);
                 timeSlider.getStyleClass().add("timeline-slider");
                 timeSlider.setMaxWidth(Double.MAX_VALUE);
-                HBox.setHgrow(timeSlider, Priority.ALWAYS);
+
+                StackPane timelineStack = new StackPane(timelineProgress, timeSlider);
+                timelineStack.setAlignment(Pos.CENTER);
+                HBox.setHgrow(timelineStack, Priority.ALWAYS);
 
                 Label totalTimeLabel = new Label("00:43");
                 totalTimeLabel.getStyleClass().addAll("label-time", "label-time-interactive");
 
-                HBox timeline = new HBox(10, currentTimeLabel, timeSlider, totalTimeLabel);
+                HBox timeline = new HBox(10, currentTimeLabel, timelineStack, totalTimeLabel);
                 timeline.setAlignment(Pos.CENTER);
 
                 // Playback control buttons
@@ -140,7 +147,7 @@ public class VisualCaptureTest {
                 HBox.setHgrow(spacer, Priority.ALWAYS);
 
                 // Volume, mute controls, and percentage label
-                Button btnMute = new Button("\uD83D\uDD0A");
+                Button btnMute = new Button(VideoPlayerUtils.resolveVolumeGlyph(0.8, false));
                 btnMute.getStyleClass().addAll("button", "icon-button");
 
                 Slider volumeSlider = new Slider(0, 100, 80);
@@ -387,5 +394,64 @@ public class VisualCaptureTest {
         // Direct utility equivalence
         assertEquals("-00:28", VideoPlayerUtils.formatRemainingTime(15000.0, 43000.0));
         assertEquals("-00:00", VideoPlayerUtils.formatRemainingTime(Double.NaN, 0.0));
+    }
+
+    /**
+     * Verifies volume glyph resolution across boundary thresholds and mute states.
+     */
+    @Test
+    @DisplayName("Verify dynamic volume glyph resolution thresholds")
+    public void testResolveVolumeGlyph() {
+        assertEquals("\uD83D\uDD07", VideoPreviewDialog.resolveVolumeGlyph(0.8, true));
+        assertEquals("\uD83D\uDD07", VideoPreviewDialog.resolveVolumeGlyph(0.0, false));
+        assertEquals("\uD83D\uDD07", VideoPreviewDialog.resolveVolumeGlyph(-0.2, false));
+        assertEquals("\uD83D\uDD07", VideoPreviewDialog.resolveVolumeGlyph(Double.NaN, false));
+        assertEquals("\uD83D\uDD08", VideoPreviewDialog.resolveVolumeGlyph(0.2, false));
+        assertEquals("\uD83D\uDD09", VideoPreviewDialog.resolveVolumeGlyph(0.5, false));
+        assertEquals("\uD83D\uDD0A", VideoPreviewDialog.resolveVolumeGlyph(0.8, false));
+        assertEquals("\uD83D\uDD0A", VideoPreviewDialog.resolveVolumeGlyph(1.0, false));
+
+        // Direct utility equivalence
+        assertEquals("\uD83D\uDD0A", VideoPlayerUtils.resolveVolumeGlyph(0.85, false));
+        assertEquals("\uD83D\uDD07", VideoPlayerUtils.resolveVolumeGlyph(0.85, true));
+    }
+
+    /**
+     * Verifies progress fraction calculation with clamping and invalid value handling.
+     */
+    @Test
+    @DisplayName("Verify progress fraction calculation boundary values")
+    public void testCalculateProgress() {
+        assertEquals(0.0, VideoPreviewDialog.calculateProgress(Double.NaN, 1000.0));
+        assertEquals(0.0, VideoPreviewDialog.calculateProgress(500.0, Double.NaN));
+        assertEquals(0.0, VideoPreviewDialog.calculateProgress(500.0, 0.0));
+        assertEquals(0.0, VideoPreviewDialog.calculateProgress(-100.0, 1000.0));
+        assertEquals(0.0, VideoPreviewDialog.calculateProgress(0.0, 1000.0));
+        assertEquals(0.35, VideoPreviewDialog.calculateProgress(350.0, 1000.0), 0.001);
+        assertEquals(0.5, VideoPreviewDialog.calculateProgress(500.0, 1000.0), 0.001);
+        assertEquals(1.0, VideoPreviewDialog.calculateProgress(1000.0, 1000.0), 0.001);
+        assertEquals(1.0, VideoPreviewDialog.calculateProgress(1500.0, 1000.0), 0.001); // Overrun
+
+        // Direct utility equivalence
+        assertEquals(0.5, VideoPlayerUtils.calculateProgress(50.0, 100.0), 0.001);
+    }
+
+    /**
+     * Verifies timeline track click destination seek calculation.
+     */
+    @Test
+    @DisplayName("Verify timeline track click seek calculation")
+    public void testCalculateSeekFromClick() {
+        assertEquals(0.0, VideoPreviewDialog.calculateSeekFromClick(0.0, 200.0, 60000.0));
+        assertEquals(0.0, VideoPreviewDialog.calculateSeekFromClick(-50.0, 200.0, 60000.0));
+        assertEquals(0.0, VideoPreviewDialog.calculateSeekFromClick(100.0, 0.0, 60000.0));
+        assertEquals(0.0, VideoPreviewDialog.calculateSeekFromClick(100.0, 200.0, 0.0));
+        assertEquals(0.0, VideoPreviewDialog.calculateSeekFromClick(Double.NaN, 200.0, 60000.0));
+        assertEquals(30000.0, VideoPreviewDialog.calculateSeekFromClick(100.0, 200.0, 60000.0), 0.001);
+        assertEquals(60000.0, VideoPreviewDialog.calculateSeekFromClick(200.0, 200.0, 60000.0), 0.001);
+        assertEquals(60000.0, VideoPreviewDialog.calculateSeekFromClick(250.0, 200.0, 60000.0), 0.001);
+
+        // Direct utility equivalence
+        assertEquals(15000.0, VideoPlayerUtils.calculateSeekFromClick(50.0, 200.0, 60000.0), 0.001);
     }
 }

@@ -179,6 +179,36 @@ public class VideoPreviewDialog extends JDialog {
                 Button btnStop = new Button("\u25A0 Stop");
                 btnStop.getStyleClass().add("button");
 
+                Button btnRewind = new Button("\u23EA");
+                btnRewind.getStyleClass().addAll("button", "icon-button");
+                btnRewind.setTooltip(new Tooltip("Rewind 5 seconds"));
+                btnRewind.setOnAction(e -> {
+                    if (mediaPlayer != null) {
+                        double current = mediaPlayer.getCurrentTime() != null ? mediaPlayer.getCurrentTime().toMillis() : 0.0;
+                        double total = mediaPlayer.getTotalDuration() != null && !mediaPlayer.getTotalDuration().isUnknown()
+                                ? mediaPlayer.getTotalDuration().toMillis() : 0.0;
+                        double target = calculateSeekTarget(current, -5.0, total);
+                        mediaPlayer.seek(Duration.millis(target));
+                        timeSlider.setValue(target);
+                        currentTimeLabel.setText(formatTime(target));
+                    }
+                });
+
+                Button btnForward = new Button("\u23E9");
+                btnForward.getStyleClass().addAll("button", "icon-button");
+                btnForward.setTooltip(new Tooltip("Fast-forward 5 seconds"));
+                btnForward.setOnAction(e -> {
+                    if (mediaPlayer != null) {
+                        double current = mediaPlayer.getCurrentTime() != null ? mediaPlayer.getCurrentTime().toMillis() : 0.0;
+                        double total = mediaPlayer.getTotalDuration() != null && !mediaPlayer.getTotalDuration().isUnknown()
+                                ? mediaPlayer.getTotalDuration().toMillis() : 0.0;
+                        double target = calculateSeekTarget(current, 5.0, total);
+                        mediaPlayer.seek(Duration.millis(target));
+                        timeSlider.setValue(target);
+                        currentTimeLabel.setText(formatTime(target));
+                    }
+                });
+
                 ToggleButton btnLoop = new ToggleButton("\uD83D\uDD01 Loop");
                 btnLoop.getStyleClass().add("toggle-button");
                 btnLoop.setSelected(true);
@@ -270,7 +300,7 @@ public class VideoPreviewDialog extends JDialog {
                 Region spacer = new Region();
                 HBox.setHgrow(spacer, Priority.ALWAYS);
 
-                HBox controls = new HBox(8, btnPlay, btnPause, btnStop, btnLoop, speedCombo, spacer, volumeBox, btnClose);
+                HBox controls = new HBox(6, btnPlay, btnPause, btnStop, btnRewind, btnForward, btnLoop, speedCombo, spacer, volumeBox, btnClose);
                 controls.setAlignment(Pos.CENTER_LEFT);
 
                 VBox bottomContainer = new VBox(8, timeline, controls);
@@ -399,6 +429,28 @@ public class VideoPreviewDialog extends JDialog {
         } catch (NumberFormatException ignored) {
             return 1.0;
         }
+    }
+
+    /**
+     * Calculates the destination seek timestamp in milliseconds when jumping by a relative time offset.
+     * Safely clamps the resulting position within [0.0, totalDurationMillis] and guards against NaN or negative boundaries.
+     *
+     * @param currentMillis current playback position in milliseconds
+     * @param deltaSeconds relative time delta in seconds (positive to jump forward, negative to rewind)
+     * @param totalDurationMillis total media duration in milliseconds, or 0 if unknown
+     * @return validated and bounded destination timestamp in milliseconds
+     */
+    static double calculateSeekTarget(double currentMillis, double deltaSeconds, double totalDurationMillis) {
+        double safeCurrent = (Double.isNaN(currentMillis) || currentMillis < 0.0) ? 0.0 : currentMillis;
+        double safeDelta = Double.isNaN(deltaSeconds) ? 0.0 : deltaSeconds;
+        double target = safeCurrent + (safeDelta * 1000.0);
+        if (Double.isNaN(target) || target <= 0.0) {
+            return 0.0;
+        }
+        if (!Double.isNaN(totalDurationMillis) && totalDurationMillis > 0.0 && target > totalDurationMillis) {
+            return totalDurationMillis;
+        }
+        return target;
     }
 
     @Override

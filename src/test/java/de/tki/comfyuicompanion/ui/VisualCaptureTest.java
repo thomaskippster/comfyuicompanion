@@ -107,6 +107,12 @@ public class VisualCaptureTest {
                 Button btnStop = new Button("\u25A0 Stop");
                 btnStop.getStyleClass().add("button");
 
+                Button btnRewind = new Button("\u23EA");
+                btnRewind.getStyleClass().addAll("button", "icon-button");
+
+                Button btnForward = new Button("\u23E9");
+                btnForward.getStyleClass().addAll("button", "icon-button");
+
                 ToggleButton btnLoop = new ToggleButton("\uD83D\uDD01 Loop");
                 btnLoop.getStyleClass().add("toggle-button");
                 btnLoop.setSelected(true);
@@ -133,7 +139,7 @@ public class VisualCaptureTest {
                 Button btnClose = new Button("Close");
                 btnClose.getStyleClass().addAll("button", "danger-button");
 
-                HBox controls = new HBox(8, btnPlay, btnPause, btnStop, btnLoop, speedCombo, spacer, volumeBox, btnClose);
+                HBox controls = new HBox(6, btnPlay, btnPause, btnStop, btnRewind, btnForward, btnLoop, speedCombo, spacer, volumeBox, btnClose);
                 controls.setAlignment(Pos.CENTER_LEFT);
 
                 VBox bottomContainer = new VBox(8, timeline, controls);
@@ -231,5 +237,36 @@ public class VisualCaptureTest {
         assertEquals(2.0, VideoPreviewDialog.parsePlaybackRate("2.0x"));
         assertEquals(8.0, VideoPreviewDialog.parsePlaybackRate("10.0x"));
         assertEquals(0.1, VideoPreviewDialog.parsePlaybackRate("0.05x"));
+    }
+
+    /**
+     * Verifies seek destination calculation with positive/negative offsets, zero bounds, and total duration clamping.
+     */
+    @Test
+    @DisplayName("Verify seek target calculation with deltas, boundaries, and clamping")
+    public void testCalculateSeekTarget() {
+        // Rewind beyond 0 returns 0.0
+        assertEquals(0.0, VideoPreviewDialog.calculateSeekTarget(2000.0, -5.0, 30000.0));
+        assertEquals(0.0, VideoPreviewDialog.calculateSeekTarget(0.0, -5.0, 30000.0));
+        assertEquals(0.0, VideoPreviewDialog.calculateSeekTarget(-1000.0, -5.0, 30000.0));
+        assertEquals(0.0, VideoPreviewDialog.calculateSeekTarget(Double.NaN, -5.0, 30000.0));
+
+        // Normal rewind
+        assertEquals(10000.0, VideoPreviewDialog.calculateSeekTarget(15000.0, -5.0, 30000.0));
+
+        // Normal fast-forward
+        assertEquals(20000.0, VideoPreviewDialog.calculateSeekTarget(15000.0, 5.0, 30000.0));
+
+        // Fast-forward clamped to total duration
+        assertEquals(30000.0, VideoPreviewDialog.calculateSeekTarget(28000.0, 5.0, 30000.0));
+        assertEquals(30000.0, VideoPreviewDialog.calculateSeekTarget(30000.0, 5.0, 30000.0));
+
+        // Unknown / 0 total duration allows forward seeking without upper bound clamping
+        assertEquals(20000.0, VideoPreviewDialog.calculateSeekTarget(15000.0, 5.0, 0.0));
+        assertEquals(20000.0, VideoPreviewDialog.calculateSeekTarget(15000.0, 5.0, Double.NaN));
+
+        // Neutral offset returns current position
+        assertEquals(12000.0, VideoPreviewDialog.calculateSeekTarget(12000.0, 0.0, 30000.0));
+        assertEquals(12000.0, VideoPreviewDialog.calculateSeekTarget(12000.0, Double.NaN, 30000.0));
     }
 }

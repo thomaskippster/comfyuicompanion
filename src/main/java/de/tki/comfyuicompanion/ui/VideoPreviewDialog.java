@@ -215,6 +215,17 @@ public class VideoPreviewDialog extends JDialog {
     }
 
     /**
+     * Formats video pixel dimensions into a standard resolution badge string (e.g. "1920×1080").
+     *
+     * @param width video width in pixels
+     * @param height video height in pixels
+     * @return formatted resolution string, or empty string for non-positive dimensions
+     */
+    static String formatResolutionBadge(int width, int height) {
+        return VideoPlayerUtils.formatResolutionBadge(width, height);
+    }
+
+    /**
      * Resolves human-readable status badge text with visual glyphs for MediaPlayer status.
      *
      * @param status current status

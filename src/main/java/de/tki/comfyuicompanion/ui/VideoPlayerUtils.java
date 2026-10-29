@@ -154,6 +154,21 @@ public final class VideoPlayerUtils {
     }
 
     /**
+     * Formats video pixel dimensions into a standard resolution badge string (e.g. "1920×1080").
+     * Safely guards against non-positive dimensions, returning an empty string if resolution is unavailable.
+     *
+     * @param width video width in pixels
+     * @param height video height in pixels
+     * @return formatted resolution string (e.g. "1920×1080", "1280×720"), or empty string for non-positive dimensions
+     */
+    public static String formatResolutionBadge(int width, int height) {
+        if (width <= 0 || height <= 0) {
+            return "";
+        }
+        return width + "\u00D7" + height;
+    }
+
+    /**
      * Resolves human-readable status badge text with visual glyphs for JavaFX MediaPlayer status states.
      *
      * @param status current MediaPlayer status

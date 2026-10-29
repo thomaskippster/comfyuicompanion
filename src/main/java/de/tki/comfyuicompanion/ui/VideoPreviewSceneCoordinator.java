@@ -88,13 +88,18 @@ public class VideoPreviewSceneCoordinator {
         Region headerSpacer = new Region();
         HBox.setHgrow(headerSpacer, Priority.ALWAYS);
 
+        Label resolutionBadge = new Label("");
+        resolutionBadge.getStyleClass().addAll("badge-pill", "badge-resolution");
+        resolutionBadge.setVisible(false);
+        resolutionBadge.setManaged(false);
+
         Label formatBadge = new Label(VideoPlayerUtils.extractFormatBadge(videoFile.getName()));
         formatBadge.getStyleClass().addAll("badge-pill", "badge-format");
 
         Label statusBadge = new Label(VideoPlayerUtils.resolveStatusBadgeText(MediaPlayer.Status.READY));
         statusBadge.getStyleClass().addAll("badge-pill", "status-badge", "status-badge-ready");
 
-        HBox headerBadges = new HBox(8, formatBadge, statusBadge);
+        HBox headerBadges = new HBox(8, resolutionBadge, formatBadge, statusBadge);
         headerBadges.setAlignment(Pos.CENTER_RIGHT);
 
         HBox header = new HBox(12, titleLabel, headerSpacer, headerBadges);
@@ -201,12 +206,27 @@ public class VideoPreviewSceneCoordinator {
             }
         });
 
+        Runnable updateResolution = () -> {
+            if (mediaPlayer.getMedia() != null) {
+                int w = mediaPlayer.getMedia().getWidth();
+                int h = mediaPlayer.getMedia().getHeight();
+                String res = VideoPlayerUtils.formatResolutionBadge(w, h);
+                if (!res.isEmpty()) {
+                    resolutionBadge.setText(res);
+                    resolutionBadge.setVisible(true);
+                    resolutionBadge.setManaged(true);
+                }
+            }
+        };
+        mediaPlayer.setOnReady(updateResolution);
+
         mediaPlayer.statusProperty().addListener((obs, oldStatus, newStatus) -> {
             statusBadge.setText(VideoPlayerUtils.resolveStatusBadgeText(newStatus));
             statusBadge.getStyleClass().removeIf(s -> s.startsWith("status-badge-"));
             statusBadge.getStyleClass().add(VideoPlayerUtils.resolveStatusBadgeStyle(newStatus));
 
             if (newStatus == MediaPlayer.Status.READY || newStatus == MediaPlayer.Status.PLAYING) {
+                updateResolution.run();
                 if (mediaPlayer.getTotalDuration() != null && !mediaPlayer.getTotalDuration().isUnknown()) {
                     timeSlider.setMax(mediaPlayer.getTotalDuration().toMillis());
                     updateDurationLabel.run();

@@ -63,7 +63,7 @@
 }
 
 .label-title {
-    -fx-font-size: 17px;
+    -fx-font-size: 15px;
     -fx-font-weight: bold;
     -fx-text-fill: -fx-custom-text-color;
 }
@@ -166,6 +166,10 @@
     -fx-border-color: -fx-custom-accent-color;
     -fx-text-fill: #ffffff;
 }
+.button:focused {
+    -fx-border-color: -fx-custom-accent-color;
+    -fx-effect: dropshadow(gaussian, rgba(30, 190, 170, 0.4), 4, 0.0, 0, 0);
+}
 .button:pressed {
     -fx-background-color: #181b21;
 }
@@ -179,6 +183,9 @@
 .button.primary-button:hover {
     -fx-background-color: -fx-custom-accent-hover;
     -fx-text-fill: #0a0b0e;
+}
+.button.primary-button:focused {
+    -fx-effect: dropshadow(gaussian, rgba(40, 255, 208, 0.6), 5, 0.0, 0, 0);
 }
 .button.primary-button:pressed {
     -fx-background-color: -fx-custom-accent-pressed;
@@ -194,6 +201,25 @@
 .button.danger-button:hover {
     -fx-background-color: rgba(239, 68, 68, 0.28);
     -fx-text-fill: #ffffff;
+}
+.button.danger-button:focused {
+    -fx-border-color: #f87171;
+    -fx-effect: dropshadow(gaussian, rgba(239, 68, 68, 0.4), 4, 0.0, 0, 0);
+}
+
+/* --- Standalone Panels --- */
+.header-panel {
+    -fx-background-color: -fx-custom-card-bg;
+    -fx-border-color: -fx-custom-border-color;
+    -fx-border-width: 0 0 1 0;
+    -fx-padding: 10px 14px;
+}
+
+.button-bar {
+    -fx-background-color: -fx-custom-card-bg;
+    -fx-border-color: -fx-custom-border-color;
+    -fx-border-width: 1 0 0 0;
+    -fx-padding: 10px 14px;
 }
 
 /* --- Dialogs --- */
@@ -307,7 +333,22 @@
 .progress-bar .bar {
     -fx-background-color: -fx-custom-accent-color;
     -fx-background-radius: 8px;
-    -fx-padding: 5px;
+    -fx-padding: 4px;
+}
+
+/* --- Slider --- */
+.slider .track {
+    -fx-background-color: -fx-custom-input-bg;
+    -fx-background-radius: 4px;
+    -fx-border-color: -fx-custom-border-color;
+    -fx-border-radius: 4px;
+}
+.slider .thumb {
+    -fx-background-color: -fx-custom-accent-color;
+    -fx-background-radius: 8px;
+}
+.slider .thumb:hover {
+    -fx-background-color: -fx-custom-accent-hover;
 }
 
 /* --- ScrollBar --- */

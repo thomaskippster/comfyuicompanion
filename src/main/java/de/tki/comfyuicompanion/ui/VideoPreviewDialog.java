@@ -15,7 +15,9 @@ import javafx.scene.media.Media;
 import javafx.scene.media.MediaPlayer;
 import javafx.scene.media.MediaView;
 import javafx.scene.paint.Color;
+import javafx.collections.FXCollections;
 import javafx.scene.control.Button;
+import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.ProgressBar;
 import javafx.scene.control.Slider;
@@ -187,6 +189,17 @@ public class VideoPreviewDialog extends JDialog {
                     }
                 });
 
+                ComboBox<String> speedCombo = new ComboBox<>(FXCollections.observableArrayList(
+                        "0.25x", "0.5x", "0.75x", "1.0x", "1.25x", "1.5x", "2.0x"));
+                speedCombo.setValue("1.0x");
+                speedCombo.getStyleClass().add("speed-combo-box");
+                speedCombo.setTooltip(new Tooltip("Playback speed multiplier"));
+                speedCombo.valueProperty().addListener((obs, oldVal, newVal) -> {
+                    if (mediaPlayer != null) {
+                        mediaPlayer.setRate(parsePlaybackRate(newVal));
+                    }
+                });
+
                 mediaPlayer.setOnEndOfMedia(() -> {
                     if (!btnLoop.isSelected()) {
                         mediaPlayer.stop();
@@ -257,7 +270,7 @@ public class VideoPreviewDialog extends JDialog {
                 Region spacer = new Region();
                 HBox.setHgrow(spacer, Priority.ALWAYS);
 
-                HBox controls = new HBox(8, btnPlay, btnPause, btnStop, btnLoop, spacer, volumeBox, btnClose);
+                HBox controls = new HBox(8, btnPlay, btnPause, btnStop, btnLoop, speedCombo, spacer, volumeBox, btnClose);
                 controls.setAlignment(Pos.CENTER_LEFT);
 
                 VBox bottomContainer = new VBox(8, timeline, controls);
@@ -363,6 +376,29 @@ public class VideoPreviewDialog extends JDialog {
      */
     static int resolveCycleCount(boolean loopEnabled) {
         return loopEnabled ? MediaPlayer.INDEFINITE : 1;
+    }
+
+    /**
+     * Parses a playback rate string (e.g. "0.5x", "1.0x", "2.0x") into a valid playback speed factor.
+     * Guaranteed to return a safe positive multiplier clamped between 0.1 and 8.0, defaulting to 1.0.
+     *
+     * @param rateLabel textual representation of playback speed
+     * @return validated double rate multiplier
+     */
+    static double parsePlaybackRate(String rateLabel) {
+        if (rateLabel == null || rateLabel.isBlank()) {
+            return 1.0;
+        }
+        try {
+            String sanitized = rateLabel.replace("x", "").replace("X", "").trim();
+            double rate = Double.parseDouble(sanitized);
+            if (Double.isNaN(rate) || Double.isInfinite(rate) || rate <= 0.0) {
+                return 1.0;
+            }
+            return Math.clamp(rate, 0.1, 8.0);
+        } catch (NumberFormatException ignored) {
+            return 1.0;
+        }
     }
 
     @Override

@@ -298,6 +298,92 @@
     -fx-max-width: 100px;
 }
 
+/* --- ComboBox --- */
+.combo-box {
+    -fx-background-color: #21252d;
+    -fx-background-radius: 8px;
+    -fx-border-color: -fx-custom-border-color;
+    -fx-border-radius: 8px;
+    -fx-padding: 3px 6px;
+    -fx-cursor: hand;
+}
+.combo-box:hover {
+    -fx-background-color: #2a2e38;
+    -fx-border-color: -fx-custom-accent-color;
+}
+.combo-box:focused {
+    -fx-border-color: -fx-custom-accent-color;
+    -fx-effect: dropshadow(gaussian, rgba(30, 190, 170, 0.4), 4, 0.0, 0, 0);
+}
+.combo-box .cell {
+    -fx-text-fill: -fx-custom-text-color;
+    -fx-font-size: 12px;
+    -fx-font-weight: 600;
+}
+.combo-box .arrow-button {
+    -fx-background-color: transparent;
+    -fx-padding: 0 4px 0 2px;
+}
+.combo-box .arrow {
+    -fx-background-color: -fx-custom-text-muted;
+}
+.combo-box:hover .arrow {
+    -fx-background-color: -fx-custom-accent-color;
+}
+.combo-box-popup .list-view {
+    -fx-background-color: -fx-custom-card-bg;
+    -fx-border-color: -fx-custom-border-color;
+    -fx-border-radius: 8px;
+    -fx-background-radius: 8px;
+    -fx-padding: 4px;
+}
+.combo-box-popup .list-cell {
+    -fx-background-color: transparent;
+    -fx-text-fill: -fx-custom-text-color;
+    -fx-padding: 6px 12px;
+    -fx-font-size: 12px;
+}
+.combo-box-popup .list-cell:hover {
+    -fx-background-color: rgba(30, 190, 170, 0.2);
+    -fx-text-fill: #ffffff;
+}
+.combo-box-popup .list-cell:filled:selected {
+    -fx-background-color: -fx-custom-accent-color;
+    -fx-text-fill: #0a0b0e;
+    -fx-font-weight: bold;
+}
+
+.speed-combo-box {
+    -fx-pref-width: 82px;
+    -fx-max-width: 90px;
+}
+
+.root.light-theme .combo-box {
+    -fx-background-color: #e9e9ee;
+    -fx-border-color: -fx-custom-border-color;
+}
+.root.light-theme .combo-box:hover {
+    -fx-background-color: #d8d8de;
+    -fx-border-color: -fx-custom-accent-color;
+}
+.root.light-theme .combo-box .cell {
+    -fx-text-fill: -fx-custom-text-color;
+}
+.root.light-theme .combo-box .arrow {
+    -fx-background-color: -fx-custom-text-muted;
+}
+.root.light-theme .combo-box-popup .list-view {
+    -fx-background-color: #ffffff;
+    -fx-border-color: -fx-custom-border-color;
+}
+.root.light-theme .combo-box-popup .list-cell {
+    -fx-text-fill: -fx-custom-text-color;
+}
+.root.light-theme .combo-box-popup .list-cell:filled:selected {
+    -fx-background-color: #0078d7;
+    -fx-text-fill: #ffffff;
+}
+
 .button.icon-button {
     -fx-padding: 6px 10px;
     -fx-font-size: 13px;

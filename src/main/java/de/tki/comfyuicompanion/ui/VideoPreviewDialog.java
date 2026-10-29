@@ -19,6 +19,8 @@ import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.ProgressBar;
 import javafx.scene.control.Slider;
+import javafx.scene.control.Tooltip;
+import javafx.scene.layout.StackPane;
 import javafx.util.Duration;
 import javafx.geometry.Pos;
 import javafx.geometry.Insets;
@@ -188,14 +190,53 @@ public class VideoPreviewDialog extends JDialog {
                     dispose();
                 });
 
+                // Volume and mute controls
+                Button btnMute = new Button("\uD83D\uDD0A");
+                btnMute.getStyleClass().addAll("button", "icon-button");
+                btnMute.setTooltip(new Tooltip("Mute / Unmute"));
+
+                Slider volumeSlider = new Slider(0, 100, 80);
+                volumeSlider.getStyleClass().add("volume-slider");
+                volumeSlider.setTooltip(new Tooltip("Volume"));
+                mediaPlayer.setVolume(0.8);
+
+                btnMute.setOnAction(e -> {
+                    if (mediaPlayer != null) {
+                        boolean muted = !mediaPlayer.isMute();
+                        mediaPlayer.setMute(muted);
+                        btnMute.setText(muted ? "\uD83D\uDD07" : "\uD83D\uDD0A");
+                    }
+                });
+
+                volumeSlider.valueProperty().addListener((obs, oldVal, newVal) -> {
+                    if (mediaPlayer != null) {
+                        double vol = clampVolume(newVal.doubleValue() / 100.0);
+                        mediaPlayer.setVolume(vol);
+                        if (vol > 0 && mediaPlayer.isMute()) {
+                            mediaPlayer.setMute(false);
+                            btnMute.setText("\uD83D\uDD0A");
+                        } else if (vol == 0 && !mediaPlayer.isMute()) {
+                            mediaPlayer.setMute(true);
+                            btnMute.setText("\uD83D\uDD07");
+                        }
+                    }
+                });
+
+                HBox volumeBox = new HBox(6, btnMute, volumeSlider);
+                volumeBox.getStyleClass().add("volume-control-box");
+                volumeBox.setAlignment(Pos.CENTER);
+
                 Region spacer = new Region();
                 HBox.setHgrow(spacer, Priority.ALWAYS);
 
-                HBox controls = new HBox(8, btnPlay, btnPause, btnStop, spacer, btnClose);
+                HBox controls = new HBox(8, btnPlay, btnPause, btnStop, spacer, volumeBox, btnClose);
                 controls.setAlignment(Pos.CENTER_LEFT);
 
                 VBox bottomContainer = new VBox(8, timeline, controls);
                 bottomContainer.getStyleClass().add("media-controls-panel");
+
+                StackPane videoContainer = new StackPane(mediaView);
+                videoContainer.getStyleClass().add("video-viewport");
 
                 BorderPane root = new BorderPane();
                 root.getStyleClass().add("root");
@@ -203,7 +244,7 @@ public class VideoPreviewDialog extends JDialog {
                     root.getStyleClass().add("light-theme");
                 }
                 root.setTop(header);
-                root.setCenter(mediaView);
+                root.setCenter(videoContainer);
                 root.setBottom(bottomContainer);
 
                 Scene scene = new Scene(root, Color.BLACK);
@@ -271,6 +312,19 @@ public class VideoPreviewDialog extends JDialog {
         long minutes = totalSeconds / 60;
         long seconds = totalSeconds % 60;
         return String.format("%02d:%02d", minutes, seconds);
+    }
+
+    /**
+     * Clamps a media volume level within the valid range [0.0, 1.0].
+     *
+     * @param volume raw volume level
+     * @return clamped volume between 0.0 and 1.0
+     */
+    static double clampVolume(double volume) {
+        if (Double.isNaN(volume) || volume <= 0.0) {
+            return 0.0;
+        }
+        return Math.min(1.0, volume);
     }
 
     @Override

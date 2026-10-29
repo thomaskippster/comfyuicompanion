@@ -349,30 +349,38 @@
     -fx-max-height: 5px;
     -fx-pref-width: 58px;
     -fx-max-width: 65px;
+    -fx-padding: 0;
 }
+.progress-bar.volume-progress-bar > .track,
 .volume-progress-bar .track {
     -fx-background-color: -fx-custom-input-bg;
     -fx-background-radius: 5px;
     -fx-border-color: -fx-custom-border-color;
     -fx-border-radius: 5px;
+    -fx-background-insets: 0;
 }
+.progress-bar.volume-progress-bar > .bar,
 .volume-progress-bar .bar {
     -fx-background-color: linear-gradient(to right, -fx-custom-accent-color, -fx-custom-accent-hover);
     -fx-background-radius: 5px;
+    -fx-background-insets: 0;
     -fx-padding: 0;
 }
 .root.light-theme .volume-progress-bar .track {
     -fx-background-color: #e9e9ee;
     -fx-border-color: -fx-custom-border-color;
+    -fx-background-insets: 0;
 }
 .root.light-theme .volume-progress-bar .bar {
     -fx-background-color: linear-gradient(to right, -fx-custom-accent-color, -fx-custom-accent-hover);
+    -fx-background-insets: 0;
 }
 
 .volume-slider {
     -fx-pref-width: 58px;
     -fx-max-width: 65px;
 }
+.slider.volume-slider > .track,
 .volume-slider .track {
     -fx-background-color: transparent;
     -fx-background-radius: 5px;
@@ -398,26 +406,34 @@
     -fx-pref-height: 5px;
     -fx-min-height: 5px;
     -fx-max-height: 5px;
+    -fx-padding: 0;
 }
+.progress-bar.timeline-progress-bar > .track,
 .timeline-progress-bar .track {
     -fx-background-color: -fx-custom-input-bg;
     -fx-background-radius: 5px;
     -fx-border-color: -fx-custom-border-color;
     -fx-border-radius: 5px;
+    -fx-background-insets: 0;
 }
+.progress-bar.timeline-progress-bar > .bar,
 .timeline-progress-bar .bar {
     -fx-background-color: linear-gradient(to right, -fx-custom-accent-color, -fx-custom-accent-hover);
     -fx-background-radius: 5px;
+    -fx-background-insets: 0;
     -fx-padding: 0;
 }
 .root.light-theme .timeline-progress-bar .track {
     -fx-background-color: #e9e9ee;
     -fx-border-color: -fx-custom-border-color;
+    -fx-background-insets: 0;
 }
 .root.light-theme .timeline-progress-bar .bar {
     -fx-background-color: linear-gradient(to right, -fx-custom-accent-color, -fx-custom-accent-hover);
+    -fx-background-insets: 0;
 }
 
+.slider.timeline-slider > .track,
 .timeline-slider .track {
     -fx-background-color: transparent;
     -fx-background-radius: 5px;
@@ -810,3 +826,11 @@
     -fx-border-style: solid;
     -fx-border-width: 0.5px;
 }
+
+/* --- Interactive Dual-Layer Sliders (Override base slider track) --- */
+.timeline-slider .track,
+.volume-slider .track {
+    -fx-background-color: transparent;
+    -fx-border-color: transparent;
+}
+

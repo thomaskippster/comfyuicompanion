@@ -204,6 +204,12 @@ public class VisualCaptureTest {
 
                 assertTrue(targetFile.exists(), "Snapshot file must be written to disk");
                 assertTrue(targetFile.length() > 0, "Snapshot file must not be empty");
+
+                // Verify that dual-layer timeline progress fill is rendered with visible teal accent
+                int timelineY = (int) Math.round(timelineProgress.localToScene(0, 0).getY()) + 2;
+                int timelineTealRgb = awtImage.getRGB(100, timelineY);
+                int timelineGreen = (timelineTealRgb >> 8) & 0xff;
+                assertTrue(timelineGreen > 120, "Timeline progress fill must render visible accent color");
             } catch (Throwable t) {
                 errorRef[0] = t;
             } finally {

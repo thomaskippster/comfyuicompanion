@@ -20,11 +20,13 @@ import javafx.scene.control.Button;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.ProgressBar;
+import javafx.scene.control.Separator;
 import javafx.scene.control.Slider;
 import javafx.scene.control.ToggleButton;
 import javafx.scene.control.Tooltip;
 import javafx.scene.layout.StackPane;
 import javafx.util.Duration;
+import javafx.geometry.Orientation;
 import javafx.geometry.Pos;
 import javafx.geometry.Insets;
 
@@ -261,7 +263,7 @@ public class VideoPreviewDialog extends JDialog {
                     dispose();
                 });
 
-                // Volume and mute controls
+                // Volume, mute controls, and percentage label
                 Button btnMute = new Button("\uD83D\uDD0A");
                 btnMute.getStyleClass().addAll("button", "icon-button");
                 btnMute.setTooltip(new Tooltip("Mute / Unmute"));
@@ -271,11 +273,16 @@ public class VideoPreviewDialog extends JDialog {
                 volumeSlider.setTooltip(new Tooltip("Volume"));
                 mediaPlayer.setVolume(0.8);
 
+                Label volumePercentLabel = new Label(formatVolumePercent(0.8, false));
+                volumePercentLabel.getStyleClass().add("label-volume");
+                volumePercentLabel.setTooltip(new Tooltip("Current volume level"));
+
                 btnMute.setOnAction(e -> {
                     if (mediaPlayer != null) {
                         boolean muted = !mediaPlayer.isMute();
                         mediaPlayer.setMute(muted);
                         btnMute.setText(muted ? "\uD83D\uDD07" : "\uD83D\uDD0A");
+                        volumePercentLabel.setText(formatVolumePercent(mediaPlayer.getVolume(), muted));
                     }
                 });
 
@@ -290,17 +297,21 @@ public class VideoPreviewDialog extends JDialog {
                             mediaPlayer.setMute(true);
                             btnMute.setText("\uD83D\uDD07");
                         }
+                        volumePercentLabel.setText(formatVolumePercent(vol, mediaPlayer.isMute()));
                     }
                 });
 
-                HBox volumeBox = new HBox(6, btnMute, volumeSlider);
+                HBox volumeBox = new HBox(6, btnMute, volumeSlider, volumePercentLabel);
                 volumeBox.getStyleClass().add("volume-control-box");
                 volumeBox.setAlignment(Pos.CENTER);
+
+                Separator separator = new Separator(Orientation.VERTICAL);
+                separator.getStyleClass().add("media-separator");
 
                 Region spacer = new Region();
                 HBox.setHgrow(spacer, Priority.ALWAYS);
 
-                HBox controls = new HBox(6, btnPlay, btnPause, btnStop, btnRewind, btnForward, btnLoop, speedCombo, spacer, volumeBox, btnClose);
+                HBox controls = new HBox(6, btnPlay, btnPause, btnStop, btnRewind, btnForward, btnLoop, speedCombo, spacer, volumeBox, separator, btnClose);
                 controls.setAlignment(Pos.CENTER_LEFT);
 
                 VBox bottomContainer = new VBox(8, timeline, controls);
@@ -376,13 +387,7 @@ public class VideoPreviewDialog extends JDialog {
      * @return formatted time string, or "00:00" for invalid values
      */
     static String formatTime(double millis) {
-        if (Double.isNaN(millis) || millis < 0) {
-            return "00:00";
-        }
-        long totalSeconds = (long) Math.floor(millis / 1000.0);
-        long minutes = totalSeconds / 60;
-        long seconds = totalSeconds % 60;
-        return String.format("%02d:%02d", minutes, seconds);
+        return VideoPlayerUtils.formatTime(millis);
     }
 
     /**
@@ -392,10 +397,18 @@ public class VideoPreviewDialog extends JDialog {
      * @return clamped volume between 0.0 and 1.0
      */
     static double clampVolume(double volume) {
-        if (Double.isNaN(volume) || volume <= 0.0) {
-            return 0.0;
-        }
-        return Math.min(1.0, volume);
+        return VideoPlayerUtils.clampVolume(volume);
+    }
+
+    /**
+     * Formats a volume fraction (0.0 to 1.0) and mute flag into an integer percentage string (e.g. "80%", "0%").
+     *
+     * @param volume volume level fraction between 0.0 and 1.0
+     * @param muted whether the media audio is currently muted
+     * @return formatted percentage label
+     */
+    static String formatVolumePercent(double volume, boolean muted) {
+        return VideoPlayerUtils.formatVolumePercent(volume, muted);
     }
 
     /**
@@ -405,7 +418,7 @@ public class VideoPreviewDialog extends JDialog {
      * @return {@link MediaPlayer#INDEFINITE} if true, else 1
      */
     static int resolveCycleCount(boolean loopEnabled) {
-        return loopEnabled ? MediaPlayer.INDEFINITE : 1;
+        return VideoPlayerUtils.resolveCycleCount(loopEnabled);
     }
 
     /**
@@ -416,19 +429,7 @@ public class VideoPreviewDialog extends JDialog {
      * @return validated double rate multiplier
      */
     static double parsePlaybackRate(String rateLabel) {
-        if (rateLabel == null || rateLabel.isBlank()) {
-            return 1.0;
-        }
-        try {
-            String sanitized = rateLabel.replace("x", "").replace("X", "").trim();
-            double rate = Double.parseDouble(sanitized);
-            if (Double.isNaN(rate) || Double.isInfinite(rate) || rate <= 0.0) {
-                return 1.0;
-            }
-            return Math.clamp(rate, 0.1, 8.0);
-        } catch (NumberFormatException ignored) {
-            return 1.0;
-        }
+        return VideoPlayerUtils.parsePlaybackRate(rateLabel);
     }
 
     /**
@@ -441,16 +442,7 @@ public class VideoPreviewDialog extends JDialog {
      * @return validated and bounded destination timestamp in milliseconds
      */
     static double calculateSeekTarget(double currentMillis, double deltaSeconds, double totalDurationMillis) {
-        double safeCurrent = (Double.isNaN(currentMillis) || currentMillis < 0.0) ? 0.0 : currentMillis;
-        double safeDelta = Double.isNaN(deltaSeconds) ? 0.0 : deltaSeconds;
-        double target = safeCurrent + (safeDelta * 1000.0);
-        if (Double.isNaN(target) || target <= 0.0) {
-            return 0.0;
-        }
-        if (!Double.isNaN(totalDurationMillis) && totalDurationMillis > 0.0 && target > totalDurationMillis) {
-            return totalDurationMillis;
-        }
-        return target;
+        return VideoPlayerUtils.calculateSeekTarget(currentMillis, deltaSeconds, totalDurationMillis);
     }
 
     @Override

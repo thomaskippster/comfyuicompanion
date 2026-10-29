@@ -397,4 +397,17 @@ public class VideoPlayerUtilsTest {
         assertEquals("Pause", VideoPlayerUtils.resolvePauseButtonTooltip(MediaPlayer.Status.STOPPED));
         assertEquals("Pause", VideoPlayerUtils.resolvePauseButtonTooltip(MediaPlayer.Status.READY));
     }
+
+    /**
+     * Verifies resolution of audio mute button tooltips across mute states.
+     */
+    @Test
+    @DisplayName("Verify mute button tooltips across mute states")
+    public void testResolveMuteTooltip() {
+        assertEquals("Mute audio (M)", VideoPreviewDialog.resolveMuteTooltip(false));
+        assertEquals("Unmute audio (M)", VideoPreviewDialog.resolveMuteTooltip(true));
+
+        assertEquals("Mute audio (M)", VideoPlayerUtils.resolveMuteTooltip(false));
+        assertEquals("Unmute audio (M)", VideoPlayerUtils.resolveMuteTooltip(true));
+    }
 }

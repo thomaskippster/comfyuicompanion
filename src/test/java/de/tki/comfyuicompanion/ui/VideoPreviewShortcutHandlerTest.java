@@ -14,6 +14,8 @@ import org.junit.jupiter.api.Test;
 
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -99,5 +101,43 @@ public class VideoPreviewShortcutHandlerTest {
 
         handler.handle(speedUpKey);
         org.junit.jupiter.api.Assertions.assertEquals("1.25x", speedCombo.getValue(), "] key must step speed up from 1.0x to 1.25x");
+    }
+
+    @Test
+    @DisplayName("Verify mute shortcut triggers volume coordinator and updates mute-active class")
+    public void testMuteShortcutWithCoordinatorConstructor() {
+        VideoVolumeControlCoordinator volumeCoordinator = new VideoVolumeControlCoordinator(null);
+        Button btnFullscreen = new Button();
+        Slider timeSlider = new Slider(0, 100, 0);
+        ProgressBar timelineProgress = new ProgressBar(0.0);
+        Label timeLabel = new Label("00:00");
+        javafx.scene.control.ToggleButton btnLoop = new javafx.scene.control.ToggleButton("Loop");
+        javafx.scene.control.ComboBox<String> speedCombo = new javafx.scene.control.ComboBox<>(
+                javafx.collections.FXCollections.observableArrayList("1.0x"));
+        speedCombo.setValue("1.0x");
+
+        VideoPreviewShortcutHandler handler = new VideoPreviewShortcutHandler(
+                null, volumeCoordinator, btnFullscreen, timeSlider, timelineProgress,
+                timeLabel, btnLoop, speedCombo, () -> {}, () -> {}
+        );
+
+        assertFalse(volumeCoordinator.getBtnMute().getStyleClass().contains("mute-active"));
+        assertEquals("Mute audio (M)", volumeCoordinator.getBtnMute().getTooltip().getText());
+
+        KeyEvent mKey = new KeyEvent(KeyEvent.KEY_PRESSED, "", "", KeyCode.M, false, false, false, false);
+        handler.handle(mKey);
+
+        assertTrue(volumeCoordinator.getBtnMute().getStyleClass().contains("mute-active"),
+                "M key must add mute-active class to mute button");
+        assertEquals("Unmute audio (M)", volumeCoordinator.getBtnMute().getTooltip().getText());
+        assertEquals("0%", volumeCoordinator.getVolumePercentLabel().getText());
+        assertTrue(volumeCoordinator.getVolumePercentLabel().getStyleClass().contains("label-volume-muted"));
+
+        // Toggle back
+        handler.handle(mKey);
+        assertFalse(volumeCoordinator.getBtnMute().getStyleClass().contains("mute-active"),
+                "Second M key press must restore unmuted state");
+        assertEquals("Mute audio (M)", volumeCoordinator.getBtnMute().getTooltip().getText());
+        assertEquals("80%", volumeCoordinator.getVolumePercentLabel().getText());
     }
 }

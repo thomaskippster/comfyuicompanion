@@ -7,6 +7,7 @@ import javafx.scene.control.Label;
 import javafx.scene.control.ProgressBar;
 import javafx.scene.control.Slider;
 import javafx.scene.control.ToggleButton;
+import javafx.scene.control.Tooltip;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.media.MediaPlayer;
@@ -21,6 +22,7 @@ import javafx.util.Duration;
 public class VideoPreviewShortcutHandler implements EventHandler<KeyEvent> {
 
     private final MediaPlayer mediaPlayer;
+    private final VideoVolumeControlCoordinator volumeCoordinator;
     private final Button btnMute;
     private final Slider volumeSlider;
     private final Label volumePercentLabel;
@@ -82,10 +84,45 @@ public class VideoPreviewShortcutHandler implements EventHandler<KeyEvent> {
                                       Label currentTimeLabel, ToggleButton btnLoop, ComboBox<String> speedCombo,
                                       Runnable toggleFullscreenAction, Runnable closeAction) {
         this.mediaPlayer = mediaPlayer;
+        this.volumeCoordinator = null;
         this.btnMute = btnMute;
         this.volumeSlider = volumeSlider;
         this.volumePercentLabel = volumePercentLabel;
         this.volumeProgress = volumeProgress;
+        this.btnFullscreen = btnFullscreen;
+        this.timeSlider = timeSlider;
+        this.timelineProgress = timelineProgress;
+        this.currentTimeLabel = currentTimeLabel;
+        this.btnLoop = btnLoop;
+        this.speedCombo = speedCombo;
+        this.toggleFullscreenAction = toggleFullscreenAction;
+        this.closeAction = closeAction;
+    }
+
+    /**
+     * Constructs a shortcut handler utilizing the dedicated volume control coordinator.
+     *
+     * @param mediaPlayer active JavaFX MediaPlayer instance
+     * @param volumeCoordinator volume subsystem coordinator
+     * @param btnFullscreen fullscreen button reference
+     * @param timeSlider timeline slider reference
+     * @param timelineProgress timeline progress bar reference
+     * @param currentTimeLabel current time label reference
+     * @param btnLoop loop toggle button reference
+     * @param speedCombo speed multiplier combo box reference
+     * @param toggleFullscreenAction action invoked on fullscreen toggle shortcut
+     * @param closeAction action invoked on dialog close shortcut
+     */
+    public VideoPreviewShortcutHandler(MediaPlayer mediaPlayer, VideoVolumeControlCoordinator volumeCoordinator,
+                                       Button btnFullscreen, Slider timeSlider, ProgressBar timelineProgress,
+                                       Label currentTimeLabel, ToggleButton btnLoop, ComboBox<String> speedCombo,
+                                       Runnable toggleFullscreenAction, Runnable closeAction) {
+        this.mediaPlayer = mediaPlayer;
+        this.volumeCoordinator = volumeCoordinator;
+        this.btnMute = volumeCoordinator != null ? volumeCoordinator.getBtnMute() : null;
+        this.volumeSlider = volumeCoordinator != null ? volumeCoordinator.getVolumeSlider() : null;
+        this.volumePercentLabel = volumeCoordinator != null ? volumeCoordinator.getVolumePercentLabel() : null;
+        this.volumeProgress = volumeCoordinator != null ? volumeCoordinator.getVolumeProgress() : null;
         this.btnFullscreen = btnFullscreen;
         this.timeSlider = timeSlider;
         this.timelineProgress = timelineProgress;
@@ -158,6 +195,10 @@ public class VideoPreviewShortcutHandler implements EventHandler<KeyEvent> {
     }
 
     private void handleMuteKey() {
+        if (volumeCoordinator != null) {
+            volumeCoordinator.toggleMute();
+            return;
+        }
         if (mediaPlayer == null) {
             return;
         }
@@ -169,9 +210,18 @@ public class VideoPreviewShortcutHandler implements EventHandler<KeyEvent> {
         }
         if (btnMute != null) {
             btnMute.setText(VideoPlayerUtils.resolveVolumeGlyph(vol, muted));
+            btnMute.setTooltip(new Tooltip(VideoPlayerUtils.resolveMuteTooltip(muted)));
+            btnMute.getStyleClass().remove("mute-active");
+            if (muted) {
+                btnMute.getStyleClass().add("mute-active");
+            }
         }
         if (volumePercentLabel != null) {
             volumePercentLabel.setText(VideoPlayerUtils.formatVolumePercent(vol, muted));
+            volumePercentLabel.getStyleClass().remove("label-volume-muted");
+            if (muted) {
+                volumePercentLabel.getStyleClass().add("label-volume-muted");
+            }
         }
     }
 
@@ -216,6 +266,10 @@ public class VideoPreviewShortcutHandler implements EventHandler<KeyEvent> {
     }
 
     private void adjustVolume(double delta) {
+        if (volumeCoordinator != null) {
+            volumeCoordinator.adjustVolume(delta);
+            return;
+        }
         if (mediaPlayer == null || volumeSlider == null) {
             return;
         }

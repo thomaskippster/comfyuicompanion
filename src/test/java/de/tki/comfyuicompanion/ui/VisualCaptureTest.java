@@ -153,26 +153,12 @@ public class VisualCaptureTest {
                 Region spacer = new Region();
                 HBox.setHgrow(spacer, Priority.ALWAYS);
 
-                // Volume, mute controls, and percentage label with dual-layer progress bar
-                Button btnMute = new Button(VideoPlayerUtils.resolveVolumeGlyph(0.8, false));
-                btnMute.getStyleClass().addAll("button", "icon-button");
-
-                ProgressBar volumeProgress = new ProgressBar(0.8);
-                volumeProgress.getStyleClass().add("volume-progress-bar");
-
-                Slider volumeSlider = new Slider(0, 100, 80);
-                volumeSlider.getStyleClass().add("volume-slider");
-
-                StackPane volumeSliderStack = new StackPane(volumeProgress, volumeSlider);
-                volumeSliderStack.getStyleClass().add("volume-slider-stack");
-                volumeSliderStack.setAlignment(Pos.CENTER);
-
-                Label volumePercentLabel = new Label("80%");
-                volumePercentLabel.getStyleClass().add("label-volume");
-
-                HBox volumeBox = new HBox(6, btnMute, volumeSliderStack, volumePercentLabel);
-                volumeBox.getStyleClass().add("volume-control-box");
-                volumeBox.setAlignment(Pos.CENTER);
+                // Volume, mute controls, and percentage label delegated to VideoVolumeControlCoordinator
+                VideoVolumeControlCoordinator volumeCoordinator = new VideoVolumeControlCoordinator(null);
+                HBox volumeBox = volumeCoordinator.getVolumeBox();
+                assertNotNull(volumeCoordinator.getBtnMute().getTooltip(), "Mute button must have contextual tooltip");
+                assertEquals(VideoPlayerUtils.resolveMuteTooltip(false), volumeCoordinator.getBtnMute().getTooltip().getText(),
+                        "Mute button tooltip must match unmuted resolution");
 
                 Separator separatorTransport = new Separator(javafx.geometry.Orientation.VERTICAL);
                 separatorTransport.getStyleClass().add("media-separator");
@@ -267,6 +253,24 @@ public class VisualCaptureTest {
                     }
                 }
                 assertTrue(foundPlaybackDivider, "Playback media separator hairline must render visible divider tone");
+
+                // Verify that volume vertical separator renders with crisp high-contrast hairline
+                javafx.geometry.Bounds sepVolumeBounds = separatorVolume.localToScene(separatorVolume.getBoundsInLocal());
+                int sepVolumeX = (int) Math.round(sepVolumeBounds.getCenterX());
+                int sepVolumeY = (int) Math.round(sepVolumeBounds.getCenterY());
+                boolean foundVolumeDivider = false;
+                for (int dx = -3; dx <= 3; dx++) {
+                    int sampleX = sepVolumeX + dx;
+                    if (sampleX >= 0 && sampleX < awtImage.getWidth()) {
+                        int rgb = awtImage.getRGB(sampleX, sepVolumeY);
+                        int blue = rgb & 0xff;
+                        if (blue > 50) {
+                            foundVolumeDivider = true;
+                            break;
+                        }
+                    }
+                }
+                assertTrue(foundVolumeDivider, "Volume media separator hairline must render visible divider tone");
             } catch (Throwable t) {
                 errorRef[0] = t;
             } finally {

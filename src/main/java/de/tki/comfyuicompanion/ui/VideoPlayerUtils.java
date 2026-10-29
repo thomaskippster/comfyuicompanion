@@ -243,6 +243,16 @@ public final class VideoPlayerUtils {
     }
 
     /**
+     * Resolves the descriptive tooltip text for the audio mute button based on mute state.
+     *
+     * @param muted whether media audio is currently muted
+     * @return contextual tooltip string ("Unmute audio (M)" if muted, "Mute audio (M)" otherwise)
+     */
+    public static String resolveMuteTooltip(boolean muted) {
+        return muted ? "Unmute audio (M)" : "Mute audio (M)";
+    }
+
+    /**
      * Calculates the normalized progress ratio [0.0, 1.0] from current playback position and total duration.
      * Guards against division by zero, negative offsets, and NaN values.
      *

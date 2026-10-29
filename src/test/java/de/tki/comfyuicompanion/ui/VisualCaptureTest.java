@@ -11,6 +11,7 @@ import javafx.scene.control.Button;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.ProgressBar;
+import javafx.scene.control.Separator;
 import javafx.scene.control.Slider;
 import javafx.scene.control.ToggleButton;
 import javafx.scene.image.WritableImage;
@@ -125,21 +126,27 @@ public class VisualCaptureTest {
                 Region spacer = new Region();
                 HBox.setHgrow(spacer, Priority.ALWAYS);
 
-                // Volume and mute controls
+                // Volume, mute controls, and percentage label
                 Button btnMute = new Button("\uD83D\uDD0A");
                 btnMute.getStyleClass().addAll("button", "icon-button");
 
                 Slider volumeSlider = new Slider(0, 100, 80);
                 volumeSlider.getStyleClass().add("volume-slider");
 
-                HBox volumeBox = new HBox(6, btnMute, volumeSlider);
+                Label volumePercentLabel = new Label("80%");
+                volumePercentLabel.getStyleClass().add("label-volume");
+
+                HBox volumeBox = new HBox(6, btnMute, volumeSlider, volumePercentLabel);
                 volumeBox.getStyleClass().add("volume-control-box");
                 volumeBox.setAlignment(Pos.CENTER);
+
+                Separator separator = new Separator(javafx.geometry.Orientation.VERTICAL);
+                separator.getStyleClass().add("media-separator");
 
                 Button btnClose = new Button("Close");
                 btnClose.getStyleClass().addAll("button", "danger-button");
 
-                HBox controls = new HBox(6, btnPlay, btnPause, btnStop, btnRewind, btnForward, btnLoop, speedCombo, spacer, volumeBox, btnClose);
+                HBox controls = new HBox(6, btnPlay, btnPause, btnStop, btnRewind, btnForward, btnLoop, speedCombo, spacer, volumeBox, separator, btnClose);
                 controls.setAlignment(Pos.CENTER_LEFT);
 
                 VBox bottomContainer = new VBox(8, timeline, controls);
@@ -268,5 +275,25 @@ public class VisualCaptureTest {
         // Neutral offset returns current position
         assertEquals(12000.0, VideoPreviewDialog.calculateSeekTarget(12000.0, 0.0, 30000.0));
         assertEquals(12000.0, VideoPreviewDialog.calculateSeekTarget(12000.0, Double.NaN, 30000.0));
+    }
+
+    /**
+     * Verifies volume percentage formatting with boundary, negative, NaN, clamping, and mute states.
+     */
+    @Test
+    @DisplayName("Verify volume percentage string formatting and mute overrides")
+    public void testFormatVolumePercent() {
+        assertEquals("0%", VideoPreviewDialog.formatVolumePercent(0.8, true));
+        assertEquals("0%", VideoPreviewDialog.formatVolumePercent(0.0, false));
+        assertEquals("0%", VideoPreviewDialog.formatVolumePercent(-0.2, false));
+        assertEquals("0%", VideoPreviewDialog.formatVolumePercent(Double.NaN, false));
+        assertEquals("50%", VideoPreviewDialog.formatVolumePercent(0.5, false));
+        assertEquals("80%", VideoPreviewDialog.formatVolumePercent(0.8, false));
+        assertEquals("100%", VideoPreviewDialog.formatVolumePercent(1.0, false));
+        assertEquals("100%", VideoPreviewDialog.formatVolumePercent(1.5, false));
+
+        // Also verify direct utility class equivalence
+        assertEquals("80%", VideoPlayerUtils.formatVolumePercent(0.8, false));
+        assertEquals("0%", VideoPlayerUtils.formatVolumePercent(0.8, true));
     }
 }

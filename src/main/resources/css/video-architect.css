@@ -80,6 +80,15 @@
     -fx-text-fill: -fx-custom-text-muted;
 }
 
+.label-volume {
+    -fx-font-family: "Consolas", "Courier New", monospace;
+    -fx-font-size: 11px;
+    -fx-font-weight: bold;
+    -fx-text-fill: -fx-custom-text-muted;
+    -fx-min-width: 26px;
+    -fx-alignment: center-left;
+}
+
 /* --- Text Inputs --- */
 .text-input {
     -fx-text-fill: -fx-custom-text-color;
@@ -285,17 +294,36 @@
     -fx-border-color: -fx-custom-border-color;
     -fx-border-width: 1 0 0 0;
     -fx-padding: 10px 14px;
-    -fx-spacing: 8px;
+    -fx-spacing: 6px;
+}
+
+.media-controls-panel .button {
+    -fx-padding: 6px 10px;
+    -fx-font-size: 12px;
+}
+
+.media-controls-panel .toggle-button {
+    -fx-padding: 6px 10px;
+    -fx-font-size: 12px;
 }
 
 .volume-control-box {
     -fx-alignment: center;
-    -fx-spacing: 6px;
+    -fx-spacing: 5px;
 }
 
 .volume-slider {
-    -fx-pref-width: 75px;
-    -fx-max-width: 90px;
+    -fx-pref-width: 55px;
+    -fx-max-width: 65px;
+}
+
+.media-separator {
+    -fx-padding: 2px 2px;
+}
+.media-separator *.line {
+    -fx-border-color: -fx-custom-border-color;
+    -fx-border-style: solid;
+    -fx-border-width: 0 0.5px 0 0.5px;
 }
 
 /* --- ComboBox --- */
@@ -354,8 +382,9 @@
 }
 
 .speed-combo-box {
-    -fx-pref-width: 82px;
-    -fx-max-width: 90px;
+    -fx-pref-width: 68px;
+    -fx-max-width: 72px;
+    -fx-pref-height: 29px;
 }
 
 .root.light-theme .combo-box {

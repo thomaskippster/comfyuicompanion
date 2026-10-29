@@ -29,6 +29,26 @@ public final class VideoPlayerUtils {
     }
 
     /**
+     * Formats the remaining playback duration as a countdown string (e.g. "-00:28").
+     * Safely clamps negative or overflow values and guards against NaN or zero boundaries.
+     *
+     * @param currentMillis current playback position in milliseconds
+     * @param totalMillis total duration in milliseconds
+     * @return formatted remaining time string prefixed with "-" (e.g. "-01:23"), or "-00:00" for invalid values
+     */
+    public static String formatRemainingTime(double currentMillis, double totalMillis) {
+        if (Double.isNaN(currentMillis) || Double.isNaN(totalMillis) || totalMillis <= 0.0) {
+            return "-00:00";
+        }
+        double safeCurrent = Math.max(0.0, currentMillis);
+        double remainingMillis = Math.max(0.0, totalMillis - safeCurrent);
+        long remainingSeconds = (long) Math.floor(remainingMillis / 1000.0);
+        long minutes = remainingSeconds / 60;
+        long seconds = remainingSeconds % 60;
+        return String.format("-%02d:%02d", minutes, seconds);
+    }
+
+    /**
      * Clamps a media volume level within the valid range [0.0, 1.0].
      *
      * @param volume raw volume level

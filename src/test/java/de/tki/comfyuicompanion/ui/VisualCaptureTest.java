@@ -106,7 +106,7 @@ public class VisualCaptureTest {
                 HBox.setHgrow(timeSlider, Priority.ALWAYS);
 
                 Label totalTimeLabel = new Label("00:43");
-                totalTimeLabel.getStyleClass().add("label-time");
+                totalTimeLabel.getStyleClass().addAll("label-time", "label-time-interactive");
 
                 HBox timeline = new HBox(10, currentTimeLabel, timeSlider, totalTimeLabel);
                 timeline.setAlignment(Pos.CENTER);
@@ -153,13 +153,16 @@ public class VisualCaptureTest {
                 volumeBox.getStyleClass().add("volume-control-box");
                 volumeBox.setAlignment(Pos.CENTER);
 
+                Button btnFullscreen = new Button("\u26F6");
+                btnFullscreen.getStyleClass().addAll("button", "icon-button", "fullscreen-button");
+
                 Separator separator = new Separator(javafx.geometry.Orientation.VERTICAL);
                 separator.getStyleClass().add("media-separator");
 
                 Button btnClose = new Button("Close");
                 btnClose.getStyleClass().addAll("button", "danger-button");
 
-                HBox controls = new HBox(6, btnPlay, btnPause, btnStop, btnRewind, btnForward, btnLoop, speedCombo, spacer, volumeBox, separator, btnClose);
+                HBox controls = new HBox(6, btnPlay, btnPause, btnStop, btnRewind, btnForward, btnLoop, speedCombo, spacer, volumeBox, btnFullscreen, separator, btnClose);
                 controls.setAlignment(Pos.CENTER_LEFT);
 
                 VBox bottomContainer = new VBox(8, timeline, controls);
@@ -364,5 +367,25 @@ public class VisualCaptureTest {
 
         // Direct utility equivalence
         assertEquals("status-badge-playing", VideoPlayerUtils.resolveStatusBadgeStyle(javafx.scene.media.MediaPlayer.Status.PLAYING));
+    }
+
+    /**
+     * Verifies remaining time formatting including negative offsets, overruns, zero bounds, and standard countdowns.
+     */
+    @Test
+    @DisplayName("Verify mm:ss remaining time countdown formatting edge cases")
+    public void testFormatRemainingTimeEdgeCases() {
+        assertEquals("-00:00", VideoPreviewDialog.formatRemainingTime(Double.NaN, 30000.0));
+        assertEquals("-00:00", VideoPreviewDialog.formatRemainingTime(10000.0, Double.NaN));
+        assertEquals("-00:00", VideoPreviewDialog.formatRemainingTime(10000.0, 0.0));
+        assertEquals("-00:00", VideoPreviewDialog.formatRemainingTime(10000.0, -100.0));
+        assertEquals("-00:00", VideoPreviewDialog.formatRemainingTime(35000.0, 30000.0)); // Overrun
+        assertEquals("-00:43", VideoPreviewDialog.formatRemainingTime(0.0, 43000.0));
+        assertEquals("-00:28", VideoPreviewDialog.formatRemainingTime(15000.0, 43000.0));
+        assertEquals("-01:15", VideoPreviewDialog.formatRemainingTime(5000.0, 80000.0));
+
+        // Direct utility equivalence
+        assertEquals("-00:28", VideoPlayerUtils.formatRemainingTime(15000.0, 43000.0));
+        assertEquals("-00:00", VideoPlayerUtils.formatRemainingTime(Double.NaN, 0.0));
     }
 }

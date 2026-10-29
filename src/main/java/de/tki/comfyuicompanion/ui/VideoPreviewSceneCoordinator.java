@@ -278,21 +278,40 @@ public class VideoPreviewSceneCoordinator {
             }
         });
 
-        // Volume controls with dynamic acoustic level glyphs
+        // Volume controls with dynamic acoustic level glyphs and dual-layer progress bar
         Button btnMute = new Button(VideoPlayerUtils.resolveVolumeGlyph(0.8, false));
         btnMute.getStyleClass().addAll("button", "icon-button");
         btnMute.setTooltip(new Tooltip("Mute / Unmute (M)"));
+
+        ProgressBar volumeProgress = new ProgressBar(0.8);
+        volumeProgress.getStyleClass().add("volume-progress-bar");
 
         Slider volumeSlider = new Slider(0, 100, 80);
         volumeSlider.getStyleClass().add("volume-slider");
         volumeSlider.setTooltip(new Tooltip("Volume (\u2191/\u2193)"));
         mediaPlayer.setVolume(0.8);
 
+        StackPane volumeSliderStack = new StackPane(volumeProgress, volumeSlider);
+        volumeSliderStack.getStyleClass().add("volume-slider-stack");
+        volumeSliderStack.setAlignment(Pos.CENTER);
+
         Label volumePercentLabel = new Label(VideoPlayerUtils.formatVolumePercent(0.8, false));
         volumePercentLabel.getStyleClass().add("label-volume");
         volumePercentLabel.setTooltip(new Tooltip("Current volume level"));
 
-        btnMute.setOnAction(e -> toggleMute(btnMute, volumePercentLabel));
+        btnMute.setOnAction(e -> toggleMute(btnMute, volumePercentLabel, volumeProgress));
+
+        volumeSlider.setOnMouseClicked(e -> {
+            double targetVol = VideoPlayerUtils.calculateVolumeFromClick(e.getX(), volumeSlider.getWidth());
+            volumeSlider.setValue(targetVol * 100.0);
+            mediaPlayer.setVolume(targetVol);
+            if (targetVol > 0 && mediaPlayer.isMute()) {
+                mediaPlayer.setMute(false);
+            }
+            volumeProgress.setProgress(mediaPlayer.isMute() ? 0.0 : targetVol);
+            btnMute.setText(VideoPlayerUtils.resolveVolumeGlyph(targetVol, mediaPlayer.isMute()));
+            volumePercentLabel.setText(VideoPlayerUtils.formatVolumePercent(targetVol, mediaPlayer.isMute()));
+        });
 
         volumeSlider.valueProperty().addListener((obs, oldVal, newVal) -> {
             double vol = VideoPlayerUtils.clampVolume(newVal.doubleValue() / 100.0);
@@ -302,11 +321,12 @@ public class VideoPreviewSceneCoordinator {
             } else if (vol == 0 && !mediaPlayer.isMute()) {
                 mediaPlayer.setMute(true);
             }
+            volumeProgress.setProgress(mediaPlayer.isMute() ? 0.0 : vol);
             btnMute.setText(VideoPlayerUtils.resolveVolumeGlyph(vol, mediaPlayer.isMute()));
             volumePercentLabel.setText(VideoPlayerUtils.formatVolumePercent(vol, mediaPlayer.isMute()));
         });
 
-        HBox volumeBox = new HBox(6, btnMute, volumeSlider, volumePercentLabel);
+        HBox volumeBox = new HBox(6, btnMute, volumeSliderStack, volumePercentLabel);
         volumeBox.getStyleClass().add("volume-control-box");
         volumeBox.setAlignment(Pos.CENTER);
 
@@ -342,8 +362,8 @@ public class VideoPreviewSceneCoordinator {
         }
 
         // Keyboard shortcuts
-        scene.setOnKeyPressed(event -> handleKeyEvent(event, btnMute, volumeSlider, volumePercentLabel, btnFullscreen,
-                timeSlider, timelineProgress, currentTimeLabel));
+        scene.setOnKeyPressed(event -> handleKeyEvent(event, btnMute, volumeSlider, volumePercentLabel, volumeProgress,
+                btnFullscreen, timeSlider, timelineProgress, currentTimeLabel));
 
         // Double click on video container toggles fullscreen
         videoContainer.setOnMouseClicked(e -> {
@@ -368,12 +388,14 @@ public class VideoPreviewSceneCoordinator {
         }
     }
 
-    private void toggleMute(Button btnMute, Label volumePercentLabel) {
+    private void toggleMute(Button btnMute, Label volumePercentLabel, ProgressBar volumeProgress) {
         if (mediaPlayer != null) {
             boolean muted = !mediaPlayer.isMute();
             mediaPlayer.setMute(muted);
-            btnMute.setText(VideoPlayerUtils.resolveVolumeGlyph(mediaPlayer.getVolume(), muted));
-            volumePercentLabel.setText(VideoPlayerUtils.formatVolumePercent(mediaPlayer.getVolume(), muted));
+            double vol = mediaPlayer.getVolume();
+            volumeProgress.setProgress(muted ? 0.0 : vol);
+            btnMute.setText(VideoPlayerUtils.resolveVolumeGlyph(vol, muted));
+            volumePercentLabel.setText(VideoPlayerUtils.formatVolumePercent(vol, muted));
         }
     }
 
@@ -397,8 +419,8 @@ public class VideoPreviewSceneCoordinator {
     }
 
     private void handleKeyEvent(KeyEvent event, Button btnMute, Slider volumeSlider, Label volumePercentLabel,
-                                Button btnFullscreen, Slider timeSlider, ProgressBar timelineProgress,
-                                Label currentTimeLabel) {
+                                ProgressBar volumeProgress, Button btnFullscreen, Slider timeSlider,
+                                ProgressBar timelineProgress, Label currentTimeLabel) {
         KeyCode code = event.getCode();
         if (code == KeyCode.SPACE) {
             if (mediaPlayer.getStatus() == MediaPlayer.Status.PLAYING) {
@@ -411,7 +433,7 @@ public class VideoPreviewSceneCoordinator {
             }
             event.consume();
         } else if (code == KeyCode.M) {
-            toggleMute(btnMute, volumePercentLabel);
+            toggleMute(btnMute, volumePercentLabel, volumeProgress);
             event.consume();
         } else if (code == KeyCode.LEFT) {
             seekRelative(-5.0, timeSlider, timelineProgress, currentTimeLabel);

@@ -146,17 +146,24 @@ public class VisualCaptureTest {
                 Region spacer = new Region();
                 HBox.setHgrow(spacer, Priority.ALWAYS);
 
-                // Volume, mute controls, and percentage label
+                // Volume, mute controls, and percentage label with dual-layer progress bar
                 Button btnMute = new Button(VideoPlayerUtils.resolveVolumeGlyph(0.8, false));
                 btnMute.getStyleClass().addAll("button", "icon-button");
+
+                ProgressBar volumeProgress = new ProgressBar(0.8);
+                volumeProgress.getStyleClass().add("volume-progress-bar");
 
                 Slider volumeSlider = new Slider(0, 100, 80);
                 volumeSlider.getStyleClass().add("volume-slider");
 
+                StackPane volumeSliderStack = new StackPane(volumeProgress, volumeSlider);
+                volumeSliderStack.getStyleClass().add("volume-slider-stack");
+                volumeSliderStack.setAlignment(Pos.CENTER);
+
                 Label volumePercentLabel = new Label("80%");
                 volumePercentLabel.getStyleClass().add("label-volume");
 
-                HBox volumeBox = new HBox(6, btnMute, volumeSlider, volumePercentLabel);
+                HBox volumeBox = new HBox(6, btnMute, volumeSliderStack, volumePercentLabel);
                 volumeBox.getStyleClass().add("volume-control-box");
                 volumeBox.setAlignment(Pos.CENTER);
 
@@ -453,5 +460,26 @@ public class VisualCaptureTest {
 
         // Direct utility equivalence
         assertEquals(15000.0, VideoPlayerUtils.calculateSeekFromClick(50.0, 200.0, 60000.0), 0.001);
+    }
+
+    /**
+     * Verifies volume track click volume calculation.
+     */
+    @Test
+    @DisplayName("Verify volume track click volume calculation")
+    public void testCalculateVolumeFromClick() {
+        assertEquals(0.0, VideoPreviewDialog.calculateVolumeFromClick(0.0, 60.0));
+        assertEquals(0.0, VideoPreviewDialog.calculateVolumeFromClick(-10.0, 60.0));
+        assertEquals(0.0, VideoPreviewDialog.calculateVolumeFromClick(30.0, 0.0));
+        assertEquals(0.0, VideoPreviewDialog.calculateVolumeFromClick(30.0, -50.0));
+        assertEquals(0.0, VideoPreviewDialog.calculateVolumeFromClick(Double.NaN, 60.0));
+        assertEquals(0.0, VideoPreviewDialog.calculateVolumeFromClick(30.0, Double.NaN));
+        assertEquals(0.5, VideoPreviewDialog.calculateVolumeFromClick(30.0, 60.0), 0.001);
+        assertEquals(0.8, VideoPreviewDialog.calculateVolumeFromClick(48.0, 60.0), 0.001);
+        assertEquals(1.0, VideoPreviewDialog.calculateVolumeFromClick(60.0, 60.0), 0.001);
+        assertEquals(1.0, VideoPreviewDialog.calculateVolumeFromClick(80.0, 60.0), 0.001);
+
+        // Direct utility equivalence
+        assertEquals(0.5, VideoPlayerUtils.calculateVolumeFromClick(25.0, 50.0), 0.001);
     }
 }

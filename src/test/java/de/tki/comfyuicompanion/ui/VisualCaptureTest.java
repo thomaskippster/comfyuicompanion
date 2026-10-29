@@ -6,7 +6,9 @@ import javafx.embed.swing.SwingFXUtils;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
+import javafx.collections.FXCollections;
 import javafx.scene.control.Button;
+import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.ProgressBar;
 import javafx.scene.control.Slider;
@@ -109,6 +111,11 @@ public class VisualCaptureTest {
                 btnLoop.getStyleClass().add("toggle-button");
                 btnLoop.setSelected(true);
 
+                ComboBox<String> speedCombo = new ComboBox<>(FXCollections.observableArrayList(
+                        "0.25x", "0.5x", "0.75x", "1.0x", "1.25x", "1.5x", "2.0x"));
+                speedCombo.setValue("1.0x");
+                speedCombo.getStyleClass().add("speed-combo-box");
+
                 Region spacer = new Region();
                 HBox.setHgrow(spacer, Priority.ALWAYS);
 
@@ -126,7 +133,7 @@ public class VisualCaptureTest {
                 Button btnClose = new Button("Close");
                 btnClose.getStyleClass().addAll("button", "danger-button");
 
-                HBox controls = new HBox(8, btnPlay, btnPause, btnStop, btnLoop, spacer, volumeBox, btnClose);
+                HBox controls = new HBox(8, btnPlay, btnPause, btnStop, btnLoop, speedCombo, spacer, volumeBox, btnClose);
                 controls.setAlignment(Pos.CENTER_LEFT);
 
                 VBox bottomContainer = new VBox(8, timeline, controls);
@@ -201,5 +208,28 @@ public class VisualCaptureTest {
     public void testResolveCycleCount() {
         assertEquals(javafx.scene.media.MediaPlayer.INDEFINITE, VideoPreviewDialog.resolveCycleCount(true));
         assertEquals(1, VideoPreviewDialog.resolveCycleCount(false));
+    }
+
+    /**
+     * Verifies playback rate parsing including boundary, null, malformed, and suffix inputs.
+     */
+    @Test
+    @DisplayName("Verify playback rate parsing with boundary and fallback values")
+    public void testParsePlaybackRate() {
+        assertEquals(1.0, VideoPreviewDialog.parsePlaybackRate(null));
+        assertEquals(1.0, VideoPreviewDialog.parsePlaybackRate(""));
+        assertEquals(1.0, VideoPreviewDialog.parsePlaybackRate("   "));
+        assertEquals(1.0, VideoPreviewDialog.parsePlaybackRate("invalid"));
+        assertEquals(1.0, VideoPreviewDialog.parsePlaybackRate("-0.5x"));
+        assertEquals(1.0, VideoPreviewDialog.parsePlaybackRate("0.0x"));
+        assertEquals(0.25, VideoPreviewDialog.parsePlaybackRate("0.25x"));
+        assertEquals(0.5, VideoPreviewDialog.parsePlaybackRate("0.5x"));
+        assertEquals(0.75, VideoPreviewDialog.parsePlaybackRate("0.75X"));
+        assertEquals(1.0, VideoPreviewDialog.parsePlaybackRate("1.0"));
+        assertEquals(1.0, VideoPreviewDialog.parsePlaybackRate("1.0x"));
+        assertEquals(1.5, VideoPreviewDialog.parsePlaybackRate("1.5x"));
+        assertEquals(2.0, VideoPreviewDialog.parsePlaybackRate("2.0x"));
+        assertEquals(8.0, VideoPreviewDialog.parsePlaybackRate("10.0x"));
+        assertEquals(0.1, VideoPreviewDialog.parsePlaybackRate("0.05x"));
     }
 }

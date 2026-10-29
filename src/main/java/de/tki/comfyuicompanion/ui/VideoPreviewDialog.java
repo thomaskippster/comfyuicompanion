@@ -80,13 +80,9 @@ public class VideoPreviewDialog extends JDialog {
 
         addWindowListener(new java.awt.event.WindowAdapter() {
             @Override
-            public void windowClosing(java.awt.event.WindowEvent e) {
-                stopPlayer();
-            }
+            public void windowClosing(java.awt.event.WindowEvent e) { stopPlayer(); }
             @Override
-            public void windowClosed(java.awt.event.WindowEvent e) {
-                stopPlayer();
-            }
+            public void windowClosed(java.awt.event.WindowEvent e) { stopPlayer(); }
         });
 
         Platform.runLater(() -> {
@@ -102,10 +98,22 @@ public class VideoPreviewDialog extends JDialog {
                 mediaView.setFitWidth(680);
                 mediaView.setFitHeight(420);
 
-                Label statusLabel = new Label("Loading preview...");
-                statusLabel.getStyleClass().add("label-title");
+                Label titleLabel = new Label("\uD83C\uDFAC " + videoFile.getName());
+                titleLabel.getStyleClass().add("label-title");
 
-                HBox header = new HBox(statusLabel);
+                Region headerSpacer = new Region();
+                HBox.setHgrow(headerSpacer, Priority.ALWAYS);
+
+                Label formatBadge = new Label(extractFormatBadge(videoFile.getName()));
+                formatBadge.getStyleClass().addAll("badge-pill", "badge-format");
+
+                Label statusBadge = new Label(resolveStatusBadgeText(MediaPlayer.Status.READY));
+                statusBadge.getStyleClass().addAll("badge-pill", "status-badge", "status-badge-ready");
+
+                HBox headerBadges = new HBox(8, formatBadge, statusBadge);
+                headerBadges.setAlignment(Pos.CENTER_RIGHT);
+
+                HBox header = new HBox(12, titleLabel, headerSpacer, headerBadges);
                 header.getStyleClass().add("header-panel");
                 header.setAlignment(Pos.CENTER_LEFT);
 
@@ -113,6 +121,7 @@ public class VideoPreviewDialog extends JDialog {
                 currentTimeLabel.getStyleClass().add("label-time");
 
                 Slider timeSlider = new Slider(0, 100, 0);
+                timeSlider.getStyleClass().add("timeline-slider");
                 timeSlider.setMaxWidth(Double.MAX_VALUE);
                 HBox.setHgrow(timeSlider, Priority.ALWAYS);
 
@@ -128,6 +137,11 @@ public class VideoPreviewDialog extends JDialog {
                     isSeeking[0] = false;
                     if (mediaPlayer != null && mediaPlayer.getTotalDuration() != null) {
                         mediaPlayer.seek(Duration.millis(timeSlider.getValue()));
+                    }
+                });
+                timeSlider.valueProperty().addListener((obs, oldVal, newVal) -> {
+                    if (isSeeking[0] && newVal != null) {
+                        currentTimeLabel.setText(formatTime(newVal.doubleValue()));
                     }
                 });
 
@@ -149,27 +163,24 @@ public class VideoPreviewDialog extends JDialog {
 
                 mediaPlayer.statusProperty().addListener((obs, oldStatus, newStatus) -> {
                     javafx.scene.media.MediaPlayer.Status st = newStatus;
+                    statusBadge.setText(resolveStatusBadgeText(st));
+                    statusBadge.getStyleClass().removeIf(s -> s.startsWith("status-badge-"));
+                    statusBadge.getStyleClass().add(resolveStatusBadgeStyle(st));
+
                     if (st == javafx.scene.media.MediaPlayer.Status.READY
                             || st == javafx.scene.media.MediaPlayer.Status.PLAYING) {
-                        statusLabel.setText("Playing: " + videoFile.getName());
                         if (mediaPlayer.getTotalDuration() != null && !mediaPlayer.getTotalDuration().isUnknown()) {
                             timeSlider.setMax(mediaPlayer.getTotalDuration().toMillis());
                             totalTimeLabel.setText(formatTime(mediaPlayer.getTotalDuration().toMillis()));
                         }
-                    } else if (st == javafx.scene.media.MediaPlayer.Status.PAUSED) {
-                        statusLabel.setText("Paused: " + videoFile.getName());
-                    } else if (st == javafx.scene.media.MediaPlayer.Status.STALLED) {
-                        statusLabel.setText("Buffering...");
-                    } else if (st == javafx.scene.media.MediaPlayer.Status.STOPPED) {
-                        statusLabel.setText("Stopped");
                     } else if (st == javafx.scene.media.MediaPlayer.Status.HALTED) {
-                        statusLabel.setText("Cannot play this media (codec missing or format unsupported).");
+                        titleLabel.setText("\u26A0\uFE0F Unsupported media codec or format");
                     }
                 });
                 mediaPlayer.setOnError(() -> {
                     String err = mediaPlayer.getError() != null
                         ? mediaPlayer.getError().getMessage() : "Unknown media error";
-                    statusLabel.setText("Preview error: " + err);
+                    titleLabel.setText("\u26A0\uFE0F Error: " + err);
                 });
 
                 Button btnPlay = new Button("\u25B6 Play");
@@ -237,7 +248,9 @@ public class VideoPreviewDialog extends JDialog {
                         mediaPlayer.stop();
                         timeSlider.setValue(0);
                         currentTimeLabel.setText("00:00");
-                        statusLabel.setText("Finished: " + videoFile.getName());
+                        statusBadge.setText(resolveStatusBadgeText(javafx.scene.media.MediaPlayer.Status.STOPPED));
+                        statusBadge.getStyleClass().removeIf(s -> s.startsWith("status-badge-"));
+                        statusBadge.getStyleClass().add(resolveStatusBadgeStyle(javafx.scene.media.MediaPlayer.Status.STOPPED));
                     }
                 });
 
@@ -362,19 +375,11 @@ public class VideoPreviewDialog extends JDialog {
         if (mediaPlayer != null) {
             try {
                 Platform.runLater(() -> {
-                    try {
-                        mediaPlayer.stop();
-                    } catch (Exception ignored) {
-                        logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
-                    }
-                    try {
-                        mediaPlayer.dispose();
-                    } catch (Exception ignored) {
-                        logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
-                    }
+                    try { mediaPlayer.stop(); } catch (Exception ignored) { logger.debug("Ignored: {}", ignored.getMessage()); }
+                    try { mediaPlayer.dispose(); } catch (Exception ignored) { logger.debug("Ignored: {}", ignored.getMessage()); }
                 });
             } catch (Exception ignored) {
-                logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+                logger.debug("Ignored: {}", ignored.getMessage());
             }
             mediaPlayer = null;
         }
@@ -443,6 +448,36 @@ public class VideoPreviewDialog extends JDialog {
      */
     static double calculateSeekTarget(double currentMillis, double deltaSeconds, double totalDurationMillis) {
         return VideoPlayerUtils.calculateSeekTarget(currentMillis, deltaSeconds, totalDurationMillis);
+    }
+
+    /**
+     * Extracts an uppercase format label (e.g. "MP4", "WEBM") from a file name.
+     *
+     * @param fileName file name
+     * @return uppercase format badge string
+     */
+    static String extractFormatBadge(String fileName) {
+        return VideoPlayerUtils.extractFormatBadge(fileName);
+    }
+
+    /**
+     * Resolves human-readable status badge text with visual glyphs for MediaPlayer status.
+     *
+     * @param status current status
+     * @return formatted badge label text
+     */
+    static String resolveStatusBadgeText(MediaPlayer.Status status) {
+        return VideoPlayerUtils.resolveStatusBadgeText(status);
+    }
+
+    /**
+     * Resolves the CSS style class name corresponding to a MediaPlayer status.
+     *
+     * @param status current status
+     * @return CSS style class name
+     */
+    static String resolveStatusBadgeStyle(MediaPlayer.Status status) {
+        return VideoPlayerUtils.resolveStatusBadgeStyle(status);
     }
 
     @Override

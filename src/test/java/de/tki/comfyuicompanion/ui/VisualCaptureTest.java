@@ -68,10 +68,22 @@ public class VisualCaptureTest {
                 root.getStyleClass().add("root");
                 root.setPrefSize(720, 540);
 
-                Label statusLabel = new Label("Playing: companion_for_comfyui_explainer_video.mp4");
-                statusLabel.getStyleClass().add("label-title");
+                Label titleLabel = new Label("\uD83C\uDFAC companion_for_comfyui_explainer_video.mp4");
+                titleLabel.getStyleClass().add("label-title");
 
-                HBox headerBox = new HBox(statusLabel);
+                Region headerSpacer = new Region();
+                HBox.setHgrow(headerSpacer, Priority.ALWAYS);
+
+                Label formatBadge = new Label("MP4");
+                formatBadge.getStyleClass().addAll("badge-pill", "badge-format");
+
+                Label statusBadge = new Label("\u25CF PLAYING");
+                statusBadge.getStyleClass().addAll("badge-pill", "status-badge", "status-badge-playing");
+
+                HBox headerBadges = new HBox(8, formatBadge, statusBadge);
+                headerBadges.setAlignment(Pos.CENTER_RIGHT);
+
+                HBox headerBox = new HBox(12, titleLabel, headerSpacer, headerBadges);
                 headerBox.getStyleClass().add("header-panel");
                 headerBox.setAlignment(Pos.CENTER_LEFT);
                 root.setTop(headerBox);
@@ -89,6 +101,7 @@ public class VisualCaptureTest {
                 currentTimeLabel.getStyleClass().add("label-time");
 
                 Slider timeSlider = new Slider(0, 100, 35);
+                timeSlider.getStyleClass().add("timeline-slider");
                 timeSlider.setMaxWidth(Double.MAX_VALUE);
                 HBox.setHgrow(timeSlider, Priority.ALWAYS);
 
@@ -295,5 +308,61 @@ public class VisualCaptureTest {
         // Also verify direct utility class equivalence
         assertEquals("80%", VideoPlayerUtils.formatVolumePercent(0.8, false));
         assertEquals("0%", VideoPlayerUtils.formatVolumePercent(0.8, true));
+    }
+
+    /**
+     * Verifies file format badge extraction from filenames including edge cases.
+     */
+    @Test
+    @DisplayName("Verify file format badge extraction from various filename extensions")
+    public void testExtractFormatBadge() {
+        assertEquals("VIDEO", VideoPreviewDialog.extractFormatBadge(null));
+        assertEquals("VIDEO", VideoPreviewDialog.extractFormatBadge(""));
+        assertEquals("VIDEO", VideoPreviewDialog.extractFormatBadge("   "));
+        assertEquals("VIDEO", VideoPreviewDialog.extractFormatBadge("no_extension"));
+        assertEquals("VIDEO", VideoPreviewDialog.extractFormatBadge("trailing_dot."));
+        assertEquals("MP4", VideoPreviewDialog.extractFormatBadge("output.mp4"));
+        assertEquals("WEBM", VideoPreviewDialog.extractFormatBadge("test_video.webm"));
+        assertEquals("MKV", VideoPreviewDialog.extractFormatBadge("sample.MKV"));
+        assertEquals("GIF", VideoPreviewDialog.extractFormatBadge("animation.gif"));
+        assertEquals("CUSTOM", VideoPreviewDialog.extractFormatBadge("file.customlongextension"));
+
+        // Direct utility equivalence
+        assertEquals("MP4", VideoPlayerUtils.extractFormatBadge("my_render.mp4"));
+        assertEquals("VIDEO", VideoPlayerUtils.extractFormatBadge(null));
+    }
+
+    /**
+     * Verifies status badge text resolution for all MediaPlayer status states.
+     */
+    @Test
+    @DisplayName("Verify status badge text resolution with glyphs")
+    public void testResolveStatusBadgeText() {
+        assertEquals("\u25CF READY", VideoPreviewDialog.resolveStatusBadgeText(null));
+        assertEquals("\u25CF READY", VideoPreviewDialog.resolveStatusBadgeText(javafx.scene.media.MediaPlayer.Status.READY));
+        assertEquals("\u25CF PLAYING", VideoPreviewDialog.resolveStatusBadgeText(javafx.scene.media.MediaPlayer.Status.PLAYING));
+        assertEquals("\u23F8 PAUSED", VideoPreviewDialog.resolveStatusBadgeText(javafx.scene.media.MediaPlayer.Status.PAUSED));
+        assertEquals("\u25A0 STOPPED", VideoPreviewDialog.resolveStatusBadgeText(javafx.scene.media.MediaPlayer.Status.STOPPED));
+        assertEquals("\u23F3 BUFFERING", VideoPreviewDialog.resolveStatusBadgeText(javafx.scene.media.MediaPlayer.Status.STALLED));
+
+        // Direct utility equivalence
+        assertEquals("\u25CF PLAYING", VideoPlayerUtils.resolveStatusBadgeText(javafx.scene.media.MediaPlayer.Status.PLAYING));
+    }
+
+    /**
+     * Verifies status badge CSS style class mapping for all MediaPlayer status states.
+     */
+    @Test
+    @DisplayName("Verify status badge CSS style class mapping")
+    public void testResolveStatusBadgeStyle() {
+        assertEquals("status-badge-ready", VideoPreviewDialog.resolveStatusBadgeStyle(null));
+        assertEquals("status-badge-ready", VideoPreviewDialog.resolveStatusBadgeStyle(javafx.scene.media.MediaPlayer.Status.READY));
+        assertEquals("status-badge-playing", VideoPreviewDialog.resolveStatusBadgeStyle(javafx.scene.media.MediaPlayer.Status.PLAYING));
+        assertEquals("status-badge-paused", VideoPreviewDialog.resolveStatusBadgeStyle(javafx.scene.media.MediaPlayer.Status.PAUSED));
+        assertEquals("status-badge-stopped", VideoPreviewDialog.resolveStatusBadgeStyle(javafx.scene.media.MediaPlayer.Status.STOPPED));
+        assertEquals("status-badge-buffering", VideoPreviewDialog.resolveStatusBadgeStyle(javafx.scene.media.MediaPlayer.Status.STALLED));
+
+        // Direct utility equivalence
+        assertEquals("status-badge-playing", VideoPlayerUtils.resolveStatusBadgeStyle(javafx.scene.media.MediaPlayer.Status.PLAYING));
     }
 }

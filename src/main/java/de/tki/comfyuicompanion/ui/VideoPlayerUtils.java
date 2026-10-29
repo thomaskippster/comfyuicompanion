@@ -110,4 +110,64 @@ public final class VideoPlayerUtils {
         }
         return target;
     }
+
+    /**
+     * Extracts an uppercase format label (e.g. "MP4", "WEBM") from a filename or media path.
+     * Defaults to "VIDEO" if the input is null, empty, or lacks a file extension.
+     *
+     * @param fileName file name or file path
+     * @return uppercase format badge string
+     */
+    public static String extractFormatBadge(String fileName) {
+        if (fileName == null || fileName.isBlank()) {
+            return "VIDEO";
+        }
+        int dotIndex = fileName.lastIndexOf('.');
+        if (dotIndex < 0 || dotIndex >= fileName.length() - 1) {
+            return "VIDEO";
+        }
+        String ext = fileName.substring(dotIndex + 1).trim().toUpperCase();
+        if (ext.isEmpty()) {
+            return "VIDEO";
+        }
+        return ext.length() > 6 ? ext.substring(0, 6) : ext;
+    }
+
+    /**
+     * Resolves human-readable status badge text with visual glyphs for JavaFX MediaPlayer status states.
+     *
+     * @param status current MediaPlayer status
+     * @return formatted badge label text
+     */
+    public static String resolveStatusBadgeText(MediaPlayer.Status status) {
+        if (status == null) {
+            return "\u25CF READY";
+        }
+        return switch (status) {
+            case PLAYING -> "\u25CF PLAYING";
+            case PAUSED -> "\u23F8 PAUSED";
+            case STOPPED -> "\u25A0 STOPPED";
+            case STALLED -> "\u23F3 BUFFERING";
+            default -> "\u25CF READY";
+        };
+    }
+
+    /**
+     * Resolves the CSS style class name corresponding to a MediaPlayer status state.
+     *
+     * @param status current MediaPlayer status
+     * @return CSS style class name
+     */
+    public static String resolveStatusBadgeStyle(MediaPlayer.Status status) {
+        if (status == null) {
+            return "status-badge-ready";
+        }
+        return switch (status) {
+            case PLAYING -> "status-badge-playing";
+            case PAUSED -> "status-badge-paused";
+            case STOPPED -> "status-badge-stopped";
+            case STALLED -> "status-badge-buffering";
+            default -> "status-badge-ready";
+        };
+    }
 }

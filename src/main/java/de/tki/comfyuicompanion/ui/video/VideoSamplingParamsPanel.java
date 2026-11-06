@@ -24,6 +24,7 @@ public class VideoSamplingParamsPanel extends JPanel {
     private final JCheckBox chkLipSync;
     private final JComboBox<String> cmbLipSyncEngine;
     private final JComboBox<String> cmbResolution;
+    private final ConfigService configService;
 
     /**
      * Constructs a new VideoSamplingParamsPanel with default configuration.
@@ -38,6 +39,7 @@ public class VideoSamplingParamsPanel extends JPanel {
      * @param configService the configuration service
      */
     public VideoSamplingParamsPanel(ConfigService configService) {
+        this.configService = configService;
         setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
         setOpaque(false);
         setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -304,8 +306,50 @@ public class VideoSamplingParamsPanel extends JPanel {
     public String getSelectedLipSyncEngine() { return (String) cmbLipSyncEngine.getSelectedItem(); }
 
     /** @return the local script LLM combo box component */
-        /** @return the resolution preset combo box */
+    /** @return the resolution preset combo box */
     public JComboBox<String> getCmbResolution() { return cmbResolution; }
+
+    /**
+     * Applies the optimal native TikTok / Reels 9:16 vertical video preset (720x1280, 4s, CFG 3.5, Two-Phase on).
+     */
+    public void applyTikTok916Preset() {
+        if (cmbResolution != null) {
+            cmbResolution.setSelectedIndex(1); // TikTok / Reels 9:16 (720x1280) - Vertical HD
+        }
+        if (videoDurationSpinner != null) {
+            videoDurationSpinner.setValue(4);
+        }
+        if (videoCfgSpinner != null) {
+            videoCfgSpinner.setValue(3.5);
+        }
+        if (chkTwoPhase != null) {
+            chkTwoPhase.setSelected(true);
+            if (configService != null) {
+                configService.setTwoPhaseRenderingEnabled(true);
+            }
+        }
+    }
+
+    /**
+     * Applies the optimal native 16:9 widescreen landscape video preset (1280x720, 5s, CFG 3.5, Two-Phase on).
+     */
+    public void applyWidescreenPreset() {
+        if (cmbResolution != null) {
+            cmbResolution.setSelectedIndex(0); // 720p HD 16:9 (1280x720) - Landscape Recommended
+        }
+        if (videoDurationSpinner != null) {
+            videoDurationSpinner.setValue(5);
+        }
+        if (videoCfgSpinner != null) {
+            videoCfgSpinner.setValue(3.5);
+        }
+        if (chkTwoPhase != null) {
+            chkTwoPhase.setSelected(true);
+            if (configService != null) {
+                configService.setTwoPhaseRenderingEnabled(true);
+            }
+        }
+    }
 
     private void syncResolutionFromSpinners() {
         int w = getVideoWidth();

@@ -5,6 +5,8 @@ import de.tki.comfyuicompanion.service.IComfyLifecycleService;
 import de.tki.comfyuicompanion.service.impl.ConfigService;
 import de.tki.comfyuicompanion.service.impl.EnvironmentBootstrapperImpl;
 import de.tki.comfyuicompanion.service.impl.ProcessTracker;
+import de.tki.comfyuicompanion.service.pipeline.strategy.IVideoModelStrategy;
+import de.tki.comfyuicompanion.service.pipeline.strategy.VideoModelStrategyRegistry;
 import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -47,6 +49,7 @@ public class ScenePipelineRunner {
     private final SceneBlueprintInjector blueprintInjector;
     private final SceneMediaPostProcessor mediaPostProcessor;
     private final ComfyServerPreparer serverPreparer;
+    private final VideoModelStrategyRegistry strategyRegistry;
 
     public ScenePipelineRunner(
             ConfigService configService,
@@ -56,7 +59,7 @@ public class ScenePipelineRunner {
             ComfyJobPollingService jobPollingService,
             ComfyNodeInspectionClient inspectionClient) {
         this(configService, simulationService, mediaTranscodingService, workflowBuilder,
-                jobPollingService, inspectionClient, null, null, null, null, null, null, null);
+                jobPollingService, inspectionClient, null, null, null, null, null, null, null, null);
     }
 
     public ScenePipelineRunner(
@@ -70,7 +73,7 @@ public class ScenePipelineRunner {
             IComfyLifecycleService lifecycleService,
             ProcessTracker processTracker) {
         this(configService, simulationService, mediaTranscodingService, workflowBuilder,
-                jobPollingService, inspectionClient, bootstrapper, lifecycleService, processTracker, null, null, null, null);
+                jobPollingService, inspectionClient, bootstrapper, lifecycleService, processTracker, null, null, null, null, null);
     }
 
     public ScenePipelineRunner(
@@ -86,7 +89,7 @@ public class ScenePipelineRunner {
             WorkflowTransformationService workflowTransformationService) {
         this(configService, simulationService, mediaTranscodingService, workflowBuilder,
                 jobPollingService, inspectionClient, bootstrapper, lifecycleService, processTracker,
-                workflowTransformationService, null, null, null);
+                workflowTransformationService, null, null, null, null);
     }
 
     @Autowired
@@ -103,7 +106,8 @@ public class ScenePipelineRunner {
             @Autowired(required = false) WorkflowTransformationService workflowTransformationService,
             @Autowired(required = false) SceneBlueprintInjector blueprintInjector,
             @Autowired(required = false) SceneMediaPostProcessor mediaPostProcessor,
-            @Autowired(required = false) ComfyServerPreparer serverPreparer) {
+            @Autowired(required = false) ComfyServerPreparer serverPreparer,
+            @Autowired(required = false) VideoModelStrategyRegistry strategyRegistry) {
         this.configService = configService;
         this.simulationService = simulationService != null ? simulationService : new SceneSimulationService(processTracker);
         this.mediaTranscodingService = mediaTranscodingService != null ? mediaTranscodingService : new MediaTranscodingService(configService, processTracker);
@@ -123,6 +127,7 @@ public class ScenePipelineRunner {
         this.serverPreparer = serverPreparer != null
                 ? serverPreparer
                 : new ComfyServerPreparer(configService, this.inspectionClient, bootstrapper);
+        this.strategyRegistry = strategyRegistry;
     }
 
     /**
@@ -282,23 +287,46 @@ public class ScenePipelineRunner {
             boolean hasWanModels) throws Exception {
 
         JSONObject workflowJson = null;
-        if (wanNodesAvailable && hasWanModels) {
-            logger.info("🎬 [ScenePipelineRunner] Generating Wan 2.2 native video workflow...");
-            workflowJson = workflowBuilder.generateWanWorkflowJson(serverUrl, scene, speakerImage, seed, filenamePrefix);
-        } else if (speakerImage != null && !speakerImage.trim().isEmpty() && hasWanModels) {
-            JSONObject blueprintJson = blueprintInjector.loadBlueprintWorkflow("Text to Video (Wan 2.2).json", configService.getComfyUIPath());
-            if (blueprintJson != null) {
-                logger.info("📄 [ScenePipelineRunner] Using Wan 2.2 blueprint workflow with start image.");
-                blueprintInjector.injectPrompt(blueprintJson, scene.getPrompt());
-                blueprintInjector.injectParamsIntoBlueprint(blueprintJson, seed, filenamePrefix, scene);
-                blueprintInjector.injectSpeakerImage(blueprintJson, speakerImage);
-                workflowJson = blueprintJson;
+
+        if (strategyRegistry != null) {
+            String requestedModel = scene != null ? scene.getModel() : null;
+            IVideoModelStrategy strategy = strategyRegistry.resolveBestStrategy(
+                    requestedModel,
+                    serverUrl,
+                    availableUnets,
+                    availableCheckpoints,
+                    availableClips,
+                    availableVaes,
+                    nodeClass -> inspectionClient != null && inspectionClient.isNodeClassAvailable(serverUrl, nodeClass)
+            );
+            if (strategy != null) {
+                logger.info("🎬 [ScenePipelineRunner] Executing video model strategy: {} [{}]",
+                        strategy.getModelId(), strategy.getDisplayName());
+                workflowJson = strategy.buildWorkflow(
+                        serverUrl, scene, speakerImage, seed, filenamePrefix,
+                        availableUnets, availableCheckpoints, availableClips, availableVaes);
             }
         }
 
         if (workflowJson == null) {
-            logger.info("🖼️ [ScenePipelineRunner] Dedicated video diffusion models not found; generating scene visuals via available image model...");
-            workflowJson = workflowBuilder.generateSceneImageWorkflow(serverUrl, scene, speakerImage, seed, filenamePrefix, availableUnets, availableCheckpoints, availableClips, availableVaes);
+            if (wanNodesAvailable && hasWanModels) {
+                logger.info("🎬 [ScenePipelineRunner] Generating Wan 2.2 native video workflow...");
+                workflowJson = workflowBuilder.generateWanWorkflowJson(serverUrl, scene, speakerImage, seed, filenamePrefix);
+            } else if (speakerImage != null && !speakerImage.trim().isEmpty() && hasWanModels) {
+                JSONObject blueprintJson = blueprintInjector.loadBlueprintWorkflow("Text to Video (Wan 2.2).json", configService.getComfyUIPath());
+                if (blueprintJson != null) {
+                    logger.info("📄 [ScenePipelineRunner] Using Wan 2.2 blueprint workflow with start image.");
+                    blueprintInjector.injectPrompt(blueprintJson, scene.getPrompt());
+                    blueprintInjector.injectParamsIntoBlueprint(blueprintJson, seed, filenamePrefix, scene);
+                    blueprintInjector.injectSpeakerImage(blueprintJson, speakerImage);
+                    workflowJson = blueprintJson;
+                }
+            }
+
+            if (workflowJson == null) {
+                logger.info("🖼️ [ScenePipelineRunner] Dedicated video diffusion models not found; generating scene visuals via available image model...");
+                workflowJson = workflowBuilder.generateSceneImageWorkflow(serverUrl, scene, speakerImage, seed, filenamePrefix, availableUnets, availableCheckpoints, availableClips, availableVaes);
+            }
         }
 
         return workflowJson;

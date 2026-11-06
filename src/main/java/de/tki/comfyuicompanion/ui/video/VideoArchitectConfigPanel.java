@@ -1,6 +1,7 @@
 package de.tki.comfyuicompanion.ui.video;
 
 import de.tki.comfyuicompanion.service.impl.ConfigService;
+import de.tki.comfyuicompanion.service.pipeline.strategy.VideoModelStrategyRegistry;
 import de.tki.comfyuicompanion.ui.CardPanel;
 import de.tki.comfyuicompanion.ui.ThemeManager;
 import de.tki.comfyuicompanion.ui.icons.AppIcon;
@@ -55,6 +56,8 @@ public class VideoArchitectConfigPanel extends CardPanel {
     private final VideoSamplingParamsPanel samplingParamsPanel;
     private JButton btnAutoPilot;
 
+    private final VideoModelStrategyRegistry strategyRegistry;
+
     /**
      * Constructs a new VideoArchitectConfigPanel.
      *
@@ -65,9 +68,25 @@ public class VideoArchitectConfigPanel extends CardPanel {
     public VideoArchitectConfigPanel(ConfigService configService,
                                      VideoArchitectPresetCoordinator presetCoordinator,
                                      Consumer<String> consoleLogger) {
+        this(configService, presetCoordinator, consoleLogger, null);
+    }
+
+    /**
+     * Constructs a new VideoArchitectConfigPanel with explicit VideoModelStrategyRegistry.
+     *
+     * @param configService      the configuration service for managing speaker image settings
+     * @param presetCoordinator the coordinator for hardware and model presets
+     * @param consoleLogger     consumer for logging status messages to the console
+     * @param strategyRegistry  registry providing dynamic video model strategies
+     */
+    public VideoArchitectConfigPanel(ConfigService configService,
+                                     VideoArchitectPresetCoordinator presetCoordinator,
+                                     Consumer<String> consoleLogger,
+                                     VideoModelStrategyRegistry strategyRegistry) {
         this.configService = configService;
         this.presetCoordinator = presetCoordinator;
         this.consoleLogger = consoleLogger != null ? consoleLogger : msg -> {};
+        this.strategyRegistry = strategyRegistry;
         this.samplingParamsPanel = new VideoSamplingParamsPanel(configService);
         initUI();
     }
@@ -113,19 +132,25 @@ public class VideoArchitectConfigPanel extends CardPanel {
         modelRow.setAlignmentX(Component.LEFT_ALIGNMENT);
         modelRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 35));
 
-        videoModelCombo = new JComboBox<>(new String[]{
+        String[] modelNames = (strategyRegistry != null && strategyRegistry.getDisplayNames().length > 0)
+                ? strategyRegistry.getDisplayNames()
+                : new String[]{
                 "Text to Video (Wan 2.2)",
                 "Text to Video (LTX-Video 0.9.5)",
                 "Image to Video (Wan 2.1)",
                 "Text to Video (Hunyuan Video 1.5)"
-        });
+        };
+        videoModelCombo = new JComboBox<>(modelNames);
         videoModelCombo.setFont(new Font("SansSerif", Font.PLAIN, 13));
         videoModelCombo.addActionListener(e -> updateModelPreset());
         modelRow.add(videoModelCombo, BorderLayout.CENTER);
 
         btnRefreshModels = new JButton(SvgIconFactory.get(AppIcon.REFRESH));
         btnRefreshModels.setToolTipText("Refresh video models list from ComfyUI");
-        btnRefreshModels.addActionListener(e -> consoleLogger.accept("Refreshed video pipelines from ComfyUI."));
+        btnRefreshModels.addActionListener(e -> {
+            refreshModelStrategies();
+            consoleLogger.accept("Refreshed video pipelines from ComfyUI.");
+        });
         modelRow.add(btnRefreshModels, BorderLayout.EAST);
 
         add(modelRow);
@@ -428,6 +453,22 @@ public class VideoArchitectConfigPanel extends CardPanel {
     public void setSelectedLocalLlm(String model) {
         if (samplingParamsPanel != null) {
             samplingParamsPanel.setSelectedLocalLlm(model);
+        }
+    }
+
+    /**
+     * Refreshes model items from the dynamic strategy registry while preserving active selection if possible.
+     */
+    public void refreshModelStrategies() {
+        if (strategyRegistry != null && strategyRegistry.getDisplayNames().length > 0 && videoModelCombo != null) {
+            String selected = getSelectedModel();
+            videoModelCombo.removeAllItems();
+            for (String name : strategyRegistry.getDisplayNames()) {
+                videoModelCombo.addItem(name);
+            }
+            if (selected != null && !selected.isBlank()) {
+                videoModelCombo.setSelectedItem(selected);
+            }
         }
     }
 }

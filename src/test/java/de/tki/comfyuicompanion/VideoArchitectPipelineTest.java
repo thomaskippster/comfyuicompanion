@@ -32,6 +32,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
+import static org.mockito.ArgumentMatchers.*;
 
 /**
  * Unit tests verifying Video Architect ComfyUI pipeline workflows, Wan video node injections,
@@ -480,6 +481,44 @@ public class VideoArchitectPipelineTest {
         JSONObject wanInputs = workflow.getJSONObject("129:98").getJSONObject("inputs");
         assertEquals(1920, wanInputs.getInt("width"));
         assertEquals(1072, wanInputs.getInt("height"), "Height should be aligned to 16px multiple (1072 for 1080p)");
+    }
+
+    @Test
+    public void testScenePipelineRunnerWithStrategyRegistry() throws Exception {
+        ConfigService mockConfig = Mockito.mock(ConfigService.class);
+        de.tki.comfyuicompanion.service.pipeline.VideoWorkflowBuilder mockBuilder = Mockito.mock(de.tki.comfyuicompanion.service.pipeline.VideoWorkflowBuilder.class);
+        de.tki.comfyuicompanion.service.pipeline.ComfyNodeInspectionClient mockInspector = Mockito.mock(de.tki.comfyuicompanion.service.pipeline.ComfyNodeInspectionClient.class);
+        de.tki.comfyuicompanion.service.pipeline.ComfyJobPollingService mockJobPolling = Mockito.mock(de.tki.comfyuicompanion.service.pipeline.ComfyJobPollingService.class);
+        de.tki.comfyuicompanion.service.pipeline.SceneSimulationService mockSimulation = Mockito.mock(de.tki.comfyuicompanion.service.pipeline.SceneSimulationService.class);
+        de.tki.comfyuicompanion.service.pipeline.MediaTranscodingService mockTranscoding = Mockito.mock(de.tki.comfyuicompanion.service.pipeline.MediaTranscodingService.class);
+
+        de.tki.comfyuicompanion.service.pipeline.strategy.Wan22VideoStrategy wanStrategy =
+                new de.tki.comfyuicompanion.service.pipeline.strategy.Wan22VideoStrategy(mockBuilder, null, mockConfig);
+        de.tki.comfyuicompanion.service.pipeline.strategy.ImageDiffusionFallbackStrategy fallbackStrategy =
+                new de.tki.comfyuicompanion.service.pipeline.strategy.ImageDiffusionFallbackStrategy(mockBuilder);
+
+        de.tki.comfyuicompanion.service.pipeline.strategy.VideoModelStrategyRegistry registry =
+                new de.tki.comfyuicompanion.service.pipeline.strategy.VideoModelStrategyRegistry(List.of(wanStrategy, fallbackStrategy));
+
+        de.tki.comfyuicompanion.service.pipeline.ScenePipelineRunner runner =
+                new de.tki.comfyuicompanion.service.pipeline.ScenePipelineRunner(
+                        mockConfig, mockSimulation, mockTranscoding, mockBuilder,
+                        mockJobPolling, mockInspector, null, null, null, null, null, null, null, registry);
+
+        Scene scene = new Scene("S_TEST", "Futuristic neon highway");
+        scene.setModel("Text to Video (Wan 2.2)");
+
+        JSONObject mockWanWorkflow = new JSONObject().put("test_node", "wan2.2_output");
+        Mockito.when(mockBuilder.isWanSetupComplete(anyList(), anyList(), anyList())).thenReturn(true);
+        Mockito.when(mockBuilder.generateWanWorkflowJson(anyString(), any(), any(), anyLong(), anyString())).thenReturn(mockWanWorkflow);
+
+        JSONObject result = runner.determineWorkflow(
+                "http://127.0.0.1:8188", scene, null, 42L, "test_prefix",
+                List.of("wan2.2.safetensors"), List.of(), List.of("umt5.safetensors"), List.of("wan_vae.safetensors"),
+                true, true);
+
+        assertNotNull(result);
+        assertEquals("wan2.2_output", result.optString("test_node"));
     }
 
     private void injectProcessTracker(Object target) {

@@ -1,0 +1,95 @@
+{
+  "version": "1.0",
+  "resolution_presets": [
+    {
+      "id": "720p_16_9",
+      "display_name": "720p HD 16:9 (1280x720) - Landscape Recommended",
+      "width": 1280,
+      "height": 720,
+      "aspect_ratio": "16:9",
+      "is_vertical": false,
+      "description": "Standard landscape HD format, ideal for YouTube and desktop viewing."
+    },
+    {
+      "id": "tiktok_9_16_hd",
+      "display_name": "TikTok / Reels 9:16 (720x1280) - Vertical HD",
+      "width": 720,
+      "height": 1280,
+      "aspect_ratio": "9:16",
+      "is_vertical": true,
+      "description": "Crisp vertical HD format for TikTok, Instagram Reels, and YouTube Shorts."
+    },
+    {
+      "id": "1080p_16_9",
+      "display_name": "1080p Full HD 16:9 (1920x1080) - High Quality",
+      "width": 1920,
+      "height": 1080,
+      "aspect_ratio": "16:9",
+      "is_vertical": false,
+      "description": "High definition 1080p output for premium productions."
+    },
+    {
+      "id": "tiktok_9_16_fhd",
+      "display_name": "TikTok / Reels 9:16 (1080x1920) - Full HD Vertical",
+      "width": 1080,
+      "height": 1920,
+      "aspect_ratio": "9:16",
+      "is_vertical": true,
+      "description": "Maximum vertical resolution for mobile short-form cinema."
+    },
+    {
+      "id": "576p_16_9",
+      "display_name": "576p Wide 16:9 (1024x576) - Balanced",
+      "width": 1024,
+      "height": 576,
+      "aspect_ratio": "16:9",
+      "is_vertical": false,
+      "description": "Balanced resolution with fast generation speeds on mid-tier GPUs."
+    },
+    {
+      "id": "tiktok_9_16_balanced",
+      "display_name": "TikTok / Reels 9:16 (576x1024) - Balanced Vertical",
+      "width": 576,
+      "height": 1024,
+      "aspect_ratio": "9:16",
+      "is_vertical": true,
+      "description": "Efficient vertical format with reduced VRAM footprint."
+    },
+    {
+      "id": "480p_16_9",
+      "display_name": "480p SD 16:9 (832x480) - Fast Draft",
+      "width": 832,
+      "height": 480,
+      "aspect_ratio": "16:9",
+      "is_vertical": false,
+      "description": "Fast draft mode for rapid storyboard iteration."
+    },
+    {
+      "id": "tiktok_9_16_draft",
+      "display_name": "TikTok / Reels 9:16 (480x832) - Fast Vertical Draft",
+      "width": 480,
+      "height": 832,
+      "aspect_ratio": "9:16",
+      "is_vertical": true,
+      "description": "Fast vertical draft mode for prototyping mobile scenes."
+    },
+    {
+      "id": "square_768",
+      "display_name": "Square 1:1 (768x768) - Social Media",
+      "width": 768,
+      "height": 768,
+      "aspect_ratio": "1:1",
+      "is_vertical": false,
+      "description": "Square format for feed posts and avatars."
+    },
+    {
+      "id": "square_1024",
+      "display_name": "Square 1:1 (1024x1024) - High Detail",
+      "width": 1024,
+      "height": 1024,
+      "aspect_ratio": "1:1",
+      "is_vertical": false,
+      "description": "High resolution square format for detailed characters and subjects."
+    }
+  ]
+}

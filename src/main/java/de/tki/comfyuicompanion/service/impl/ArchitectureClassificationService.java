@@ -60,9 +60,7 @@ public class ArchitectureClassificationService implements IArchitectureClassifie
             promptNode = rootNode.get("prompt");
         }
 
-        Iterator<Map.Entry<String, JsonNode>> fields = promptNode.fields();
-        while (fields.hasNext()) {
-            Map.Entry<String, JsonNode> field = fields.next();
+        for (Map.Entry<String, JsonNode> field : promptNode.properties()) {
             JsonNode node = field.getValue();
             if (node.isObject() && node.has("class_type")) {
                 JsonNode classTypeNode = node.get("class_type");

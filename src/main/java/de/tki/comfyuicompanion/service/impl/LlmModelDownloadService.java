@@ -7,8 +7,11 @@ import org.springframework.stereotype.Service;
 import java.io.BufferedInputStream;
 import java.io.File;
 import java.io.FileOutputStream;
+import java.net.URI;
 import java.net.URL;
 import java.net.URLConnection;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import java.util.function.BiConsumer;
 
 /**
@@ -42,7 +45,7 @@ public class LlmModelDownloadService {
         File tempFile = new File(parentDir, targetFile.getName() + ".download");
         try {
             logger.info("Downloading LLM GGUF ({}) from: {}", displayName, downloadUrl);
-            URL url = new URL(downloadUrl);
+            URL url = URI.create(downloadUrl).toURL();
             URLConnection connection = url.openConnection();
             connection.setConnectTimeout(15000);
             connection.setReadTimeout(30000);
@@ -75,10 +78,7 @@ public class LlmModelDownloadService {
                 }
             }
 
-            if (targetFile.exists()) {
-                targetFile.delete();
-            }
-            tempFile.renameTo(targetFile);
+            Files.move(tempFile.toPath(), targetFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
 
             logger.info("{} model download completed successfully.", displayName);
             if (onFinished != null) {

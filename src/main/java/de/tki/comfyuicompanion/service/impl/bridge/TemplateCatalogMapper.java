@@ -112,9 +112,7 @@ public class TemplateCatalogMapper {
                 list.add(templateObj);
             }
 
-            Iterator<Map.Entry<String, JsonNode>> fields = node.fields();
-            while (fields.hasNext()) {
-                Map.Entry<String, JsonNode> field = fields.next();
+            for (Map.Entry<String, JsonNode> field : node.properties()) {
                 if (!field.getKey().equals("templates")) {
                     flattenTemplatesNode(field.getValue(), list, currentCategory, parentTrail, mapper);
                 }

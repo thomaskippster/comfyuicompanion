@@ -202,7 +202,7 @@ public class CivitaiApiWorkflowBuilder {
 
         // Rewire downstream model and clip references
         final String finalLoraId = loraNodeId;
-        promptObj.fields().forEachRemaining(entry -> {
+        promptObj.properties().forEach(entry -> {
             if (entry.getKey().equals(finalLoraId)) return;
             JsonNode node = entry.getValue();
             if (node.has("inputs")) {
@@ -227,7 +227,7 @@ public class CivitaiApiWorkflowBuilder {
     }
 
     private void injectPromptTexts(ObjectNode promptObj, String positive, String negative) {
-        promptObj.fields().forEachRemaining(entry -> {
+        promptObj.properties().forEach(entry -> {
             JsonNode node = entry.getValue();
             if ("CLIPTextEncode".equals(node.path("class_type").asText())) {
                 ObjectNode inputs = (ObjectNode) node.path("inputs");
@@ -244,7 +244,7 @@ public class CivitaiApiWorkflowBuilder {
     }
 
     private void randomizeSeeds(ObjectNode promptObj) {
-        promptObj.fields().forEachRemaining(entry -> {
+        promptObj.properties().forEach(entry -> {
             JsonNode node = entry.getValue();
             if (node.has("inputs")) {
                 ObjectNode inputs = (ObjectNode) node.get("inputs");

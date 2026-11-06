@@ -96,13 +96,9 @@ public class ModelArchitectureAnalyzer {
                     int photoScore = 0;
                     
                     if (tagsNode.isObject()) {
-                        java.util.Iterator<Map.Entry<String, com.fasterxml.jackson.databind.JsonNode>> datasets = tagsNode.fields();
-                        while (datasets.hasNext()) {
-                            Map.Entry<String, com.fasterxml.jackson.databind.JsonNode> dataset = datasets.next();
+                        for (Map.Entry<String, com.fasterxml.jackson.databind.JsonNode> dataset : tagsNode.properties()) {
                             if (dataset.getValue().isObject()) {
-                                java.util.Iterator<Map.Entry<String, com.fasterxml.jackson.databind.JsonNode>> tagEntries = dataset.getValue().fields();
-                                while (tagEntries.hasNext()) {
-                                    Map.Entry<String, com.fasterxml.jackson.databind.JsonNode> tagEntry = tagEntries.next();
+                                for (Map.Entry<String, com.fasterxml.jackson.databind.JsonNode> tagEntry : dataset.getValue().properties()) {
                                     String tag = tagEntry.getKey().toLowerCase();
                                     int freq = tagEntry.getValue().asInt(0);
                                     

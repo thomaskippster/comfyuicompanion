@@ -60,9 +60,7 @@ public class ServerBlueprintDiscoveryService {
                     map.put(name.toLowerCase().trim(), mediaSubtype.toLowerCase().trim());
                 }
             }
-            Iterator<Map.Entry<String, JsonNode>> fields = node.fields();
-            while (fields.hasNext()) {
-                Map.Entry<String, JsonNode> field = fields.next();
+            for (Map.Entry<String, JsonNode> field : node.properties()) {
                 if (!"templates".equals(field.getKey())) {
                     parseSubtypesFromIndex(field.getValue(), map);
                 }
@@ -111,9 +109,7 @@ public class ServerBlueprintDiscoveryService {
                 list.add(new ServerTemplateInfo(name, title, description, category));
             }
 
-            Iterator<Map.Entry<String, JsonNode>> fields = node.fields();
-            while (fields.hasNext()) {
-                Map.Entry<String, JsonNode> field = fields.next();
+            for (Map.Entry<String, JsonNode> field : node.properties()) {
                 if (!"templates".equals(field.getKey())) {
                     flattenTemplates(field.getValue(), list, currentCategory, parentTrail);
                 }

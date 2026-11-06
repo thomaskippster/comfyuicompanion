@@ -94,13 +94,10 @@ public class TriggerWordService {
                 try {
                     JsonNode rootNode = objectMapper.readTree(tagFrequency);
                     if (rootNode.isObject()) {
-                        Iterator<Map.Entry<String, JsonNode>> datasets = rootNode.fields();
-                        while (datasets.hasNext()) {
-                            JsonNode datasetTags = datasets.next().getValue();
+                        for (Map.Entry<String, JsonNode> dataset : rootNode.properties()) {
+                            JsonNode datasetTags = dataset.getValue();
                             if (datasetTags.isObject()) {
-                                Iterator<Map.Entry<String, JsonNode>> tagEntries = datasetTags.fields();
-                                while (tagEntries.hasNext()) {
-                                    Map.Entry<String, JsonNode> entry = tagEntries.next();
+                                for (Map.Entry<String, JsonNode> entry : datasetTags.properties()) {
                                     tagMap.merge(entry.getKey(), entry.getValue().asInt(0), Integer::sum);
                                 }
                             }

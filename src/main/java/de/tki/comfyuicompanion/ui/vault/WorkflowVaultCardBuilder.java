@@ -33,6 +33,7 @@ public class WorkflowVaultCardBuilder {
      * @param removeAction       callback when 'Remove from Vault' is clicked
      * @return the card panel
      */
+    @SuppressWarnings("deprecation")
     public static JPanel buildVaultCard(
             BlueprintEntry entry,
             BlueprintStatus status,

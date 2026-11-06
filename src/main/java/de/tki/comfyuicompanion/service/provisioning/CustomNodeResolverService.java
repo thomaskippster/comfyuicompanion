@@ -201,9 +201,7 @@ public class CustomNodeResolverService {
 
             // 2. API Format: map of { nodeId: { "class_type": "..." } }
             if (root.isObject()) {
-                Iterator<Map.Entry<String, JsonNode>> fields = root.fields();
-                while (fields.hasNext()) {
-                    Map.Entry<String, JsonNode> entry = fields.next();
+                for (Map.Entry<String, JsonNode> entry : root.properties()) {
                     JsonNode val = entry.getValue();
                     if (val.isObject() && val.has("class_type")) {
                         String classType = val.get("class_type").asText();

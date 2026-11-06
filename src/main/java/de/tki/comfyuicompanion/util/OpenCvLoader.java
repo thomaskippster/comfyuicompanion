@@ -70,20 +70,10 @@ public class OpenCvLoader {
     }
 
     private static int getJavaMajorVersion() {
-        String version = System.getProperty("java.version");
-        if (version == null) return 8;
         try {
-            if (version.startsWith("1.")) {
-                return Integer.parseInt(version.split("\\.")[1]);
-            } else {
-                String major = version.split("\\.")[0];
-                if (major.contains("-")) {
-                    major = major.substring(0, major.indexOf("-"));
-                }
-                return Integer.parseInt(major);
-            }
+            return Runtime.version().feature();
         } catch (Exception e) {
-            return 8;
+            return 21;
         }
     }
 }

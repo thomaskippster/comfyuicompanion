@@ -106,9 +106,7 @@ public class ComfyUiGatewayImpl implements ComfyUiGateway {
     private void populateWidgetCache(JsonNode objectInfo) {
         if (objectInfo == null || !objectInfo.isObject()) return;
 
-        Iterator<Map.Entry<String, JsonNode>> fields = objectInfo.fields();
-        while (fields.hasNext()) {
-            Map.Entry<String, JsonNode> entry = fields.next();
+        for (Map.Entry<String, JsonNode> entry : objectInfo.properties()) {
             String classType = entry.getKey();
             JsonNode inputNode = entry.getValue().path("input");
 

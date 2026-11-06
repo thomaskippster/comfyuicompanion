@@ -155,6 +155,29 @@ public class ComfyNodeInspectionClient {
                     return av;
                 }
             }
+            // Semantic family fallback for video diffusion models, text encoders, and VAEs
+            if (expectedClean.contains("wan")) {
+                for (String av : available) {
+                    if (av.toLowerCase().contains("wan")) {
+                        return av;
+                    }
+                }
+            }
+            if (expectedClean.contains("umt5") || (expectedClean.contains("t5") && expectedClean.contains("xxl"))) {
+                for (String av : available) {
+                    String avLow = av.toLowerCase();
+                    if (avLow.contains("umt5") || (avLow.contains("t5") && avLow.contains("xxl"))) {
+                        return av;
+                    }
+                }
+            }
+            if (expectedClean.contains("flux")) {
+                for (String av : available) {
+                    if (av.toLowerCase().contains("flux")) {
+                        return av;
+                    }
+                }
+            }
         }
         return expected.replaceAll("[/\\\\]+", "/");
     }

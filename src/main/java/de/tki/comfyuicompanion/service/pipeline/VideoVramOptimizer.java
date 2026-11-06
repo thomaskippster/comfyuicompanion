@@ -96,7 +96,9 @@ public class VideoVramOptimizer implements IVideoVramOptimizer {
             if (inputs == null) continue;
 
             // 1. Offload heavy text encoders (T5-XXL / UMT5 / Llama) to CPU (saves 5-9 GB VRAM)
-            if ("CLIPLoader".equals(classType) || "DualCLIPLoader".equals(classType) || "LTXAVTextEncoderLoader".equals(classType)) {
+            if ("CLIPLoader".equals(classType) || "DualCLIPLoader".equals(classType) || "LTXAVTextEncoderLoader".equals(classType)
+                    || "CLIPLoaderGGUF".equals(classType) || "DualCLIPLoaderGGUF".equals(classType)
+                    || "WanVideoTextEncode".equals(classType) || "HunyuanVideoTextEncode".equals(classType)) {
                 String currentDevice = inputs.optString("device", "default");
                 if (!"cpu".equalsIgnoreCase(currentDevice)) {
                     inputs.put("device", "cpu");
@@ -114,6 +116,21 @@ public class VideoVramOptimizer implements IVideoVramOptimizer {
                 inputs.put("temporal_overlap", 8);
                 modifiedNodes++;
                 logger.info("🛡️ [16GB-Opt] Upgraded VAEDecode (node {}) to VAEDecodeTiled (512px tiles) to prevent VRAM explosion.", nodeId);
+            } else if ("VAEDecodeTiled".equals(classType)) {
+                if (inputs.optInt("tile_size", 512) > 512) {
+                    inputs.put("tile_size", 512);
+                    modifiedNodes++;
+                    logger.info("🛡️ [16GB-Opt] Clamped VAEDecodeTiled tile_size (node {}) to 512px for 16 GB VRAM budget.", nodeId);
+                }
+            } else if ("WanVideoVAEDecode".equals(classType)) {
+                if (!inputs.optBoolean("enable_tiling", false)) {
+                    inputs.put("enable_tiling", true);
+                    inputs.put("tile_x", 512);
+                    inputs.put("tile_y", 512);
+                    inputs.put("tile_t", 64);
+                    modifiedNodes++;
+                    logger.info("🛡️ [16GB-Opt] Enabled VAE tiling on WanVideoVAEDecode (node {}) to prevent VRAM explosion.", nodeId);
+                }
             }
 
             // 3. Ensure FP8 weight precision on UNETLoader if not using GGUF
@@ -124,6 +141,19 @@ public class VideoVramOptimizer implements IVideoVramOptimizer {
                     inputs.put("weight_dtype", "fp8_e4m3fn");
                     modifiedNodes++;
                     logger.info("⚡ [16GB-Opt] Enforced fp8_e4m3fn weight quantization on UNETLoader (node {}).", nodeId);
+                }
+            } else if ("WanVideoModelLoader".equals(classType) || "HunyuanVideoModelLoader".equals(classType)) {
+                String q = inputs.optString("quantization", "disabled");
+                if ("disabled".equalsIgnoreCase(q) || "default".equalsIgnoreCase(q)) {
+                    inputs.put("quantization", "fp8_e4m3fn");
+                    modifiedNodes++;
+                    logger.info("⚡ [16GB-Opt] Enforced fp8_e4m3fn quantization on {} (node {}).", classType, nodeId);
+                }
+                String att = inputs.optString("attention_mode", "default");
+                if ("default".equalsIgnoreCase(att)) {
+                    inputs.put("attention_mode", "sdpa");
+                    modifiedNodes++;
+                    logger.info("⚡ [16GB-Opt] Set SDPA memory-efficient attention on {} (node {}).", classType, nodeId);
                 }
             }
         }

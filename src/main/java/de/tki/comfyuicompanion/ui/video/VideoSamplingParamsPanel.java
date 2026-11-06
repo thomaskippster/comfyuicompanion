@@ -121,7 +121,9 @@ public class VideoSamplingParamsPanel extends JPanel {
         samplerRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 50));
 
         videoStepsSpinner = new JSpinner(new SpinnerNumberModel(28, 1, 100, 1));
-        videoCfgSpinner = new JSpinner(new SpinnerNumberModel(6.5, 0.5, 20.0, 0.5));
+        videoStepsSpinner.setToolTipText("Sampling steps. 25-30 steps is recommended for high detail in Wan 2.1 / DiT video models.");
+        videoCfgSpinner = new JSpinner(new SpinnerNumberModel(3.5, 0.5, 20.0, 0.5));
+        videoCfgSpinner.setToolTipText("Guidance scale. For Wan 2.1 video diffusion, 3.0 to 4.0 is optimal for photorealism. Higher values cause over-saturation and jitter.");
         videoMotionSpinner = new JSpinner(new SpinnerNumberModel(127, 1, 255, 1));
         samplerRow.add(createSpinnerPanel("Steps", videoStepsSpinner));
         samplerRow.add(createSpinnerPanel("CFG Scale", videoCfgSpinner));

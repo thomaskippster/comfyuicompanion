@@ -21,7 +21,7 @@ public class MainSystemTrayHandler {
                                      JCheckBox backgroundCheck,
                                      Runnable onExit) {
         if (!PlatformUtils.isSystemTraySupported()) {
-            logger.error("[System-Tray] Not supported on this platform (e.g. Wayland). Background mode disabled.");
+            logger.info("[System-Tray] Not supported on this platform (e.g. Wayland/Headless). Background mode disabled.");
             if (backgroundCheck != null) {
                 backgroundCheck.setSelected(false);
                 backgroundCheck.setEnabled(false);

@@ -110,7 +110,19 @@ public class VideoArchitectExecutionHandler {
         LlmModelPreset preset = resolveLlmPreset(scriptLlm);
         String modelName = preset.getDisplayName();
 
+        boolean unattended = java.awt.GraphicsEnvironment.isHeadless()
+                || Boolean.getBoolean("companion.unattended")
+                || System.getProperty("surefire.test.class.path") != null;
+
         if (gemma4Service != null && !isPresetDownloaded(preset)) {
+            if (unattended) {
+                consoleLogger.accept("Local AI model not downloaded. Proceeding with rule-based storyboard segmentation.");
+                executeDeconstructScriptTask(parent, preset, idea, targetModel, width, height, cfg, steps, motion,
+                        timelineListModel, timelineListView, buttonsDisabledSetter, consoleLogger,
+                        previewUpdater, storyboardJsonUpdater);
+                return;
+            }
+
             int choice = JOptionPane.showConfirmDialog(
                     parent,
                     "The local " + modelName + " AI model is not downloaded yet.\n\n" +

@@ -60,27 +60,33 @@ public class VideoSamplingParamsPanel extends JPanel {
         JLabel lblRes = new JLabel("Resolution Preset:");
         lblRes.setFont(new Font("SansSerif", Font.PLAIN, 11));
         cmbResolution = new JComboBox<>(new String[]{
-                "720p HD (1280x720) - Recommended",
-                "1080p Full HD (1920x1080) - High Quality",
-                "576p Wide (1024x576) - Balanced",
-                "480p SD (832x480) - Fast Draft",
+                "720p HD 16:9 (1280x720) - Landscape Recommended",
+                "TikTok / Reels 9:16 (720x1280) - Vertical HD",
+                "1080p Full HD 16:9 (1920x1080) - High Quality",
+                "TikTok / Reels 9:16 (1080x1920) - Full HD Vertical",
+                "576p Wide 16:9 (1024x576) - Balanced",
+                "TikTok / Reels 9:16 (576x1024) - Balanced Vertical",
+                "480p SD 16:9 (832x480) - Fast Draft",
+                "TikTok / Reels 9:16 (480x832) - Fast Vertical Draft",
+                "Square 1:1 (768x768) - Social Media",
+                "Square 1:1 (1024x1024) - High Detail",
                 "Custom (Use Spinners)"
         });
         cmbResolution.setFont(new Font("SansSerif", Font.PLAIN, 12));
         cmbResolution.addActionListener(e -> {
             int idx = cmbResolution.getSelectedIndex();
-            if (idx == 0) {
-                videoWidthSpinner.setValue(1280);
-                videoHeightSpinner.setValue(720);
-            } else if (idx == 1) {
-                videoWidthSpinner.setValue(1920);
-                videoHeightSpinner.setValue(1080);
-            } else if (idx == 2) {
-                videoWidthSpinner.setValue(1024);
-                videoHeightSpinner.setValue(576);
-            } else if (idx == 3) {
-                videoWidthSpinner.setValue(832);
-                videoHeightSpinner.setValue(480);
+            switch (idx) {
+                case 0 -> { videoWidthSpinner.setValue(1280); videoHeightSpinner.setValue(720); }
+                case 1 -> { videoWidthSpinner.setValue(720); videoHeightSpinner.setValue(1280); }
+                case 2 -> { videoWidthSpinner.setValue(1920); videoHeightSpinner.setValue(1080); }
+                case 3 -> { videoWidthSpinner.setValue(1080); videoHeightSpinner.setValue(1920); }
+                case 4 -> { videoWidthSpinner.setValue(1024); videoHeightSpinner.setValue(576); }
+                case 5 -> { videoWidthSpinner.setValue(576); videoHeightSpinner.setValue(1024); }
+                case 6 -> { videoWidthSpinner.setValue(832); videoHeightSpinner.setValue(480); }
+                case 7 -> { videoWidthSpinner.setValue(480); videoHeightSpinner.setValue(832); }
+                case 8 -> { videoWidthSpinner.setValue(768); videoHeightSpinner.setValue(768); }
+                case 9 -> { videoWidthSpinner.setValue(1024); videoHeightSpinner.setValue(1024); }
+                default -> {}
             }
         });
         resRow.add(lblRes, BorderLayout.WEST);
@@ -302,16 +308,21 @@ public class VideoSamplingParamsPanel extends JPanel {
     private void syncResolutionFromSpinners() {
         int w = getVideoWidth();
         int h = getVideoHeight();
-        if (w == 1280 && h == 720) {
-            if (cmbResolution.getSelectedIndex() != 0) cmbResolution.setSelectedIndex(0);
-        } else if (w == 1920 && h == 1080) {
-            if (cmbResolution.getSelectedIndex() != 1) cmbResolution.setSelectedIndex(1);
-        } else if (w == 1024 && h == 576) {
-            if (cmbResolution.getSelectedIndex() != 2) cmbResolution.setSelectedIndex(2);
-        } else if (w == 832 && h == 480) {
-            if (cmbResolution.getSelectedIndex() != 3) cmbResolution.setSelectedIndex(3);
-        } else {
-            if (cmbResolution.getSelectedIndex() != 4) cmbResolution.setSelectedIndex(4);
+        int targetIdx;
+        if (w == 1280 && h == 720) targetIdx = 0;
+        else if (w == 720 && h == 1280) targetIdx = 1;
+        else if (w == 1920 && h == 1080) targetIdx = 2;
+        else if (w == 1080 && h == 1920) targetIdx = 3;
+        else if (w == 1024 && h == 576) targetIdx = 4;
+        else if (w == 576 && h == 1024) targetIdx = 5;
+        else if (w == 832 && h == 480) targetIdx = 6;
+        else if (w == 480 && h == 832) targetIdx = 7;
+        else if (w == 768 && h == 768) targetIdx = 8;
+        else if (w == 1024 && h == 1024) targetIdx = 9;
+        else targetIdx = 10;
+
+        if (cmbResolution.getSelectedIndex() != targetIdx) {
+            cmbResolution.setSelectedIndex(targetIdx);
         }
     }
 

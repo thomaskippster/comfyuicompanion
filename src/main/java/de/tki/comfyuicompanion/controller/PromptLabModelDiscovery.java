@@ -268,7 +268,7 @@ public class PromptLabModelDiscovery {
                     view.getBtnSendToComfy().setToolTipText("Send workflow prompt to ComfyUI");
                 }
                 if (view.getPromptLabConsole() != null && view.getPromptLabConsole().getText().contains("No ready blueprints")) {
-                    view.getPromptLabConsole().setText("System: Prompt Lab ready.\n");
+                    view.getPromptLabConsole().setText("System: Image Lab ready.\n");
                 }
                 for (String name : itemsToAdd) {
                     view.getPromptModelCombo().addItem(name);

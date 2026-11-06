@@ -46,6 +46,7 @@ public class VisualGuiInspectionTest {
         // Allow EDT and async initialization to settle
         Thread.sleep(1200);
         SwingUtilities.invokeAndWait(() -> {
+            configService.setBackgroundModeEnabled(de.tki.comfyuicompanion.util.PlatformUtils.isSystemTraySupported());
             mainFrame.setSize(1440, 920);
             mainFrame.updateTabVisibility();
             mainFrame.validate();
@@ -117,12 +118,12 @@ public class VisualGuiInspectionTest {
 
         int bpTabIndex = -1;
         for (int i = 0; i < tabbedPane.getTabCount(); i++) {
-            if ("Blueprint Gallery".equalsIgnoreCase(tabbedPane.getTitleAt(i))) {
+            if ("Workflow Hub".equalsIgnoreCase(tabbedPane.getTitleAt(i)) || "Blueprint Gallery".equalsIgnoreCase(tabbedPane.getTitleAt(i))) {
                 bpTabIndex = i;
                 break;
             }
         }
-        assertTrue(bpTabIndex >= 0, "Blueprint Gallery tab must exist in main tabs");
+        assertTrue(bpTabIndex >= 0, "Workflow Hub tab must exist in main tabs");
 
         final int selectedBpTab = bpTabIndex;
         SwingUtilities.invokeAndWait(() -> {
@@ -412,6 +413,7 @@ public class VisualGuiInspectionTest {
 
         Thread.sleep(1200);
         SwingUtilities.invokeAndWait(() -> {
+            configService.setBackgroundModeEnabled(de.tki.comfyuicompanion.util.PlatformUtils.isSystemTraySupported());
             mainFrame.setSize(1440, 920);
             mainFrame.updateTabVisibility();
             mainFrame.validate();

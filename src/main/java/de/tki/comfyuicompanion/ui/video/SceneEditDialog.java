@@ -45,7 +45,7 @@ public class SceneEditDialog extends JDialog {
                 isNew ? "Add New Scene" : "Edit Scene: " + (targetScene != null ? targetScene.getSceneId() : ""),
                 Dialog.ModalityType.APPLICATION_MODAL);
 
-        setSize(520, 480);
+        setSize(560, 580);
         setLocationRelativeTo(parent);
         setLayout(new BorderLayout(10, 10));
 
@@ -116,6 +116,47 @@ public class SceneEditDialog extends JDialog {
         formPanel.add(new JScrollPane(narrationArea), gbc);
 
         gbc.gridx = 0; gbc.gridy = 4;
+        formPanel.add(new JLabel("SFX / Audio Prompt:"), gbc);
+        gbc.gridx = 1;
+        JPanel sfxContainer = new JPanel(new BorderLayout(0, 4));
+        sfxContainer.setOpaque(false);
+        JTextArea sfxPromptArea = new JTextArea(targetScene != null && targetScene.getSfxPrompt() != null ? targetScene.getSfxPrompt() : "", 2, 20);
+        sfxPromptArea.setLineWrap(true);
+        sfxPromptArea.setWrapStyleWord(true);
+        sfxContainer.add(new JScrollPane(sfxPromptArea), BorderLayout.CENTER);
+
+        JButton btnSuggestSfx = new JButton("✨ Suggest SFX", SvgIconFactory.get(AppIcon.SUGGEST, 12));
+        btnSuggestSfx.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        btnSuggestSfx.setToolTipText("Infers matching sound effects and atmospheric audio cues from visual and narrative prompts.");
+        btnSuggestSfx.addActionListener(e -> {
+            if (promptOptimizer != null) {
+                sfxPromptArea.setText(promptOptimizer.inferSfxPrompt(promptArea.getText(), narrationArea.getText()));
+            }
+        });
+        sfxContainer.add(btnSuggestSfx, BorderLayout.SOUTH);
+        formPanel.add(sfxContainer, gbc);
+
+        gbc.gridx = 0; gbc.gridy = 5;
+        formPanel.add(new JLabel("SFX Audio File:"), gbc);
+        gbc.gridx = 1;
+        JPanel sfxFilePanel = new JPanel(new BorderLayout(4, 0));
+        sfxFilePanel.setOpaque(false);
+        JTextField sfxFileField = new JTextField(targetScene != null && targetScene.getSfxAudioPath() != null ? targetScene.getSfxAudioPath() : "");
+        sfxFilePanel.add(sfxFileField, BorderLayout.CENTER);
+        JButton btnBrowseSfx = new JButton("Browse...");
+        btnBrowseSfx.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        btnBrowseSfx.addActionListener(e -> {
+            javax.swing.JFileChooser chooser = new javax.swing.JFileChooser();
+            chooser.setDialogTitle("Select Sound Effect / Ambient Audio");
+            chooser.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("Audio Files (*.wav, *.mp3, *.ogg, *.flac)", "wav", "mp3", "ogg", "flac"));
+            if (chooser.showOpenDialog(SceneEditDialog.this) == javax.swing.JFileChooser.APPROVE_OPTION) {
+                sfxFileField.setText(chooser.getSelectedFile().getAbsolutePath());
+            }
+        });
+        sfxFilePanel.add(btnBrowseSfx, BorderLayout.EAST);
+        formPanel.add(sfxFilePanel, gbc);
+
+        gbc.gridx = 0; gbc.gridy = 6;
         formPanel.add(new JLabel("Duration (sec):"), gbc);
         gbc.gridx = 1;
         int currentDur = 5;
@@ -125,14 +166,14 @@ public class SceneEditDialog extends JDialog {
         JSpinner durationSpinner = new JSpinner(new SpinnerNumberModel(currentDur, 1, 60, 1));
         formPanel.add(durationSpinner, gbc);
 
-        gbc.gridx = 0; gbc.gridy = 5;
+        gbc.gridx = 0; gbc.gridy = 7;
         formPanel.add(new JLabel("CFG Scale:"), gbc);
         gbc.gridx = 1;
         double cfg = targetScene != null ? targetScene.getCfgScale() : 3.5;
         JSpinner cfgSpinner = new JSpinner(new SpinnerNumberModel(cfg, 0.5, 20.0, 0.5));
         formPanel.add(cfgSpinner, gbc);
 
-        gbc.gridx = 0; gbc.gridy = 6;
+        gbc.gridx = 0; gbc.gridy = 8;
         formPanel.add(new JLabel("Steps:"), gbc);
         gbc.gridx = 1;
         int steps = targetScene != null ? targetScene.getSteps() : 28;
@@ -157,6 +198,11 @@ public class SceneEditDialog extends JDialog {
             sc.setSceneId(sid);
             sc.setPrompt(promptArea.getText().trim());
             sc.setNarrationText(narrationArea.getText().trim());
+            sc.setSfxPrompt(sfxPromptArea.getText().trim());
+            String customSfx = sfxFileField.getText().trim();
+            if (!customSfx.isEmpty()) {
+                sc.setSfxAudioPath(customSfx);
+            }
             int camIdx = cmbCameraMotion.getSelectedIndex();
             if (camIdx > 0) {
                 sc.setCameraMotion((String) cmbCameraMotion.getSelectedItem());

@@ -77,7 +77,15 @@ public class VideoArchitectTab extends JPanel {
                              Video4jEditorService video4jEditorService, Gemma4Service gemma4Service,
                              IComfyLifecycleService lifecycleService, LocalTTSService ttsService,
                              IHardwareProfileService hardwareProfileService) {
-        this(configService, comfyPipelineService, video4jEditorService, gemma4Service, lifecycleService, ttsService, hardwareProfileService, null);
+        this(configService, comfyPipelineService, video4jEditorService, gemma4Service, lifecycleService, ttsService, hardwareProfileService, null, null);
+    }
+
+    public VideoArchitectTab(ConfigService configService, ComfyPipelineService comfyPipelineService,
+                             Video4jEditorService video4jEditorService, Gemma4Service gemma4Service,
+                             IComfyLifecycleService lifecycleService, LocalTTSService ttsService,
+                             IHardwareProfileService hardwareProfileService,
+                             IVideoPromptOptimizer promptOptimizer) {
+        this(configService, comfyPipelineService, video4jEditorService, gemma4Service, lifecycleService, ttsService, hardwareProfileService, promptOptimizer, null);
     }
 
     /**
@@ -98,13 +106,15 @@ public class VideoArchitectTab extends JPanel {
                              IComfyLifecycleService lifecycleService,
                              @Autowired(required = false) LocalTTSService ttsService,
                              @Autowired(required = false) IHardwareProfileService hardwareProfileService,
-                             @Autowired(required = false) IVideoPromptOptimizer promptOptimizer) {
+                             @Autowired(required = false) IVideoPromptOptimizer promptOptimizer,
+                             @Autowired(required = false) de.tki.comfyuicompanion.service.ILocalAudioService audioService) {
         this.configService = configService;
         this.promptOptimizer = promptOptimizer != null ? promptOptimizer : new VideoPromptOptimizer();
         this.presetCoordinator = new VideoArchitectPresetCoordinator(hardwareProfileService);
         this.executionHandler = new VideoArchitectExecutionHandler(
                 configService, comfyPipelineService, video4jEditorService,
-                ttsService, gemma4Service, lifecycleService, this.scriptParser, this.promptOptimizer);
+                ttsService, gemma4Service, lifecycleService, this.scriptParser, this.promptOptimizer,
+                null, audioService);
 
         if (configService != null) {
             configService.setSpeakerImagePath("");

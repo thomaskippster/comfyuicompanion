@@ -56,6 +56,17 @@ public interface IVideoPromptOptimizer {
     boolean hasMotionDirectives(String prompt);
 
     /**
+     * Infers an atmospheric sound effect (SFX) prompt based on visual cues and narrative context.
+     *
+     * @param visualPrompt visual description of the scene
+     * @param narration    voiceover narrative of the scene
+     * @return descriptive SFX prompt
+     */
+    default String inferSfxPrompt(String visualPrompt, String narration) {
+        return "Cinematic atmospheric soundscape";
+    }
+
+    /**
      * Harmonizes lighting, atmosphere, and time-of-day across all scenes in a storyboard sequence
      * to enforce strict temporal continuity and prevent abrupt lighting shifts (e.g. dusk to golden hour to night).
      *

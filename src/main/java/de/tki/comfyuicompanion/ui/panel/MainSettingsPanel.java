@@ -31,7 +31,6 @@ public class MainSettingsPanel {
     private JCheckBox promptLabCheck;
     private JCheckBox videoArchitectCheck;
     private JCheckBox blueprintGalleryCheck;
-    private JCheckBox civitaiHubCheck;
 
     private JPanel blueprintPanel;
     private JLabel blueprintStatusLabel;
@@ -179,7 +178,7 @@ public class MainSettingsPanel {
         hideComfyuiCheck.setToolTipText("When enabled, ComfyUI Companion replaces the web UI and suppresses opening the browser window when ComfyUI starts.");
         hideComfyuiCheck.addActionListener(e -> configService.setHideComfyUI(hideComfyuiCheck.isSelected()));
 
-        promptLabCheck = new JCheckBox("Enable Prompt Lab (Experimental)");
+        promptLabCheck = new JCheckBox("Enable Image Lab");
         promptLabCheck.setFont(checkFont);
         promptLabCheck.setAlignmentX(Component.LEFT_ALIGNMENT);
         promptLabCheck.addActionListener(e -> {
@@ -199,21 +198,11 @@ public class MainSettingsPanel {
             }
         });
 
-        blueprintGalleryCheck = new JCheckBox("Enable Blueprint Gallery (Experimental)");
+        blueprintGalleryCheck = new JCheckBox("Enable Workflow Hub (Blueprints & Vault)");
         blueprintGalleryCheck.setFont(checkFont);
         blueprintGalleryCheck.setAlignmentX(Component.LEFT_ALIGNMENT);
         blueprintGalleryCheck.addActionListener(e -> {
             configService.setBlueprintGalleryEnabled(blueprintGalleryCheck.isSelected());
-            if (onTabVisibilityChanged != null) {
-                onTabVisibilityChanged.run();
-            }
-        });
-
-        civitaiHubCheck = new JCheckBox("Enable Civitai Model Hub");
-        civitaiHubCheck.setFont(checkFont);
-        civitaiHubCheck.setAlignmentX(Component.LEFT_ALIGNMENT);
-        civitaiHubCheck.addActionListener(e -> {
-            configService.setCivitaiGalleryEnabled(civitaiHubCheck.isSelected());
             if (onTabVisibilityChanged != null) {
                 onTabVisibilityChanged.run();
             }
@@ -236,8 +225,6 @@ public class MainSettingsPanel {
         checksPanel.add(videoArchitectCheck);
         checksPanel.add(Box.createVerticalStrut(8));
         checksPanel.add(blueprintGalleryCheck);
-        checksPanel.add(Box.createVerticalStrut(8));
-        checksPanel.add(civitaiHubCheck);
 
         left.add(pathsHeader);
         left.add(Box.createVerticalStrut(20));
@@ -278,16 +265,17 @@ public class MainSettingsPanel {
         resetSettingsBtn.setMaximumSize(new Dimension(360, 40));
         resetSettingsBtn.addActionListener(e -> { if (onResetSettings != null) onResetSettings.run(); });
 
-        JButton parseBlueprintsBtn = new JButton("Parse blueprints", SvgIconFactory.get(AppIcon.BLUEPRINT_GALLERY));
+        JButton parseBlueprintsBtn = new JButton("Re-index Blueprint Models...", SvgIconFactory.get(AppIcon.BLUEPRINT_GALLERY));
         parseBlueprintsBtn.setFont(btnFont);
         parseBlueprintsBtn.setAlignmentX(Component.LEFT_ALIGNMENT);
         parseBlueprintsBtn.setMaximumSize(new Dimension(360, 40));
+        parseBlueprintsBtn.setToolTipText("Scan and index local blueprints and model defaults in the background.");
         parseBlueprintsBtn.addActionListener(e -> {
             if (modelArchitectureService != null) {
                 modelArchitectureService.runBlueprintAnalysis();
                 JOptionPane.showMessageDialog(parentFrame,
-                        "Blueprint parsing started in the background. You can track progress below on this Settings tab.",
-                        "Blueprint Parsing",
+                        "Blueprint indexing started in the background. You can track progress below on this Settings tab.",
+                        "Blueprint Indexing",
                         JOptionPane.INFORMATION_MESSAGE);
             }
         });
@@ -403,7 +391,6 @@ public class MainSettingsPanel {
         if (promptLabCheck != null) promptLabCheck.setSelected(configService.isPromptLabEnabled());
         if (videoArchitectCheck != null) videoArchitectCheck.setSelected(configService.isVideoArchitectEnabled());
         if (blueprintGalleryCheck != null) blueprintGalleryCheck.setSelected(configService.isBlueprintGalleryEnabled());
-        if (civitaiHubCheck != null) civitaiHubCheck.setSelected(configService.isCivitaiGalleryEnabled());
     }
 
     public JCheckBox getBackgroundCheck() { return backgroundCheck; }
@@ -416,7 +403,6 @@ public class MainSettingsPanel {
     public JCheckBox getPromptLabCheck() { return promptLabCheck; }
     public JCheckBox getVideoArchitectCheck() { return videoArchitectCheck; }
     public JCheckBox getBlueprintGalleryCheck() { return blueprintGalleryCheck; }
-    public JCheckBox getCivitaiHubCheck() { return civitaiHubCheck; }
     public JPanel getBlueprintPanel() { return blueprintPanel; }
     public JLabel getBlueprintStatusLabel() { return blueprintStatusLabel; }
     public JProgressBar getBlueprintBar() { return blueprintBar; }

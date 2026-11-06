@@ -38,6 +38,7 @@ public class VideoArchitectExecutionHandler {
     private final VideoScriptParser scriptParser;
     private final IVideoPromptOptimizer promptOptimizer;
     private final VideoBatchRenderCoordinator renderCoordinator;
+    private final de.tki.comfyuicompanion.service.ILocalAudioService audioService;
 
     public VideoArchitectExecutionHandler(ConfigService configService,
                                          ComfyPipelineService comfyPipelineService,
@@ -61,6 +62,21 @@ public class VideoArchitectExecutionHandler {
                                          VideoScriptParser scriptParser,
                                          IVideoPromptOptimizer promptOptimizer,
                                          VideoBatchRenderCoordinator renderCoordinator) {
+        this(configService, comfyPipelineService, video4jEditorService, ttsService, gemma4Service,
+                lifecycleService, scriptParser, promptOptimizer, renderCoordinator,
+                new de.tki.comfyuicompanion.service.impl.LocalAudioService(configService, lifecycleService, null));
+    }
+
+    public VideoArchitectExecutionHandler(ConfigService configService,
+                                          ComfyPipelineService comfyPipelineService,
+                                          Video4jEditorService video4jEditorService,
+                                          LocalTTSService ttsService,
+                                          Gemma4Service gemma4Service,
+                                          IComfyLifecycleService lifecycleService,
+                                          VideoScriptParser scriptParser,
+                                          IVideoPromptOptimizer promptOptimizer,
+                                          VideoBatchRenderCoordinator renderCoordinator,
+                                          de.tki.comfyuicompanion.service.ILocalAudioService audioService) {
         this.configService = configService;
         this.comfyPipelineService = comfyPipelineService;
         this.video4jEditorService = video4jEditorService;
@@ -70,6 +86,8 @@ public class VideoArchitectExecutionHandler {
         this.scriptParser = scriptParser;
         this.promptOptimizer = promptOptimizer;
         this.renderCoordinator = renderCoordinator;
+        this.audioService = audioService != null ? audioService
+                : new de.tki.comfyuicompanion.service.impl.LocalAudioService(configService, lifecycleService, null);
     }
 
     public void deconstructScript(Component parent, String idea, int width, int height, double cfg,
@@ -350,6 +368,18 @@ public class VideoArchitectExecutionHandler {
                 }
                 consoleLogger.accept("Narration: " + narrationOk + "/" + generatedScenes.size() + " scenes have audio ready.");
 
+                // PHASE 1.6: Sound Effects & Ambient Audio Agent (SFX)
+                File sfxDir = new File("output", "sfx");
+                if (!sfxDir.exists()) sfxDir.mkdirs();
+                int sfxOk = 0;
+                for (int si = 0; si < generatedScenes.size(); si++) {
+                    Scene ss = generatedScenes.get(si);
+                    final int currSi = si + 1;
+                    consoleLogger.accept("Audio Agent (Scene " + currSi + "/" + generatedScenes.size() + "): Synthesizing atmospheric SFX for " + ss.getSceneId() + "...");
+                    if (generateSfxAudio(ss, sfxDir)) sfxOk++;
+                }
+                consoleLogger.accept("Sound Effects: " + sfxOk + "/" + generatedScenes.size() + " atmospheric tracks ready.");
+
                 // PHASE 2: Generation Agent (ComfyUI via Two-Phase VRAM-Optimized Pipeline)
                 consoleLogger.accept("Generation Agent: Rendering scenes via Two-Phase pipeline (Flux Keyframe -> Wan 2.1 I2V)...");
                 renderCoordinator.executeVideoGenerationSync(parent, generatedScenes, speakerPath, width, height,
@@ -412,6 +442,42 @@ public class VideoArchitectExecutionHandler {
             }
         } catch (Exception ttsEx) {
             logger.error("TTS generation failed for scene {}: {}", scene.getSceneId(), ttsEx.getMessage());
+        }
+        return false;
+    }
+
+    public boolean generateSfxAudio(Scene scene, File outputDir) {
+        if (audioService == null) {
+            return false;
+        }
+        String prompt = scene.getSfxPrompt();
+        if (prompt == null || prompt.isBlank()) {
+            if (promptOptimizer != null) {
+                prompt = promptOptimizer.inferSfxPrompt(scene.getPrompt(), scene.getNarrationText());
+                scene.setSfxPrompt(prompt);
+            }
+        }
+        if (prompt == null || prompt.isBlank()) {
+            prompt = "Cinematic atmospheric soundscape";
+        }
+        if (!outputDir.exists()) outputDir.mkdirs();
+        File sfxFile = new File(outputDir, "sfx_" + scene.getSceneId() + ".wav");
+        if (sfxFile.exists() && sfxFile.length() > 512) {
+            scene.setSfxAudioPath(sfxFile.getAbsolutePath());
+            return true;
+        }
+        try {
+            int duration = 5;
+            if (scene.getEndFrame() > scene.getStartFrame()) {
+                duration = Math.max(1, (scene.getEndFrame() - scene.getStartFrame()) / 24);
+            }
+            boolean ok = audioService.generateSoundEffect(prompt, duration, sfxFile);
+            if (ok && sfxFile.exists() && sfxFile.length() > 512) {
+                scene.setSfxAudioPath(sfxFile.getAbsolutePath());
+                return true;
+            }
+        } catch (Exception ex) {
+            logger.error("SFX generation failed for scene {}: {}", scene.getSceneId(), ex.getMessage());
         }
         return false;
     }

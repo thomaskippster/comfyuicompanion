@@ -266,9 +266,28 @@ public class FfmpegProcessRunner {
      */
     public File resolveAudioForScene(Scene scene, ProcessTracker tracker) throws Exception {
         String aPath = scene.getAudioPath();
-        if (aPath != null && !aPath.trim().isEmpty() && new File(aPath).exists()) {
-            return new File(aPath);
+        String sfxPath = scene.getSfxAudioPath();
+
+        File voiceFile = (aPath != null && !aPath.trim().isEmpty() && new File(aPath).exists()) ? new File(aPath) : null;
+        File sfxFile = (sfxPath != null && !sfxPath.trim().isEmpty() && new File(sfxPath).exists()) ? new File(sfxPath) : null;
+
+        if (voiceFile != null && sfxFile != null) {
+            File mixed = new File(System.getProperty("java.io.tmpdir"), "mixed_" + scene.getSceneId() + ".wav");
+            if (mixed.exists()) mixed.delete();
+            logger.info("🎵 [FfmpegProcessRunner] Blending narration and SFX tracks for Scene {}", scene.getSceneId());
+            List<String> mixCmd = FfmpegCommandBuilder.mixAudioTracks(
+                    configService.getFfmpegPath(), voiceFile, sfxFile,
+                    scene.getVoiceVolume(), scene.getSfxVolume(), mixed);
+            int exit = runLogged(mixCmd, tracker, "   [FFmpeg Mix] {}");
+            if (exit == 0 && mixed.exists() && mixed.length() > 512) {
+                return mixed;
+            }
+            return voiceFile;
         }
+
+        if (voiceFile != null) return voiceFile;
+        if (sfxFile != null) return sfxFile;
+
         File dummy = new File(System.getProperty("java.io.tmpdir"), "dummy_" + scene.getSceneId() + ".wav");
         generateDummyWav(scene, dummy, tracker);
         return dummy;

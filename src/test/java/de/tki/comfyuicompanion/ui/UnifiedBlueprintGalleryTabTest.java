@@ -154,8 +154,8 @@ class UnifiedBlueprintGalleryTabTest {
 
         assertTrue(titles.contains("Dashboard"), "Dashboard should be present");
         assertTrue(titles.contains("Download Manager"), "Download Manager should be present");
-        assertTrue(titles.contains("Gallery"), "Gallery should be present");
-        assertTrue(titles.contains("Blueprint Gallery"), "Blueprint Gallery should be present");
+        assertTrue(titles.contains("Output Gallery"), "Output Gallery should be present");
+        assertTrue(titles.contains("Workflow Hub"), "Workflow Hub should be present");
         assertFalse(titles.contains("Model Hub"), "Model Hub should NOT be present as a separate main tab");
     }
 

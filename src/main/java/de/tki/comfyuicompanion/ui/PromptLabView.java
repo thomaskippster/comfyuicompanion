@@ -365,7 +365,7 @@ public class PromptLabView extends JPanel {
         promptLabConsole = new JTextArea(4, 20);
         promptLabConsole.setFont(new Font("Monospaced", Font.PLAIN, 12));
         promptLabConsole.setEditable(false);
-        promptLabConsole.setText("System: Prompt Lab ready.\n");
+        promptLabConsole.setText("System: Image Lab ready.\n");
         JScrollPane consoleScroll = new JScrollPane(promptLabConsole);
         consoleScroll.setOpaque(false);
         consoleScroll.getViewport().setOpaque(false);

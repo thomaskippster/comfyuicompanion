@@ -36,7 +36,7 @@ public class PromptHistoryDialog extends JDialog {
      * @param onRecall callback invoked when an entry is selected for restoration
      */
     public PromptHistoryDialog(Window owner, IPromptHistoryService historyService, Consumer<PromptHistoryEntry> onRecall) {
-        super(owner, "Prompt History & Quick-Recall", ModalityType.APPLICATION_MODAL);
+        super(owner, "Image Lab - Prompt History & Recall", ModalityType.APPLICATION_MODAL);
         this.historyService = historyService;
         this.onRecall = onRecall;
 

@@ -124,6 +124,37 @@ public final class FfmpegCommandBuilder {
     }
 
     /**
+     * Builds the command that mixes a primary narration voice track and a background SFX track
+     * using volume normalization and sidechain-friendly audio blending.
+     *
+     * @param ffmpegPath  path to the FFmpeg binary
+     * @param voiceAudio  narration/voiceover audio file
+     * @param sfxAudio    ambient/SFX audio file
+     * @param voiceVol    relative volume multiplier for voice track (e.g. 1.0)
+     * @param sfxVol      relative volume multiplier for SFX track (e.g. 0.5)
+     * @param destination destination output WAV file
+     * @return the command argument list
+     */
+    public static List<String> mixAudioTracks(String ffmpegPath, File voiceAudio, File sfxAudio,
+                                              double voiceVol, double sfxVol, File destination) {
+        double vVol = voiceVol > 0 ? voiceVol : 1.0;
+        double sVol = sfxVol > 0 ? sfxVol : 0.5;
+        String filter = String.format(Locale.US,
+                "[0:a]volume=%.2f[voice];[1:a]volume=%.2f[sfx];[voice][sfx]amix=inputs=2:duration=longest:dropout_transition=2",
+                vVol, sVol);
+        return List.of(
+                ffmpegPath, "-y",
+                "-i", voiceAudio.getAbsolutePath(),
+                "-i", sfxAudio.getAbsolutePath(),
+                "-filter_complex", filter,
+                "-c:a", "pcm_s16le",
+                "-ar", "44100",
+                "-ac", "2",
+                destination.getAbsolutePath()
+        );
+    }
+
+    /**
      * Builds the command merging a trimmed video and an audio track into a standardized segment.
      *
      * @param ffmpegPath    path to the FFmpeg binary

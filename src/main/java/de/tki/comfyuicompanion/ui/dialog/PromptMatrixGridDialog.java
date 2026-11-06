@@ -151,7 +151,7 @@ public class PromptMatrixGridDialog extends JDialog {
                                   int defaultSteps,
                                   BiConsumer<List<MatrixCell>, List<CellView>> onRunCells,
                                   Consumer<Image> onSelectPreviewImage) {
-        super(owner instanceof Frame f ? f : null, "Batch / Prompt Matrix XY-Grid", false);
+        super(owner instanceof Frame f ? f : null, "Image Lab - Batch Matrix Generation", false);
         this.onSelectPreviewImage = onSelectPreviewImage;
         setSize(980, 700);
         setLocationRelativeTo(owner);

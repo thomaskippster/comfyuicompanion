@@ -151,19 +151,13 @@ public final class LegalNoticeDialog {
                 ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
         scrollPane.setBorder(null);
 
-        JPanel btnPanel = new JPanel(new BorderLayout(10, 0));
+        JPanel btnPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 10));
         btnPanel.setBackground(awtBg);
-        btnPanel.setBorder(BorderFactory.createEmptyBorder(8, 16, 12, 16));
-
-        JLabel disclaimerLbl = new JLabel("Built for ComfyUI · not affiliated with ComfyUI");
-        disclaimerLbl.setFont(new Font("SansSerif", Font.PLAIN, 11));
-        disclaimerLbl.setForeground(isDark ? new Color(112, 138, 144) : new Color(120, 130, 140));
-        btnPanel.add(disclaimerLbl, BorderLayout.WEST);
 
         JButton closeBtn = new JButton("Understood / Close");
         closeBtn.putClientProperty("JButton.buttonType", "accent");
         closeBtn.addActionListener(e -> dialog.dispose());
-        btnPanel.add(closeBtn, BorderLayout.EAST);
+        btnPanel.add(closeBtn);
 
         dialog.setLayout(new BorderLayout());
         dialog.add(scrollPane, BorderLayout.CENTER);

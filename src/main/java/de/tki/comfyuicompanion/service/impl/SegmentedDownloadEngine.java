@@ -58,6 +58,7 @@ public class SegmentedDownloadEngine {
     }
 
     /** Converts a raw URL string into a valid URI, encoding unescaped spaces and special characters. */
+    @SuppressWarnings("deprecation")
     public static URI toSafeUri(String url) {
         if (url == null) throw new IllegalArgumentException("URL cannot be null");
         String trimmed = url.trim();

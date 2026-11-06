@@ -31,15 +31,16 @@ class WorkflowDialogDimensionHelperTest {
     void testCalculateOptimalDialogSize() {
         Dimension smallSize = WorkflowDialogDimensionHelper.calculateOptimalDialogSize(null, false, 5, 2, false);
         assertNotNull(smallSize);
-        assertTrue(smallSize.width >= 1260);
-        assertTrue(smallSize.height >= 520);
+        Rectangle screen = WorkflowDialogDimensionHelper.getUsableScreenBounds(null);
+        int expectedWidth = Math.min((int) (screen.width * 0.95), Math.max(1260, 1320));
+        assertEquals(expectedWidth, smallSize.width);
+        assertTrue(smallSize.height >= Math.min((int) (screen.height * 0.90), 520));
 
         Dimension largeSize = WorkflowDialogDimensionHelper.calculateOptimalDialogSize(null, true, 10, 18, true);
         assertNotNull(largeSize);
-        assertTrue(largeSize.width >= 1260);
+        assertEquals(expectedWidth, largeSize.width);
         assertTrue(largeSize.height >= smallSize.height);
 
-        Rectangle screen = WorkflowDialogDimensionHelper.getUsableScreenBounds(null);
         assertTrue(largeSize.height <= screen.height);
         assertTrue(largeSize.width <= screen.width);
     }
@@ -55,10 +56,11 @@ class WorkflowDialogDimensionHelperTest {
         try {
             WorkflowDialogDimensionHelper.applyOptimalSizeAndLocation(dialog, null, true, 8, 18, false);
 
-            assertTrue(dialog.getWidth() >= 1260);
-            assertTrue(dialog.getHeight() >= 800);
-
             Rectangle screen = WorkflowDialogDimensionHelper.getUsableScreenBounds(null);
+            int expectedWidth = Math.min((int) (screen.width * 0.95), Math.max(1260, 1320));
+            assertEquals(expectedWidth, dialog.getWidth());
+            assertTrue(dialog.getHeight() >= Math.min((int) (screen.height * 0.90), 800));
+
             assertTrue(dialog.getX() >= screen.x);
             assertTrue(dialog.getY() >= screen.y);
             assertTrue(dialog.getX() + dialog.getWidth() <= screen.x + screen.width);

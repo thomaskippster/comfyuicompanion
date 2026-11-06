@@ -367,7 +367,10 @@ public class BlueprintDataCoordinator {
                 File tmp = new File(System.getProperty("java.io.tmpdir"), "blueprint_video_" + nonce + ext);
                 tmp.deleteOnExit();
 
-                try (java.io.InputStream is = new java.net.URL(url).openStream()) {
+                java.net.URLConnection conn = java.net.URI.create(url).toURL().openConnection();
+                conn.setConnectTimeout(10000);
+                conn.setReadTimeout(30000);
+                try (java.io.InputStream is = conn.getInputStream()) {
                     Files.copy(is, tmp.toPath(), StandardCopyOption.REPLACE_EXISTING);
                 }
 

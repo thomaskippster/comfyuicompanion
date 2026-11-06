@@ -23,13 +23,17 @@ class WorkflowTransformationServiceTest {
 
     @Test
     void shouldPopulateComfySwitchAndModelAttentionBackendInMiniMaxSubgraphWithoutHardcoding() throws Exception {
+        String rawJson;
         Path workflowPath = Path.of("user_workflows", "minimax_h3_text_to_image.json");
-        if (!Files.exists(workflowPath)) {
-            workflowPath = Path.of("C:/Dev/workspace/comfyuicompanion/user_workflows/minimax_h3_text_to_image.json");
+        if (Files.exists(workflowPath)) {
+            rawJson = Files.readString(workflowPath, StandardCharsets.UTF_8);
+        } else {
+            try (var is = getClass().getResourceAsStream("/fixtures/minimax_h3_text_to_image.json")) {
+                assertNotNull(is, "MiniMax H3 text-to-image workflow fixture should exist");
+                rawJson = new String(is.readAllBytes(), StandardCharsets.UTF_8);
+            }
         }
-        assertTrue(Files.exists(workflowPath), "MiniMax H3 text-to-image workflow should exist for test");
 
-        String rawJson = Files.readString(workflowPath, StandardCharsets.UTF_8);
         JSONObject uiWorkflow = new JSONObject(rawJson);
 
         WorkflowTransformationService service = new WorkflowTransformationService(null);

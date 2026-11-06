@@ -95,12 +95,6 @@ const initializeExtension = async () => {
      * app.graphToPrompt(), and POSTs the result to the Java callback endpoint.
      * The previous canvas is restored afterwards so the user doesn't lose their work.
      */
-    /**
-     * Triggered by /cmfc/convert-workflow (Python).
-     * Loads the GUI workflow, converts it to API format via ComfyUI's own
-     * app.graphToPrompt(), and POSTs the result to the Java callback endpoint.
-     * The previous canvas is restored afterwards so the user doesn't lose their work.
-     */
     api.addEventListener("cmfc-convert-workflow", async (event) => {
         const data = event.detail || {};
         const callbackUrl = data.callbackUrl || "http://127.0.0.1:12345/api/workflow-ready";

@@ -17,6 +17,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
 import java.util.function.Consumer;
+import java.util.stream.Stream;
 
 /**
  * Service managing Git operations including repository cloning, updating (pulling),
@@ -216,19 +217,20 @@ public class GitRepositoryManager {
         if (!Files.exists(path)) {
             return;
         }
-        Files.walk(path)
-                .sorted(Comparator.reverseOrder())
-                .forEach(p -> {
-                    try {
-                        File file = p.toFile();
-                        if (!file.canWrite()) {
-                            file.setWritable(true);
+        try (Stream<Path> walk = Files.walk(path)) {
+            walk.sorted(Comparator.reverseOrder())
+                    .forEach(p -> {
+                        try {
+                            File file = p.toFile();
+                            if (!file.canWrite()) {
+                                file.setWritable(true);
+                            }
+                            Files.delete(p);
+                        } catch (IOException e) {
+                            logger.warn("Could not delete file during cleanup: {}", p, e);
                         }
-                        Files.delete(p);
-                    } catch (IOException e) {
-                        logger.warn("Could not delete file during cleanup: {}", p, e);
-                    }
-                });
+                    });
+        }
     }
 
     private Process startProcess(ProcessBuilder pb) throws IOException {

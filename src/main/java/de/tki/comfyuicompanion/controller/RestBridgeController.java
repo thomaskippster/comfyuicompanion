@@ -171,7 +171,9 @@ public class RestBridgeController {
             return true;
         }
         String expected = "Bearer " + token.trim();
-        return authHeader != null && authHeader.trim().equals(expected);
+        return authHeader != null && java.security.MessageDigest.isEqual(
+                authHeader.trim().getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                expected.getBytes(java.nio.charset.StandardCharsets.UTF_8));
     }
 
     private boolean isValidProxyUrl(String urlStr) {

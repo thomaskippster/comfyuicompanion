@@ -147,7 +147,7 @@ public class HardwareProfileService implements IHardwareProfileService {
         try {
             java.lang.management.OperatingSystemMXBean osBean = ManagementFactory.getOperatingSystemMXBean();
             if (osBean instanceof com.sun.management.OperatingSystemMXBean sunBean) {
-                sysRam = sunBean.getTotalPhysicalMemorySize();
+                sysRam = sunBean.getTotalMemorySize();
             }
         } catch (Exception e) {
             logger.trace("Failed to query physical RAM: {}", e.getMessage());

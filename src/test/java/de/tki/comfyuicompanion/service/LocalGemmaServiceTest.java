@@ -30,7 +30,8 @@ public class LocalGemmaServiceTest {
 
     @Test
     public void testModelFileLocation() {
-        when(configService.getModelsPath()).thenReturn("C:\\test\\models");
+        String testModels = new File(System.getProperty("java.io.tmpdir"), "models").getAbsolutePath();
+        when(configService.getModelsPath()).thenReturn(testModels);
         File modelFile = localGemmaService.getModelFile();
         assertNotNull(modelFile);
         assertTrue(modelFile.getAbsolutePath().contains("llm"));
@@ -39,11 +40,12 @@ public class LocalGemmaServiceTest {
 
     @Test
     public void testModelFileFallbackLocation() {
+        String testAppData = new File(System.getProperty("java.io.tmpdir"), "appdata").getAbsolutePath();
         when(configService.getModelsPath()).thenReturn("");
-        when(configService.getAppDataPath()).thenReturn("C:\\appdata");
+        when(configService.getAppDataPath()).thenReturn(testAppData);
         File modelFile = localGemmaService.getModelFile();
         assertNotNull(modelFile);
-        assertTrue(modelFile.getAbsolutePath().startsWith("C:\\appdata"));
+        assertTrue(modelFile.getAbsolutePath().startsWith(testAppData));
     }
 
     @Test

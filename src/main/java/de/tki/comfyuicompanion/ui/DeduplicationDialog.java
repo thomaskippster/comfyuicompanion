@@ -17,6 +17,7 @@ import java.nio.file.Path;
 import java.util.*;
 import java.util.List;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * Dialog for deduplicating models.
@@ -101,13 +102,16 @@ public class DeduplicationDialog extends JDialog {
             boolean wasFastHashEnabled = configService.isFastHashEnabled();
             try {
                 // 1. Walk files
-                List<Path> files = Files.walk(root.toPath())
-                        .filter(Files::isRegularFile)
-                        .filter(p -> {
-                            String name = p.getFileName().toString().toLowerCase();
-                            return name.endsWith(".safetensors") || name.endsWith(".ckpt") || name.endsWith(".sft") || name.endsWith(".pth") || name.endsWith(".pt") || name.endsWith(".bin");
-                        })
-                        .collect(Collectors.toList());
+                List<Path> files;
+                try (Stream<Path> stream = Files.walk(root.toPath())) {
+                    files = stream
+                            .filter(Files::isRegularFile)
+                            .filter(p -> {
+                                String name = p.getFileName().toString().toLowerCase();
+                                return name.endsWith(".safetensors") || name.endsWith(".ckpt") || name.endsWith(".sft") || name.endsWith(".pth") || name.endsWith(".pt") || name.endsWith(".bin");
+                            })
+                            .collect(Collectors.toList());
+                }
 
                 updateLog("Found " + files.size() + " model files. Grouping by size...");
 

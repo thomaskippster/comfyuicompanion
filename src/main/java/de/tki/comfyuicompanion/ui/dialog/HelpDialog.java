@@ -95,7 +95,7 @@ final class HelpDialog {
         sb.append("• <b>Pinokio Official:</b> <a href='https://pinokio.co' style='color: ").append(accentColor).append(";'>https://pinokio.co</a>");
         sb.append("</p></div>");
 
-        sb.append("<p style='margin-top: 30px; color: #888; font-style: italic; text-align: center;'>Version 2.0.2 - Open Source Software developed by TKI<br><span style='font-size: 11px; font-style: normal; display: inline-block; margin-top: 6px;'>Built for ComfyUI · not affiliated with ComfyUI</span></p>");
+        sb.append("<p style='margin-top: 30px; color: #888; font-style: italic; text-align: center;'>Version 2.0.2 - Open Source Software developed by TKI</p>");
         sb.append("</body></html>");
 
         editorPane.setText(sb.toString());

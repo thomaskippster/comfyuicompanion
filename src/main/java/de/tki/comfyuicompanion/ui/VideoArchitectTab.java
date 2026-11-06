@@ -58,7 +58,7 @@ public class VideoArchitectTab extends JPanel {
     public VideoArchitectTab(ConfigService configService, ComfyPipelineService comfyPipelineService,
                              Video4jEditorService video4jEditorService, Gemma4Service gemma4Service,
                              IComfyLifecycleService lifecycleService) {
-        this(configService, comfyPipelineService, video4jEditorService, gemma4Service, lifecycleService, null, null, null);
+        this(configService, comfyPipelineService, video4jEditorService, gemma4Service, lifecycleService, null, null, null, null, null);
     }
 
     /**
@@ -67,7 +67,7 @@ public class VideoArchitectTab extends JPanel {
     public VideoArchitectTab(ConfigService configService, ComfyPipelineService comfyPipelineService,
                              Video4jEditorService video4jEditorService, Gemma4Service gemma4Service,
                              IComfyLifecycleService lifecycleService, LocalTTSService ttsService) {
-        this(configService, comfyPipelineService, video4jEditorService, gemma4Service, lifecycleService, ttsService, null, null);
+        this(configService, comfyPipelineService, video4jEditorService, gemma4Service, lifecycleService, ttsService, null, null, null, null);
     }
 
     /**
@@ -77,7 +77,7 @@ public class VideoArchitectTab extends JPanel {
                              Video4jEditorService video4jEditorService, Gemma4Service gemma4Service,
                              IComfyLifecycleService lifecycleService, LocalTTSService ttsService,
                              IHardwareProfileService hardwareProfileService) {
-        this(configService, comfyPipelineService, video4jEditorService, gemma4Service, lifecycleService, ttsService, hardwareProfileService, null, null);
+        this(configService, comfyPipelineService, video4jEditorService, gemma4Service, lifecycleService, ttsService, hardwareProfileService, null, null, null);
     }
 
     public VideoArchitectTab(ConfigService configService, ComfyPipelineService comfyPipelineService,
@@ -85,7 +85,7 @@ public class VideoArchitectTab extends JPanel {
                              IComfyLifecycleService lifecycleService, LocalTTSService ttsService,
                              IHardwareProfileService hardwareProfileService,
                              IVideoPromptOptimizer promptOptimizer) {
-        this(configService, comfyPipelineService, video4jEditorService, gemma4Service, lifecycleService, ttsService, hardwareProfileService, promptOptimizer, null);
+        this(configService, comfyPipelineService, video4jEditorService, gemma4Service, lifecycleService, ttsService, hardwareProfileService, promptOptimizer, null, null);
     }
 
     /**
@@ -107,7 +107,8 @@ public class VideoArchitectTab extends JPanel {
                              @Autowired(required = false) LocalTTSService ttsService,
                              @Autowired(required = false) IHardwareProfileService hardwareProfileService,
                              @Autowired(required = false) IVideoPromptOptimizer promptOptimizer,
-                             @Autowired(required = false) de.tki.comfyuicompanion.service.ILocalAudioService audioService) {
+                             @Autowired(required = false) de.tki.comfyuicompanion.service.ILocalAudioService audioService,
+                             @Autowired(required = false) de.tki.comfyuicompanion.service.pipeline.strategy.VideoModelStrategyRegistry strategyRegistry) {
         this.configService = configService;
         this.promptOptimizer = promptOptimizer != null ? promptOptimizer : new VideoPromptOptimizer();
         this.presetCoordinator = new VideoArchitectPresetCoordinator(hardwareProfileService);
@@ -120,20 +121,20 @@ public class VideoArchitectTab extends JPanel {
             configService.setSpeakerImagePath("");
         }
 
-        initUI(video4jEditorService);
+        initUI(video4jEditorService, strategyRegistry);
         applyHardwarePreset(false);
         updateTheme(ThemeManager.isDarkMode());
         ThemeManager.registerObserver(() -> updateTheme(ThemeManager.isDarkMode()));
     }
 
-    private void initUI(Video4jEditorService video4jEditorService) {
+    private void initUI(Video4jEditorService video4jEditorService, de.tki.comfyuicompanion.service.pipeline.strategy.VideoModelStrategyRegistry strategyRegistry) {
         setOpaque(false);
         setLayout(new BorderLayout(15, 15));
         setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
 
         configPanel = new VideoArchitectConfigPanel(configService, presetCoordinator, msg -> {
             if (workspacePanel != null) workspacePanel.logToConsole(msg);
-        });
+        }, strategyRegistry);
         workspacePanel = new VideoArchitectWorkspacePanel(timelineCoordinator, video4jEditorService, promptOptimizer);
         workspacePanel.setSpinnerSuppliers(configPanel::getVideoWidthSpinner, configPanel::getVideoHeightSpinner);
 

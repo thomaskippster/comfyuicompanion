@@ -63,6 +63,7 @@ public class Scene {
     private String negativePrompt;
     private String cameraMotion;
     private Long seed;
+    private String model;
 
     private RenderSettings renderSettings = RenderSettings.DEFAULT;
     private TransitionSettings transitionSettings = TransitionSettings.DEFAULT;
@@ -273,6 +274,14 @@ public class Scene {
      */
     public void setSeed(Long seed) {
         this.seed = seed;
+    }
+
+    public String getModel() {
+        return model;
+    }
+
+    public void setModel(String model) {
+        this.model = model;
     }
 
     // --- Value Object Accessors ---

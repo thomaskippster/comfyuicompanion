@@ -47,6 +47,7 @@ public class VideoArchitectConfigPanel extends CardPanel {
     private JButton btnRefreshModels;
     private JLabel videoPresetLabel;
     private JTextField promptSubjectField;
+    private JTextField actorAnchorField;
     private JButton btnSuggestSubject;
     private JTextField speakerImageField;
     private JButton browseSpeaker;
@@ -143,14 +144,55 @@ public class VideoArchitectConfigPanel extends CardPanel {
         if (pc != null) videoPresetLabel.setForeground(pc);
         videoPresetLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
         add(videoPresetLabel);
-        add(Box.createVerticalStrut(16));
+        add(Box.createVerticalStrut(10));
+
+        // Quick Preset Action Bar
+        JPanel quickPresetRow = new JPanel(new GridLayout(1, 2, 6, 0));
+        quickPresetRow.setOpaque(false);
+        quickPresetRow.setAlignmentX(Component.LEFT_ALIGNMENT);
+        quickPresetRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 32));
+
+        JButton btnQuickTikTok = new JButton("📱 TikTok 9:16", SvgIconFactory.get(AppIcon.VIDEO_ARCHITECT, 12));
+        btnQuickTikTok.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        btnQuickTikTok.setToolTipText("Auto-configures 720x1280 (9:16 vertical), 4s duration, CFG 3.5, and Two-Phase Flux->Wan 2.1 rendering.");
+        btnQuickTikTok.addActionListener(e -> {
+            samplingParamsPanel.applyTikTok916Preset();
+            consoleLogger.accept("📱 Configured 1-Click TikTok / Reels 9:16 preset (720x1280 | 4s | 2-Phase Flux->Wan 2.1 active).");
+        });
+
+        JButton btnQuickCinema = new JButton("🎬 Cinema 16:9", SvgIconFactory.get(AppIcon.GALLERY, 12));
+        btnQuickCinema.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        btnQuickCinema.setToolTipText("Auto-configures 1280x720 (16:9 widescreen), 5s duration, CFG 3.5, and Two-Phase Flux->Wan 2.1 rendering.");
+        btnQuickCinema.addActionListener(e -> {
+            samplingParamsPanel.applyWidescreenPreset();
+            consoleLogger.accept("🎬 Configured 1-Click Cinematic 16:9 preset (1280x720 | 5s | 2-Phase Flux->Wan 2.1 active).");
+        });
+
+        quickPresetRow.add(btnQuickTikTok);
+        quickPresetRow.add(btnQuickCinema);
+        add(quickPresetRow);
+        add(Box.createVerticalStrut(14));
 
         // 2. Script / Concept
-        JLabel lblPromptGroup = new JLabel("Script / Concept");
+        JLabel lblPromptGroup = new JLabel("Script & Character Directing");
         lblPromptGroup.putClientProperty("FlatLaf.styleClass", "h4");
         lblPromptGroup.setAlignmentX(Component.LEFT_ALIGNMENT);
         add(lblPromptGroup);
         add(Box.createVerticalStrut(6));
+
+        JLabel lblActor = new JLabel("Consistent Protagonist / Actor Anchor (Optional)");
+        lblActor.setFont(subLabelFont);
+        lblActor.setAlignmentX(Component.LEFT_ALIGNMENT);
+        add(lblActor);
+        add(Box.createVerticalStrut(4));
+
+        actorAnchorField = new JTextField("");
+        actorAnchorField.setFont(new Font("SansSerif", Font.PLAIN, 12));
+        actorAnchorField.setToolTipText("Ensures character consistency across all scenes (e.g. 'young female astronaut in sleek white spacesuit with gold visor').");
+        actorAnchorField.setMaximumSize(new Dimension(Integer.MAX_VALUE, 34));
+        actorAnchorField.setAlignmentX(Component.LEFT_ALIGNMENT);
+        add(actorAnchorField);
+        add(Box.createVerticalStrut(8));
 
         JLabel lblSubject = new JLabel("Master Story Idea / Prompt");
         lblSubject.setFont(subLabelFont);
@@ -361,6 +403,8 @@ public class VideoArchitectConfigPanel extends CardPanel {
     public JButton getBtnAutoPilot() { return btnAutoPilot; }
 
     public String getPromptSubject() { return promptSubjectField != null ? promptSubjectField.getText().trim() : ""; }
+    public String getActorAnchor() { return actorAnchorField != null ? actorAnchorField.getText().trim() : ""; }
+    public JTextField getActorAnchorField() { return actorAnchorField; }
     public String getSelectedModel() { return videoModelCombo != null ? (String) videoModelCombo.getSelectedItem() : ""; }
     public String getSpeakerImagePath() { return speakerImageField != null ? speakerImageField.getText().trim() : ""; }
 

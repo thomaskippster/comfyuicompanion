@@ -83,6 +83,31 @@ public class SceneEditDialog extends JDialog {
         formPanel.add(promptContainer, gbc);
 
         gbc.gridx = 0; gbc.gridy = 2;
+        formPanel.add(new JLabel("Camera Motion:"), gbc);
+        gbc.gridx = 1;
+        javax.swing.JComboBox<String> cmbCameraMotion = new javax.swing.JComboBox<>(new String[]{
+                "Auto / None",
+                "Slow Push-In (Forward Dolly)",
+                "Tracking Shot (Pan Left to Right)",
+                "Tracking Shot (Pan Right to Left)",
+                "Low-Angle Orbit (Dramatic 360)",
+                "Drone Flyover (Overhead Wide Sweep)",
+                "Crane Up (Ground to Sky Reveal)",
+                "Steadicam Glide (Follow Motion)",
+                "Static Hero Focus (Subtle Parallax)"
+        });
+        if (targetScene != null && targetScene.getCameraMotion() != null && !targetScene.getCameraMotion().isBlank()) {
+            String cm = targetScene.getCameraMotion().toLowerCase();
+            for (int i = 0; i < cmbCameraMotion.getItemCount(); i++) {
+                if (cmbCameraMotion.getItemAt(i).toLowerCase().contains(cm) || cm.contains(cmbCameraMotion.getItemAt(i).toLowerCase())) {
+                    cmbCameraMotion.setSelectedIndex(i);
+                    break;
+                }
+            }
+        }
+        formPanel.add(cmbCameraMotion, gbc);
+
+        gbc.gridx = 0; gbc.gridy = 3;
         formPanel.add(new JLabel("Narration Text:"), gbc);
         gbc.gridx = 1;
         JTextArea narrationArea = new JTextArea(targetScene != null && targetScene.getNarrationText() != null ? targetScene.getNarrationText() : "", 2, 20);
@@ -90,7 +115,7 @@ public class SceneEditDialog extends JDialog {
         narrationArea.setWrapStyleWord(true);
         formPanel.add(new JScrollPane(narrationArea), gbc);
 
-        gbc.gridx = 0; gbc.gridy = 3;
+        gbc.gridx = 0; gbc.gridy = 4;
         formPanel.add(new JLabel("Duration (sec):"), gbc);
         gbc.gridx = 1;
         int currentDur = 5;
@@ -100,17 +125,17 @@ public class SceneEditDialog extends JDialog {
         JSpinner durationSpinner = new JSpinner(new SpinnerNumberModel(currentDur, 1, 60, 1));
         formPanel.add(durationSpinner, gbc);
 
-        gbc.gridx = 0; gbc.gridy = 4;
+        gbc.gridx = 0; gbc.gridy = 5;
         formPanel.add(new JLabel("CFG Scale:"), gbc);
         gbc.gridx = 1;
-        double cfg = targetScene != null ? targetScene.getCfgScale() : 1.0;
+        double cfg = targetScene != null ? targetScene.getCfgScale() : 3.5;
         JSpinner cfgSpinner = new JSpinner(new SpinnerNumberModel(cfg, 0.5, 20.0, 0.5));
         formPanel.add(cfgSpinner, gbc);
 
-        gbc.gridx = 0; gbc.gridy = 5;
+        gbc.gridx = 0; gbc.gridy = 6;
         formPanel.add(new JLabel("Steps:"), gbc);
         gbc.gridx = 1;
-        int steps = targetScene != null ? targetScene.getSteps() : 30;
+        int steps = targetScene != null ? targetScene.getSteps() : 28;
         JSpinner stepsSpinner = new JSpinner(new SpinnerNumberModel(steps, 10, 100, 1));
         formPanel.add(stepsSpinner, gbc);
 
@@ -132,6 +157,12 @@ public class SceneEditDialog extends JDialog {
             sc.setSceneId(sid);
             sc.setPrompt(promptArea.getText().trim());
             sc.setNarrationText(narrationArea.getText().trim());
+            int camIdx = cmbCameraMotion.getSelectedIndex();
+            if (camIdx > 0) {
+                sc.setCameraMotion((String) cmbCameraMotion.getSelectedItem());
+            } else {
+                sc.setCameraMotion(null);
+            }
             int dur = (Integer) durationSpinner.getValue();
             sc.setStartFrame(0);
             sc.setEndFrame(dur * 24);

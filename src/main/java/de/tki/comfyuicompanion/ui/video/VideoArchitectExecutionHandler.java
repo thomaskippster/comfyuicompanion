@@ -338,49 +338,10 @@ public class VideoArchitectExecutionHandler {
                 }
                 consoleLogger.accept("Narration: " + narrationOk + "/" + generatedScenes.size() + " scenes have audio ready.");
 
-                // PHASE 2: Generation Agent (ComfyUI)
-                consoleLogger.accept("Checking ComfyUI server status...");
-                ensureComfyUiHealthy();
-
-                for (int i = 0; i < generatedScenes.size(); i++) {
-                    Scene scene = generatedScenes.get(i);
-                    final int currentIdx = i + 1;
-                    final int totalScenes = generatedScenes.size();
-
-                    File output = null;
-                    int maxRetries = 3;
-                    boolean success = false;
-
-                    for (int attempt = 1; attempt <= maxRetries; attempt++) {
-                        final int att = attempt;
-                        SwingUtilities.invokeLater(() -> progressBar.setValue((int) (((double) currentIdx / totalScenes) * 100)));
-                        consoleLogger.accept("Generation Agent (Scene " + currentIdx + "/" + totalScenes + "): " + scene.getSceneId() + (att > 1 ? " (Attempt " + att + ")" : ""));
-
-                        try {
-                            output = comfyPipelineService.generateSceneStrict(scene).join();
-                            if (output != null && output.exists() && output.length() > 1024) {
-                                success = true;
-                                break;
-                            } else {
-                                Thread.sleep(2000);
-                            }
-                        } catch (Exception e) {
-                            Thread.sleep(2000);
-                        }
-                    }
-
-                    if (!success) {
-                        throw new Exception("Generation Agent failed on Scene: " + scene.getSceneId() + " after " + maxRetries + " attempts.");
-                    }
-
-                    if (output != null && output.exists()) {
-                        scene.setVideoPath(output.getAbsolutePath());
-                    }
-                    SwingUtilities.invokeLater(() -> {
-                        timelineListView.repaint();
-                        previewUpdater.accept(scene);
-                    });
-                }
+                // PHASE 2: Generation Agent (ComfyUI via Two-Phase VRAM-Optimized Pipeline)
+                consoleLogger.accept("Generation Agent: Rendering scenes via Two-Phase pipeline (Flux Keyframe -> Wan 2.1 I2V)...");
+                renderCoordinator.executeVideoGenerationSync(parent, generatedScenes, speakerPath, width, height,
+                        timelineListView, progressBar, buttonsDisabledSetter, consoleLogger, previewUpdater);
 
                 // PHASE 3: Editor Agent (FFmpeg)
                 consoleLogger.accept("Editor Agent: Stitching video segments via FFmpeg...");

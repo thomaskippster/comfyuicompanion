@@ -160,7 +160,12 @@ public class VideoArchitectTab extends JPanel {
         if (configService != null) {
             configService.setLocalLlmModel(selectedLlm);
         }
-        executionHandler.deconstructScript(this, configPanel.getPromptSubject(), configPanel.getSelectedModel(),
+        String subject = configPanel.getPromptSubject();
+        String actor = configPanel.getActorAnchor();
+        if (actor != null && !actor.isBlank()) {
+            subject = "[Consistent Protagonist: " + actor + "] " + subject;
+        }
+        executionHandler.deconstructScript(this, subject, configPanel.getSelectedModel(),
                 selectedLlm,
                 configPanel.getVideoWidth(), configPanel.getVideoHeight(), configPanel.getVideoCfg(),
                 configPanel.getVideoSteps(), configPanel.getVideoMotion(),
@@ -175,7 +180,12 @@ public class VideoArchitectTab extends JPanel {
         if (configService != null) {
             configService.setLocalLlmModel(selectedLlm);
         }
-        executionHandler.executeAutoPilot(this, configPanel.getPromptSubject(), configPanel.getSelectedModel(),
+        String subject = configPanel.getPromptSubject();
+        String actor = configPanel.getActorAnchor();
+        if (actor != null && !actor.isBlank()) {
+            subject = "[Consistent Protagonist: " + actor + "] " + subject;
+        }
+        executionHandler.executeAutoPilot(this, subject, configPanel.getSelectedModel(),
                 selectedLlm,
                 configPanel.getSpeakerImagePath(), configPanel.getVideoWidth(), configPanel.getVideoHeight(),
                 configPanel.getVideoCfg(), configPanel.getVideoSteps(), configPanel.getVideoMotion(),

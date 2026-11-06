@@ -53,6 +53,8 @@ templates/comfyui/blueprint_scan_results.json
 templates/comfyui/model_resolved_defaults.json
 templates/comfyui/model_architectures.json
 user_workflows/
+companion_blueprints/
+.agy_visual/
 
 # Local config & assets
 __pycache__/

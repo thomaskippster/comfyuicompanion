@@ -105,6 +105,46 @@ class VideoVramOptimizerTest {
     }
 
     @Test
+    @DisplayName("Should optimize WanVideoWrapper and GGUF nodes for 16 GB VRAM")
+    void testOptimizeWanVideoWrapperNodes() {
+        JSONObject workflow = new JSONObject();
+
+        // 1. WanVideoTextEncode node
+        JSONObject textNode = new JSONObject();
+        textNode.put("class_type", "WanVideoTextEncode");
+        JSONObject textInputs = new JSONObject();
+        textInputs.put("device", "default");
+        textNode.put("inputs", textInputs);
+        workflow.put("node_text", textNode);
+
+        // 2. WanVideoVAEDecode node
+        JSONObject vaeNode = new JSONObject();
+        vaeNode.put("class_type", "WanVideoVAEDecode");
+        JSONObject vaeInputs = new JSONObject();
+        vaeInputs.put("enable_tiling", false);
+        vaeNode.put("inputs", vaeInputs);
+        workflow.put("node_wan_vae", vaeNode);
+
+        // 3. WanVideoModelLoader node
+        JSONObject modelNode = new JSONObject();
+        modelNode.put("class_type", "WanVideoModelLoader");
+        JSONObject modelInputs = new JSONObject();
+        modelInputs.put("quantization", "disabled");
+        modelInputs.put("attention_mode", "default");
+        modelNode.put("inputs", modelInputs);
+        workflow.put("node_wan_model", modelNode);
+
+        // Execute optimization
+        optimizer.optimizeWorkflowFor16Gb(workflow);
+
+        assertEquals("cpu", workflow.getJSONObject("node_text").getJSONObject("inputs").getString("device"));
+        assertTrue(workflow.getJSONObject("node_wan_vae").getJSONObject("inputs").getBoolean("enable_tiling"));
+        assertEquals(512, workflow.getJSONObject("node_wan_vae").getJSONObject("inputs").getInt("tile_x"));
+        assertEquals("fp8_e4m3fn", workflow.getJSONObject("node_wan_model").getJSONObject("inputs").getString("quantization"));
+        assertEquals("sdpa", workflow.getJSONObject("node_wan_model").getJSONObject("inputs").getString("attention_mode"));
+    }
+
+    @Test
     @DisplayName("Should execute ComfyUI VRAM purge via POST /free")
     @SuppressWarnings("unchecked")
     void testPurgeComfyVram() throws Exception {

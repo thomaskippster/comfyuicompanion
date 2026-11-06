@@ -169,7 +169,7 @@ public class VideoWorkflowBuilder {
         int splitStepNoLora = Math.max(1, stepsNoLora / 2);
         int splitStepLora = Math.max(1, stepsLora / 2);
         double userCfg = scene.getCfgScale() > 0 ? scene.getCfgScale() : 3.5;
-        if (userCfg > 3.0) userCfg = 3.0;
+        if (userCfg > 5.0) userCfg = 4.0;
         double cfgNoLora = userCfg;
         double cfgLora = 1.0;
 
@@ -247,6 +247,8 @@ public class VideoWorkflowBuilder {
                                                 List<String> availableClips, List<String> availableVaes) throws Exception {
         File blueprintFile = null;
         File[] candidateFiles = new File[]{
+            new File("workflows/flux1_dev_fp8_text_to_image.json"),
+            new File("workflows/flux1_dev_text_to_image.json"),
             new File("workflows/z-image-turbo_text_to_image.json"),
             new File("workflows/z-image_text_to_image.json"),
             new File("workflows/flux2_klein_9b_text_to_image.json"),
@@ -256,13 +258,14 @@ public class VideoWorkflowBuilder {
         for (File bf : candidateFiles) {
             if (bf.exists()) {
                 String name = bf.getName().toLowerCase();
-                if (name.contains("turbo") && availableUnets.stream().anyMatch(u -> u.toLowerCase().contains("turbo"))) {
+                if (name.contains("flux") && (availableUnets.stream().anyMatch(u -> u.toLowerCase().contains("flux"))
+                        || availableCheckpoints.stream().anyMatch(c -> c.toLowerCase().contains("flux")))) {
+                    blueprintFile = bf;
+                    break;
+                } else if (name.contains("turbo") && availableUnets.stream().anyMatch(u -> u.toLowerCase().contains("turbo"))) {
                     blueprintFile = bf;
                     break;
                 } else if (name.contains("z-image") && availableUnets.stream().anyMatch(u -> u.toLowerCase().contains("z_image"))) {
-                    blueprintFile = bf;
-                    break;
-                } else if (name.contains("flux") && availableUnets.stream().anyMatch(u -> u.toLowerCase().contains("flux"))) {
                     blueprintFile = bf;
                     break;
                 }

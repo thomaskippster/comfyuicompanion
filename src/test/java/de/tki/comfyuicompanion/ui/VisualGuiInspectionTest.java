@@ -388,6 +388,212 @@ public class VisualGuiInspectionTest {
         context.close();
     }
 
+    @Test
+    @DisplayName("Verify application with alternative settings (Light Mode, Custom Resolution, Workflow Graph, and Scene Directing)")
+    public void testAlternativeSettingsAndInteractions() throws Exception {
+        AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext(Main.AppConfig.class);
+        Main mainFrame = context.getBean(Main.class);
+        assertNotNull(mainFrame, "Main frame bean must not be null");
+
+        ConfigService configService = context.getBean(ConfigService.class);
+        configService.setBlueprintGalleryEnabled(true);
+        configService.setPromptLabEnabled(true);
+        configService.setVideoArchitectEnabled(true);
+        configService.setDarkMode(false); // Start in LIGHT MODE
+        configService.setHideComfyUI(true); // Replacement mode active
+        configService.setFastHashEnabled(false); // Deep verification mode
+        configService.setBackgroundModeEnabled(true);
+        configService.setLocalLlmModel("gemma-2-2b");
+
+        // Initialize UI components on EDT
+        SwingUtilities.invokeAndWait(() -> {
+            mainFrame.launch(new String[]{});
+        });
+
+        Thread.sleep(1200);
+        SwingUtilities.invokeAndWait(() -> {
+            mainFrame.setSize(1440, 920);
+            mainFrame.updateTabVisibility();
+            mainFrame.validate();
+            mainFrame.doLayout();
+        });
+
+        File altScreenshotsDir = new File("target/screenshots/alt_settings");
+        altScreenshotsDir.mkdirs();
+
+        List<Component> allComponents = getAllComponents(mainFrame);
+        JTabbedPane tabbedPane = (JTabbedPane) allComponents.stream()
+                .filter(c -> c instanceof JTabbedPane)
+                .findFirst()
+                .orElse(null);
+        assertNotNull(tabbedPane, "Main JTabbedPane must be present");
+
+        // 1. Dashboard in Light Mode
+        System.out.println("\n☀️ [Alternative Settings] Inspecting Dashboard in Light Mode...");
+        SwingUtilities.invokeAndWait(() -> {
+            tabbedPane.setSelectedIndex(0);
+            mainFrame.validate();
+            mainFrame.repaint();
+        });
+        Thread.sleep(600);
+        renderScreenshot(mainFrame, new File(altScreenshotsDir, "01_dashboard_light_mode.png"));
+
+        // 2. Download Manager: Workflow Graph View
+        System.out.println("\n📊 [Alternative Settings] Testing Download Manager & Technical Workflow Graph...");
+        DownloadManagerView dmView = context.getBean(DownloadManagerView.class);
+        assertNotNull(dmView, "DownloadManagerView must be present");
+        String testWorkflow = """
+                {
+                  "1": { "class_type": "CheckpointLoaderSimple", "inputs": { "ckpt_name": "sd_xl_base_1.0.safetensors" } },
+                  "2": { "class_type": "CLIPTextEncode", "inputs": { "text": "masterpiece, 8k", "clip": ["1", 1] } },
+                  "3": { "class_type": "CLIPTextEncode", "inputs": { "text": "ugly, blurry", "clip": ["1", 1] } },
+                  "4": { "class_type": "EmptyLatentImage", "inputs": { "width": 832, "height": 1216, "batch_size": 1 } },
+                  "5": { "class_type": "KSampler", "inputs": { "seed": 42, "steps": 30, "cfg": 7.0, "sampler_name": "euler_ancestral", "scheduler": "karras", "denoise": 1.0, "model": ["1", 0], "positive": ["2", 0], "negative": ["3", 0], "latent_image": ["4", 0] } },
+                  "6": { "class_type": "VAEDecode", "inputs": { "samples": ["5", 0], "vae": ["1", 2] } },
+                  "7": { "class_type": "SaveImage", "inputs": { "filename_prefix": "ComfyUI", "images": ["6", 0] } }
+                }
+                """;
+        SwingUtilities.invokeAndWait(() -> {
+            tabbedPane.setSelectedIndex(1);
+            dmView.getJsonInputArea().setText(testWorkflow);
+            dmView.getWorkflowGraphPanel().setWorkflowJson(testWorkflow);
+            // Switch DownloadManager tabbedPane to tab 1 (Workflow Graph)
+            List<Component> dmComponents = getAllComponents(dmView);
+            for (Component c : dmComponents) {
+                if (c instanceof JTabbedPane tp && tp.getTabCount() >= 2) {
+                    tp.setSelectedIndex(1); // Show Workflow Graph
+                    break;
+                }
+            }
+            mainFrame.validate();
+            mainFrame.doLayout();
+            mainFrame.repaint();
+        });
+        Thread.sleep(800);
+        renderScreenshot(mainFrame, new File(altScreenshotsDir, "02_download_manager_workflow_graph.png"));
+        System.out.println("   ✔ Interactive Technical Node Graph rendered.");
+
+        // 3. Image Lab: SDXL Portrait & Advanced Sampler Settings
+        System.out.println("\n🎨 [Alternative Settings] Configuring Image Lab for SDXL Portrait (832x1216, Euler Ancestral, Karras)...");
+        PromptLabView plView = context.getBean(PromptLabView.class);
+        assertNotNull(plView, "PromptLabView must be present");
+        int plTabIndex = -1;
+        for (int i = 0; i < tabbedPane.getTabCount(); i++) {
+            if (tabbedPane.getTitleAt(i).contains("Image Lab")) {
+                plTabIndex = i;
+                break;
+            }
+        }
+        final int foundPlTab = plTabIndex;
+        SwingUtilities.invokeAndWait(() -> {
+            tabbedPane.setSelectedIndex(foundPlTab);
+            plView.getPromptSubjectField().setText("cyberpunk detective standing in rain under neon holographic billboard, cinematic 8k");
+            plView.getPromptNegativeField().setText("lowres, bad anatomy, bad hands, text, error, missing fingers");
+            plView.getPromptWidthSpinner().setValue(832);
+            plView.getPromptHeightSpinner().setValue(1216);
+            plView.getPromptStepsSpinner().setValue(30);
+            plView.getPromptCfgSpinner().setValue(7.0);
+            plView.getPromptDenoiseSpinner().setValue(0.75);
+            plView.getPromptBatchSizeSpinner().setValue(2);
+            plView.getPromptSamplerCombo().setSelectedItem("euler_ancestral");
+            plView.getPromptSchedulerCombo().setSelectedItem("karras");
+            mainFrame.validate();
+            mainFrame.doLayout();
+            mainFrame.repaint();
+        });
+        Thread.sleep(600);
+        assertEquals(832, plView.getPromptWidthSpinner().getValue());
+        assertEquals(1216, plView.getPromptHeightSpinner().getValue());
+        assertEquals("euler_ancestral", plView.getPromptSamplerCombo().getSelectedItem());
+        assertEquals("karras", plView.getPromptSchedulerCombo().getSelectedItem());
+        renderScreenshot(mainFrame, new File(altScreenshotsDir, "03_image_lab_sdxl_portrait.png"));
+        System.out.println("   ✔ Image Lab SDXL portrait configuration verified.");
+
+        // 4. Video Architect: Wan 2.1 I2V with 9:16 TikTok Format, Actor Anchor & Scene Directing
+        System.out.println("\n🎬 [Alternative Settings] Configuring Video Architect with Wan 2.1 I2V, TikTok 9:16, and Scene Directing...");
+        VideoArchitectTab vaTab = context.getBean(VideoArchitectTab.class);
+        assertNotNull(vaTab, "VideoArchitectTab must be present");
+        int vaTabIndex = -1;
+        for (int i = 0; i < tabbedPane.getTabCount(); i++) {
+            if (tabbedPane.getTitleAt(i).contains("Video Architect")) {
+                vaTabIndex = i;
+                break;
+            }
+        }
+        final int foundVaTab = vaTabIndex;
+        SwingUtilities.invokeAndWait(() -> {
+            tabbedPane.setSelectedIndex(foundVaTab);
+            vaTab.getConfigPanel().getVideoModelCombo().setSelectedItem("Image to Video (Wan 2.1)");
+            vaTab.getConfigPanel().getVideoWidthSpinner().setValue(720);
+            vaTab.getConfigPanel().getVideoHeightSpinner().setValue(1280);
+            vaTab.getConfigPanel().getVideoDurationSpinner().setValue(6);
+            vaTab.getConfigPanel().getVideoStepsSpinner().setValue(35);
+            vaTab.getConfigPanel().getVideoCfgSpinner().setValue(4.0);
+            vaTab.getConfigPanel().getVideoMotionSpinner().setValue(140);
+            vaTab.getConfigPanel().getActorAnchorField().setText("cyberpunk samurai in midnight blue trench coat with glowing katana");
+            vaTab.getConfigPanel().getPromptSubjectField().setText("The samurai dashes along the neon rooftop. She leaps across the skyscraper chasm.");
+            mainFrame.validate();
+            mainFrame.doLayout();
+            mainFrame.repaint();
+        });
+        Thread.sleep(500);
+
+        assertEquals("Image to Video (Wan 2.1)", vaTab.getConfigPanel().getSelectedModel());
+        assertEquals(720, vaTab.getConfigPanel().getVideoWidth());
+        assertEquals(1280, vaTab.getConfigPanel().getVideoHeight());
+        assertEquals(6, vaTab.getConfigPanel().getVideoDuration());
+
+        // Test programmatic scene creation with Camera Motion directing
+        SwingUtilities.invokeAndWait(() -> {
+            de.tki.comfyuicompanion.domain.Scene customScene = new de.tki.comfyuicompanion.domain.Scene();
+            customScene.setSceneId("S_DIRECTOR_1");
+            customScene.setPrompt("Close-up hero shot of samurai unsheathing katana with blue lightning sparks");
+            customScene.setNarrationText("Every legend begins with a spark.");
+            customScene.setCameraMotion("Low-Angle Orbit (Dramatic 360)");
+            customScene.setWidth(720);
+            customScene.setHeight(1280);
+            customScene.setStartFrame(0);
+            customScene.setEndFrame(144); // 6s * 24fps
+            customScene.setCfgScale(4.0);
+            customScene.setSteps(35);
+
+            vaTab.getWorkspacePanel().getTimelineListModel().addElement(customScene);
+            vaTab.getWorkspacePanel().updateStoryboardJson();
+            vaTab.getWorkspacePanel().getTimelineListView().setSelectedValue(customScene, true);
+            vaTab.getWorkspacePanel().updatePreviewForScene(customScene);
+        });
+        Thread.sleep(500);
+
+        assertTrue(vaTab.getWorkspacePanel().getStoryboardJsonArea().getText().contains("S_DIRECTOR_1"));
+        renderScreenshot(mainFrame, new File(altScreenshotsDir, "04_video_architect_wan21_vertical.png"));
+        System.out.println("   ✔ Video Architect Wan 2.1 vertical scene directing verified.");
+
+        // 5. Settings: Verify Persistence & Toggles in Light Mode
+        System.out.println("\n⚙️ [Alternative Settings] Verifying Settings panel state in Light Mode...");
+        int settingsTabIndex = tabbedPane.getTabCount() - 1;
+        SwingUtilities.invokeAndWait(() -> {
+            tabbedPane.setSelectedIndex(settingsTabIndex);
+            mainFrame.validate();
+            mainFrame.doLayout();
+            mainFrame.repaint();
+        });
+        Thread.sleep(500);
+
+        assertTrue(configService.isHideComfyUI(), "Hide ComfyUI should be enabled");
+        assertFalse(configService.isFastHashEnabled(), "Fast hash should be disabled (deep mode)");
+        assertEquals(de.tki.comfyuicompanion.util.PlatformUtils.isSystemTraySupported(), configService.isBackgroundModeEnabled(),
+                "Background mode should match platform system tray capability");
+        renderScreenshot(mainFrame, new File(altScreenshotsDir, "05_settings_light_mode.png"));
+        System.out.println("   ✔ Settings verification complete.");
+
+        System.out.println("\n=======================================================");
+        System.out.println("📸 Alternative Settings GUI Inspection finished successfully!");
+        System.out.println("   Screenshots exported to: " + altScreenshotsDir.getAbsolutePath());
+        System.out.println("=======================================================\n");
+
+        context.close();
+    }
+
     private void renderScreenshot(Component comp, File destination) {
         try {
             BufferedImage image = new BufferedImage(comp.getWidth(), comp.getHeight(), BufferedImage.TYPE_INT_ARGB);

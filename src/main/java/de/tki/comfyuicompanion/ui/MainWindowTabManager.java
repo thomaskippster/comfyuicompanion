@@ -36,10 +36,10 @@ public final class MainWindowTabManager {
             uiComponents.mainTabs.addTab("Download Manager", SvgIconFactory.get(AppIcon.DOWNLOAD_MANAGER, 16), uiComponents.downloadManagerPanel);
         }
         if (uiComponents.galleryPanel != null) {
-            uiComponents.mainTabs.addTab("Gallery", SvgIconFactory.get(AppIcon.GALLERY, 16), uiComponents.galleryPanel);
+            uiComponents.mainTabs.addTab("Output Gallery", SvgIconFactory.get(AppIcon.GALLERY, 16), uiComponents.galleryPanel);
         }
         if (configService.isBlueprintGalleryEnabled() && uiComponents.blueprintGalleryWrapper != null) {
-            uiComponents.mainTabs.addTab("Blueprint Gallery", SvgIconFactory.get(AppIcon.BLUEPRINT_GALLERY, 16), uiComponents.blueprintGalleryWrapper);
+            uiComponents.mainTabs.addTab("Workflow Hub", SvgIconFactory.get(AppIcon.BLUEPRINT_GALLERY, 16), uiComponents.blueprintGalleryWrapper);
         }
         if (configService.isPromptLabEnabled() && uiComponents.promptLabPanel != null) {
             uiComponents.mainTabs.addTab("Image Lab", SvgIconFactory.get(AppIcon.IMAGE_LAB, 16), uiComponents.promptLabPanel);

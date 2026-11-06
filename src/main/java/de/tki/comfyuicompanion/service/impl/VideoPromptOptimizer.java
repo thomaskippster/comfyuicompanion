@@ -73,6 +73,7 @@ public class VideoPromptOptimizer implements IVideoPromptOptimizer {
                 1. SEPARATE NARRATION FROM VISUALS:
                    - "narration": Short, atmospheric voiceover/subtitle sentence (max 12 words, in the language of the user's prompt).
                    - "visual_prompt": STRICTLY in English. Describe ONLY what a physical camera lens can see.
+                   - "sfx_prompt": English descriptive ambient sound effect and atmospheric audio cues (e.g., "Deafening rocket thruster ignition, explosive low-end bass rumble, atmospheric launch sfx").
                 2. NO ABSTRACT METAPHORS IN VISUAL_PROMPT:
                    - NEVER use poetic phrases like "shattered silence", "collective breath", "inevitable", or "primal scream" in "visual_prompt".
                    - Translate emotions into concrete physical visuals (e.g., instead of "tension in the air", write "extreme close-up of a weathered astronaut helmet visor reflecting a bright rocket ignition, crisp rim lighting").
@@ -99,7 +100,8 @@ public class VideoPromptOptimizer implements IVideoPromptOptimizer {
                       "duration_seconds": 4,
                       "camera_motion": "slow_push_in | slow_pan_right | slow_pan_left | static_focus | crane_up",
                       "narration": "String",
-                      "visual_prompt": "String"
+                      "visual_prompt": "String",
+                      "sfx_prompt": "Deafening rocket engine ignition roar, explosive low-end bass rumble"
                     }
                   ]
                 }
@@ -265,5 +267,33 @@ public class VideoPromptOptimizer implements IVideoPromptOptimizer {
             }
         }
         return group.label + " lighting, atmospheric haze";
+    }
+
+    @Override
+    public String inferSfxPrompt(String visualPrompt, String narration) {
+        String combined = ((visualPrompt != null ? visualPrompt : "") + " " + (narration != null ? narration : "")).toLowerCase(java.util.Locale.ROOT);
+        if (combined.contains("rocket") || combined.contains("ignition") || combined.contains("thruster")
+                || combined.contains("launch") || combined.contains("liftoff")) {
+            return "Deafening rocket thruster ignition roar, explosive low-end bass rumble, atmospheric launch sfx";
+        }
+        if (combined.contains("explosion") || combined.contains("blast") || combined.contains("fire") || combined.contains("flame")) {
+            return "Crackling roaring flames, explosive detonation blast, cinematic bass rumble";
+        }
+        if (combined.contains("space") || combined.contains("astronaut") || combined.contains("visor") || combined.contains("helmet")) {
+            return "Hollow astronaut suit breathing, radio telemetry beep, deep cosmic atmospheric drone";
+        }
+        if (combined.contains("rain") || combined.contains("storm") || combined.contains("thunder") || combined.contains("lightning")) {
+            return "Heavy rain pouring, rolling thunder rumble, atmospheric stormy wind gust";
+        }
+        if (combined.contains("ocean") || combined.contains("sea") || combined.contains("wave") || combined.contains("beach")) {
+            return "Crashing ocean surf, foaming sea waves, deep marine coastal ambience";
+        }
+        if (combined.contains("car") || combined.contains("engine") || combined.contains("drive") || combined.contains("speed")) {
+            return "Revving high-performance engine, tires rushing against pavement, wind rush";
+        }
+        if (combined.contains("city") || combined.contains("street") || combined.contains("crowd") || combined.contains("traffic")) {
+            return "Urban street ambience, distant traffic rumble, atmospheric city echo";
+        }
+        return "Cinematic sub-bass atmospheric soundscape, ambient cinematic drone";
     }
 }

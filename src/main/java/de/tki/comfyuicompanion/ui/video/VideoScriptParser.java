@@ -46,7 +46,7 @@ public class VideoScriptParser {
                     if (arr != null) {
                         for (int i = 0; i < arr.length(); i++) {
                             JSONObject obj = arr.getJSONObject(i);
-                            Scene scene = parseSceneObject(obj, i + 1, targetW, targetH, globalStyleAnchor, globalNegativePrompt);
+                            Scene scene = parseSceneObject(obj, i + 1, targetW, targetH, globalStyleAnchor, globalNegativePrompt, promptOptimizer);
                             if (scene != null) {
                                 scenes.add(scene);
                             }
@@ -57,7 +57,7 @@ public class VideoScriptParser {
                     JSONArray arr = new JSONArray(clean);
                     for (int i = 0; i < arr.length(); i++) {
                         JSONObject obj = arr.getJSONObject(i);
-                        Scene scene = parseSceneObject(obj, i + 1, targetW, targetH, "", "");
+                        Scene scene = parseSceneObject(obj, i + 1, targetW, targetH, "", "", promptOptimizer);
                         if (scene != null) {
                             scenes.add(scene);
                         }
@@ -99,6 +99,9 @@ public class VideoScriptParser {
                         : ("Cinematic shot, 4k resolution, high quality, " + trimmed);
                 sc.setPrompt(enrichedPrompt);
                 sc.setNarrationText(trimmed);
+                if (promptOptimizer != null) {
+                    sc.setSfxPrompt(promptOptimizer.inferSfxPrompt(enrichedPrompt, trimmed));
+                }
                 int duration = Math.min(8, Math.max(3, (trimmed.split("\\s+").length / 2) + 2));
                 sc.setStartFrame(0);
                 sc.setEndFrame(duration * 24);
@@ -123,7 +126,8 @@ public class VideoScriptParser {
     }
 
     private Scene parseSceneObject(JSONObject obj, int fallbackIndex, int targetW, int targetH,
-                                   String globalStyleAnchor, String globalNegativePrompt) {
+                                   String globalStyleAnchor, String globalNegativePrompt,
+                                   IVideoPromptOptimizer promptOptimizer) {
         String id = obj.optString("scene_id", obj.optString("id", "S" + fallbackIndex));
         String prompt = obj.optString("visual_prompt", obj.optString("prompt", obj.optString("description", "")));
         String narration = obj.optString("narration", obj.optString("narration_text", obj.optString("voiceover", "")));
@@ -142,6 +146,11 @@ public class VideoScriptParser {
             finalPrompt = finalPrompt.trim().replaceAll("[,.]+$", "") + ", " + styleAnchor.trim();
         }
 
+        String sfxPrompt = obj.optString("sfx_prompt", obj.optString("sound_effect", obj.optString("sfx", obj.optString("ambient_sound", ""))));
+        if ((sfxPrompt == null || sfxPrompt.isBlank()) && promptOptimizer != null) {
+            sfxPrompt = promptOptimizer.inferSfxPrompt(finalPrompt, narration);
+        }
+
         Scene scene = new Scene();
         scene.setSceneId(id);
         scene.setPrompt(finalPrompt);
@@ -149,6 +158,7 @@ public class VideoScriptParser {
         scene.setNegativePrompt(negativePrompt);
         scene.setCameraMotion(cameraMotion);
         scene.setNarrationText(narration.isEmpty() ? "" : narration);
+        scene.setSfxPrompt(sfxPrompt != null ? sfxPrompt : "");
         scene.setStartFrame(0);
         scene.setEndFrame(dur * 24);
         scene.setWidth(targetW);

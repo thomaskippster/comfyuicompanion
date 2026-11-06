@@ -126,7 +126,7 @@ public final class LegalNoticeDialog {
         html.append("<div style='background-color: ").append(boxBg).append("; padding: 14px; border-radius: 8px; margin-bottom: 14px; border: 1px solid ").append(boxBorder).append(";'>");
         html.append("<h3 style='color: ").append(accentColor).append("; margin-top: 0; margin-bottom: 8px;'>6. Content Authenticity & Optional Provenance Exporter</h3>");
         html.append("<p style='font-size: 13px; line-height: 1.5; margin: 0; color: ").append(textColor).append(";'>While ComfyUI Companion as a local UI client is not classified as a high-risk AI provider under EU Regulation 2024/1689, " +
-                "it provides an optional <b>Compliance Exporter</b> in the Gallery tab. Users can voluntarily embed standardized IPTC/C2PA provenance metadata or watermark badges into generated images to transparently designate media as AI-generated when publishing or sharing outputs.</p>");
+                "it provides an optional <b>Compliance Exporter</b> in the Output Gallery tab. Users can voluntarily embed standardized IPTC/C2PA provenance metadata or watermark badges into generated images to transparently designate media as AI-generated when publishing or sharing outputs.</p>");
         html.append("</div>");
 
         // Section 7: Developer Information & Privacy Policy

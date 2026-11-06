@@ -223,7 +223,7 @@ public class PromptLabExecutionHandler {
                     || "No ready offline blueprints available".equalsIgnoreCase(selStr)) {
                 JOptionPane.showMessageDialog(parentComponent,
                         "No ready blueprints or local models are available.\n"
-                        + "Please download required models in the Blueprint Gallery / Download Manager\n"
+                        + "Please download required models in the Workflow Hub / Download Manager\n"
                         + "or configure your Extra Models Path in Settings -> Configure Paths.",
                         "No Models Available", JOptionPane.WARNING_MESSAGE);
                 return;

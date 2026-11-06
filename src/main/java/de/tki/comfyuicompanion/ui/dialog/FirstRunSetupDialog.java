@@ -205,7 +205,7 @@ public class FirstRunSetupDialog extends JDialog {
         JButton btnSkip = new JButton("Skip for Now");
         btnSkip.addActionListener(e -> dispose());
 
-        JButton btnGallery = new JButton("Open Blueprint Gallery", SvgIconFactory.get(AppIcon.GALLERY, 14));
+        JButton btnGallery = new JButton("Open Workflow Hub", SvgIconFactory.get(AppIcon.BLUEPRINT_GALLERY, 14));
         btnGallery.setToolTipText("Browse workflows and download required models");
         btnGallery.addActionListener(e -> {
             applySelectedPath();
@@ -236,7 +236,7 @@ public class FirstRunSetupDialog extends JDialog {
         if (count > 0) {
             lblDetectedInfo.setText("✅ Found " + count + " model file(s) in " + modelsSub);
         } else {
-            lblDetectedInfo.setText("ℹ️ No models installed in this folder yet. You can download models from the Blueprint Gallery.");
+            lblDetectedInfo.setText("ℹ️ No models installed in this folder yet. You can download models from the Workflow Hub.");
         }
     }
 

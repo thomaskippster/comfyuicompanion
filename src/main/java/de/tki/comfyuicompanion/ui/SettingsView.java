@@ -160,7 +160,7 @@ public class SettingsView extends JPanel {
         hideComfyuiCheck.setToolTipText("When enabled, ComfyUI Companion replaces the web UI and suppresses opening the browser window when ComfyUI starts.");
         hideComfyuiCheck.addActionListener(e -> { if (listener != null) listener.onHideComfyUIChanged(hideComfyuiCheck.isSelected()); });
 
-        promptLabCheck = new JCheckBox("Enable Prompt Lab (Experimental)");
+        promptLabCheck = new JCheckBox("Enable Image Lab");
         promptLabCheck.setFont(checkFont);
         promptLabCheck.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
         promptLabCheck.addActionListener(e -> { if (listener != null) listener.onPromptLabEnabledChanged(promptLabCheck.isSelected()); });
@@ -170,7 +170,7 @@ public class SettingsView extends JPanel {
         videoArchitectCheck.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
         videoArchitectCheck.addActionListener(e -> { if (listener != null) listener.onVideoArchitectEnabledChanged(videoArchitectCheck.isSelected()); });
 
-        blueprintGalleryCheck = new JCheckBox("Enable Blueprint Gallery (Experimental)");
+        blueprintGalleryCheck = new JCheckBox("Enable Workflow Hub (Blueprints & Vault)");
         blueprintGalleryCheck.setFont(checkFont);
         blueprintGalleryCheck.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
         blueprintGalleryCheck.addActionListener(e -> { if (listener != null) listener.onBlueprintGalleryEnabledChanged(blueprintGalleryCheck.isSelected()); });
@@ -238,10 +238,11 @@ public class SettingsView extends JPanel {
         resetSettingsBtn.setMaximumSize(new Dimension(360, 40));
         resetSettingsBtn.addActionListener(e -> { if (listener != null) listener.onResetSettings(); });
 
-        JButton parseBlueprintsBtn = new JButton("Parse blueprints", SvgIconFactory.get(AppIcon.SEARCH));
+        JButton parseBlueprintsBtn = new JButton("Re-index Blueprint Models...", SvgIconFactory.get(AppIcon.SEARCH));
         parseBlueprintsBtn.setFont(btnFont);
         parseBlueprintsBtn.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
         parseBlueprintsBtn.setMaximumSize(new Dimension(360, 40));
+        parseBlueprintsBtn.setToolTipText("Scan and index local blueprints and model defaults in the background.");
         parseBlueprintsBtn.addActionListener(e -> { if (listener != null) listener.onParseBlueprints(); });
 
         // Blueprint Analysis Progress section

@@ -68,6 +68,7 @@ public class Scene {
     private TransitionSettings transitionSettings = TransitionSettings.DEFAULT;
     private VisualEnhancements visualEnhancements = VisualEnhancements.DEFAULT;
     private SceneDimensions dimensions = SceneDimensions.FHD_1080P;
+    private AudioSettings audioSettings = AudioSettings.DEFAULT;
 
     /**
      * Default constructor initializing default value objects.
@@ -136,11 +137,58 @@ public class Scene {
     }
 
     public String getAudioPath() {
+        if (audioSettings.narrationAudioPath() != null) {
+            return audioSettings.narrationAudioPath();
+        }
         return audioPath;
     }
 
     public void setAudioPath(String audioPath) {
         this.audioPath = audioPath;
+        this.audioSettings = this.audioSettings.withNarrationAudioPath(audioPath);
+    }
+
+    public AudioSettings getAudioSettings() {
+        return audioSettings;
+    }
+
+    public void setAudioSettings(AudioSettings audioSettings) {
+        this.audioSettings = audioSettings != null ? audioSettings : AudioSettings.DEFAULT;
+        if (this.audioSettings.narrationAudioPath() != null) {
+            this.audioPath = this.audioSettings.narrationAudioPath();
+        }
+    }
+
+    public String getSfxAudioPath() {
+        return audioSettings.sfxAudioPath();
+    }
+
+    public void setSfxAudioPath(String sfxAudioPath) {
+        this.audioSettings = this.audioSettings.withSfxAudioPath(sfxAudioPath);
+    }
+
+    public String getSfxPrompt() {
+        return audioSettings.sfxPrompt();
+    }
+
+    public void setSfxPrompt(String sfxPrompt) {
+        this.audioSettings = this.audioSettings.withSfxPrompt(sfxPrompt);
+    }
+
+    public double getVoiceVolume() {
+        return audioSettings.voiceVolume();
+    }
+
+    public void setVoiceVolume(double voiceVolume) {
+        this.audioSettings = this.audioSettings.withVolumes(voiceVolume, audioSettings.sfxVolume());
+    }
+
+    public double getSfxVolume() {
+        return audioSettings.sfxVolume();
+    }
+
+    public void setSfxVolume(double sfxVolume) {
+        this.audioSettings = this.audioSettings.withVolumes(audioSettings.voiceVolume(), sfxVolume);
     }
 
     public String getVideoPath() {

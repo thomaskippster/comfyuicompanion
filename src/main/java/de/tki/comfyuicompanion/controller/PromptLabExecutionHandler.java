@@ -48,6 +48,7 @@ public class PromptLabExecutionHandler {
     private PromptLabView promptLabView;
     private Runnable onOpenPathsConfig;
     private java.util.function.BiConsumer<String, String> onDownloadMissingModels;
+    private MissingCustomNodesInstallCoordinator missingNodesInstaller;
 
     /**
      * Sets the callback for opening the paths configuration dialog.
@@ -65,6 +66,15 @@ public class PromptLabExecutionHandler {
      */
     public void setOnDownloadMissingModels(java.util.function.BiConsumer<String, String> onDownloadMissingModels) {
         this.onDownloadMissingModels = onDownloadMissingModels;
+    }
+
+    /**
+     * Sets the coordinator offering a 1-click installation for custom nodes that cannot be auto-replaced.
+     *
+     * @param missingNodesInstaller installation coordinator; {@code null} falls back to a warning dialog
+     */
+    public void setMissingNodesInstaller(MissingCustomNodesInstallCoordinator missingNodesInstaller) {
+        this.missingNodesInstaller = missingNodesInstaller;
     }
 
     public PromptLabExecutionHandler(ConfigService configService,
@@ -295,6 +305,11 @@ public class PromptLabExecutionHandler {
                 String promptJsonText = promptLabView.getPromptJsonArea().getText();
                 JSONObject parsedPrompt = new JSONObject(promptJsonText);
                 JSONObject promptToQueue = PromptBlueprintApiService.extractPromptToQueue(parsedPrompt);
+                var nodeReport = modelInputSanitizer.resolveMissingNodes(promptToQueue, objectInfo);
+                if (!nodeReport.resolvedClassTypes().isEmpty() && console != null) {
+                    SwingUtilities.invokeLater(() -> console.append("Replaced missing custom nodes with ComfyUI core nodes: "
+                            + String.join(", ", nodeReport.resolvedClassTypes()) + "\n"));
+                }
 
                 PromptBlueprintApiService.PromptLabInputs inputs = new PromptBlueprintApiService.PromptLabInputs(
                         assembledPrompt, negativePrompt, widthVal, heightVal, stepsVal, cfgVal,
@@ -308,7 +323,10 @@ public class PromptLabExecutionHandler {
 
                 List<String> missingNodes = modelInputSanitizer.validateRequiredNodesInPrompt(promptToQueue, objectInfo);
                 if (!missingNodes.isEmpty()) {
-                    SwingUtilities.invokeLater(() -> modelInputSanitizer.handleMissingNodes(parentComponent, missingNodes, console));
+                    SwingUtilities.invokeLater(() -> {
+                        if (missingNodesInstaller != null) missingNodesInstaller.offerInstallation(parentComponent, missingNodes);
+                        else modelInputSanitizer.handleMissingNodes(parentComponent, missingNodes, console);
+                    });
                     return;
                 }
 

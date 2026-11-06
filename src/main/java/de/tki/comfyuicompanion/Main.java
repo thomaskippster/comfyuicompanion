@@ -3,6 +3,7 @@ package de.tki.comfyuicompanion;
 import com.formdev.flatlaf.FlatLaf;
 import de.tki.comfyuicompanion.config.AppConfig;
 import de.tki.comfyuicompanion.controller.DownloadManagerController;
+import de.tki.comfyuicompanion.controller.MissingCustomNodesInstallCoordinator;
 import de.tki.comfyuicompanion.controller.PromptLabController;
 import de.tki.comfyuicompanion.controller.PromptLabModelResolver;
 import de.tki.comfyuicompanion.domain.LaunchProfile;
@@ -82,6 +83,7 @@ public class Main extends JFrame {
     private AppLifecycleManager appLifecycleManager;
     private IDefaultCacheBootstrapper defaultCacheBootstrapper;
     private ComfyInstallationScanner comfyInstallationScanner;
+    private MissingCustomNodesInstallCoordinator missingNodesInstaller;
 
     private MainWindowBuilder.MainWindowComponents uiComponents;
     private MainWindowLifecycleHandler lifecycleHandler;
@@ -308,6 +310,19 @@ public class Main extends JFrame {
         this.stopButton = uiComponents.stopButton;
         this.tableModel = uiComponents.tableModel;
         this.activeAiModelLabel = uiComponents.activeAiModelLabel;
+        if (uiComponents.promptLabExecutionHandler != null) {
+            uiComponents.promptLabExecutionHandler.setMissingNodesInstaller(missingNodesInstaller);
+        }
+    }
+
+    /**
+     * Injects the custom node installation coordinator used by the Image Lab for unresolved nodes.
+     *
+     * @param missingNodesInstaller coordinator bean; optional
+     */
+    @Autowired(required = false)
+    public void setMissingNodesInstaller(MissingCustomNodesInstallCoordinator missingNodesInstaller) {
+        this.missingNodesInstaller = missingNodesInstaller;
     }
 
     public void setupTheme(boolean darkMode) {

@@ -237,8 +237,17 @@ public class MainWindowBuilder {
 
         main.updateTabVisibility();
 
+        components.footerPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 4));
+        components.footerPanel.setOpaque(false);
+        components.footerDisclaimerLabel = new JLabel("Built for ComfyUI · not affiliated with ComfyUI");
+        components.footerDisclaimerLabel.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        boolean darkTheme = configService != null && configService.isDarkMode();
+        components.footerDisclaimerLabel.setForeground(darkTheme ? new Color(112, 138, 144) : new Color(120, 130, 140));
+        components.footerPanel.add(components.footerDisclaimerLabel);
+
         rootPanel.add(components.headerBar, BorderLayout.NORTH);
         rootPanel.add(components.mainTabs, BorderLayout.CENTER);
+        rootPanel.add(components.footerPanel, BorderLayout.SOUTH);
         main.setContentPane(rootPanel);
     }
 
@@ -317,6 +326,9 @@ public class MainWindowBuilder {
             }
             if (components.galleryPanel != null) SwingUtilities.updateComponentTreeUI(components.galleryPanel);
             if (components.settingsPanel != null) SwingUtilities.updateComponentTreeUI(components.settingsPanel);
+            if (components.footerDisclaimerLabel != null) {
+                components.footerDisclaimerLabel.setForeground(darkMode ? new Color(112, 138, 144) : new Color(120, 130, 140));
+            }
 
             FlatLaf.updateUI();
             SwingUtilities.updateComponentTreeUI(main);
@@ -353,6 +365,8 @@ public class MainWindowBuilder {
         public JPanel videoArchitectWrapper;
         public MainSettingsPanel settingsPanelCoordinator;
         public JPanel settingsPanel;
+        public JPanel footerPanel;
+        public JLabel footerDisclaimerLabel;
         public javax.swing.table.DefaultTableModel tableModel;
         public JTextArea jsonInputArea;
         public JLabel statusLabel;

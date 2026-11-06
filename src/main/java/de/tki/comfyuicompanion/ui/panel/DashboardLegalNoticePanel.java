@@ -83,10 +83,24 @@ public class DashboardLegalNoticePanel extends JPanel {
             LegalNoticeDialog.show(parentWindow, dark);
         });
 
+        JLabel disclaimerLabel = new JLabel("Built for ComfyUI · not affiliated with ComfyUI", SwingConstants.CENTER) {
+            @Override
+            public void updateUI() {
+                super.updateUI();
+                if (configService != null) {
+                    setForeground(configService.isDarkMode() ? new Color(112, 138, 144) : new Color(120, 130, 140));
+                }
+            }
+        };
+        disclaimerLabel.setFont(new Font("SansSerif", Font.PLAIN, 10));
+        disclaimerLabel.setForeground(isDark ? new Color(112, 138, 144) : new Color(120, 130, 140));
+        disclaimerLabel.setBorder(new EmptyBorder(6, 0, 2, 0));
+
         JPanel btnPanel = new JPanel(new BorderLayout());
         btnPanel.setOpaque(false);
         btnPanel.setBorder(new EmptyBorder(4, 0, 0, 0));
         btnPanel.add(viewFullBtn, BorderLayout.CENTER);
+        btnPanel.add(disclaimerLabel, BorderLayout.SOUTH);
         add(btnPanel, BorderLayout.SOUTH);
     }
 }

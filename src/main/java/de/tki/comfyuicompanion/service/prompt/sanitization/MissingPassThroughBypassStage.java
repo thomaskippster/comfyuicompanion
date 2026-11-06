@@ -12,12 +12,11 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * Bypasses missing routing nodes (reroutes, switches, pipes, any-type relays) by connecting each
- * consumer directly to an upstream producer whose declared output type matches the type the consumer
- * expects.
+ * Bypasses missing routing and modifier nodes (reroutes, switches, pipes, relays, LoRA loaders, VRAM cleanups, FreeU)
+ * by connecting each consumer directly to an upstream producer whose declared output type matches the type the consumer expects.
  * <p>
  * Type compatibility is evaluated exclusively from {@code /object_info}: the consumer input type and the
- * producer output type are both known because both neighbors are registered core or installed nodes.
+ * producer output type are both verified against ComfyUI specifications, making the bypass completely type-safe.
  */
 @Component
 @Order(10)
@@ -29,11 +28,15 @@ public class MissingPassThroughBypassStage implements PromptSanitizationStage {
     public boolean apply(ApiPromptGraph graph) {
         boolean mutated = false;
         for (String missingId : graph.missingNodeIds()) {
-            if (!isEligibleRoutingNode(graph.classType(missingId))) continue;
             Map<String, JSONArray> upstream = graph.linkedInputs(missingId);
             if (upstream.isEmpty()) continue;
 
             List<ApiPromptGraph.LinkRef> consumers = graph.consumersOf(missingId);
+            if (consumers.isEmpty()) continue;
+
+            if (!isEligibleRoutingNode(graph.classType(missingId))) continue;
+            if (!canAllConsumersBeSatisfied(graph, upstream, consumers)) continue;
+
             int rewired = 0;
             for (ApiPromptGraph.LinkRef ref : consumers) {
                 Optional<String> expected = graph.inputType(graph.classType(ref.consumerId()), ref.inputName());
@@ -62,7 +65,22 @@ public class MissingPassThroughBypassStage implements PromptSanitizationStage {
         String lower = classType.toLowerCase(Locale.ROOT);
         return lower.contains("reroute") || lower.contains("switch") || lower.contains("relay")
                 || lower.contains("bypass") || lower.contains("pipe") || lower.contains("bus")
-                || lower.contains("wire") || lower.contains("passthrough") || lower.contains("pass through");
+                || lower.contains("wire") || lower.contains("passthrough") || lower.contains("pass through")
+                || lower.contains("lora") || lower.contains("cleanup") || lower.contains("vram")
+                || lower.contains("memory") || lower.contains("freeu") || lower.contains("muter")
+                || lower.contains("filter") || lower.contains("dummy") || lower.contains("context");
+    }
+
+    private boolean canAllConsumersBeSatisfied(ApiPromptGraph graph, Map<String, JSONArray> upstream,
+                                               List<ApiPromptGraph.LinkRef> consumers) {
+        for (ApiPromptGraph.LinkRef ref : consumers) {
+            Optional<String> expected = graph.inputType(graph.classType(ref.consumerId()), ref.inputName());
+            if (expected.isEmpty()) return false;
+            if (findTypedSource(graph, upstream, expected.get(), ref.inputName()).isEmpty()) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /**
@@ -79,7 +97,7 @@ public class MissingPassThroughBypassStage implements PromptSanitizationStage {
             if (!graph.isRegistered(producerType)) continue;
             Optional<String> outType = graph.outputType(producerType, link.getInt(1));
             if (outType.isPresent() && outType.get().equals(expectedType)) {
-                if (entry.getKey().equals(preferredName)) return Optional.of(link);
+                if (entry.getKey().equalsIgnoreCase(preferredName)) return Optional.of(link);
                 if (fallback == null) fallback = link;
             }
         }

@@ -351,6 +351,10 @@ public class PromptLabStatusPoller {
                     liveSteps = 8;
                 }
 
+                if (sanitizer != null) {
+                    sanitizer.resolveMissingNodes(promptToQueue, objectInfo);
+                }
+
                 var inputs = new de.tki.comfyuicompanion.service.PromptBlueprintApiService.PromptLabInputs(
                         cell.positivePrompt(), negPrompt, width, height, liveSteps, cell.cfg(),
                         cell.seed(), sampler, scheduler, denoise, 1,
@@ -359,6 +363,16 @@ public class PromptLabStatusPoller {
                 apiService.injectLabInputs(promptToQueue, inputs);
                 if (sanitizer != null) {
                     sanitizer.sanitizeModelInputsInPrompt(promptToQueue, objectInfo, view, controller);
+                    java.util.List<String> missingNodes = sanitizer.validateRequiredNodesInPrompt(promptToQueue, objectInfo);
+                    if (!missingNodes.isEmpty()) {
+                        String missingMsg = "❌ Missing Custom Node: " + missingNodes.get(0);
+                        if (dlg != null) dlg.setStatusText(missingMsg);
+                        for (int j = i; j < cellViews.size(); j++) {
+                            cellViews.get(j).setStatus("❌ Missing Node");
+                        }
+                        return;
+                    }
+
                     java.util.List<String> missingModels = sanitizer.validateRequiredModelsInPrompt(promptToQueue, objectInfo);
                     if (!missingModels.isEmpty()) {
                         String missingMsg = "❌ Missing model in ComfyUI: " + missingModels.get(0);

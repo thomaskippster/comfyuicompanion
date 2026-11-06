@@ -1,5 +1,6 @@
 package de.tki.comfyuicompanion.service.impl;
 
+import de.tki.comfyuicompanion.util.PathGuard;
 import de.tki.comfyuicompanion.util.PlatformUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -213,7 +214,7 @@ public class EnvironmentBootstrapperImpl {
         try (ZipInputStream zis = new ZipInputStream(new FileInputStream(zipFile.toFile()))) {
             ZipEntry entry;
             while ((entry = zis.getNextEntry()) != null) {
-                Path newPath = targetDir.resolve(entry.getName());
+                Path newPath = PathGuard.resolveWithin(targetDir, entry.getName());
                 if (entry.isDirectory()) {
                     Files.createDirectories(newPath);
                 } else {

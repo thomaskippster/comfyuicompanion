@@ -32,7 +32,9 @@ public final class PathGuard {
         if (rawFileName == null || rawFileName.isBlank()) {
             throw new SecurityException("Filename must not be null or blank.");
         }
-        String fileName = new File(rawFileName).getName().replace("\0", "").trim();
+        String clean = rawFileName.replace('\\', '/').replace("\0", "").trim();
+        int lastSlash = clean.lastIndexOf('/');
+        String fileName = (lastSlash >= 0 ? clean.substring(lastSlash + 1) : clean).trim();
         if (fileName.isEmpty() || fileName.equals(".") || fileName.equals("..")) {
             throw new SecurityException("Invalid filename after sanitization: " + rawFileName);
         }
@@ -53,7 +55,8 @@ public final class PathGuard {
         if (untrustedPath == null || untrustedPath.isBlank()) {
             throw new SecurityException("Untrusted path must not be null or blank");
         }
-        return resolveWithin(baseDir, Paths.get(untrustedPath));
+        String normalizedUntrusted = untrustedPath.replace('\\', '/').trim();
+        return resolveWithin(baseDir, Paths.get(normalizedUntrusted));
     }
 
     /**
@@ -67,6 +70,11 @@ public final class PathGuard {
     public static Path resolveWithin(Path baseDir, Path untrustedPath) {
         Objects.requireNonNull(baseDir, "Base directory must not be null");
         Objects.requireNonNull(untrustedPath, "Untrusted path must not be null");
+
+        String rawPath = untrustedPath.toString();
+        if (rawPath.contains("\\")) {
+            untrustedPath = Paths.get(rawPath.replace('\\', '/'));
+        }
 
         Path normalizedBase = baseDir.toAbsolutePath().normalize();
         Path candidate = untrustedPath.isAbsolute()

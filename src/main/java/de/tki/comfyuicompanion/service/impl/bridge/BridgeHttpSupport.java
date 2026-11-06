@@ -53,7 +53,10 @@ public class BridgeHttpSupport {
         String authHeader = exchange.getRequestHeaders().getFirst("Authorization");
         if (expectedApiToken != null && !expectedApiToken.isEmpty()) {
             String expected = "Bearer " + expectedApiToken.trim();
-            if (authHeader == null || !authHeader.trim().equals(expected)) {
+            boolean valid = authHeader != null && java.security.MessageDigest.isEqual(
+                    authHeader.trim().getBytes(StandardCharsets.UTF_8),
+                    expected.getBytes(StandardCharsets.UTF_8));
+            if (!valid) {
                 logger.error("REST Bridge: 401 Unauthorized request from " + exchange.getRemoteAddress());
                 exchange.sendResponseHeaders(401, -1);
                 return false;

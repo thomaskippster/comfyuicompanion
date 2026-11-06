@@ -138,9 +138,11 @@ public class ComfyLifecycleService implements IComfyLifecycleService {
                                         if (java.awt.Desktop.isDesktopSupported() && java.awt.Desktop.getDesktop().isSupported(java.awt.Desktop.Action.BROWSE)) {
                                             java.awt.Desktop.getDesktop().browse(new java.net.URI(url));
                                         } else {
-                                            String cmd = de.tki.comfyuicompanion.util.PlatformUtils.isWindows() ? "cmd /c start " + url : "xdg-open " + url;
-                                            logger.info("🌐 [Lifecycle] Desktop API not supported. Executing: " + cmd);
-                                            Process p = Runtime.getRuntime().exec(cmd);
+                                            ProcessBuilder pb = de.tki.comfyuicompanion.util.PlatformUtils.isWindows()
+                                                    ? new ProcessBuilder("cmd", "/c", "start", url)
+                                                    : new ProcessBuilder("xdg-open", url);
+                                            logger.info("🌐 [Lifecycle] Desktop API not supported. Executing command for: " + url);
+                                            Process p = pb.start();
                                             if (p.waitFor() != 0) {
                                                 logger.error("⚠️ [Lifecycle] Browser launch process failed with exit code: " + p.exitValue());
                                             }
@@ -227,12 +229,12 @@ public class ComfyLifecycleService implements IComfyLifecycleService {
 
             if (de.tki.comfyuicompanion.util.PlatformUtils.isWindows()) {
                 // Find PID on port and kill it
-                Process p = Runtime.getRuntime().exec("cmd /c netstat -ano | findstr :" + port);
+                Process p = new ProcessBuilder("cmd.exe", "/c", "netstat -ano").start();
                 try (java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.InputStreamReader(p.getInputStream(), java.nio.charset.StandardCharsets.UTF_8))) {
                     String line;
                     while ((line = reader.readLine()) != null) {
                         String upper = line.toUpperCase();
-                        if (upper.contains("LISTENING") || upper.contains("ABH") || upper.contains("ESCUCHANDO") || upper.contains("L'ECOUTE") || line.contains("0.0.0.0:0") || line.contains("[::]:0")) {
+                        if (line.contains(":" + port) && (upper.contains("LISTENING") || upper.contains("ABH") || upper.contains("ESCUCHANDO") || upper.contains("L'ECOUTE") || line.contains("0.0.0.0:0") || line.contains("[::]:0"))) {
                             String[] parts = line.trim().split("\\s+");
                             if (parts.length > 0) {
                                 try {
@@ -240,29 +242,33 @@ public class ComfyLifecycleService implements IComfyLifecycleService {
                                     if (pid != ProcessHandle.current().pid() && pid > 0) {
                                         ProcessHandle.of(pid).ifPresent(ProcessHandle::destroyForcibly);
                                         try {
-                                            Runtime.getRuntime().exec("taskkill /F /PID " + pid + " /T");
+                                            new ProcessBuilder("taskkill", "/F", "/PID", String.valueOf(pid), "/T").start();
                                         } catch (Exception ignored) {
-            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
-        }
+                                            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+                                        }
                                         logger.info("💀 Killed process " + pid + " listening on port " + port);
                                     }
                                 } catch (NumberFormatException ignored) {
-            logger.trace("Invalid numeric format: {}", ignored.getMessage());
-        }
+                                    logger.trace("Invalid numeric format: {}", ignored.getMessage());
+                                }
                             }
                         }
                     }
                 }
                 // ALSO KILL WSL INSTANCES RUNNING ON PORT OR main.py
                 try {
-                    Runtime.getRuntime().exec(new String[]{"wsl", "pkill", "-f", "main.py"});
-                    Runtime.getRuntime().exec(new String[]{"wsl", "fuser", "-k", port + "/tcp"});
+                    new ProcessBuilder("wsl", "pkill", "-f", "main.py").start();
+                    new ProcessBuilder("wsl", "fuser", "-k", port + "/tcp").start();
                 } catch (Exception ignored) {
-            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
-        }
+                    logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+                }
             } else {
                 // Linux/Mac fallback
-                Runtime.getRuntime().exec(new String[]{"sh", "-c", "fuser -k " + port + "/tcp"});
+                try {
+                    new ProcessBuilder("sh", "-c", "fuser -k " + port + "/tcp || (command -v lsof >/dev/null 2>&1 && lsof -ti:" + port + " | xargs kill -9)").start();
+                } catch (Exception ignored) {
+                    logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+                }
             }
             // Sleep a small duration to allow OS to release port & file locks
             try { Thread.sleep(1000); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }

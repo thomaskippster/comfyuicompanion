@@ -15,9 +15,9 @@ if ($PSScriptRoot) { Set-Location $PSScriptRoot }
 
 # Auto-detect WiX in standard paths if not yet in PATH
 $wixCandidates = @(
-    "C:\Users\thoma\.wix311",
     "$env:USERPROFILE\.wix311",
-    "C:\Program Files (x86)\WiX Toolset v3.11\bin"
+    "C:\Program Files (x86)\WiX Toolset v3.11\bin",
+    "C:\Program Files\WiX Toolset v3.11\bin"
 )
 foreach ($cand in $wixCandidates) {
     if ((Test-Path "$cand\candle.exe") -and ($env:Path -notlike "*$cand*")) {

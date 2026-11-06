@@ -100,6 +100,9 @@ public class VaultIngestionDropZonePanel extends JPanel {
     }
 
     private void setupDragAndDrop() {
+        if (GraphicsEnvironment.isHeadless()) {
+            return;
+        }
         new DropTarget(this, DnDConstants.ACTION_COPY, new DropTargetAdapter() {
             @Override
             public void dragEnter(DropTargetDragEvent dtde) {

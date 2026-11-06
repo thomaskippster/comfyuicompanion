@@ -1,0 +1,78 @@
+{
+  "definitions": {
+    "subgraphs": [
+      {
+        "id": "26ae0bb9-8bee-49c8-bca0-2897ee957e33",
+        "inputs": [],
+        "outputs": [],
+        "nodes": [
+          {
+            "id": 52,
+            "type": "ComfySwitchNode",
+            "widgets_values_named": {
+              "switch": false
+            },
+            "inputs": [
+              {
+                "name": "on_false",
+                "type": "*",
+                "link": 201
+              },
+              {
+                "name": "on_true",
+                "type": "*",
+                "link": 202
+              }
+            ],
+            "outputs": [
+              {
+                "name": "out",
+                "type": "*",
+                "links": [203]
+              }
+            ]
+          },
+          {
+            "id": 44,
+            "type": "ModelAttentionBackend",
+            "widgets_values_named": {
+              "attention": "comfy kitchen attention"
+            },
+            "inputs": [
+              {
+                "name": "model",
+                "type": "MODEL",
+                "link": 203
+              }
+            ],
+            "outputs": []
+          }
+        ],
+        "links": [
+          [201, 10006, 0, 52, 0, "*"],
+          [202, 10041, 0, 52, 1, "*"],
+          [203, 52, 0, 44, 0, "MODEL"]
+        ]
+      }
+    ]
+  },
+  "nodes": [
+    {
+      "id": 1,
+      "type": "26ae0bb9-8bee-49c8-bca0-2897ee957e33",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "id": 79,
+      "type": "ResolutionSelector",
+      "widgets_values_named": {
+        "aspect_ratio": "16:9 (Widescreen)",
+        "multiple": 8
+      },
+      "inputs": [],
+      "outputs": []
+    }
+  ],
+  "links": []
+}

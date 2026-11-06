@@ -151,7 +151,10 @@ public class VideoArchitectSceneTest {
     public void testGemma4ServiceSuccessfulScriptGeneration() throws Exception {
         LocalGemmaService mockLocalGemma = Mockito.mock(LocalGemmaService.class);
         Mockito.when(mockLocalGemma.isModelDownloaded()).thenReturn(true);
+        Mockito.when(mockLocalGemma.isModelDownloaded(Mockito.any())).thenReturn(true);
         Mockito.when(mockLocalGemma.generateCompletion(Mockito.anyString(), Mockito.anyString(), Mockito.anyFloat(), Mockito.anyInt()))
+                .thenReturn("[{\"scene_id\":\"S1\",\"visual_prompt\":\"Neon car\",\"duration_seconds\":5,\"narration_text\":\"Speeding through the night\"}]");
+        Mockito.when(mockLocalGemma.generateCompletion(Mockito.anyString(), Mockito.anyString(), Mockito.anyFloat(), Mockito.anyInt(), Mockito.any()))
                 .thenReturn("[{\"scene_id\":\"S1\",\"visual_prompt\":\"Neon car\",\"duration_seconds\":5,\"narration_text\":\"Speeding through the night\"}]");
 
         Gemma4Service gemmaService = new Gemma4Service(mockLocalGemma);

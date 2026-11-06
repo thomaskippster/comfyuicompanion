@@ -121,8 +121,10 @@ class UnifiedWorkflowDetailsDialogTest {
 
         assertNotNull(sizeFew);
         assertNotNull(sizeMany);
-        assertTrue(sizeFew.width >= 1260, "Dialog width should meet minimum width requirement");
-        assertTrue(sizeMany.width >= 1260, "Dialog width should meet minimum width requirement");
+        java.awt.Rectangle screen = WorkflowDialogDimensionHelper.getUsableScreenBounds(null);
+        int expectedWidth = Math.min((int) (screen.width * 0.95), Math.max(1260, 1320));
+        assertEquals(expectedWidth, sizeFew.width, "Dialog width should match calculated optimal width");
+        assertEquals(expectedWidth, sizeMany.width, "Dialog width should match calculated optimal width");
         assertTrue(sizeMany.height >= sizeFew.height, "Dialog height should scale to accommodate more model table rows");
     }
 

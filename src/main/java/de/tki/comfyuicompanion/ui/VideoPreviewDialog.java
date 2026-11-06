@@ -115,16 +115,17 @@ public class VideoPreviewDialog extends JDialog {
     }
 
     private void stopPlayer() {
-        if (mediaPlayer != null) {
+        MediaPlayer player = this.mediaPlayer;
+        this.mediaPlayer = null;
+        if (player != null) {
             try {
                 Platform.runLater(() -> {
-                    try { mediaPlayer.stop(); } catch (Exception ignored) { logger.debug("Ignored: {}", ignored.getMessage()); }
-                    try { mediaPlayer.dispose(); } catch (Exception ignored) { logger.debug("Ignored: {}", ignored.getMessage()); }
+                    try { player.stop(); } catch (Exception ignored) { logger.debug("Ignored: {}", ignored.getMessage()); }
+                    try { player.dispose(); } catch (Exception ignored) { logger.debug("Ignored: {}", ignored.getMessage()); }
                 });
             } catch (Exception ignored) {
                 logger.debug("Ignored: {}", ignored.getMessage());
             }
-            mediaPlayer = null;
         }
     }
 

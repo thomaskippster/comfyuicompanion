@@ -193,8 +193,10 @@ class HuggingFaceUiTest {
         );
 
         assertNotNull(dialog);
-        assertTrue(dialog.getWidth() >= 1250);
-        assertTrue(dialog.getHeight() >= 760);
+        java.awt.Rectangle screen = de.tki.comfyuicompanion.ui.blueprint.WorkflowDialogDimensionHelper.getUsableScreenBounds(null);
+        int expectedWidth = Math.min((int) (screen.width * 0.95), 1250);
+        assertTrue(dialog.getWidth() >= expectedWidth);
+        assertTrue(dialog.getHeight() >= Math.min((int) (screen.height * 0.90), 760));
         dialog.dispose();
     }
     @Test

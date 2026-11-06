@@ -113,6 +113,91 @@ public class PromptLabModelInputSanitizer {
             }
         }
         PromptBlueprintApiService.sanitizeAllSeedsInPrompt(promptObj);
+        sanitizeMissingUtilityNodesInPrompt(promptObj, objectInfo);
+    }
+
+    /**
+     * Automatically sanitizes or inlines non-essential missing utility nodes (e.g. external seed generators
+     * like 'Seed (rgthree)' or ratio selector latent generators) into standard ComfyUI core nodes.
+     *
+     * @param promptObj  the API prompt dictionary to sanitize
+     * @param objectInfo the ComfyUI /object_info registry
+     */
+    public void sanitizeMissingUtilityNodesInPrompt(JSONObject promptObj, JSONObject objectInfo) {
+        if (promptObj == null || objectInfo == null || objectInfo.isEmpty()) {
+            return;
+        }
+
+        boolean isSd3 = false;
+        for (String key : promptObj.keySet()) {
+            JSONObject node = promptObj.optJSONObject(key);
+            if (node == null) continue;
+            String ct = node.optString("class_type", "");
+            if ("TripleCLIPLoader".equals(ct) || "EmptySD3LatentImage".equals(ct)) {
+                isSd3 = true;
+                break;
+            }
+            JSONObject inp = node.optJSONObject("inputs");
+            if (inp != null) {
+                String ckpt = inp.optString("ckpt_name", "").toLowerCase(Locale.ROOT);
+                if (ckpt.contains("sd3") || ckpt.contains("sd_3")) {
+                    isSd3 = true;
+                    break;
+                }
+            }
+        }
+
+        List<String> nodesToRemove = new ArrayList<>();
+
+        for (String key : new ArrayList<>(promptObj.keySet())) {
+            JSONObject node = promptObj.optJSONObject(key);
+            if (node == null) continue;
+            String classType = node.optString("class_type", "").trim();
+            if (classType.isEmpty() || objectInfo.has(classType)) {
+                continue;
+            }
+
+            // Case 1: External Seed Generators (e.g. "Seed (rgthree)", "RgthreeSeed", "CR Seed")
+            if (classType.contains("Seed") || classType.contains("seed")) {
+                JSONObject inp = node.optJSONObject("inputs");
+                long seedVal = -1;
+                if (inp != null) {
+                    seedVal = inp.optLong("seed", inp.optLong("seed_value", System.currentTimeMillis()));
+                }
+                if (seedVal <= 0) seedVal = (long) (Math.random() * 1_000_000_000_000_000L);
+
+                for (String cKey : promptObj.keySet()) {
+                    JSONObject cNode = promptObj.optJSONObject(cKey);
+                    if (cNode == null) continue;
+                    JSONObject cInp = cNode.optJSONObject("inputs");
+                    if (cInp == null) continue;
+                    for (String ik : new ArrayList<>(cInp.keySet())) {
+                        Object val = cInp.get(ik);
+                        if (val instanceof JSONArray arr && arr.length() > 0 && key.equals(String.valueOf(arr.get(0)))) {
+                            cInp.put(ik, seedVal);
+                        }
+                    }
+                }
+                nodesToRemove.add(key);
+                continue;
+            }
+
+            // Case 2: Aspect Ratio / Empty Latent Selectors (e.g. "Empty Latent Ratio Select SDXL", "CR SDXL Aspect Ratio")
+            if (classType.contains("Empty Latent Ratio") || classType.contains("EmptyLatentRatio") || classType.contains("Ratio Select")) {
+                String replacementClass = isSd3 ? "EmptySD3LatentImage" : "EmptyLatentImage";
+                node.put("class_type", replacementClass);
+                JSONObject inp = node.optJSONObject("inputs");
+                if (inp == null) {
+                    inp = new JSONObject();
+                    node.put("inputs", inp);
+                }
+                if (!inp.has("width")) inp.put("width", 1024);
+                if (!inp.has("height")) inp.put("height", 1024);
+                if (!inp.has("batch_size")) inp.put("batch_size", 1);
+            }
+        }
+
+        nodesToRemove.forEach(promptObj::remove);
     }
 
     /**

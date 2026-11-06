@@ -133,6 +133,17 @@ public class PlatformUtils {
     }
 
     /**
+     * Checks if the application is running in an unattended test, headless, or automated CI environment.
+     *
+     * @return true if running unattended without an interactive user to dismiss modal dialogs
+     */
+    public static boolean isUnattended() {
+        return java.awt.GraphicsEnvironment.isHeadless()
+                || Boolean.getBoolean("companion.unattended")
+                || System.getProperty("surefire.test.class.path") != null;
+    }
+
+    /**
      * Parses a command line string into a list of arguments, handling quotation marks.
      *
      * @param commandLine the raw command line string

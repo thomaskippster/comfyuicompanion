@@ -107,7 +107,7 @@ public class BlueprintScanService {
             ProgressNotifier progressNotifier) {
 
         if (!blueprintsDir.exists() || !blueprintsDir.isDirectory()) {
-            logger.error("⚠️ [BlueprintScanService] Blueprints directory not found: {}", blueprintsDir.getAbsolutePath());
+            logger.info("ℹ️ [BlueprintScanService] Blueprints directory not found (skipping local scan): {}", blueprintsDir.getAbsolutePath());
             progressNotifier.notify(100, "Done (No blueprints directory)", true);
             return false;
         }

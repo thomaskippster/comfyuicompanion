@@ -53,9 +53,7 @@ public class BlueprintCacheStore {
         }
         try {
             JsonNode root = mapper.readTree(targetFile);
-            Iterator<Map.Entry<String, JsonNode>> fields = root.fields();
-            while (fields.hasNext()) {
-                Map.Entry<String, JsonNode> field = fields.next();
+            for (Map.Entry<String, JsonNode> field : root.properties()) {
                 try {
                     ModelArchitecture arch = ModelArchitecture.valueOf(field.getValue().asText());
                     targetMap.put(field.getKey(), arch);
@@ -99,9 +97,7 @@ public class BlueprintCacheStore {
         }
         try {
             JsonNode root = mapper.readTree(targetFile);
-            Iterator<Map.Entry<String, JsonNode>> fields = root.fields();
-            while (fields.hasNext()) {
-                Map.Entry<String, JsonNode> field = fields.next();
+            for (Map.Entry<String, JsonNode> field : root.properties()) {
                 String key = field.getKey().toLowerCase().trim();
                 JsonNode val = field.getValue();
                 ModelDefaults defaults = new ModelDefaults(

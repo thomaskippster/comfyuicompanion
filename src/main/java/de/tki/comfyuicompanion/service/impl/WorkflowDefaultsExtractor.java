@@ -97,9 +97,7 @@ public class WorkflowDefaultsExtractor {
 
         // Find nodes in API format
         if (root.isObject() && !root.has("nodes")) {
-            Iterator<Map.Entry<String, JsonNode>> fields = root.fields();
-            while (fields.hasNext()) {
-                Map.Entry<String, JsonNode> field = fields.next();
+            for (Map.Entry<String, JsonNode> field : root.properties()) {
                 JsonNode node = field.getValue();
                 if (node.isObject() && node.has("class_type")) {
                     String classType = node.path("class_type").asText();

@@ -180,9 +180,7 @@ public class CustomNodeDatabaseLoader {
             JsonNode root = objectMapper.readTree(file.toFile());
             if (!root.isObject()) return;
 
-            Iterator<Map.Entry<String, JsonNode>> fields = root.fields();
-            while (fields.hasNext()) {
-                Map.Entry<String, JsonNode> entry = fields.next();
+            for (Map.Entry<String, JsonNode> entry : root.properties()) {
                 String repoKey = entry.getKey();
                 JsonNode nodesArray = entry.getValue();
 

@@ -69,9 +69,7 @@ public class ArchitectureCacheStore {
             return;
         }
         try {
-            Iterator<Map.Entry<String, JsonNode>> fields = mapper.readTree(file).fields();
-            while (fields.hasNext()) {
-                Map.Entry<String, JsonNode> field = fields.next();
+            for (Map.Entry<String, JsonNode> field : mapper.readTree(file).properties()) {
                 JsonNode val = field.getValue();
                 target.put(field.getKey().toLowerCase().trim(), new ModelDefaults(
                         val.path("vaeName").asText(null),
@@ -106,9 +104,7 @@ public class ArchitectureCacheStore {
             return;
         }
         try {
-            Iterator<Map.Entry<String, JsonNode>> fields = mapper.readTree(file).fields();
-            while (fields.hasNext()) {
-                Map.Entry<String, JsonNode> field = fields.next();
+            for (Map.Entry<String, JsonNode> field : mapper.readTree(file).properties()) {
                 String val = field.getValue().asText();
                 try {
                     target.put(field.getKey(), ModelArchitecture.valueOf(val));

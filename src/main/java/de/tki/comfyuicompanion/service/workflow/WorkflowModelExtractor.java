@@ -106,7 +106,7 @@ public class WorkflowModelExtractor {
             // 3. Inspect widgets_values_named map
             JsonNode namedWidgets = node.get("widgets_values_named");
             if (namedWidgets != null && namedWidgets.isObject()) {
-                namedWidgets.fields().forEachRemaining(entry ->
+                namedWidgets.properties().forEach(entry ->
                         scanTextForModels(entry.getValue().asText(""), nodeType, nodeTitle, discovered)
                 );
             }
@@ -119,14 +119,14 @@ public class WorkflowModelExtractor {
     }
 
     private void extractFromApiGraph(JsonNode apiRoot, Map<String, ModelInfo> discovered) {
-        apiRoot.fields().forEachRemaining(entry -> {
+        apiRoot.properties().forEach(entry -> {
             JsonNode nodeObj = entry.getValue();
             if (nodeObj != null && nodeObj.isObject()) {
                 String nodeType = nodeObj.path("class_type").asText("");
                 String nodeTitle = nodeObj.path("_meta").path("title").asText("");
                 JsonNode inputs = nodeObj.get("inputs");
                 if (inputs != null && inputs.isObject()) {
-                    inputs.fields().forEachRemaining(inputEntry ->
+                    inputs.properties().forEach(inputEntry ->
                             scanTextForModels(inputEntry.getValue().asText(""), nodeType, nodeTitle, discovered)
                     );
                 }

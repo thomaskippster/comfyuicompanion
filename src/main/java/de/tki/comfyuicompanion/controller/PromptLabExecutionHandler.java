@@ -383,12 +383,20 @@ public class PromptLabExecutionHandler {
      */
     public void loadAndDisplayImage(String filename, String subfolder, String type) {
         String comfyUrl = configService.getComfyUIUrl();
-        String imageUrl = comfyUrl + "/view?filename=" + filename + "&subfolder=" + subfolder + "&type=" + type;
+        String safeFilename = java.net.URLEncoder.encode(filename != null ? filename : "", java.nio.charset.StandardCharsets.UTF_8);
+        String safeSubfolder = java.net.URLEncoder.encode(subfolder != null ? subfolder : "", java.nio.charset.StandardCharsets.UTF_8);
+        String safeType = java.net.URLEncoder.encode(type != null ? type : "", java.nio.charset.StandardCharsets.UTF_8);
+        String imageUrl = comfyUrl + "/view?filename=" + safeFilename + "&subfolder=" + safeSubfolder + "&type=" + safeType;
 
         backgroundExecutor.execute(() -> {
             try {
-                URL url = new URL(imageUrl);
-                Image img = ImageIO.read(url);
+                java.net.URLConnection conn = java.net.URI.create(imageUrl).toURL().openConnection();
+                conn.setConnectTimeout(5000);
+                conn.setReadTimeout(15000);
+                Image img;
+                try (java.io.InputStream is = conn.getInputStream()) {
+                    img = ImageIO.read(is);
+                }
                 if (img != null) {
                     SwingUtilities.invokeLater(() -> scaleAndSetImage(img));
                 }

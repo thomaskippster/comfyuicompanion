@@ -49,7 +49,7 @@ public class LocalModelCacheManager {
             if (cloudCacheFile.exists()) {
                 JsonNode cloudRoot = objectMapper.readTree(cloudCacheFile);
                 if (cloudRoot.isObject()) {
-                    cloudRoot.fields().forEachRemaining(entry -> {
+                    cloudRoot.properties().forEach(entry -> {
                         cloudOnlyCache.put(entry.getKey(), entry.getValue().asBoolean());
                     });
                 }
@@ -58,7 +58,7 @@ public class LocalModelCacheManager {
             if (cacheFile.exists()) {
                 JsonNode root = objectMapper.readTree(cacheFile);
                 if (root.isObject()) {
-                    root.fields().forEachRemaining(entry -> {
+                    root.properties().forEach(entry -> {
                         List<ModelInfo> list = new ArrayList<>();
                         if (entry.getValue().isArray()) {
                             entry.getValue().forEach(node -> {

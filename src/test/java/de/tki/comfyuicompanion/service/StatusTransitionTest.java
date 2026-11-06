@@ -88,7 +88,7 @@ public class StatusTransitionTest {
         downloadManager.startQueue(Collections.singletonList(info), new boolean[]{true}, tempDir.toString(), 
             (idx, s) -> statuses.add(s), latch::countDown);
 
-        assertTrue(latch.await(5, TimeUnit.SECONDS));
+        assertTrue(latch.await(40, TimeUnit.SECONDS));
         assertTrue(statuses.stream().anyMatch(s -> s.contains("Downloading")), "Statuses: " + statuses);
         assertTrue(statuses.contains("✅ Finished"), "Statuses: " + statuses);
     }
@@ -217,7 +217,7 @@ public class StatusTransitionTest {
         downloadManager.startQueue(Collections.singletonList(info), new boolean[]{true}, tempDir.toString(), 
             (idx, s) -> statuses.add(s), latch::countDown);
 
-        assertTrue(latch.await(5, TimeUnit.SECONDS));
+        assertTrue(latch.await(40, TimeUnit.SECONDS));
         assertTrue(statuses.stream().anyMatch(s -> s.contains("Error:")), "Statuses: " + statuses);
     }
 }

@@ -64,7 +64,7 @@ public class CivitaiModelProvider implements ModelProviderStrategy {
         String url = BASE_URL + "/models?limit=20&query=" + URLEncoder.encode(query, StandardCharsets.UTF_8);
         HttpRequest request = createRequestBuilder(url).GET().timeout(Duration.ofSeconds(20)).build();
 
-        return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString())
+        return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8))
                 .thenApply(response -> {
                     List<ModelInfo> results = new ArrayList<>();
                     if (response.statusCode() == 200) {
@@ -91,7 +91,7 @@ public class CivitaiModelProvider implements ModelProviderStrategy {
         try {
             String url = BASE_URL + "/model-versions/by-hash/" + hash;
             HttpRequest request = createRequestBuilder(url).GET().timeout(Duration.ofSeconds(15)).build();
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
 
             if (response.statusCode() == 200) {
                 JsonNode root = objectMapper.readTree(response.body());

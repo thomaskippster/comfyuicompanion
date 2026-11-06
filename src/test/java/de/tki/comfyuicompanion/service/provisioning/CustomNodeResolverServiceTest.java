@@ -99,5 +99,99 @@ class CustomNodeResolverServiceTest {
         var wav2Lip = resolverService.findKnownPackage("Wav2Lip");
         assertThat(wav2Lip).isPresent();
         assertThat(wav2Lip.get().packageName()).isEqualTo("Wav2Lip");
+
+        var wan = resolverService.findKnownPackage("WanVideoSampler");
+        assertThat(wan).isPresent();
+        assertThat(wan.get().packageName()).isEqualTo("ComfyUI-WanVideoWrapper");
+
+        var ue = resolverService.findKnownPackage("Anything Everywhere");
+        assertThat(ue).isPresent();
+        assertThat(ue.get().packageName()).isEqualTo("cg-use-everywhere");
+    }
+
+    @Test
+    @DisplayName("analyzeWorkflowNodes: should detect missing custom nodes when ComfyUI is offline")
+    void shouldDetectMissingNodesWhenOffline() {
+        String workflow = """
+                {
+                  "nodes": [
+                    { "type": "WanVideoSampler" },
+                    { "type": "Anything Everywhere" },
+                    { "type": "KSampler" }
+                  ]
+                }
+                """;
+
+        var report = resolverService.analyzeWorkflowNodes(workflow).block();
+
+        assertThat(report).isNotNull();
+        assertThat(report.missingNodeTypes()).contains("WanVideoSampler", "Anything Everywhere");
+        assertThat(report.missingNodeTypes()).doesNotContain("KSampler");
+        assertThat(report.recommendedPackages())
+                .extracting(CustomNodeResolverService.CustomNodePackage::packageName)
+                .contains("ComfyUI-WanVideoWrapper", "cg-use-everywhere");
+    }
+
+    @Test
+    @DisplayName("analyzeWorkflowNodes: should recognize all core nodes and subgraphs without false missing reports")
+    void shouldRecognizeAllCoreNodesAndSubgraphsInZImageTurbo() {
+        String workflow = """
+                {
+                  "nodes": [
+                    { "id": 35, "type": "MarkdownNote" },
+                    { "id": 9, "type": "SaveImage" },
+                    { "id": 57, "type": "f2fdebf6-dfaf-43b6-9eb2-7f70613cfdc1" }
+                  ],
+                  "definitions": {
+                    "subgraphs": [
+                      {
+                        "id": "f2fdebf6-dfaf-43b6-9eb2-7f70613cfdc1",
+                        "nodes": [
+                          { "id": 30, "type": "CLIPLoader" },
+                          { "id": 29, "type": "VAELoader" },
+                          { "id": 33, "type": "ConditioningZeroOut" },
+                          { "id": 8, "type": "VAEDecode" },
+                          { "id": 28, "type": "UNETLoader" },
+                          { "id": 27, "type": "CLIPTextEncode" },
+                          { "id": 13, "type": "EmptySD3LatentImage" },
+                          { "id": 11, "type": "ModelSamplingAuraFlow" },
+                          { "id": 3, "type": "KSampler" }
+                        ]
+                      }
+                    ]
+                  }
+                }
+                """;
+
+        var report = resolverService.analyzeWorkflowNodes(workflow).block();
+
+        assertThat(report).isNotNull();
+        assertThat(report.missingNodeTypes()).isEmpty();
+        assertThat(report.recommendedPackages()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("analyzeWorkflowNodes: should resolve packages for Seed (rgthree) and Empty Latent Ratio Select SDXL")
+    void shouldResolveMissingNodesForSd35EinfachWorkflow() {
+        String workflow = """
+                {
+                  "nodes": [
+                    { "id": 57, "type": "Seed (rgthree)" },
+                    { "id": 56, "type": "Empty Latent Ratio Select SDXL" },
+                    { "id": 4, "type": "CheckpointLoaderSimple" },
+                    { "id": 3, "type": "KSampler" }
+                  ]
+                }
+                """;
+
+        var report = resolverService.analyzeWorkflowNodes(workflow).block();
+
+        assertThat(report).isNotNull();
+        assertThat(report.missingNodeTypes()).containsExactlyInAnyOrder("Seed (rgthree)", "Empty Latent Ratio Select SDXL");
+        assertThat(report.recommendedPackages())
+                .extracting(CustomNodeResolverService.CustomNodePackage::packageName)
+                .contains("rgthree-comfy", "mikey_nodes");
+        assertThat(report.recommendedPackages())
+                .allMatch(pkg -> pkg.gitUrl() != null && pkg.gitUrl().startsWith("https://github.com/"));
     }
 }

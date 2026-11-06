@@ -14,6 +14,7 @@ import java.time.Duration;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -58,7 +59,7 @@ public class CivitaiService {
 
         HttpRequest request = builder.build();
 
-        return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString())
+        return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8))
                 .thenApply(response -> {
                     try {
                         return mapper.readTree(response.body());
@@ -89,7 +90,7 @@ public class CivitaiService {
 
         HttpRequest request = builder.build();
 
-        return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString())
+        return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8))
                 .thenApply(response -> {
                     List<ModelInfo> results = new ArrayList<>();
                     try {
@@ -181,7 +182,7 @@ public class CivitaiService {
                 builder.header("Authorization", "Bearer " + apiKey.trim());
             }
             
-            HttpResponse<String> response = httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response = httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
             if (response.statusCode() == 200) {
                 JsonNode root = mapper.readTree(response.body());
                 
@@ -259,7 +260,7 @@ public class CivitaiService {
                 builder.header("Authorization", "Bearer " + apiKey.trim());
             }
             
-            HttpResponse<String> response = httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response = httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
             if (response.statusCode() != 200) {
                 return null; // Not found or error
             }
@@ -280,7 +281,7 @@ public class CivitaiService {
                 builder2.header("Authorization", "Bearer " + apiKey.trim());
             }
             
-            HttpResponse<String> response2 = httpClient.send(builder2.build(), HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response2 = httpClient.send(builder2.build(), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
             if (response2.statusCode() != 200) {
                 return null;
             }

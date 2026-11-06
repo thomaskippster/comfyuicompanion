@@ -10,17 +10,14 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/**
- * Unit tests for {@link BlueprintHardwareAdvisor} verifying GPU VRAM and disk space traffic-light badges.
- */
 public class BlueprintHardwareAdvisorTest {
 
     private static final long GB = 1024L * 1024L * 1024L;
 
     @Test
-    public void testFitsInVramOn16GbGpu() {
+    public void testFitsInVramOn16GbGpuWithSdxl() {
         ComfyRegistryWorkflow wf = new ComfyRegistryWorkflow();
-        wf.setTitle("SDXL Base Workflow");
+        wf.setTitle("SDXL Base");
         ModelInfo sdxl = new ModelInfo("checkpoints", "sd_xl_base_1.0.safetensors", "");
         sdxl.setSize("6.46GB");
         wf.setRequiredModelInfos(List.of(sdxl));
@@ -32,7 +29,7 @@ public class BlueprintHardwareAdvisorTest {
                 BlueprintHardwareAdvisor.evaluate(entry, status, 16L * GB, 100L * GB, null);
 
         assertThat(report.level()).isEqualTo(BlueprintHardwareAdvisor.CompatibilityLevel.FITS_IN_VRAM);
-        assertThat(report.badgeText()).contains("🟢");
+        assertThat(report.badgeText()).contains("Fits in VRAM");
     }
 
     @Test
@@ -50,7 +47,7 @@ public class BlueprintHardwareAdvisorTest {
                 BlueprintHardwareAdvisor.evaluate(entry, status, 12L * GB, 100L * GB, null);
 
         assertThat(report.level()).isEqualTo(BlueprintHardwareAdvisor.CompatibilityLevel.REQUIRES_OFFLOAD);
-        assertThat(report.badgeText()).contains("🟡");
+        assertThat(report.badgeText()).contains("Offload");
     }
 
     @Test
@@ -68,6 +65,6 @@ public class BlueprintHardwareAdvisorTest {
                 BlueprintHardwareAdvisor.evaluate(entry, status, 24L * GB, 5L * GB, null);
 
         assertThat(report.level()).isEqualTo(BlueprintHardwareAdvisor.CompatibilityLevel.INSUFFICIENT_RESOURCES);
-        assertThat(report.badgeText()).contains("🔴");
+        assertThat(report.badgeText()).contains("Insufficient Disk");
     }
 }

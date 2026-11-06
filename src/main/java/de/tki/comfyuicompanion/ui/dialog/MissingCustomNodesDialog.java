@@ -96,15 +96,38 @@ public class MissingCustomNodesDialog extends JDialog {
                 CustomNodePackage pkg = entry.getKey();
                 List<String> nodes = entry.getValue();
                 packages.add(pkg);
+                boolean hasUrl = pkg.gitUrl() != null && !pkg.gitUrl().isBlank();
                 tableModel.addRow(new Object[]{
-                        Boolean.TRUE,
+                        hasUrl ? Boolean.TRUE : Boolean.FALSE,
                         pkg.packageName(),
-                        pkg.gitUrl(),
+                        hasUrl ? pkg.gitUrl() : "Unknown (double-click to search online)",
                         nodes.size() + " (" + String.join(", ", nodes) + ")",
-                        "Ready to install"
+                        hasUrl ? "Ready to install" : "No repository URL"
                 });
             }
         }
+
+        table.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override
+            public void mouseClicked(java.awt.event.MouseEvent e) {
+                if (e.getClickCount() == 2) {
+                    int row = table.getSelectedRow();
+                    if (row >= 0 && row < packages.size()) {
+                        CustomNodePackage pkg = packages.get(row);
+                        String url = pkg.gitUrl();
+                        if (url == null || url.isBlank()) {
+                            url = "https://github.com/search?q=comfyui+" + pkg.packageName() + "&type=repositories";
+                        }
+                        try {
+                            if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
+                                Desktop.getDesktop().browse(new java.net.URI(url));
+                            }
+                        } catch (Exception ignored) {
+                        }
+                    }
+                }
+            }
+        });
 
         JScrollPane tableScroll = new JScrollPane(table);
         splitPane.setTopComponent(tableScroll);
@@ -161,25 +184,59 @@ public class MissingCustomNodesDialog extends JDialog {
         btnInstall.setEnabled(false);
         btnClose.setEnabled(false);
         for (int row : selectedRows) {
-            tableModel.setValueAt("Installing...", row, 4);
+            tableModel.setValueAt("Queued ⏳", row, 4);
         }
         logArea.setText("Starting 1-click installation of " + toInstall.size() + " custom node package(s)...\n");
 
-        bridgeService.installPackagesAsync(toInstall, msg -> SwingUtilities.invokeLater(() -> {
-            logArea.append(msg + "\n");
-            logArea.setCaretPosition(logArea.getDocument().getLength());
-        })).thenAccept(allSuccess -> SwingUtilities.invokeLater(() -> {
-            btnInstall.setEnabled(true);
-            btnClose.setEnabled(true);
-            for (int row : selectedRows) {
-                tableModel.setValueAt(allSuccess ? "Installed ✅" : "Failed / Incomplete ⚠️", row, 4);
-            }
-            if (allSuccess) {
-                logArea.append("\n🎉 All custom nodes installed successfully! Restart ComfyUI to load the new nodes.\n");
-                if (onInstallationCompleted != null) {
-                    onInstallationCompleted.run();
+        Thread.ofVirtual().name("custom-nodes-worker").start(() -> {
+            boolean allSuccess = true;
+            for (int idx = 0; idx < selectedRows.size(); idx++) {
+                int row = selectedRows.get(idx);
+                CustomNodePackage pkg = toInstall.get(idx);
+
+                if (pkg.gitUrl() == null || pkg.gitUrl().isBlank()) {
+                    SwingUtilities.invokeLater(() -> {
+                        tableModel.setValueAt("Skipped ⚠️", row, 4);
+                        logArea.append("⚠️ Skipping '" + pkg.packageName() + "': No repository URL configured.\n");
+                    });
+                    continue;
+                }
+
+                SwingUtilities.invokeLater(() -> tableModel.setValueAt("Installing... ⏳", row, 4));
+
+                boolean ok = false;
+                try {
+                    if (bridgeService != null) {
+                        ok = bridgeService.installPackageAsync(pkg, msg -> SwingUtilities.invokeLater(() -> {
+                            logArea.append(msg + "\n");
+                            logArea.setCaretPosition(logArea.getDocument().getLength());
+                        })).join();
+                    }
+                } catch (Exception ex) {
+                    final String err = ex.getMessage();
+                    SwingUtilities.invokeLater(() -> logArea.append("❌ Error: " + err + "\n"));
+                }
+
+                final boolean success = ok;
+                SwingUtilities.invokeLater(() -> tableModel.setValueAt(success ? "Installed ✅" : "Failed ❌", row, 4));
+                if (!ok) {
+                    allSuccess = false;
                 }
             }
-        }));
+
+            final boolean finalAllSuccess = allSuccess;
+            SwingUtilities.invokeLater(() -> {
+                btnInstall.setEnabled(true);
+                btnClose.setEnabled(true);
+                if (finalAllSuccess) {
+                    logArea.append("\n🎉 All selected custom nodes installed successfully! Restart ComfyUI to load the new nodes.\n");
+                    if (onInstallationCompleted != null) {
+                        onInstallationCompleted.run();
+                    }
+                } else {
+                    logArea.append("\n⚠️ Installation completed. Some packages could not be installed (see details above).\n");
+                }
+            });
+        });
     }
 }

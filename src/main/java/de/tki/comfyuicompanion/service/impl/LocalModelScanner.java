@@ -80,11 +80,16 @@ public class LocalModelScanner {
             for (Path file : files) {
                 String absPath = file.toAbsolutePath().normalize().toString().toLowerCase();
                 if (seenPaths.add(absPath)) {
-                    String fnLower = file.getFileName().toString().toLowerCase();
+                    String fnLower = file.getFileName().toString().toLowerCase(java.util.Locale.ROOT);
                     modelCache.put(fnLower, file);
                     int dotIdx = fnLower.lastIndexOf('.');
                     if (dotIdx > 0) {
-                        modelCache.putIfAbsent(fnLower.substring(0, dotIdx), file);
+                        String baseNoExt = fnLower.substring(0, dotIdx);
+                        modelCache.putIfAbsent(baseNoExt, file);
+                        String quantStem = normalizeQuantizationStem(baseNoExt);
+                        if (!quantStem.isEmpty()) {
+                            modelCache.putIfAbsent(quantStem, file);
+                        }
                     }
                     foundModels.add(createModelInfo(file, absRoot, forcedType));
                 }
@@ -95,19 +100,56 @@ public class LocalModelScanner {
     }
 
     /**
-     * Fast in-memory lookup from scanned cache.
+     * Fast in-memory lookup from scanned cache, including quantization stem fallback.
+     *
+     * @param filename the requested model filename
+     * @return optional path to the local model file
      */
     public Optional<Path> findModelFromCache(String filename) {
         if (filename == null || filename.isBlank()) return Optional.empty();
-        String lower = filename.toLowerCase().trim();
+        String lower = filename.toLowerCase(java.util.Locale.ROOT).trim();
         Path p = modelCache.get(lower);
         if (p != null && Files.exists(p)) return Optional.of(p);
         int dot = lower.lastIndexOf('.');
         if (dot > 0) {
-            p = modelCache.get(lower.substring(0, dot));
+            String baseNoExt = lower.substring(0, dot);
+            p = modelCache.get(baseNoExt);
+            if (p != null && Files.exists(p)) return Optional.of(p);
+        }
+        String quantStem = normalizeQuantizationStem(lower);
+        if (!quantStem.isEmpty()) {
+            p = modelCache.get(quantStem);
             if (p != null && Files.exists(p)) return Optional.of(p);
         }
         return Optional.empty();
+    }
+
+    /**
+     * Normalizes a model filename or base name by stripping common quantization and precision suffixes
+     * so equivalent weight variants (e.g., fp8_scaled vs int8_convrot vs fp16) resolve consistently.
+     *
+     * @param rawName the model file name or base name
+     * @return normalized lowercase stem without extension or precision suffix
+     */
+    public static String normalizeQuantizationStem(String rawName) {
+        if (rawName == null || rawName.isBlank()) {
+            return "";
+        }
+        String s = rawName.replace('\\', '/');
+        int slash = s.lastIndexOf('/');
+        if (slash >= 0) {
+            s = s.substring(slash + 1);
+        }
+        int dot = s.lastIndexOf('.');
+        if (dot > 0 && s.substring(dot + 1).matches("(?i)safetensors|sft|ckpt|pt|pth|bin|onnx|gguf")) {
+            s = s.substring(0, dot);
+        }
+        s = s.toLowerCase(java.util.Locale.ROOT).trim().replace('-', '_').replaceAll("_+", "_");
+        String stripped = s.replaceAll(
+                "(?:[_.-](?:fp8_e4m3fn_scaled|fp8_e4m3fn|fp8_scaled|fp8mixed|fp4_mixed|nvfp4_awq|int8_convrot|int8|fp8|fp16|bf16|fp32|pruned|enc))+$",
+                ""
+        );
+        return stripped.isEmpty() ? s : stripped;
     }
 
     /**
@@ -184,21 +226,32 @@ public class LocalModelScanner {
 
     private Optional<Path> searchInDirectory(Path root, String filename, long preferredSize) {
         if (root == null || !Files.exists(root)) return Optional.empty();
+        String targetStem = normalizeQuantizationStem(filename);
         try (Stream<Path> walk = Files.walk(root)) {
-            List<Path> matches = walk.filter(Files::isRegularFile)
+            List<Path> allFiles = walk.filter(Files::isRegularFile)
                     .filter(p -> !isIgnored(p, root))
+                    .collect(Collectors.toList());
+
+            List<Path> matches = allFiles.stream()
                     .filter(p -> p.getFileName().toString().equalsIgnoreCase(filename))
                     .collect(Collectors.toList());
-            
+
+            if (matches.isEmpty() && targetStem.length() >= 4) {
+                matches = allFiles.stream()
+                        .filter(this::isSupportedModelFile)
+                        .filter(p -> normalizeQuantizationStem(p.getFileName().toString()).equals(targetStem))
+                        .collect(Collectors.toList());
+            }
+
             if (matches.isEmpty()) return Optional.empty();
-            
+
             if (preferredSize > 0) {
                 for (Path p : matches) {
                     try {
                         if (Files.size(p) == preferredSize) return Optional.of(p);
                     } catch (IOException ignored) {
-            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
-        }
+                        logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+                    }
                 }
             }
             return Optional.of(matches.get(0));

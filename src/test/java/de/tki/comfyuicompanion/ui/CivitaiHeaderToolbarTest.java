@@ -4,7 +4,6 @@ import de.tki.comfyuicompanion.ui.civitai.CivitaiHeaderToolbar;
 import org.junit.jupiter.api.Test;
 
 import javax.swing.*;
-import java.lang.reflect.InvocationTargetException;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -18,14 +17,14 @@ class CivitaiHeaderToolbarTest {
     void shouldUpdateBaseModelsDynamically_andPreserveDefault() throws Exception {
         CivitaiHeaderToolbar toolbar = new CivitaiHeaderToolbar();
 
-        assertThat(toolbar.getSelectedBaseModel()).isEqualTo("All Bases");
+        assertThat(toolbar.getSelectedBaseModel()).isEmpty();
 
         toolbar.setAvailableBaseModels(List.of("Flux.1 D", "Flux.3 Klein", "SDXL 1.0"));
 
         // Wait for SwingUtilities.invokeLater execution
         SwingUtilities.invokeAndWait(() -> {});
 
-        assertThat(toolbar.getSelectedBaseModel()).isEqualTo("All Bases");
+        assertThat(toolbar.getSelectedBaseModel()).isEmpty();
     }
 
     @Test

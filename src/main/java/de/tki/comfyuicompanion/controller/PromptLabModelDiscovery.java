@@ -52,6 +52,13 @@ public class PromptLabModelDiscovery {
     public String getActualModelForPromptLab(String comboSelection, BlueprintGalleryTab blueprintGalleryTab) {
         if (comboSelection == null) return null;
         if (blueprintGalleryTab != null) {
+            for (BlueprintGalleryTab.BlueprintEntry e : blueprintGalleryTab.getVaultAvailableBlueprints()) {
+                if (e.name.equals(comboSelection)) {
+                    if (!e.requiredModels.isEmpty()) {
+                        return e.requiredModels.get(0).getName();
+                    }
+                }
+            }
             for (BlueprintGalleryTab.BlueprintEntry e : blueprintGalleryTab.getAvailableBlueprints()) {
                 if (e.name.equals(comboSelection)) {
                     if (!e.requiredModels.isEmpty()) {
@@ -73,6 +80,11 @@ public class PromptLabModelDiscovery {
     public String getBlueprintNameForModel(String modelName, BlueprintGalleryTab blueprintGalleryTab) {
         if (modelName == null) return null;
         if (blueprintGalleryTab != null) {
+            for (BlueprintGalleryTab.BlueprintEntry e : blueprintGalleryTab.getVaultAvailableBlueprints()) {
+                if (!e.requiredModels.isEmpty() && e.requiredModels.get(0).getName().equals(modelName)) {
+                    return e.name;
+                }
+            }
             for (BlueprintGalleryTab.BlueprintEntry e : blueprintGalleryTab.getAvailableBlueprints()) {
                 if (!e.requiredModels.isEmpty() && e.requiredModels.get(0).getName().equals(modelName)) {
                     return e.name;
@@ -92,12 +104,10 @@ public class PromptLabModelDiscovery {
     public List<String> discoverPromptLabModels(BlueprintGalleryTab blueprintGalleryTab, ComfyApiClient comfyApiClient) {
         List<String> itemsToAdd = new ArrayList<>();
         if (blueprintGalleryTab != null) {
-            List<BlueprintGalleryTab.BlueprintEntry> readyBlueprints = blueprintGalleryTab.getAvailableBlueprints();
+            List<BlueprintGalleryTab.BlueprintEntry> readyBlueprints = blueprintGalleryTab.getVaultAvailableBlueprints();
             for (BlueprintGalleryTab.BlueprintEntry e : readyBlueprints) {
-                if (isSupportedPromptLabBlueprint(e)) {
-                    if (e.name != null && !e.name.isBlank() && !itemsToAdd.contains(e.name)) {
-                        itemsToAdd.add(e.name);
-                    }
+                if (e.name != null && !e.name.isBlank() && !itemsToAdd.contains(e.name)) {
+                    itemsToAdd.add(e.name);
                 }
             }
         } else if (configService != null) {

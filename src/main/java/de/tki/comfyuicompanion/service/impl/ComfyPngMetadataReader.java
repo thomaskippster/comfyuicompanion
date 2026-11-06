@@ -13,6 +13,7 @@ import java.io.EOFException;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -78,8 +79,26 @@ public class ComfyPngMetadataReader {
         if (pngFile == null || !pngFile.exists() || !pngFile.isFile()) {
             return Optional.empty();
         }
+        try (InputStream in = new FileInputStream(pngFile)) {
+            return readMetadataFromStream(in);
+        } catch (Exception e) {
+            logger.warn("Failed to read PNG metadata from {}: {}", pngFile.getName(), e.getMessage());
+            return Optional.empty();
+        }
+    }
+
+    /**
+     * Reads ComfyUI metadata chunks from an input stream and parses the generation parameters.
+     *
+     * @param inputStream the PNG stream to inspect
+     * @return an {@link Optional} containing the extracted workflow metadata if present
+     */
+    public static Optional<ExtractedPngWorkflow> readMetadataFromStream(InputStream inputStream) {
+        if (inputStream == null) {
+            return Optional.empty();
+        }
         try {
-            Map<String, String> textChunks = readPngTextChunks(pngFile);
+            Map<String, String> textChunks = readPngTextChunksFromStream(inputStream);
             String promptStr = textChunks.get("prompt");
             String workflowStr = textChunks.get("workflow");
             if ((promptStr != null && !promptStr.isBlank()) || (workflowStr != null && !workflowStr.isBlank())) {
@@ -95,7 +114,7 @@ public class ComfyPngMetadataReader {
             }
             return Optional.empty();
         } catch (Exception e) {
-            logger.warn("Failed to read PNG metadata from {}: {}", pngFile.getName(), e.getMessage());
+            logger.debug("Failed to read PNG metadata from stream: {}", e.getMessage());
             return Optional.empty();
         }
     }
@@ -108,8 +127,24 @@ public class ComfyPngMetadataReader {
      * @throws IOException if an I/O error occurs or the file is not a valid PNG
      */
     public static Map<String, String> readPngTextChunks(File pngFile) throws IOException {
+        if (pngFile == null || !pngFile.exists() || !pngFile.isFile()) {
+            return new HashMap<>();
+        }
+        try (InputStream in = new FileInputStream(pngFile)) {
+            return readPngTextChunksFromStream(in);
+        }
+    }
+
+    /**
+     * Streams through PNG chunks from an input stream without loading image pixels into memory and returns all text chunks.
+     *
+     * @param inputStream the PNG stream
+     * @return map of keyword to text payload
+     * @throws IOException if an I/O error occurs or the stream is not a valid PNG
+     */
+    public static Map<String, String> readPngTextChunksFromStream(InputStream inputStream) throws IOException {
         Map<String, String> chunks = new HashMap<>();
-        try (DataInputStream dis = new DataInputStream(new BufferedInputStream(new FileInputStream(pngFile), 16384))) {
+        try (DataInputStream dis = new DataInputStream(new BufferedInputStream(inputStream, 16384))) {
             byte[] sig = new byte[8];
             dis.readFully(sig);
             for (int i = 0; i < 8; i++) {

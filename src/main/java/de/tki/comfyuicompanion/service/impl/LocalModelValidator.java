@@ -114,10 +114,16 @@ public class LocalModelValidator implements ILocalModelValidator {
             String name = info.getName();
             if (name != null) {
                 String lowerName = name.toLowerCase(Locale.ROOT).trim();
+                String base = baseName(lowerName);
+                String quantStem = LocalModelScanner.normalizeQuantizationStem(lowerName);
                 tempNames.add(lowerName);
-                tempNames.add(baseName(lowerName));
+                tempNames.add(base);
                 tempActive.add(lowerName);
-                tempActive.add(baseName(lowerName));
+                tempActive.add(base);
+                if (!quantStem.isEmpty()) {
+                    tempNames.add(quantStem);
+                    tempActive.add(quantStem);
+                }
             }
         }
 
@@ -137,15 +143,21 @@ public class LocalModelValidator implements ILocalModelValidator {
                             .forEach(p -> {
                                 String name = p.getFileName().toString();
                                 String lowerName = name.toLowerCase(Locale.ROOT).trim();
+                                String base = baseName(lowerName);
+                                String quantStem = LocalModelScanner.normalizeQuantizationStem(lowerName);
                                 tempNames.add(lowerName);
-                                tempNames.add(baseName(lowerName));
+                                tempNames.add(base);
                                 tempArchived.add(lowerName);
-                                tempArchived.add(baseName(lowerName));
+                                tempArchived.add(base);
+                                if (!quantStem.isEmpty()) {
+                                    tempNames.add(quantStem);
+                                    tempArchived.add(quantStem);
+                                }
                             });
                     }
                 }
             } catch (Exception e) {
-                logger.error("⚠️ [LocalModelValidator] Error scanning archive: {}", e.getMessage());
+                logger.error("[LocalModelValidator] Error scanning archive: {}", e.getMessage());
             }
         }
 
@@ -166,7 +178,10 @@ public class LocalModelValidator implements ILocalModelValidator {
     public boolean isModelActive(String modelName) {
         if (modelName == null || modelName.isBlank()) return false;
         String lower = modelName.toLowerCase(Locale.ROOT).trim();
-        return activeLocalModelNames.contains(lower) || activeLocalModelNames.contains(baseName(lower));
+        String quantStem = LocalModelScanner.normalizeQuantizationStem(lower);
+        return activeLocalModelNames.contains(lower)
+                || activeLocalModelNames.contains(baseName(lower))
+                || (!quantStem.isEmpty() && activeLocalModelNames.contains(quantStem));
     }
 
     /**
@@ -178,7 +193,18 @@ public class LocalModelValidator implements ILocalModelValidator {
     public boolean isModelArchived(String modelName) {
         if (modelName == null || modelName.isBlank()) return false;
         String lower = modelName.toLowerCase(Locale.ROOT).trim();
-        return archivedModelNames.contains(lower) || archivedModelNames.contains(baseName(lower));
+        String quantStem = LocalModelScanner.normalizeQuantizationStem(lower);
+        return archivedModelNames.contains(lower)
+                || archivedModelNames.contains(baseName(lower))
+                || (!quantStem.isEmpty() && archivedModelNames.contains(quantStem));
+    }
+
+    @Override
+    public Optional<Path> findLocalModelPath(String modelName) {
+        if (localModelScanner == null || modelName == null || modelName.isBlank()) {
+            return Optional.empty();
+        }
+        return localModelScanner.findModelFromCache(modelName);
     }
 
     @Override
@@ -326,8 +352,7 @@ public class LocalModelValidator implements ILocalModelValidator {
         }
         for (String reqModel : requiredModels) {
             if (isSupportedModelFile(reqModel)) {
-                String cleanReq = reqModel.toLowerCase(Locale.ROOT).trim();
-                if (!activeLocalModelNames.contains(cleanReq) && !activeLocalModelNames.contains(baseName(cleanReq))) {
+                if (!isModelActive(reqModel)) {
                     return false;
                 }
             } else {

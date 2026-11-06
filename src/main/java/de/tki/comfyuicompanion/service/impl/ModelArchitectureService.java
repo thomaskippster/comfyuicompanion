@@ -310,7 +310,7 @@ public class ModelArchitectureService implements IModelArchitectureService {
     public ModelDefaults getStandardDefaultsForArchitecture(ModelArchitecture arch) {
         if (arch == null) arch = ModelArchitecture.ARCH_UNKNOWN;
         return switch (arch) {
-            case ARCH_FLUX -> new ModelDefaults("FLUX1/ae.safetensors", "flux", "normal", "euler", arch.name());
+            case ARCH_FLUX -> new ModelDefaults("ae.safetensors", "flux", "normal", "euler", arch.name());
             case ARCH_SDXL -> new ModelDefaults("sdxl_vae.safetensors", "stable_diffusion", "normal", "euler", arch.name());
             case ARCH_SD3 -> new ModelDefaults("sd3_vae.safetensors", "sd3", "normal", "euler", arch.name());
             case ARCH_LUMINA2 -> new ModelDefaults("ae.safetensors", "longcat_image", "simple", "euler", arch.name());

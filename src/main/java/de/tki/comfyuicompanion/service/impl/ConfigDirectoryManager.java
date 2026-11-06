@@ -152,8 +152,8 @@ public class ConfigDirectoryManager {
                     }
                 }
             } catch (Exception ignored) {
-            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
-        }
+                logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+            }
         }
 
         if (modelsPath != null && !modelsPath.isEmpty()) {
@@ -166,8 +166,8 @@ public class ConfigDirectoryManager {
                     }
                 }
             } catch (Exception ignored) {
-            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
-        }
+                logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+            }
         }
 
         if (comfyUIRoot != null && !comfyUIRoot.isEmpty()) {
@@ -219,7 +219,8 @@ public class ConfigDirectoryManager {
     }
 
     /**
-     * Resolves the application data root path, supporting test overrides, portable mode, and unified home directory.
+     * Resolves the application data root path, supporting test overrides, portable mode,
+     * JAR location discovery, and unified home directory.
      *
      * @param vaultFile  name of the vault file
      * @param configFile name of the settings file
@@ -235,6 +236,10 @@ public class ConfigDirectoryManager {
             return new File(System.getProperty("java.io.tmpdir"), "comfy_test_appdata_safe").getAbsolutePath();
         }
         if (!isPortableMode(vaultFile, configFile)) {
+            Path jarAppDir = findVaultNearCodeSource(vaultFile, configFile);
+            if (jarAppDir != null) {
+                return jarAppDir.toAbsolutePath().toString();
+            }
             Path homeVault = Paths.get(System.getProperty("user.home"), ".comfyui-companion", vaultFile);
             if (Files.exists(homeVault)) {
                 return homeVault.getParent().toAbsolutePath().toString();
@@ -242,5 +247,31 @@ public class ConfigDirectoryManager {
         }
         return System.getProperty("user.dir");
     }
-}
 
+    private Path findVaultNearCodeSource(String vaultFile, String configFile) {
+        try {
+            var codeSource = ConfigDirectoryManager.class.getProtectionDomain().getCodeSource();
+            if (codeSource != null && codeSource.getLocation() != null) {
+                Path loc = Paths.get(codeSource.getLocation().toURI());
+                Path dir = Files.isDirectory(loc) ? loc : loc.getParent();
+                if (dir != null) {
+                    if (hasVaultOrConfig(dir, vaultFile, configFile)) {
+                        return dir;
+                    }
+                    Path parent = dir.getParent();
+                    if (parent != null && hasVaultOrConfig(parent, vaultFile, configFile)) {
+                        return parent;
+                    }
+                }
+            }
+        } catch (Exception e) {
+            logger.debug("Could not inspect code source location for vault discovery: {}", e.getMessage());
+        }
+        return null;
+    }
+
+    private boolean hasVaultOrConfig(Path dir, String vaultFile, String configFile) {
+        return (vaultFile != null && Files.exists(dir.resolve(vaultFile)))
+                || (configFile != null && Files.exists(dir.resolve(configFile)));
+    }
+}

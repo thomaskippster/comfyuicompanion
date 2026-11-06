@@ -52,7 +52,7 @@ public class SegmentedDownloadEngine {
         this.httpClient = HttpClient.newBuilder()
                 .version(HttpClient.Version.HTTP_1_1)
                 .followRedirects(HttpClient.Redirect.ALWAYS)
-                .connectTimeout(Duration.ofSeconds(30))
+                .connectTimeout(Duration.ofSeconds(5))
                 .build();
         this.segmentExecutor = Executors.newThreadPerTaskExecutor(Thread.ofVirtual().name("Download-Segment-", 0).factory());
     }
@@ -61,6 +61,9 @@ public class SegmentedDownloadEngine {
     public static URI toSafeUri(String url) {
         if (url == null) throw new IllegalArgumentException("URL cannot be null");
         String trimmed = url.trim();
+        if (trimmed.contains("huggingface.co") && trimmed.contains("/blob/")) {
+            trimmed = trimmed.replace("/blob/", "/resolve/");
+        }
         try { return URI.create(trimmed); } catch (IllegalArgumentException e) {
             try {
                 return URI.create(trimmed.replace(" ", "%20").replace("[", "%5B").replace("]", "%5D").replace("|", "%7C"));
@@ -78,7 +81,7 @@ public class SegmentedDownloadEngine {
         URI uri = toSafeUri(url);
         try {
             HttpRequest.Builder b = HttpRequest.newBuilder().uri(uri).header("User-Agent", USER_AGENT)
-                    .method("HEAD", HttpRequest.BodyPublishers.noBody()).timeout(Duration.ofSeconds(15));
+                    .method("HEAD", HttpRequest.BodyPublishers.noBody()).timeout(Duration.ofSeconds(3));
             applyAuthHeaders(b, url);
             HttpResponse<Void> res = httpClient.send(b.build(), HttpResponse.BodyHandlers.discarding());
             int code = res.statusCode();
@@ -91,7 +94,7 @@ public class SegmentedDownloadEngine {
         }
 
         HttpRequest.Builder getB = HttpRequest.newBuilder().uri(uri).header("User-Agent", USER_AGENT)
-                .header("Range", "bytes=0-0").GET().timeout(Duration.ofSeconds(20));
+                .header("Range", "bytes=0-0").GET().timeout(Duration.ofSeconds(4));
         applyAuthHeaders(getB, url);
         HttpResponse<InputStream> getRes = httpClient.send(getB.build(), HttpResponse.BodyHandlers.ofInputStream());
         try (InputStream is = getRes.body()) {

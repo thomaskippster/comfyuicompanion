@@ -26,6 +26,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import javax.swing.JButton;
+import javax.swing.JTable;
+import java.util.Collections;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JTabbedPane;
@@ -275,6 +277,65 @@ public class DownloadManagerController implements DownloadManagerView.DownloadMa
         downloadManager.stop();
     }
 
+    @Override
+    public void onRemoveFromQueue() {
+        if (view == null) return;
+        JTable table = view.getModelTable();
+        DefaultTableModel model = view.getTableModel();
+        if (table == null || model == null || model.getRowCount() == 0) return;
+
+        int[] selectedRows = table.getSelectedRows();
+        List<Integer> rowsToRemove = new ArrayList<>();
+
+        if (selectedRows != null && selectedRows.length > 0) {
+            for (int r : selectedRows) {
+                int modelIdx = table.convertRowIndexToModel(r);
+                if (modelIdx >= 0 && modelIdx < model.getRowCount()) {
+                    rowsToRemove.add(modelIdx);
+                }
+            }
+        } else {
+            for (int i = 0; i < model.getRowCount(); i++) {
+                if (Boolean.TRUE.equals(model.getValueAt(i, 0))) {
+                    rowsToRemove.add(i);
+                }
+            }
+        }
+
+        if (rowsToRemove.isEmpty()) {
+            return;
+        }
+
+        rowsToRemove.sort(Collections.reverseOrder());
+
+        for (int idx : rowsToRemove) {
+            if (idx < 0 || idx >= model.getRowCount()) continue;
+
+            String filename = (String) model.getValueAt(idx, 2);
+            if (downloadManager != null && filename != null) {
+                downloadManager.stopDownload(filename);
+            }
+
+            model.removeRow(idx);
+            if (idx < modelsToDownload.size()) {
+                modelsToDownload.remove(idx);
+            }
+        }
+
+        if (isDownloading && downloadManager != null) {
+            boolean[] updatedSelection = new boolean[model.getRowCount()];
+            for (int i = 0; i < model.getRowCount(); i++) {
+                updatedSelection[i] = Boolean.TRUE.equals(model.getValueAt(i, 0));
+            }
+            downloadManager.updateSelection(updatedSelection);
+        }
+
+        updateDownloadButtonsState();
+        if (view.getStatusLabel() != null) {
+            view.getStatusLabel().setText("Removed " + rowsToRemove.size() + " model(s) from queue.");
+        }
+    }
+
     public void loadFile(File file) {
         try {
             currentFileName = file.getName();
@@ -353,6 +414,13 @@ public class DownloadManagerController implements DownloadManagerView.DownloadMa
         downloadButton.setEnabled(anySelected && !isDownloading);
         pauseButton.setEnabled(isDownloading);
         stopButton.setEnabled(isDownloading);
+
+        JButton removeButton = view.getRemoveButton();
+        if (removeButton != null) {
+            boolean hasRows = tableModel != null && tableModel.getRowCount() > 0;
+            boolean hasTableSelection = view.getModelTable() != null && view.getModelTable().getSelectedRowCount() > 0;
+            removeButton.setEnabled(hasRows && (hasTableSelection || anySelected));
+        }
 
         if (!isDownloading) {
             pauseButton.setText("Pause");

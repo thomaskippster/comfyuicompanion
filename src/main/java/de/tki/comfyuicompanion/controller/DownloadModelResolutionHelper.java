@@ -69,14 +69,29 @@ public class DownloadModelResolutionHelper {
         for (ModelInfo req : missingModels) {
             String name = (req.getFilename() != null && !req.getFilename().isBlank()) ? req.getFilename() : req.getName();
             String url = req.getUrl();
-            if (name == null || name.isBlank()) continue;
+            if (name == null || name.isBlank() || name.toLowerCase(java.util.Locale.ROOT).endsWith(".json")) continue;
 
             String type = req.getType() != null ? req.getType() : ModelFolder.CHECKPOINTS.getDefaultFolderName();
             String folder = req.getSave_path() != null ? req.getSave_path() : type;
+            if (name.equalsIgnoreCase("ae.safetensors") || name.toLowerCase(java.util.Locale.ROOT).startsWith("ae.")) {
+                folder = "models/vae";
+                req.setSave_path("models/vae");
+            }
             String normalizedFolder = archiveService != null ? archiveService.normalizeFolder(folder) : folder;
+            if (url == null || url.isBlank() || "MISSING".equalsIgnoreCase(url)) {
+                String fallbackUrl = de.tki.comfyuicompanion.service.workflow.WorkflowModelExtractor.resolveFallbackDownloadUrl(name, type);
+                if (fallbackUrl != null) {
+                    url = fallbackUrl;
+                    req.setUrl(fallbackUrl);
+                }
+            }
             String sizeStr = req.getSize() != null ? req.getSize() : "Unknown";
-            String pop = req.getPopularity() != null ? req.getPopularity() : "📂 BLUEPRINT REQUIRED";
-            String dlUrl = (url != null) ? url : "MISSING";
+            if ("Unknown".equalsIgnoreCase(sizeStr) || "Workflow JSON".equalsIgnoreCase(sizeStr) || sizeStr.isBlank()) {
+                String est = de.tki.comfyuicompanion.service.workflow.WorkflowModelExtractor.estimateKnownModelSize(name);
+                if (est != null) sizeStr = est;
+            }
+            String pop = req.getPopularity() != null && !req.getPopularity().isBlank() ? req.getPopularity() : "BLUEPRINT REQUIRED";
+            String dlUrl = (url != null && !url.isBlank()) ? url : "MISSING";
             long byteSize = req.getByteSize();
 
             boolean exists = false;
@@ -221,6 +236,8 @@ public class DownloadModelResolutionHelper {
 
         if (onSelectionUpdated != null) onSelectionUpdated.run();
         if (onButtonStateUpdated != null) onButtonStateUpdated.run();
+        fetchMissingRemoteSizes(modelsToDownload, view);
+        triggerOnlineSearchForMissingUrls(modelsToDownload, view);
 
         if (view != null) {
             JOptionPane.showMessageDialog(view,
@@ -246,9 +263,14 @@ public class DownloadModelResolutionHelper {
                 ModelInfo info = modelsToDownload.get(idx);
 
                 String status = (idx < tableModel.getRowCount()) ? (String) tableModel.getValueAt(idx, 7) : "";
-                boolean needsCheck = "Unknown".equals(info.getSize()) || "🔄 Size Mismatch".equals(status);
+                String curSize = info.getSize();
+                boolean needsCheck = curSize == null || curSize.isBlank()
+                        || "Unknown".equalsIgnoreCase(curSize)
+                        || "Workflow JSON".equalsIgnoreCase(curSize)
+                        || info.getByteSize() <= 0
+                        || "🔄 Size Mismatch".equals(status);
 
-                if (!info.getUrl().equals("MISSING") && needsCheck) {
+                if (info.getUrl() != null && !info.getUrl().equals("MISSING") && needsCheck) {
                     long size = searchService.getRemoteSize(info.getUrl());
                     if (size > 0) {
                         info.setByteSize(size);
@@ -332,5 +354,38 @@ public class DownloadModelResolutionHelper {
                 }
             }
         });
+    }
+
+    private void triggerOnlineSearchForMissingUrls(List<ModelInfo> modelsToDownload, DownloadManagerView view) {
+        if (modelsToDownload == null || searchService == null || view == null) return;
+        boolean anyMissing = false;
+        for (ModelInfo info : modelsToDownload) {
+            if (info.getUrl() == null || info.getUrl().isBlank() || "MISSING".equalsIgnoreCase(info.getUrl())) {
+                anyMissing = true;
+                break;
+            }
+        }
+        if (!anyMissing) return;
+        DefaultTableModel tableModel = view.getTableModel();
+        if (tableModel == null) return;
+        boolean[] sel = new boolean[tableModel.getRowCount()];
+        for (int i = 0; i < sel.length; i++) sel[i] = (Boolean) tableModel.getValueAt(i, 0);
+        searchService.searchOnline(modelsToDownload, sel, "", "workflow_import.json", false,
+                (idx, st) -> SwingUtilities.invokeLater(() -> {
+                    String cur = (String) tableModel.getValueAt(idx, 7);
+                    if (cur == null || !cur.contains("?")) tableModel.setValueAt(st, idx, 7);
+                }),
+                (idx, resolved) -> SwingUtilities.invokeLater(() -> {
+                    if (resolved.getUrl() != null && !resolved.getUrl().isBlank() && !"MISSING".equalsIgnoreCase(resolved.getUrl())) {
+                        tableModel.setValueAt(resolved.getUrl(), idx, 6);
+                        tableModel.setValueAt("? Known Good", idx, 7);
+                        tableModel.setValueAt(true, idx, 0);
+                        if (idx < modelsToDownload.size()) {
+                            modelsToDownload.get(idx).setUrl(resolved.getUrl());
+                        }
+                    }
+                }),
+                () -> {}
+        );
     }
 }

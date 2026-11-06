@@ -254,6 +254,19 @@ public class PromptLabBlueprintCoordinator {
         if (blueprintGalleryTab == null || selectedName == null || selectedName.isBlank()) {
             return null;
         }
+        List<BlueprintGalleryTab.BlueprintEntry> vaultBlueprints = blueprintGalleryTab.getVaultAvailableBlueprints();
+        if (vaultBlueprints != null) {
+            for (BlueprintGalleryTab.BlueprintEntry e : vaultBlueprints) {
+                if (e.name.equalsIgnoreCase(selectedName) || (e.filename != null && e.filename.equalsIgnoreCase(selectedName))) {
+                    return e;
+                }
+            }
+            for (BlueprintGalleryTab.BlueprintEntry e : vaultBlueprints) {
+                if (isBlueprintNameMatch(e.name, selectedName) || (e.filename != null && isBlueprintNameMatch(e.filename, selectedName))) {
+                    return e;
+                }
+            }
+        }
         List<BlueprintGalleryTab.BlueprintEntry> blueprints = blueprintGalleryTab.getAvailableBlueprints();
         for (BlueprintGalleryTab.BlueprintEntry e : blueprints) {
             if (e.name.equalsIgnoreCase(selectedName) || (e.filename != null && e.filename.equalsIgnoreCase(selectedName))) {

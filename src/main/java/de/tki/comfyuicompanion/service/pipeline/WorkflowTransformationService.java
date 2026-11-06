@@ -9,7 +9,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -19,7 +18,7 @@ import java.util.Map;
  * Service responsible for ComfyUI graph and workflow transformations:
  * - UI-to-API conversion (resolving links and mapping widgets)
  * - Subgraph flattening (inlining nested subgraphs with ID offsets and slot remapping)
- * - Dynamic introspection via ComfyUiGateway with static fallbacks
+ * - Dynamic introspection via ComfyUiGateway with static and node-level fallbacks
  */
 @Service
 public class WorkflowTransformationService {
@@ -92,6 +91,11 @@ public class WorkflowTransformationService {
 
     private final ComfyUiGateway comfyUiGateway;
 
+    /**
+     * Constructs a new WorkflowTransformationService with optional gateway introspection.
+     *
+     * @param comfyUiGateway optional gateway for live ComfyUI node widget lookup
+     */
     @Autowired
     public WorkflowTransformationService(@Autowired(required = false) ComfyUiGateway comfyUiGateway) {
         this.comfyUiGateway = comfyUiGateway;
@@ -99,6 +103,9 @@ public class WorkflowTransformationService {
 
     /**
      * Converts a ComfyUI web-interface graph JSON into an execution payload accepted by /prompt API.
+     *
+     * @param uiWorkflow the UI-format workflow JSON object
+     * @return the API-format payload containing {@code prompt} and optional {@code definitions}
      */
     public JSONObject convertUiToApi(JSONObject uiWorkflow) {
         if (uiWorkflow != null && uiWorkflow.has("definitions") && uiWorkflow.getJSONObject("definitions").has("subgraphs")) {
@@ -126,8 +133,6 @@ public class WorkflowTransformationService {
                     int linkId = link.getInt(0);
                     int originNodeId = link.getInt(1);
                     int originSlot = link.getInt(2);
-                    int targetNodeId = link.getInt(3);
-                    int targetSlot = link.getInt(4);
                     String type = link.getString(5);
                     linksMap.put(linkId, new Object[]{originNodeId, originSlot, type});
                 }
@@ -173,13 +178,23 @@ public class WorkflowTransformationService {
                 }
             }
 
-            // 2. Resolve widget values (dynamic gateway introspection with static fallback)
+            // 2. Resolve explicit named widget values (ComfyUI 1.0+ format & subgraph nodes)
+            JSONObject namedWidgets = node.optJSONObject("widgets_values_named");
+            if (namedWidgets != null) {
+                for (String wk : namedWidgets.keySet()) {
+                    if (!apiInputs.has(wk) && !namedWidgets.isNull(wk)) {
+                        apiInputs.put(wk, namedWidgets.get(wk));
+                    }
+                }
+            }
+
+            // 3. Resolve positional widget values (dynamic gateway introspection with static/input fallback)
             JSONArray widgetsValues = node.optJSONArray("widgets_values");
             if (widgetsValues != null && widgetsValues.length() > 0) {
-                List<String> widgetNames = resolveWidgetNames(type);
+                List<String> widgetNames = resolveWidgetNames(node, type);
                 for (int j = 0; j < widgetNames.size() && j < widgetsValues.length(); j++) {
                     String widgetName = widgetNames.get(j);
-                    if (!apiInputs.has(widgetName)) {
+                    if (!apiInputs.has(widgetName) && !widgetsValues.isNull(j)) {
                         apiInputs.put(widgetName, widgetsValues.get(j));
                     }
                 }
@@ -191,7 +206,7 @@ public class WorkflowTransformationService {
         return apiPayload;
     }
 
-    private List<String> resolveWidgetNames(String classType) {
+    private List<String> resolveWidgetNames(JSONObject node, String classType) {
         if (comfyUiGateway != null) {
             try {
                 List<String> dynamic = comfyUiGateway.getWidgetInputNames(classType);
@@ -202,261 +217,42 @@ public class WorkflowTransformationService {
                 logger.debug("Gateway widget lookup failed for {}: {}", classType, e.getMessage());
             }
         }
-        return FALLBACK_WIDGET_MAP.getOrDefault(classType, Collections.emptyList());
+        List<String> fallback = FALLBACK_WIDGET_MAP.get(classType);
+        if (fallback != null) {
+            return fallback;
+        }
+        if (node != null) {
+            JSONArray inputs = node.optJSONArray("inputs");
+            if (inputs != null) {
+                List<String> inferred = new ArrayList<>();
+                for (int i = 0; i < inputs.length(); i++) {
+                    JSONObject inp = inputs.optJSONObject(i);
+                    if (inp != null && inp.has("widget") && !inp.isNull("widget")) {
+                        JSONObject widgetObj = inp.optJSONObject("widget");
+                        String wName = widgetObj != null ? widgetObj.optString("name", "") : "";
+                        if (wName.isEmpty()) {
+                            wName = inp.optString("name", "");
+                        }
+                        if (!wName.isEmpty()) {
+                            inferred.add(wName);
+                        }
+                    }
+                }
+                if (!inferred.isEmpty()) {
+                    return inferred;
+                }
+            }
+        }
+        return Collections.emptyList();
     }
 
     /**
      * Recursively flattens subgraphs embedded in workflow JSON into top-level nodes and links.
+     *
+     * @param uiWorkflow the UI-format workflow JSON object
+     * @return the flattened UI-format workflow JSON object
      */
     public JSONObject flattenWorkflow(JSONObject uiWorkflow) {
-        if (uiWorkflow == null || !uiWorkflow.has("definitions") || !uiWorkflow.getJSONObject("definitions").has("subgraphs")) {
-            return uiWorkflow;
-        }
-
-        JSONArray subgraphs = uiWorkflow.getJSONObject("definitions").getJSONArray("subgraphs");
-        Map<String, JSONObject> subgraphDefs = new HashMap<>();
-        for (int i = 0; i < subgraphs.length(); i++) {
-            JSONObject sg = subgraphs.getJSONObject(i);
-            subgraphDefs.put(sg.getString("id"), sg);
-        }
-
-        JSONArray mainNodes = uiWorkflow.getJSONArray("nodes");
-        JSONArray mainLinks = uiWorkflow.optJSONArray("links");
-        if (mainLinks == null) {
-            mainLinks = new JSONArray();
-            uiWorkflow.put("links", mainLinks);
-        }
-
-        boolean flattenedAny = true;
-        int safetyCounter = 0;
-        int idOffset = 10000;
-
-        while (flattenedAny && safetyCounter < 10) {
-            flattenedAny = false;
-            safetyCounter++;
-
-            JSONArray newNodes = new JSONArray();
-            for (int i = 0; i < mainNodes.length(); i++) {
-                JSONObject node = mainNodes.getJSONObject(i);
-                String type = node.getString("type");
-
-                if (subgraphDefs.containsKey(type)) {
-                    flattenedAny = true;
-                    JSONObject sgDef = subgraphDefs.get(type);
-                    int subgraphNodeId = node.getInt("id");
-
-                    Map<Integer, Object[]> inputSlotLinks = new HashMap<>();
-                    Map<Integer, List<Object[]>> outputSlotLinks = new HashMap<>();
-
-                    JSONArray nodeInputsArr = node.optJSONArray("inputs");
-                    JSONArray nodeOutputsArr = node.optJSONArray("outputs");
-                    JSONArray sgInputsArr = sgDef.optJSONArray("inputs");
-                    JSONArray sgOutputsArr = sgDef.optJSONArray("outputs");
-
-                    for (int j = 0; j < mainLinks.length(); j++) {
-                        JSONArray link = mainLinks.optJSONArray(j);
-                        if (link == null || link.length() < 6) continue;
-                        int linkId = link.getInt(0);
-                        int originId = link.getInt(1);
-                        int originSlot = link.getInt(2);
-                        int targetId = link.getInt(3);
-                        int targetSlot = link.getInt(4);
-                        String linkType = link.getString(5);
-
-                        if (targetId == subgraphNodeId) {
-                            int targetSgSlot = targetSlot;
-                            if (nodeInputsArr != null && targetSlot < nodeInputsArr.length()) {
-                                String slotName = nodeInputsArr.getJSONObject(targetSlot).optString("name", "");
-                                if (sgInputsArr != null) {
-                                    for (int s = 0; s < sgInputsArr.length(); s++) {
-                                        if (slotName.equals(sgInputsArr.getJSONObject(s).optString("name", ""))) {
-                                            targetSgSlot = s;
-                                            break;
-                                        }
-                                    }
-                                }
-                            }
-                            inputSlotLinks.put(targetSgSlot, new Object[]{originId, originSlot, linkType, linkId});
-                        }
-                        if (originId == subgraphNodeId) {
-                            int originSgSlot = originSlot;
-                            if (nodeOutputsArr != null && originSlot < nodeOutputsArr.length()) {
-                                String slotName = nodeOutputsArr.getJSONObject(originSlot).optString("name", "");
-                                if (sgOutputsArr != null) {
-                                    for (int s = 0; s < sgOutputsArr.length(); s++) {
-                                        if (slotName.equals(sgOutputsArr.getJSONObject(s).optString("name", ""))) {
-                                            originSgSlot = s;
-                                            break;
-                                        }
-                                    }
-                                }
-                            }
-                            outputSlotLinks.computeIfAbsent(originSgSlot, k -> new ArrayList<>())
-                                    .add(new Object[]{targetId, targetSlot, linkType, linkId});
-                        }
-                    }
-
-                    JSONArray sgNodes = sgDef.getJSONArray("nodes");
-                    Map<Integer, Integer> nodeIdMap = new HashMap<>();
-                    for (int j = 0; j < sgNodes.length(); j++) {
-                        JSONObject internalNode = new JSONObject(sgNodes.getJSONObject(j).toString());
-                        int oldId = internalNode.getInt("id");
-                        int newId = oldId + idOffset;
-                        internalNode.put("id", newId);
-                        nodeIdMap.put(oldId, newId);
-
-                        JSONArray nodeInputs = internalNode.optJSONArray("inputs");
-                        if (nodeInputs != null) {
-                            for (int k = 0; k < nodeInputs.length(); k++) {
-                                JSONObject inputObj = nodeInputs.getJSONObject(k);
-                                if (inputObj.has("link") && !inputObj.isNull("link")) {
-                                    int oldLink = inputObj.getInt("link");
-                                    inputObj.put("link", oldLink + idOffset * 10);
-                                }
-                            }
-                        }
-
-                        newNodes.put(internalNode);
-                    }
-
-                    JSONArray sgLinks = sgDef.optJSONArray("links");
-                    if (sgLinks != null) {
-                        for (int j = 0; j < sgLinks.length(); j++) {
-                            int linkId, originId, originSlot, targetId, targetSlot;
-                            String linkType;
-                            Object itemObj = sgLinks.get(j);
-                            if (itemObj instanceof JSONArray link) {
-                                linkId = link.getInt(0);
-                                originId = link.getInt(1);
-                                originSlot = link.getInt(2);
-                                targetId = link.getInt(3);
-                                targetSlot = link.getInt(4);
-                                linkType = link.getString(5);
-                            } else if (itemObj instanceof JSONObject link) {
-                                linkId = link.getInt("id");
-                                originId = link.getInt("origin_id");
-                                originSlot = link.getInt("origin_slot");
-                                targetId = link.getInt("target_id");
-                                targetSlot = link.getInt("target_slot");
-                                linkType = link.getString("type");
-                            } else {
-                                continue;
-                            }
-
-                            int newLinkId = linkId + idOffset * 10;
-                            int newOriginId = originId == -10 ? -10 : (nodeIdMap.getOrDefault(originId, originId));
-                            int newTargetId = targetId == -20 ? -20 : (nodeIdMap.getOrDefault(targetId, targetId));
-
-                            if (newOriginId == -10 && newTargetId == -20) {
-                                continue;
-                            }
-
-                            JSONArray newLink = new JSONArray();
-                            newLink.put(newLinkId);
-                            newLink.put(newOriginId);
-                            newLink.put(originSlot);
-                            newLink.put(newTargetId);
-                            newLink.put(targetSlot);
-                            newLink.put(linkType);
-
-                            mainLinks.put(newLink);
-                        }
-                    }
-
-                    JSONArray sgInputs = sgDef.optJSONArray("inputs");
-                    if (sgInputs != null) {
-                        for (int slotIdx = 0; slotIdx < sgInputs.length(); slotIdx++) {
-                            JSONObject sgInput = sgInputs.getJSONObject(slotIdx);
-                            JSONArray linkIds = sgInput.optJSONArray("linkIds");
-                            if (linkIds == null) continue;
-
-                            Object[] extLinkInfo = inputSlotLinks.get(slotIdx);
-                            if (extLinkInfo != null) {
-                                int extOriginId = (int) extLinkInfo[0];
-                                int extOriginSlot = (int) extLinkInfo[1];
-
-                                for (int k = 0; k < linkIds.length(); k++) {
-                                    int intLinkId = linkIds.getInt(k);
-                                    int newIntLinkId = intLinkId + idOffset * 10;
-
-                                    for (int m = 0; m < mainLinks.length(); m++) {
-                                        JSONArray l = mainLinks.optJSONArray(m);
-                                        if (l != null && l.length() >= 6 && l.getInt(0) == newIntLinkId) {
-                                            l.put(1, extOriginId);
-                                            l.put(2, extOriginSlot);
-                                            break;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    JSONArray sgOutputs = sgDef.optJSONArray("outputs");
-                    if (sgOutputs != null) {
-                        for (int slotIdx = 0; slotIdx < sgOutputs.length(); slotIdx++) {
-                            JSONObject sgOutput = sgOutputs.getJSONObject(slotIdx);
-                            JSONArray linkIds = sgOutput.optJSONArray("linkIds");
-                            if (linkIds == null) continue;
-
-                            List<Object[]> extLinkInfos = outputSlotLinks.get(slotIdx);
-                            if (extLinkInfos != null) {
-                                for (int k = 0; k < linkIds.length(); k++) {
-                                    int intLinkId = linkIds.getInt(k);
-                                    int newIntLinkId = intLinkId + idOffset * 10;
-
-                                    int internalOriginId = -1;
-                                    int internalOriginSlot = -1;
-                                    for (int m = 0; m < mainLinks.length(); m++) {
-                                        JSONArray l = mainLinks.optJSONArray(m);
-                                        if (l != null && l.length() >= 6 && l.getInt(0) == newIntLinkId) {
-                                            internalOriginId = l.getInt(1);
-                                            internalOriginSlot = l.getInt(2);
-                                            break;
-                                        }
-                                    }
-
-                                    if (internalOriginId != -1) {
-                                        for (Object[] extLinkInfo : extLinkInfos) {
-                                            int extLinkId = (int) extLinkInfo[3];
-                                            for (int m = 0; m < mainLinks.length(); m++) {
-                                                JSONArray l = mainLinks.optJSONArray(m);
-                                                if (l != null && l.length() >= 6 && l.getInt(0) == extLinkId) {
-                                                    l.put(1, internalOriginId);
-                                                    l.put(2, internalOriginSlot);
-                                                    break;
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    JSONArray cleanLinks = new JSONArray();
-                    for (int j = 0; j < mainLinks.length(); j++) {
-                        JSONArray l = mainLinks.optJSONArray(j);
-                        if (l == null || l.length() < 6) continue;
-                        int originId = l.getInt(1);
-                        int targetId = l.getInt(3);
-                        if (originId == subgraphNodeId || targetId == subgraphNodeId || originId == -10 || targetId == -20) {
-                            continue;
-                        }
-                        cleanLinks.put(l);
-                    }
-                    mainLinks = cleanLinks;
-                    uiWorkflow.put("links", mainLinks);
-
-                    idOffset += 10000;
-                } else {
-                    newNodes.put(node);
-                }
-            }
-            mainNodes = newNodes;
-            uiWorkflow.put("nodes", mainNodes);
-        }
-
-        return uiWorkflow;
+        return SubgraphFlattener.flattenWorkflow(uiWorkflow);
     }
 }

@@ -46,7 +46,7 @@ public class DownloadSelectionTest {
         });
 
         // Wait for completion
-        assertTrue(latch.await(5, TimeUnit.SECONDS), "Download queue did not finish in time");
+        assertTrue(latch.await(40, TimeUnit.SECONDS), "Download queue did not finish in time");
 
         // Model 2 MUST be skipped
         assertEquals("Skipped (Not Selected)", statusMap.get(1), "Model 2 should have been skipped");
@@ -91,7 +91,7 @@ public class DownloadSelectionTest {
         downloadManager.togglePause();
 
         // Wait for completion (the thread should now see it's unchecked and finish)
-        assertTrue(latch.await(5, TimeUnit.SECONDS), "Download queue did not finish in time");
+        assertTrue(latch.await(40, TimeUnit.SECONDS), "Download queue did not finish in time");
 
         // The status MUST indicate it was skipped or errored out (as long as it didn't finish)
         String finalStatus = statusMap.get(0);

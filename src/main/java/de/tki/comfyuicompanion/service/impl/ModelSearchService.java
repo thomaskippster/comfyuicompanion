@@ -190,7 +190,7 @@ public class ModelSearchService implements IModelSearchService {
 
         try {
             String hashUrl = getCivitaiApiBaseUrl() + "/model-versions/by-hash/" + hash;
-            HttpResponse<String> hashRes = httpClient.send(createCivitaiRequestBuilder(hashUrl).GET().build(), HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> hashRes = httpClient.send(createCivitaiRequestBuilder(hashUrl).GET().build(), HttpResponse.BodyHandlers.ofString(java.nio.charset.StandardCharsets.UTF_8));
             if (hashRes.statusCode() != 200) return Optional.empty();
 
             JSONObject currentVersion = new JSONObject(hashRes.body());
@@ -199,7 +199,7 @@ public class ModelSearchService implements IModelSearchService {
             if (modelId == -1 || currentVersionId == -1) return Optional.empty();
 
             String modelUrl = getCivitaiApiBaseUrl() + "/models/" + modelId;
-            HttpResponse<String> modelRes = httpClient.send(createCivitaiRequestBuilder(modelUrl).GET().build(), HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> modelRes = httpClient.send(createCivitaiRequestBuilder(modelUrl).GET().build(), HttpResponse.BodyHandlers.ofString(java.nio.charset.StandardCharsets.UTF_8));
             if (modelRes.statusCode() != 200) return Optional.empty();
 
             JSONObject modelData = new JSONObject(modelRes.body());
@@ -259,31 +259,37 @@ public class ModelSearchService implements IModelSearchService {
 
     @Override
     public long getRemoteSize(String url) {
+        if (url == null || url.isBlank()) return -1;
         try {
-            if (url.contains("huggingface.co") && url.contains("/resolve/")) {
-                String apiUrl = url.replace("/resolve/", "/api/models/").replace("/main/", "/file/");
+            String safeUrl = url.trim().replace(" ", "%20");
+            if (safeUrl.contains("huggingface.co") && safeUrl.contains("/resolve/")) {
+                String cleanForApi = safeUrl;
+                int qIdx = cleanForApi.indexOf('?');
+                if (qIdx > 0) cleanForApi = cleanForApi.substring(0, qIdx);
+                String apiUrl = cleanForApi.replace("/resolve/", "/api/models/").replace("/main/", "/file/");
                 if (!apiUrl.contains("/api/models/")) {
-                    // Fallback for direct resolve URLs
-                    apiUrl = getHfApiBaseUrl() + "/models/" + url.split("huggingface.co/")[1].replace("/resolve/main/", "/file/");
+                    apiUrl = getHfApiBaseUrl() + "/models/" + cleanForApi.split("huggingface.co/")[1].replace("/resolve/main/", "/file/");
                 }
                 HttpRequest.Builder apiBuilder = HttpRequest.newBuilder().uri(URI.create(apiUrl)).GET().header("User-Agent", "Mozilla/5.0").timeout(Duration.ofSeconds(15));
-                String token = configService.getHfToken();
-                if (!token.isEmpty()) apiBuilder.header("Authorization", "Bearer " + token);
+                String token = configService != null ? configService.getHfToken() : "";
+                if (token != null && !token.isEmpty()) apiBuilder.header("Authorization", "Bearer " + token);
 
-                HttpResponse<String> apiRes = httpClient.send(apiBuilder.build(), HttpResponse.BodyHandlers.ofString());
+                HttpResponse<String> apiRes = httpClient.send(apiBuilder.build(), HttpResponse.BodyHandlers.ofString(java.nio.charset.StandardCharsets.UTF_8));
                 if (apiRes.statusCode() == 200) {
                     JSONObject fileData = new JSONObject(apiRes.body());
                     if (fileData.has("size")) return fileData.getLong("size");
                 }
             }
 
-            HttpRequest.Builder builder = HttpRequest.newBuilder().uri(URI.create(url)).method("HEAD", HttpRequest.BodyPublishers.noBody()).header("User-Agent", "Mozilla/5.0");
-            String token = configService.getHfToken();
-            if (url.contains("huggingface.co") && !token.isEmpty()) builder.header("Authorization", "Bearer " + token);
+            HttpRequest.Builder builder = HttpRequest.newBuilder().uri(URI.create(safeUrl)).method("HEAD", HttpRequest.BodyPublishers.noBody()).header("User-Agent", "Mozilla/5.0");
+            String token = configService != null ? configService.getHfToken() : "";
+            if (safeUrl.contains("huggingface.co") && token != null && !token.isEmpty()) builder.header("Authorization", "Bearer " + token);
 
             HttpResponse<Void> res = httpClient.send(builder.build(), HttpResponse.BodyHandlers.discarding());
             if (res.statusCode() == 401 || res.statusCode() == 403) return -401;
 
+            long linkedSize = res.headers().firstValueAsLong("x-linked-size").orElse(-1L);
+            if (linkedSize > 0) return linkedSize;
             return res.headers().firstValueAsLong("Content-Length").orElse(-1L);
         } catch (Exception e) {
             return -1;
@@ -294,6 +300,8 @@ public class ModelSearchService implements IModelSearchService {
     public String formatSize(long bytes) {
         if (bytes == -401) return "🔒 Auth Required";
         if (bytes <= 0) return "Unknown";
+        if (bytes < 1024L) return bytes + " B";
+        if (bytes < 1024L * 1024L) return String.format(Locale.US, "%.1f KB", bytes / 1024.0);
         if (bytes >= 1024L * 1024L * 1024L) return String.format(Locale.US, "%.2f GB", bytes / 1024.0 / 1024.0 / 1024.0);
         return String.format(Locale.US, "%.2f MB", bytes / 1024.0 / 1024.0);
     }
@@ -307,7 +315,7 @@ public class ModelSearchService implements IModelSearchService {
             String token = configService.getHfToken();
             if (!token.isEmpty()) builder.header("Authorization", "Bearer " + token);
 
-            HttpResponse<String> response = httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response = httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofString(java.nio.charset.StandardCharsets.UTF_8));
             if (response.statusCode() == 200) {
                 JSONArray files = new JSONArray(response.body());
                 String targetName = info.getName().toLowerCase();
@@ -335,7 +343,7 @@ public class ModelSearchService implements IModelSearchService {
                                          BiConsumer<Integer, ModelInfo> onModelFound) {
         try {
             String searchUrl = getHfApiBaseUrl() + "/models?search=" + URLEncoder.encode(query, StandardCharsets.UTF_8) + "&sort=downloads&direction=-1&limit=100";
-            HttpResponse<String> response = httpClient.send(HttpRequest.newBuilder().uri(URI.create(searchUrl)).timeout(Duration.ofSeconds(15)).build(), HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response = httpClient.send(HttpRequest.newBuilder().uri(URI.create(searchUrl)).timeout(Duration.ofSeconds(15)).build(), HttpResponse.BodyHandlers.ofString(java.nio.charset.StandardCharsets.UTF_8));
             if (response.statusCode() == 200) {
                 JSONArray models = new JSONArray(response.body());
                 for (int i = 0; i < models.length(); i++) {
@@ -356,7 +364,7 @@ public class ModelSearchService implements IModelSearchService {
                                          BiConsumer<Integer, ModelInfo> onModelFound) {
         try {
             String searchUrl = getCivitaiApiBaseUrl() + "/model-versions/by-hash/" + hash;
-            HttpResponse<String> response = httpClient.send(createCivitaiRequestBuilder(searchUrl).GET().build(), HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response = httpClient.send(createCivitaiRequestBuilder(searchUrl).GET().build(), HttpResponse.BodyHandlers.ofString(java.nio.charset.StandardCharsets.UTF_8));
             if (response.statusCode() == 200) {
                 JSONObject version = new JSONObject(response.body());
                 JSONArray files = version.optJSONArray("files");
@@ -380,7 +388,7 @@ public class ModelSearchService implements IModelSearchService {
                                      BiConsumer<Integer, ModelInfo> onModelFound) {
         try {
             String searchUrl = getCivitaiApiBaseUrl() + "/models?query=" + URLEncoder.encode(query, StandardCharsets.UTF_8) + "&sort=Most+Downloaded&limit=20";
-            HttpResponse<String> response = httpClient.send(createCivitaiRequestBuilder(searchUrl).GET().build(), HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response = httpClient.send(createCivitaiRequestBuilder(searchUrl).GET().build(), HttpResponse.BodyHandlers.ofString(java.nio.charset.StandardCharsets.UTF_8));
             if (response.statusCode() == 200) {
                 JSONObject json = new JSONObject(response.body());
                 JSONArray items = json.optJSONArray("items");

@@ -112,21 +112,18 @@ public final class CivitaiActionLauncher {
 
         Thread.ofVirtual().name("Civitai-DetailPreview").start(() -> {
             try {
-                HttpRequest req = HttpRequest.newBuilder().uri(URI.create(url)).timeout(Duration.ofSeconds(12)).GET().build();
-                HttpResponse<InputStream> res = HTTP_CLIENT.send(req, HttpResponse.BodyHandlers.ofInputStream());
-                if (res.statusCode() == 200) {
-                    try (InputStream in = res.body()) {
-                        BufferedImage img = ImageIO.read(in);
-                        if (img != null) {
-                            int targetW = 280;
-                            int targetH = 380;
-                            Image scaled = img.getScaledInstance(targetW, targetH, Image.SCALE_SMOOTH);
-                            SwingUtilities.invokeLater(() -> {
-                                target.setText(null);
-                                target.setIcon(new ImageIcon(scaled));
-                            });
-                        }
-                    }
+                BufferedImage img = de.tki.comfyuicompanion.util.WorkflowImageLoader.loadOrFetchCached(url, Duration.ofSeconds(12));
+                if (img != null) {
+                    int srcW = Math.max(1, img.getWidth());
+                    int srcH = Math.max(1, img.getHeight());
+                    double scale = Math.min(280.0 / srcW, 380.0 / srcH);
+                    int targetW = Math.max(1, (int) Math.round(srcW * scale));
+                    int targetH = Math.max(1, (int) Math.round(srcH * scale));
+                    Image scaled = img.getScaledInstance(targetW, targetH, Image.SCALE_SMOOTH);
+                    SwingUtilities.invokeLater(() -> {
+                        target.setText(null);
+                        target.setIcon(new ImageIcon(scaled));
+                    });
                 }
             } catch (Exception e) {
                 SwingUtilities.invokeLater(() -> target.setText("Preview unavailable"));

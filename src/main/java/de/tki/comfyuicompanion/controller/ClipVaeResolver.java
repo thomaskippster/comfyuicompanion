@@ -207,7 +207,7 @@ public class ClipVaeResolver {
      */
     public String resolveVaeForModel(String modelName, Set<String> comfyVaes) {
         if (modelName == null) return "ae.safetensors";
-        String expected = "FLUX1/ae.safetensors";
+        String expected = "ae.safetensors";
         if (modelArchitectureService != null) {
             IModelArchitectureService.ModelDefaults defaults = modelArchitectureService.getDefaultsForModel(modelName);
             if (defaults != null && defaults.vaeName != null) {
@@ -220,7 +220,7 @@ public class ClipVaeResolver {
             } else if (lower.contains("wan")) {
                 expected = "wan_2.1_vae.safetensors";
             } else if (lower.contains("flux")) {
-                expected = "FLUX1/ae.safetensors";
+                expected = "ae.safetensors";
             }
         }
 

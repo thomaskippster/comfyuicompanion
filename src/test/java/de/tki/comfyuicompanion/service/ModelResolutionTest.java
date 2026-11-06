@@ -93,8 +93,8 @@ public class ModelResolutionTest {
         // Act
         String result = (String) ReflectionTestUtils.invokeMethod(mainInstance, "resolveVaeForModel", "FLUX1/flux1-schnell-fp8.safetensors");
 
-        // Assert: should NOT fall back to wan, but return the expected flux VAE name
-        assertEquals("FLUX1/ae.safetensors", result);
+        // Assert: should NOT fall back to wan, but return the expected standardized flux VAE root name
+        assertEquals("ae.safetensors", result);
     }
 
     @Test

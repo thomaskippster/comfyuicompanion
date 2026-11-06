@@ -154,9 +154,11 @@ public class CivitaiModelJsonParser {
                 double sizeKb = primaryFile.path("sizeKB").asDouble(0.0);
                 fileSizeBytes = (long) (sizeKb * 1024.0);
                 if (sizeKb >= 1024.0 * 1024.0) {
-                    formattedSize = String.format("%.2f GB", sizeKb / (1024.0 * 1024.0));
+                    formattedSize = String.format(java.util.Locale.US, "%.2f GB", sizeKb / (1024.0 * 1024.0));
+                } else if (sizeKb >= 1024.0) {
+                    formattedSize = String.format(java.util.Locale.US, "%.1f MB", sizeKb / 1024.0);
                 } else if (sizeKb > 0) {
-                    formattedSize = String.format("%.1f MB", sizeKb / 1024.0);
+                    formattedSize = String.format(java.util.Locale.US, "%.1f KB", sizeKb);
                 }
             }
 

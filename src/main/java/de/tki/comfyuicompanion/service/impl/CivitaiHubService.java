@@ -23,13 +23,14 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.CompletableFuture;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
  * Enterprise service providing high-level search, pagination, direct ID/hash lookup,
- * and download preparation for the Civitai Model Hub gallery.
+ * ComfyUI workflow filtering, and download preparation for the Civitai Workflows Hub.
  * Strictly enforces youth protection by filtering mature and NSFW content.
  */
 @Service
@@ -103,12 +104,16 @@ public class CivitaiHubService implements ICivitaiHubService {
             boolean allowNsfw) {
 
         String cleanQuery = query != null ? query.trim() : "";
+        boolean onlyWorkflows = type != null && (type.equalsIgnoreCase("Workflows") || type.equalsIgnoreCase("Workflow"));
         if (!cleanQuery.isEmpty()) {
             CompletableFuture<List<CivitaiModelEntry>> directFuture = tryDirectLookup(cleanQuery);
             if (directFuture != null) {
                 return directFuture.thenCompose(directResults -> {
-                    if (!directResults.isEmpty()) {
-                        return CompletableFuture.completedFuture(directResults);
+                    List<CivitaiModelEntry> filteredDirect = onlyWorkflows
+                            ? directResults.stream().filter(this::isComfyWorkflowEntry).toList()
+                            : directResults;
+                    if (!filteredDirect.isEmpty()) {
+                        return CompletableFuture.completedFuture(filteredDirect);
                     }
                     return executeCatalogQuery(cleanQuery, type, baseModel, sort, limit, page, allowNsfw);
                 });
@@ -126,6 +131,34 @@ public class CivitaiHubService implements ICivitaiHubService {
     @Override
     public CompletableFuture<List<String>> getModelTypes() {
         return metadataService.getModelTypes();
+    }
+
+    /**
+     * Determines whether a parsed Civitai entry represents a genuine ComfyUI workflow
+     * rather than a standalone model weight or an Automatic1111/Forge-only package.
+     *
+     * @param entry the Civitai entry to inspect
+     * @return true if the entry is a ComfyUI workflow
+     */
+    public boolean isComfyWorkflowEntry(CivitaiModelEntry entry) {
+        if (entry == null || entry.type() == null) {
+            return false;
+        }
+        String t = entry.type().trim();
+        if (!"Workflows".equalsIgnoreCase(t) && !"Workflow".equalsIgnoreCase(t)) {
+            return false;
+        }
+        String nameLower = entry.name() != null ? entry.name().toLowerCase(Locale.ROOT) : "";
+        String fnLower = entry.filename() != null ? entry.filename().toLowerCase(Locale.ROOT) : "";
+        String combined = nameLower + " " + fnLower;
+        boolean mentionsOtherUi = combined.contains("automatic1111")
+                || combined.contains("a1111")
+                || combined.contains("sd-webui")
+                || combined.contains("sd.next");
+        if (mentionsOtherUi && !combined.contains("comfy")) {
+            return false;
+        }
+        return true;
     }
 
     private CompletableFuture<List<CivitaiModelEntry>> tryDirectLookup(String cleanQuery) {
@@ -155,7 +188,7 @@ public class CivitaiHubService implements ICivitaiHubService {
     private CompletableFuture<List<CivitaiModelEntry>> fetchModelById(long modelId) {
         String url = API_BASE + "/" + modelId;
         HttpRequest request = buildAuthenticatedGetRequest(URI.create(url));
-        return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString())
+        return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8))
                 .thenApply(response -> {
                     if (response.statusCode() == 200) {
                         try {
@@ -175,7 +208,7 @@ public class CivitaiHubService implements ICivitaiHubService {
     private CompletableFuture<List<CivitaiModelEntry>> fetchModelByHash(String hash) {
         String url = "https://civitai.com/api/v1/model-versions/by-hash/" + hash;
         HttpRequest request = buildAuthenticatedGetRequest(URI.create(url));
-        return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString())
+        return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8))
                 .thenCompose(response -> {
                     if (response.statusCode() == 200) {
                         try {
@@ -201,10 +234,11 @@ public class CivitaiHubService implements ICivitaiHubService {
             int page,
             boolean allowNsfw) {
 
+        boolean onlyWorkflows = type != null && (type.equalsIgnoreCase("Workflows") || type.equalsIgnoreCase("Workflow"));
         URI uri = buildQueryUri(query, type, baseModel, sort, limit, page, allowNsfw);
         HttpRequest request = buildAuthenticatedGetRequest(uri);
 
-        return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString())
+        return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8))
                 .thenApply(response -> {
                     List<CivitaiModelEntry> entries = new ArrayList<>();
                     if (response.statusCode() != 200) {
@@ -217,7 +251,7 @@ public class CivitaiHubService implements ICivitaiHubService {
                         if (items.isArray()) {
                             for (JsonNode item : items) {
                                 CivitaiModelEntry entry = parseModelEntry(item);
-                                if (entry != null) {
+                                if (entry != null && (!onlyWorkflows || isComfyWorkflowEntry(entry))) {
                                     entries.add(entry);
                                 }
                             }

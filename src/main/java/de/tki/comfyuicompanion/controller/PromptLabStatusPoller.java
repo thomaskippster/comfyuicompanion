@@ -15,10 +15,11 @@ import java.util.function.Consumer;
 
 /**
  * Coordinates real-time WebSocket progress events and fallback HTTP history polling
- * for queued ComfyUI prompts in the Image Lab.
+ * for queued ComfyUI prompts in the Image Lab, resilient against connection drops.
  */
 public class PromptLabStatusPoller {
     private static final Logger logger = LoggerFactory.getLogger(PromptLabStatusPoller.class);
+    private static final int MAX_CONSECUTIVE_CONN_ERRORS = 3;
 
     private final ComfyApiClient comfyApiClient;
     private final ComfyWebSocketClient webSocketClient;
@@ -121,6 +122,8 @@ public class PromptLabStatusPoller {
             try {
                 boolean done = false;
                 int pollAttempts = 0;
+                int consecutiveConnectionErrors = 0;
+                boolean connectionFailed = false;
 
                 while (!done && pollAttempts < 180) {
                     try {
@@ -128,6 +131,7 @@ public class PromptLabStatusPoller {
                         pollAttempts++;
 
                         ComfyApiClient.ImageOutput imgOutput = comfyApiClient.fetchPromptHistoryImage(comfyUrl, promptId);
+                        consecutiveConnectionErrors = 0;
                         if (imgOutput != null) {
                             SwingUtilities.invokeLater(() -> {
                                 if (onImageReady != null) {
@@ -165,17 +169,36 @@ public class PromptLabStatusPoller {
                         Thread.currentThread().interrupt();
                         break;
                     } catch (Exception ex) {
-                        logger.error("Error polling history: {}", ex.getMessage());
+                        if (isConnectionFailure(ex)) {
+                            consecutiveConnectionErrors++;
+                            if (consecutiveConnectionErrors == 1) {
+                                logger.warn("ComfyUI unreachable during prompt polling: {}", ex.getMessage());
+                            } else {
+                                logger.debug("ComfyUI connection unreachable (attempt {}): {}", consecutiveConnectionErrors, ex.getMessage());
+                            }
+                            if (consecutiveConnectionErrors >= MAX_CONSECUTIVE_CONN_ERRORS) {
+                                logger.warn("ComfyUI server appears offline. Aborting prompt status polling.");
+                                connectionFailed = true;
+                                break;
+                            }
+                        } else {
+                            logger.error("Error polling history: {}", ex.getMessage());
+                        }
                     }
                 }
 
                 if (!done) {
+                    final boolean connDead = connectionFailed;
                     SwingUtilities.invokeLater(() -> {
                         if (promptLabView.getPromptLabProgressBar() != null) {
                             promptLabView.getPromptLabProgressBar().setVisible(false);
                         }
                         if (promptLabView.getPromptImagePreviewLabel() != null) {
-                            promptLabView.getPromptImagePreviewLabel().setText("Timed out waiting for image generation.");
+                            promptLabView.getPromptImagePreviewLabel().setText(
+                                    connDead ? "ComfyUI disconnected or stopped." : "Timed out waiting for image generation.");
+                        }
+                        if (connDead && promptLabView.getPromptLabConsole() != null) {
+                            promptLabView.getPromptLabConsole().append("❌ Generation aborted: ComfyUI server stopped or crashed (Connection refused).\n\n");
                         }
                     });
                 }
@@ -183,8 +206,8 @@ public class PromptLabStatusPoller {
                 try {
                     wsSession.close();
                 } catch (Exception ignored) {
-            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
-        }
+                    logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+                }
             }
         });
     }
@@ -319,17 +342,7 @@ public class PromptLabStatusPoller {
                 cv.setStatus("🚀 Submitting...");
 
                 org.json.JSONObject parsed = new org.json.JSONObject(baseJsonText);
-                org.json.JSONObject promptToQueue;
-                if (parsed.has("prompt")) {
-                    promptToQueue = parsed.getJSONObject("prompt");
-                } else if (parsed.has("nodes")) {
-                    org.json.JSONObject flattened = de.tki.comfyuicompanion.service.impl.ComfyPipelineService.flattenWorkflow(parsed);
-                    org.json.JSONObject apiPayload = de.tki.comfyuicompanion.service.impl.ComfyPipelineService.convertUiToApi(flattened);
-                    promptToQueue = apiPayload.getJSONObject("prompt");
-                } else {
-                    promptToQueue = parsed;
-                }
-                de.tki.comfyuicompanion.service.PromptBlueprintApiService.cleanNonNodeKeys(promptToQueue);
+                org.json.JSONObject promptToQueue = de.tki.comfyuicompanion.service.PromptBlueprintApiService.extractPromptToQueue(parsed);
 
                 int liveSteps = view.getPromptStepsSpinner() != null
                         ? (int) view.getPromptStepsSpinner().getValue()
@@ -423,10 +436,12 @@ public class PromptLabStatusPoller {
                 null
         );
         try {
+            int connErrors = 0;
             for (int attempt = 0; attempt < 180; attempt++) {
                 try {
                     Thread.sleep(1000);
                     ComfyApiClient.ImageOutput out = comfyApiClient.fetchPromptHistoryImage(comfyUrl, promptId);
+                    connErrors = 0;
                     if (out != null) {
                         String imageUrl = comfyUrl + "/view?filename=" + out.filename() + "&subfolder=" + out.subfolder() + "&type=" + out.type();
                         return javax.imageio.ImageIO.read(java.net.URI.create(imageUrl).toURL());
@@ -435,6 +450,14 @@ public class PromptLabStatusPoller {
                     Thread.currentThread().interrupt();
                     return null;
                 } catch (Exception e) {
+                    if (isConnectionFailure(e)) {
+                        connErrors++;
+                        if (connErrors >= MAX_CONSECUTIVE_CONN_ERRORS) {
+                            logger.warn("ComfyUI unreachable during matrix polling; aborting.");
+                            if (cellView != null) cellView.setStatus("❌ ComfyUI Offline");
+                            return null;
+                        }
+                    }
                     logger.debug("Polling attempt failed: {}", e.getMessage());
                 }
             }
@@ -446,5 +469,15 @@ public class PromptLabStatusPoller {
                 logger.debug("Failed to close WebSocket session: {}", e.getMessage());
             }
         }
+    }
+
+    private boolean isConnectionFailure(Throwable t) {
+        if (t == null) return false;
+        if (t instanceof java.net.ConnectException) return true;
+        String msg = t.getMessage();
+        if (msg != null && (msg.contains("Connection refused") || msg.contains("ConnectException") || msg.contains("failed to connect"))) {
+            return true;
+        }
+        return isConnectionFailure(t.getCause());
     }
 }

@@ -129,7 +129,7 @@ public class VaultStorageService {
      */
     public void saveVault(File vaultFile, JSONObject settings, String masterPassword, EncryptionUtils encryptionUtils) {
         if (masterPassword == null) {
-            logger.error("Cannot save: Vault not unlocked.");
+            logger.debug("Deferring vault save until vault is unlocked.");
             return;
         }
         try {

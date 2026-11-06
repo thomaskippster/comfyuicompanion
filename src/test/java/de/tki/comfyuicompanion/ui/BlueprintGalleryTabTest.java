@@ -199,7 +199,7 @@ public class BlueprintGalleryTabTest {
             java.lang.reflect.Method m = BlueprintGalleryTab.class.getDeclaredMethod("getModelStatus", ModelInfo.class);
             m.setAccessible(true);
             String status = (String) m.invoke(tabWithMock, info);
-            assertThat(status).isEqualTo("📦 Archived");
+            assertThat(status).isEqualTo("Archived");
             
             java.lang.reflect.Method mDeep = BlueprintGalleryTab.class.getDeclaredMethod("isModelPresentDeep", ModelInfo.class);
             mDeep.setAccessible(true);
@@ -240,6 +240,32 @@ public class BlueprintGalleryTabTest {
                 .isLessThan(BlueprintGalleryTab.getCategoryOrderScore("Image to Video"));
         assertThat(BlueprintGalleryTab.getCategoryOrderScore("Inpainting"))
                 .isLessThan(BlueprintGalleryTab.getCategoryOrderScore("Video"));
+    }
+
+    @Test
+    public void testQuantizationVariantMatchesBetweenOverviewAndVaultDetails() {
+        ModelInfo installedInt8 = new ModelInfo("diffusion_models", "krea2_turbo_int8_convrot.safetensors", "LOCAL");
+        ModelInfo installedT5Fp8 = new ModelInfo("clip", "t5xxl_fp8_e4m3fn.safetensors", "LOCAL");
+        when(localModelScanner.scanLocalModels()).thenReturn(List.of(installedInt8, installedT5Fp8));
+
+        localModelValidator.scanLocalModels();
+
+        ModelInfo reqFp8 = new ModelInfo("diffusion_models", "krea2_turbo_fp8_scaled.safetensors", "https://example.com/krea2.safetensors");
+        ModelInfo reqT5Fp16 = new ModelInfo("text_encoders", "t5xxl_fp16.safetensors", "https://example.com/t5.safetensors");
+
+        assertThat(localModelValidator.isModelActive("krea2_turbo_fp8_scaled.safetensors")).isTrue();
+        assertThat(localModelValidator.isModelActive("t5xxl_fp16.safetensors")).isTrue();
+        assertThat(blueprintGalleryTab.getWorkflowVaultCoordinator().isModelPresent(reqFp8)).isTrue();
+        assertThat(blueprintGalleryTab.getWorkflowVaultCoordinator().isModelPresent(reqT5Fp16)).isTrue();
+
+        try {
+            java.lang.reflect.Method m = BlueprintGalleryTab.class.getDeclaredMethod("getModelStatus", ModelInfo.class);
+            m.setAccessible(true);
+            assertThat((String) m.invoke(blueprintGalleryTab, reqFp8)).isEqualTo("Already exists");
+            assertThat((String) m.invoke(blueprintGalleryTab, reqT5Fp16)).isEqualTo("Already exists");
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 }
 

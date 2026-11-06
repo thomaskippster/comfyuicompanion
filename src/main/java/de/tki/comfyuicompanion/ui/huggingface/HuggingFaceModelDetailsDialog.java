@@ -1,12 +1,18 @@
 package de.tki.comfyuicompanion.ui.huggingface;
 
+import java.io.File;
+
 import de.tki.comfyuicompanion.domain.HuggingFaceFileEntry;
 import de.tki.comfyuicompanion.domain.HuggingFaceModelEntry;
 import de.tki.comfyuicompanion.domain.ModelInfo;
 import de.tki.comfyuicompanion.service.IDownloadManager;
 import de.tki.comfyuicompanion.service.IHuggingFaceHubService;
 import de.tki.comfyuicompanion.service.impl.ConfigService;
+import de.tki.comfyuicompanion.service.impl.HuggingFaceWorkflowAnalyzer;
+import de.tki.comfyuicompanion.service.impl.HuggingFaceWorkflowBuilder;
 import de.tki.comfyuicompanion.service.impl.HuggingFaceWorkflowDispatcher;
+import de.tki.comfyuicompanion.ui.dialog.CustomNodeVerificationPanel;
+import de.tki.comfyuicompanion.ui.blueprint.WorkflowDialogDimensionHelper;
 import de.tki.comfyuicompanion.ui.icons.AppIcon;
 import de.tki.comfyuicompanion.ui.icons.SvgIconFactory;
 import org.slf4j.Logger;
@@ -30,6 +36,7 @@ import java.util.function.Function;
  * verifying all required local model weights, and dispatching workflows to ComfyUI.
  * Fully aligned with Comfy.org blueprints and {@link de.tki.comfyuicompanion.ui.blueprint.BlueprintDetailsDialog}.
  */
+@Deprecated
 public class HuggingFaceModelDetailsDialog extends JDialog {
 
     private static final Logger logger = LoggerFactory.getLogger(HuggingFaceModelDetailsDialog.class);
@@ -45,7 +52,7 @@ public class HuggingFaceModelDetailsDialog extends JDialog {
     private List<HuggingFaceFileEntry> files = new ArrayList<>();
     private DefaultTableModel filesTableModel;
     private JTable filesTable;
-    private JButton btnDownloadModel;
+
     private JButton btnSendToComfy;
     private JLabel previewImageLabel;
     private JLabel lblAvailableFilesCount;
@@ -57,15 +64,6 @@ public class HuggingFaceModelDetailsDialog extends JDialog {
 
     /**
      * Constructs a new unified HuggingFaceModelDetailsDialog.
-     *
-     * @param owner                     parent window
-     * @param repo                      Hugging Face repository entry
-     * @param hubService                Hugging Face service for fetching file trees
-     * @param downloadManager           download manager service
-     * @param configService             application configuration service
-     * @param workflowDispatcher        dispatcher for sending workflows to ComfyUI
-     * @param statusChecker             function resolving local status for a file entry
-     * @param onSwitchToDownloadManager callback to switch to Download Manager tab
      */
     public HuggingFaceModelDetailsDialog(
             Window owner,
@@ -86,8 +84,9 @@ public class HuggingFaceModelDetailsDialog extends JDialog {
         this.onSwitchToDownloadManager = onSwitchToDownloadManager;
 
         setSize(1250, 760);
-        setLocationRelativeTo(owner);
-
+        int metadataCount = 11;
+        int modelCount = (repo.files() != null) ? repo.files().size() : 0;
+        WorkflowDialogDimensionHelper.applyOptimalSizeAndLocation(this, owner, true, metadataCount, modelCount, false);
         boolean darkMode = configService == null || configService.isDarkMode();
         Color textPrimary = darkMode ? new Color(228, 230, 240) : new Color(30, 35, 45);
         Color textSecondary = darkMode ? new Color(120, 126, 152) : new Color(90, 100, 110);
@@ -97,14 +96,6 @@ public class HuggingFaceModelDetailsDialog extends JDialog {
             this.files = new ArrayList<>(repo.files());
             this.files.sort((a, b) -> Boolean.compare(!isPrimaryModelFile(a), !isPrimaryModelFile(b)));
         }
-
-        // Initialize action buttons early
-        btnDownloadModel = new JButton("Download Missing Models", SvgIconFactory.get(AppIcon.DOWNLOAD, 14));
-        btnDownloadModel.setFont(new Font("SansSerif", Font.BOLD, 11));
-        btnDownloadModel.putClientProperty("Button.arc", 999);
-        btnDownloadModel.setBackground(new Color(0, 150, 136));
-        btnDownloadModel.setForeground(Color.WHITE);
-        btnDownloadModel.addActionListener(e -> startMissingDownload());
 
         btnSendToComfy = new JButton("Send to ComfyUI", SvgIconFactory.get(AppIcon.SEND, 14));
         btnSendToComfy.setFont(new Font("SansSerif", Font.BOLD, 11));
@@ -128,7 +119,7 @@ public class HuggingFaceModelDetailsDialog extends JDialog {
         title.setForeground(textPrimary);
         header.add(title, BorderLayout.WEST);
 
-        JButton btnOpenWeb = new JButton("Open on Hugging Face ↗", SvgIconFactory.get(AppIcon.LINK, 13));
+        JButton btnOpenWeb = new JButton("Open on Hugging Face", SvgIconFactory.get(AppIcon.LINK, 13));
         btnOpenWeb.setFont(new Font("SansSerif", Font.PLAIN, 11));
         btnOpenWeb.putClientProperty("Button.arc", 999);
         btnOpenWeb.addActionListener(e -> HuggingFaceDetailsActionsHandler.openUrl("https://huggingface.co/" + repo.repoId()));
@@ -149,49 +140,39 @@ public class HuggingFaceModelDetailsDialog extends JDialog {
         imgPanel.setBorder(new EmptyBorder(0, 0, 14, 0));
         imgPanel.add(previewImageLabel);
         body.add(imgPanel);
-        HuggingFaceDetailsActionsHandler.loadAsyncPreviewBanner(repo, darkMode, previewImageLabel);
+        HuggingFaceDetailsActionsHandler.loadAsyncPreviewBanner(repo, darkMode, previewImageLabel, this, metadataCount, files != null ? files.size() : 0);
 
         // Metadata Rows
         HuggingFaceDetailsActionsHandler.addRow(body, "Repository", repo.repoId(), textSecondary, textPrimary);
         HuggingFaceDetailsActionsHandler.addRow(body, "Author", repo.author(), textSecondary, textPrimary);
         String taskStr = repo.pipelineTag() != null && !repo.pipelineTag().isBlank() ? repo.pipelineTag() : "Weights";
         HuggingFaceDetailsActionsHandler.addRow(body, "Pipeline Task", taskStr, textSecondary, textPrimary);
-        String stats = String.format(Locale.US, "❤️ %,d Likes  •  📥 %,d Downloads", repo.likes(), repo.downloads());
+        String stats = String.format(Locale.US, "%,d Likes  |  %,d Downloads", repo.likes(), repo.downloads());
         HuggingFaceDetailsActionsHandler.addRow(body, "Community Stats", stats, textSecondary, textPrimary);
 
-        lblAvailableFilesCount = new JLabel(String.valueOf(files.size()));
-        lblAvailableFilesCount.setFont(new Font("SansSerif", Font.PLAIN, 11));
-        lblAvailableFilesCount.setForeground(textPrimary);
+        lblAvailableFilesCount = createValueLabel(String.valueOf(files.size()), Font.PLAIN, textPrimary);
         HuggingFaceDetailsActionsHandler.addRowWithComponent(body, "Required / Available files", lblAvailableFilesCount, textSecondary);
-
-        lblInstalledCount = new JLabel("0");
-        lblInstalledCount.setFont(new Font("SansSerif", Font.PLAIN, 11));
-        lblInstalledCount.setForeground(textPrimary);
+        lblInstalledCount = createValueLabel("0", Font.PLAIN, textPrimary);
         HuggingFaceDetailsActionsHandler.addRowWithComponent(body, "Available locally", lblInstalledCount, textSecondary);
-
-        lblMissingCount = new JLabel("0");
-        lblMissingCount.setFont(new Font("SansSerif", Font.PLAIN, 11));
-        lblMissingCount.setForeground(new Color(255, 153, 0));
+        lblMissingCount = createValueLabel("0", Font.PLAIN, new Color(255, 153, 0));
         HuggingFaceDetailsActionsHandler.addRowWithComponent(body, "Missing", lblMissingCount, textSecondary);
-
-        lblSelectedFileName = new JLabel("Select a file in the table below");
+        lblSelectedFileName = createValueLabel("Select a file in the table below", Font.PLAIN, textPrimary);
         lblSelectedFileName.setFont(new Font("Monospaced", Font.PLAIN, 11));
-        lblSelectedFileName.setForeground(textPrimary);
         HuggingFaceDetailsActionsHandler.addRowWithComponent(body, "Selected File", lblSelectedFileName, textSecondary);
-
-        lblSelectedFileStatus = new JLabel("—");
-        lblSelectedFileStatus.setFont(new Font("SansSerif", Font.BOLD, 11));
-        lblSelectedFileStatus.setForeground(textSecondary);
+        lblSelectedFileStatus = createValueLabel("-", Font.BOLD, textSecondary);
         HuggingFaceDetailsActionsHandler.addRowWithComponent(body, "File Status", lblSelectedFileStatus, textSecondary);
-
-        lblHardwareCheck = new JLabel("🟢 Standard VRAM requirements");
-        lblHardwareCheck.setFont(new Font("SansSerif", Font.PLAIN, 11));
-        lblHardwareCheck.setForeground(new Color(34, 197, 130));
+        lblHardwareCheck = createValueLabel("Fits in VRAM - Standard requirements", Font.PLAIN, new Color(34, 197, 130));
         HuggingFaceDetailsActionsHandler.addRowWithComponent(body, "Hardware Check", lblHardwareCheck, textSecondary);
+
+        CustomNodeVerificationPanel customNodesPanel = new CustomNodeVerificationPanel(this, configService, textSecondary);
+        HuggingFaceDetailsActionsHandler.addRowWithComponent(body, "Custom Nodes", customNodesPanel, textSecondary);
+        customNodesPanel.verifyWorkflowAsync(() -> new HuggingFaceWorkflowBuilder(new com.fasterxml.jackson.databind.ObjectMapper())
+                .buildGuiWorkflow(repo, getSelectedOrFirstFile(), null).toString());
 
         // Files Table
         body.add(Box.createVerticalStrut(12));
-        JLabel tblHdr = new JLabel("Required Models Status:");
+        boolean hasWorkflows = files.stream().anyMatch(HuggingFaceModelDetailsDialog::isWorkflowEntry);
+        JLabel tblHdr = new JLabel(hasWorkflows ? "Repository Files & Model Status:" : "Required Models Status:");
         tblHdr.setFont(new Font("SansSerif", Font.PLAIN, 12));
         tblHdr.setForeground(textPrimary);
         tblHdr.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -214,7 +195,30 @@ public class HuggingFaceModelDetailsDialog extends JDialog {
         btnClose.setFont(new Font("SansSerif", Font.PLAIN, 11));
         btnClose.addActionListener(e -> dispose());
 
-        bottom.add(btnDownloadModel);
+        JButton btnSaveToVault = new JButton("Save Workflow to My Vault", SvgIconFactory.get(AppIcon.ARCHIVE, 14));
+        btnSaveToVault.setFont(new Font("SansSerif", Font.BOLD, 11));
+        btnSaveToVault.putClientProperty("Button.arc", 999);
+        btnSaveToVault.setBackground(new Color(0, 150, 136));
+        btnSaveToVault.setForeground(Color.WHITE);
+
+        File baseDir = configService != null ? configService.getUserWorkflowsDir() : new File("user_workflows");
+        File vaultDir = new File(baseDir, "vault");
+        String safeRepo = repo.repoId().replaceAll("[^a-zA-Z0-9._-]", "_");
+        if (new File(vaultDir, safeRepo + ".json").exists()) {
+            btnSaveToVault.setText("Saved in My Vault");
+            btnSaveToVault.setIcon(SvgIconFactory.get(AppIcon.CHECK, 14));
+            btnSaveToVault.setEnabled(false);
+        }
+        btnSaveToVault.addActionListener(e -> {
+            HuggingFaceFileEntry file = getSelectedFile();
+            if (file != null) {
+                HuggingFaceDetailsActionsHandler.saveWorkflowToVault(this, repo, file, workflowDispatcher, btnSaveToVault);
+            } else {
+                JOptionPane.showMessageDialog(this, "Please select a workflow file first.", "Selection Required", JOptionPane.INFORMATION_MESSAGE);
+            }
+        });
+
+        bottom.add(btnSaveToVault);
         bottom.add(btnSendToComfy);
         bottom.add(btnClose);
         root.add(bottom, BorderLayout.SOUTH);
@@ -224,6 +228,13 @@ public class HuggingFaceModelDetailsDialog extends JDialog {
         selectDefaultRow();
         updateSummaryCounts();
         loadFilesAsync();
+    }
+
+    private static JLabel createValueLabel(String text, int style, Color fg) {
+        JLabel lbl = new JLabel(text);
+        lbl.setFont(new Font("SansSerif", style, 11));
+        lbl.setForeground(fg);
+        return lbl;
     }
 
     private static boolean isPrimaryModelFile(HuggingFaceFileEntry f) {
@@ -266,7 +277,7 @@ public class HuggingFaceModelDetailsDialog extends JDialog {
                 c.setForeground(textPrimary);
                 if (col == 3 && val != null) {
                     String s = val.toString();
-                    if (s.contains("Installed") || s.contains("Already")) c.setForeground(new Color(0, 180, 160));
+                    if (s.contains("Installed") || s.contains("Already") || s.contains("Workflow JSON")) c.setForeground(new Color(0, 180, 160));
                     else if (s.contains("Missing")) c.setForeground(new Color(255, 153, 0));
                     else if (s.contains("Downloading")) c.setForeground(new Color(59, 130, 246));
                 }
@@ -314,9 +325,9 @@ public class HuggingFaceModelDetailsDialog extends JDialog {
         });
 
         JScrollPane tblScroll = new JScrollPane(filesTable);
-        int calcHeight = Math.min(220, Math.max(80, (files.size() + 1) * 26 + 6));
+        int calcHeight = WorkflowDialogDimensionHelper.calculateTablePreferredHeight(files.size());
         tblScroll.setPreferredSize(new Dimension(1190, calcHeight));
-        tblScroll.setMaximumSize(new Dimension(Integer.MAX_VALUE, calcHeight));
+        tblScroll.setMaximumSize(new Dimension(Integer.MAX_VALUE, Integer.MAX_VALUE));
         tblScroll.setAlignmentX(Component.LEFT_ALIGNMENT);
         tblScroll.getViewport().setBackground(bg);
 
@@ -344,41 +355,45 @@ public class HuggingFaceModelDetailsDialog extends JDialog {
         updateSelectionState();
     }
 
+    private HuggingFaceFileEntry getSelectedFile() {
+        int selRow = filesTable != null ? filesTable.getSelectedRow() : -1;
+        return (selRow >= 0 && selRow < files.size()) ? files.get(selRow) : null;
+    }
+
+    private List<HuggingFaceFileEntry> getOperationalFiles() {
+        if (HuggingFaceDetailsActionsHandler.isShardedRepository(files)) {
+            return files.stream().filter(f -> !isWorkflowEntry(f)).toList();
+        }
+        return HuggingFaceWorkflowAnalyzer.selectOperationalFilesForSingleRun(files, getSelectedFile(), statusChecker);
+    }
+
+    private static boolean isWorkflowEntry(HuggingFaceFileEntry f) {
+        return f != null && (HuggingFaceWorkflowAnalyzer.isWorkflowFile(f.rfilename())
+                || "workflows".equalsIgnoreCase(f.suggestedFolder()));
+    }
+
     private List<HuggingFaceFileEntry> getMissingFiles() {
-        return files.stream()
+        return getOperationalFiles().stream()
                 .filter(f -> !"Installed".equalsIgnoreCase(statusChecker.apply(f)))
                 .toList();
     }
 
     private void updateSummaryCounts() {
         if (lblAvailableFilesCount == null) return;
-        int total = files.size();
+        List<HuggingFaceFileEntry> operational = getOperationalFiles();
+        int totalRequired = operational.isEmpty() ? files.size() : operational.size();
         List<HuggingFaceFileEntry> missingList = getMissingFiles();
         int missing = missingList.size();
-        int installed = Math.max(0, total - missing);
+        int installed = Math.max(0, totalRequired - missing);
 
-        lblAvailableFilesCount.setText(String.valueOf(total));
-        lblInstalledCount.setText(String.valueOf(installed));
-        lblMissingCount.setText(String.valueOf(missing));
+        lblAvailableFilesCount.setText(HuggingFaceDetailsActionsHandler.formatAvailableFilesSummary(files, operational));
+        lblInstalledCount.setText(installed + " model" + (installed != 1 ? "s" : ""));
+        lblMissingCount.setText(missing + " model" + (missing != 1 ? "s" : ""));
         lblMissingCount.setForeground(missing == 0 ? new Color(34, 197, 130) : new Color(255, 153, 0));
 
-        updateActionButtonsState(missing);
-    }
-
-    private void updateActionButtonsState(int missing) {
-        if (btnDownloadModel == null || btnSendToComfy == null) return;
-
-        if (missing == 0 && !files.isEmpty()) {
-            btnDownloadModel.setText("All Models Installed ✅");
-            btnDownloadModel.setEnabled(false);
-            btnSendToComfy.setEnabled(true);
-            btnSendToComfy.setToolTipText(null);
-        } else {
-            btnDownloadModel.setText(missing > 0 ? "Download Missing Models (" + missing + ")" : "Download Missing Models");
-            btnDownloadModel.setEnabled(missing > 0);
-            btnSendToComfy.setEnabled(false);
-            btnSendToComfy.setToolTipText("Please download all missing models before sending to ComfyUI.");
-        }
+        HuggingFaceFileEntry selected = getSelectedFile();
+        boolean isSelectedWorkflow = isWorkflowEntry(selected);
+        HuggingFaceDetailsActionsHandler.applyActionButtonsState(null, btnSendToComfy, missing, files, isSelectedWorkflow);
     }
 
     private void populateTableRows() {
@@ -387,13 +402,10 @@ public class HuggingFaceModelDetailsDialog extends JDialog {
         for (HuggingFaceFileEntry file : files) {
             String status = statusChecker.apply(file);
             boolean isDownloading = downloadManager != null && downloadManager.isDownloading(file.filename());
-            String badge = isDownloading ? "⏳ Downloading..." : ("Installed".equalsIgnoreCase(status) ? "✅ Already exists" : "⚠ Missing");
-            filesTableModel.addRow(new Object[]{
-                    file.filename(),
-                    file.suggestedFolder(),
-                    file.formattedSize(),
-                    badge
-            });
+            String badge = isDownloading ? "Downloading..."
+                    : (isWorkflowEntry(file) || "Workflow JSON".equalsIgnoreCase(status) ? "Workflow JSON"
+                    : ("Installed".equalsIgnoreCase(status) ? "Already exists" : "Missing"));
+            filesTableModel.addRow(new Object[]{file.filename(), file.suggestedFolder(), file.formattedSize(), badge});
         }
     }
 
@@ -424,53 +436,47 @@ public class HuggingFaceModelDetailsDialog extends JDialog {
         int selRow = filesTable != null ? filesTable.getSelectedRow() : -1;
         if (selRow < 0 || selRow >= files.size()) {
             lblSelectedFileName.setText("No file selected");
-            lblSelectedFileStatus.setText("—");
+            lblSelectedFileStatus.setText("-");
             return;
         }
 
         HuggingFaceFileEntry file = files.get(selRow);
         lblSelectedFileName.setText(file.filename() + " (models/" + file.suggestedFolder() + ")");
 
-        if (lblHardwareCheck != null) {
-            String hint = file.vramHint() != null && !file.vramHint().isBlank() ? file.vramHint() : "🟢 Standard VRAM requirements";
-            lblHardwareCheck.setText(hint + " — " + file.formattedSize());
-            lblHardwareCheck.setForeground(hint.contains("🔴") || hint.contains("🟣") ? new Color(239, 68, 68) : new Color(34, 197, 130));
-        }
+        HuggingFaceDetailsActionsHandler.applyHardwareCheck(lblHardwareCheck, file, files);
 
         String status = statusChecker.apply(file);
+        boolean isWorkflow = isWorkflowEntry(file) || "Workflow JSON".equalsIgnoreCase(status);
         boolean isInstalled = "Installed".equalsIgnoreCase(status);
         boolean isDownloading = downloadManager != null && downloadManager.isDownloading(file.filename());
 
         if (isDownloading) {
-            lblSelectedFileStatus.setText("⏳ Downloading...");
+            lblSelectedFileStatus.setText("Downloading...");
             lblSelectedFileStatus.setForeground(new Color(59, 130, 246));
+        } else if (isWorkflow) {
+            lblSelectedFileStatus.setText("Workflow JSON (Ready to send)");
+            lblSelectedFileStatus.setForeground(new Color(34, 197, 130));
         } else if (isInstalled) {
-            lblSelectedFileStatus.setText("✔ Installed & Ready");
+            lblSelectedFileStatus.setText("Installed & Ready");
             lblSelectedFileStatus.setForeground(new Color(34, 197, 130));
         } else {
-            lblSelectedFileStatus.setText("⚠ Missing (Download required)");
+            lblSelectedFileStatus.setText("Missing (Download required)");
             lblSelectedFileStatus.setForeground(new Color(255, 153, 0));
         }
 
-        // Action buttons are driven by the overall blueprint readiness (missingCount)
-        List<HuggingFaceFileEntry> missingList = getMissingFiles();
-        updateActionButtonsState(missingList.size());
+        updateSummaryCounts();
     }
 
-    private void startMissingDownload() {
-        List<HuggingFaceFileEntry> missingFiles = getMissingFiles();
-        HuggingFaceDetailsActionsHandler.executeDownloadMissing(
-                this, missingFiles, onSwitchToDownloadManager, downloadManager, configService, this::dispose
-        );
+    private HuggingFaceFileEntry getSelectedOrFirstFile() {
+        int sel = filesTable != null ? filesTable.getSelectedRow() : -1;
+        return sel >= 0 && sel < files.size() ? files.get(sel) : (!files.isEmpty() ? files.get(0) : null);
     }
 
     private void dispatchSendWorkflow() {
         int selRow = filesTable != null ? filesTable.getSelectedRow() : -1;
         if (selRow < 0 || selRow >= files.size() || workflowDispatcher == null) return;
-        HuggingFaceFileEntry file = files.get(selRow);
-
         HuggingFaceDetailsActionsHandler.dispatchSendWorkflow(
-                this, repo, file, "", workflowDispatcher, btnSendToComfy, this::dispose
+                this, repo, files.get(selRow), "", workflowDispatcher, btnSendToComfy, this::dispose
         );
     }
 }

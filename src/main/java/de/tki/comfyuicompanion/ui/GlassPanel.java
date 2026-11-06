@@ -1,65 +1,62 @@
-package de.tki.comfyuicompanion.ui;
-
-import javax.swing.*;
-import java.awt.*;
-
-/**
- * A custom JPanel that renders with a frosted glass-like translucent appearance,
- * featuring rounded corners and a subtle border.
- */
-public class GlassPanel extends JPanel {
-
-    private int cornerRadius = 15;
-
-    /**
-     * Constructs a new GlassPanel and registers it for theme updates.
-     */
-    public GlassPanel() {
-        setOpaque(false); // Essential for true Swing transparency
-        
-        // Register this panel for dynamic theme updates
-        ThemeManager.registerObserver(this::repaint);
-    }
-
-    /**
-     * Sets the corner radius for the panel's rounded corners.
-     * 
-     * @param radius the corner radius in pixels
-     */
-    public void setCornerRadius(int radius) {
-        this.cornerRadius = radius;
-        repaint();
-    }
-
-    /**
-     * Updates the UI and repaints the component to reflect any theme changes.
-     */
-    @Override
-    public void updateUI() {
-        super.updateUI();
-        // Repaint when FlatLaf theme changes so we pick up new UIManager colors
-        repaint();
-    }
-
-    @Override
-    protected void paintComponent(Graphics g) {
-        // Do not call super.paintComponent; custom painting applied
-        Graphics2D g2 = (Graphics2D) g.create();
-        
-        // Anti-aliasing for smooth rounded corners
-        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-
-        // 1. Draw background (with alpha transparency for frosted glass effect)
-        g2.setColor(ThemeManager.getCardBackgroundColor());
-        g2.fillRoundRect(0, 0, getWidth() - 1, getHeight() - 1, cornerRadius, cornerRadius);
-
-        // 2. Subtilen Rand zeichnen (Lichtkante)
-        g2.setColor(ThemeManager.getBorderColor());
-        g2.setStroke(new BasicStroke(1.5f));
-        g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, cornerRadius, cornerRadius);
-
-        g2.dispose();
-        
-        super.paintComponent(g); // Erlaubt Child-Komponenten, sich zu zeichnen
-    }
-}
+package de.tki.comfyuicompanion.ui;
+
+import javax.swing.*;
+import java.awt.*;
+
+/**
+ * A custom JPanel that renders with a frosted glass-like translucent appearance,
+ * featuring rounded corners and a subtle border.
+ */
+public class GlassPanel extends JPanel {
+
+    private int cornerRadius = 15;
+
+    /**
+     * Constructs a new GlassPanel and registers it for theme updates.
+     */
+    public GlassPanel() {
+        setOpaque(false); // Essential for true Swing transparency
+    }
+
+    /**
+     * Sets the corner radius for the panel's rounded corners.
+     * 
+     * @param radius the corner radius in pixels
+     */
+    public void setCornerRadius(int radius) {
+        this.cornerRadius = radius;
+        repaint();
+    }
+
+    /**
+     * Updates the UI and repaints the component to reflect any theme changes.
+     */
+    @Override
+    public void updateUI() {
+        super.updateUI();
+        // Repaint when FlatLaf theme changes so we pick up new UIManager colors
+        repaint();
+    }
+
+    @Override
+    protected void paintComponent(Graphics g) {
+        // Do not call super.paintComponent; custom painting applied
+        Graphics2D g2 = (Graphics2D) g.create();
+        
+        // Anti-aliasing for smooth rounded corners
+        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+
+        // 1. Draw background (with alpha transparency for frosted glass effect)
+        g2.setColor(ThemeManager.getCardBackgroundColor());
+        g2.fillRoundRect(0, 0, getWidth() - 1, getHeight() - 1, cornerRadius, cornerRadius);
+
+        // 2. Subtilen Rand zeichnen (Lichtkante)
+        g2.setColor(ThemeManager.getBorderColor());
+        g2.setStroke(new BasicStroke(1.5f));
+        g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, cornerRadius, cornerRadius);
+
+        g2.dispose();
+        
+        super.paintComponent(g); // Erlaubt Child-Komponenten, sich zu zeichnen
+    }
+}

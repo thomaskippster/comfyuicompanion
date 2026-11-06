@@ -80,7 +80,7 @@ public class ComfyRegistryClient implements IComfyRegistryClient {
                 .GET()
                 .build();
 
-        return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString())
+        return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString(java.nio.charset.StandardCharsets.UTF_8))
                 .thenApply(response -> {
                     if (response.statusCode() != 200) {
                         throw new RuntimeException("Failed to fetch workflows: HTTP status " + response.statusCode());

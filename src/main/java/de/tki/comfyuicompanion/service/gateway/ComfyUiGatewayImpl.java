@@ -19,7 +19,9 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -31,7 +33,11 @@ import java.util.concurrent.ConcurrentHashMap;
 public class ComfyUiGatewayImpl implements ComfyUiGateway {
 
     private static final Logger logger = LoggerFactory.getLogger(ComfyUiGatewayImpl.class);
-    private static final java.util.concurrent.ExecutorService VIRTUAL_EXECUTOR = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor();
+    private static final java.util.concurrent.ExecutorService VIRTUAL_EXECUTOR =
+            java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor();
+    private static final Set<String> PRIMITIVE_WIDGET_TYPES = Set.of(
+            "INT", "FLOAT", "STRING", "BOOLEAN", "COMBO", "IMAGEUPLOAD", "FILEPATH"
+    );
 
     private final ConfigService configService;
     private final ObjectMapper objectMapper;
@@ -116,17 +122,58 @@ public class ComfyUiGatewayImpl implements ComfyUiGateway {
     }
 
     private void extractWidgetNames(JsonNode groupNode, List<String> target) {
-        if (groupNode.isObject()) {
-            Iterator<String> fieldNames = groupNode.fieldNames();
-            while (fieldNames.hasNext()) {
-                String name = fieldNames.next();
-                JsonNode spec = groupNode.get(name);
-                // In ComfyUI /object_info, widget inputs are tuples where the first element is a list of choices or a primitive type string
-                if (spec != null && spec.isArray() && spec.size() > 0) {
-                    target.add(name);
+        if (!groupNode.isObject()) {
+            return;
+        }
+        Iterator<String> fieldNames = groupNode.fieldNames();
+        while (fieldNames.hasNext()) {
+            String name = fieldNames.next();
+            JsonNode spec = groupNode.get(name);
+            if (isWidgetInputSpec(spec)) {
+                target.add(name);
+                if (hasControlAfterGenerate(name, spec) && !groupNode.has("control_after_generate")) {
+                    target.add("control_after_generate");
                 }
             }
         }
+    }
+
+    /**
+     * Determines generically from a ComfyUI {@code /object_info} input tuple whether the input
+     * renders as a value widget (combo/primitive) rather than a pure node link socket.
+     *
+     * @param spec the input specification array from {@code /object_info}
+     * @return true if the input represents a widget value
+     */
+    public static boolean isWidgetInputSpec(JsonNode spec) {
+        if (spec == null || !spec.isArray() || spec.isEmpty()) {
+            return false;
+        }
+        JsonNode first = spec.get(0);
+        if (first.isArray()) {
+            return true; // Legacy COMBO option list
+        }
+        if (first.isTextual()) {
+            String typeName = first.asText().toUpperCase(Locale.ROOT);
+            if (PRIMITIVE_WIDGET_TYPES.contains(typeName)) {
+                return true;
+            }
+            if (spec.size() > 1 && spec.get(1).isObject()) {
+                JsonNode meta = spec.get(1);
+                return meta.has("default") || meta.has("options") || meta.has("multiline");
+            }
+        }
+        return false;
+    }
+
+    private static boolean hasControlAfterGenerate(String inputName, JsonNode spec) {
+        if (spec != null && spec.size() > 1 && spec.get(1).isObject()) {
+            JsonNode meta = spec.get(1);
+            if (meta.path("control_after_generate").asBoolean(false)) {
+                return true;
+            }
+        }
+        return "seed".equals(inputName) || "noise_seed".equals(inputName);
     }
 
     @Override
@@ -135,15 +182,14 @@ public class ComfyUiGatewayImpl implements ComfyUiGateway {
         List<String> cached = widgetCache.get(classType);
         if (cached != null) return cached;
 
-        // If not cached yet, attempt lazy fetch or return empty
         if (objectInfoCache == null) {
             try {
                 getObjectInfo().get();
                 List<String> refreshed = widgetCache.get(classType);
                 if (refreshed != null) return refreshed;
             } catch (Exception ignored) {
-            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
-        }
+                logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+            }
         }
         return List.of();
     }
@@ -270,8 +316,8 @@ public class ComfyUiGatewayImpl implements ComfyUiGateway {
                         try {
                             return objectMapper.readTree(response.body());
                         } catch (Exception ignored) {
-            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
-        }
+                            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+                        }
                     }
                     return null;
                 });

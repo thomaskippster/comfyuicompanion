@@ -31,6 +31,7 @@ import java.util.function.Consumer;
 /**
  * Builds individual visual card panels for displaying workflows in the gallery grid.
  */
+@Deprecated
 public class BlueprintCardBuilder {
 
     private static final Color GREEN_READY     = new Color(34, 197, 130);
@@ -135,16 +136,16 @@ public class BlueprintCardBuilder {
         String reqText;
         Color reqColor;
         if (!entry.hasBeenValidated && totalReqs == 0) {
-            reqText  = "⏳  Checking required models...";
+            reqText  = "Checking required models...";
             reqColor = textDim;
         } else if (totalReqs == 0) {
-            reqText  = "✔  No external models needed";
+            reqText  = "No external models needed";
             reqColor = GREEN_READY;
         } else if (status.missingCount == 0) {
-            reqText  = "✔  All " + totalReqs + " model(s) ready";
+            reqText  = "All " + totalReqs + " model(s) ready";
             reqColor = GREEN_READY;
         } else {
-            reqText  = "⚠  " + status.missingCount + " / " + totalReqs + " missing";
+            reqText  = "" + status.missingCount + " / " + totalReqs + " missing";
             reqColor = AMBER_PARTIAL;
         }
 
@@ -216,6 +217,9 @@ public class BlueprintCardBuilder {
                 g2.setClip(0, 0, w, h);
 
                 Image img = previewCache != null ? previewCache.getPreview(entry.filePath) : null;
+                if (img == null && previewCache != null && entry.previewPath != null && !entry.previewPath.isBlank()) {
+                    img = previewCache.getPreview(entry.previewPath);
+                }
                 if (img != null) {
                     String scaledKey = entry.filePath + "_" + w + "_" + h;
                     Image scaledImg = previewCache.getScaledPreview(scaledKey);
@@ -253,13 +257,13 @@ public class BlueprintCardBuilder {
                 String badgeText = null;
                 Color badgeColor = null;
                 if (!entry.hasBeenValidated && entry.requiredModels.isEmpty()) {
-                    badgeText  = "⏳  Checking";
+                    badgeText  = "Checking";
                     badgeColor = new Color(100, 116, 139, 220);
                 } else if (status.missingCount == 0 && status.presentCount > 0) {
-                    badgeText  = "✅  Ready";
+                    badgeText  = "Ready";
                     badgeColor = new Color(34, 197, 130, 220);
                 } else if (status.missingCount > 0) {
-                    badgeText  = "⚠  " + status.missingCount + " missing";
+                    badgeText  = "" + status.missingCount + " missing";
                     badgeColor = new Color(255, 153, 0, 220);
                 }
 

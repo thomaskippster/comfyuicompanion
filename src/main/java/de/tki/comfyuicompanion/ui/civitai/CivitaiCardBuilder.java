@@ -1,21 +1,17 @@
 package de.tki.comfyuicompanion.ui.civitai;
 
 import de.tki.comfyuicompanion.domain.CivitaiModelEntry;
+import de.tki.comfyuicompanion.util.WorkflowImageLoader;
 
-import javax.imageio.ImageIO;
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.image.BufferedImage;
-import java.io.InputStream;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 
@@ -23,6 +19,7 @@ import java.util.function.Consumer;
  * Builds individual visual cards for displaying Civitai models in the gallery grid,
  * matching the dimensions, responsive hover effects, status indicators, and design language of the Blueprint Gallery.
  */
+@Deprecated
 public class CivitaiCardBuilder {
 
     private static final int CARD_WIDTH = 220;
@@ -34,10 +31,7 @@ public class CivitaiCardBuilder {
     private static final Color BLUE_DOWNLOADING = new Color(59, 130, 246);
 
     private static final Map<String, Image> IMAGE_CACHE = new ConcurrentHashMap<>();
-    private static final HttpClient HTTP_CLIENT = HttpClient.newBuilder()
-            .followRedirects(HttpClient.Redirect.ALWAYS)
-            .connectTimeout(Duration.ofSeconds(10))
-            .build();
+    private static final Set<String> LOADING_URLS = ConcurrentHashMap.newKeySet();
 
     /**
      * Constructs and returns a styled card panel for the provided Civitai model entry.
@@ -138,7 +132,7 @@ public class CivitaiCardBuilder {
 
         // Subtitle (Type & Base Model)
         String subtitleText = (entry.baseModel() != null && !entry.baseModel().isBlank())
-                ? entry.type() + " • " + entry.baseModel()
+                ? entry.type() + " | " + entry.baseModel()
                 : entry.type();
         JLabel subtitleLabel = new JLabel(subtitleText);
         subtitleLabel.setFont(new Font("SansSerif", Font.PLAIN, 10));
@@ -151,13 +145,13 @@ public class CivitaiCardBuilder {
         String statusText;
         Color statusColor;
         if (isDownloading) {
-            statusText = "⏳  " + (downloadProgress != null && !downloadProgress.isBlank() ? downloadProgress : "Downloading...");
+            statusText = "" + (downloadProgress != null && !downloadProgress.isBlank() ? downloadProgress : "Downloading...");
             statusColor = BLUE_DOWNLOADING;
         } else if (isInstalled) {
-            statusText = "✔  Ready to use";
+            statusText = "Ready to use";
             statusColor = GREEN_READY;
         } else {
-            statusText = "⚠  Needs download";
+            statusText = "Needs download";
             statusColor = AMBER_PARTIAL;
         }
 
@@ -173,7 +167,7 @@ public class CivitaiCardBuilder {
         statsRow.setOpaque(false);
         statsRow.setAlignmentX(Component.LEFT_ALIGNMENT);
 
-        String statsText = String.format("⭐ %.1f • ⬇ %s", entry.rating(), formatCount(entry.downloadCount()));
+        String statsText = String.format("Rating: %.1f | Downloads: %s", entry.rating(), formatCount(entry.downloadCount()));
         JLabel statsLabel = new JLabel(statsText);
         statsLabel.setFont(new Font("SansSerif", Font.PLAIN, 10));
         statsLabel.setForeground(textDim);
@@ -254,27 +248,17 @@ public class CivitaiCardBuilder {
     }
 
     private static void triggerAsyncImageLoad(String url, JComponent repaintTarget) {
+        if (!LOADING_URLS.add(url)) return;
         Thread.ofVirtual().name("CivitaiThumbLoad").start(() -> {
             try {
-                HttpRequest request = HttpRequest.newBuilder()
-                        .uri(URI.create(url))
-                        .header("User-Agent", "ComfyUICompanion/1.0")
-                        .timeout(Duration.ofSeconds(10))
-                        .GET()
-                        .build();
-
-                HttpResponse<InputStream> response = HTTP_CLIENT.send(request, HttpResponse.BodyHandlers.ofInputStream());
-                if (response.statusCode() == 200) {
-                    try (InputStream in = response.body()) {
-                        BufferedImage img = ImageIO.read(in);
-                        if (img != null) {
-                            IMAGE_CACHE.put(url, img);
-                            SwingUtilities.invokeLater(repaintTarget::repaint);
-                        }
-                    }
+                BufferedImage img = WorkflowImageLoader.loadOrFetchCached(url, Duration.ofSeconds(10));
+                if (img != null) {
+                    IMAGE_CACHE.put(url, img);
+                    SwingUtilities.invokeLater(repaintTarget::repaint);
                 }
             } catch (Exception ignored) {
-                // Ignore transient network thumbnail errors
+            } finally {
+                LOADING_URLS.remove(url);
             }
         });
     }
@@ -306,6 +290,6 @@ public class CivitaiCardBuilder {
 
     private static String truncate(String text, int maxChars) {
         if (text == null) return "";
-        return text.length() <= maxChars ? text : text.substring(0, maxChars - 1) + "…";
+        return text.length() <= maxChars ? text : text.substring(0, maxChars - 1) + "...";
     }
 }

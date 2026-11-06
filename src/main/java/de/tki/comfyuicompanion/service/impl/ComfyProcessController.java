@@ -218,14 +218,27 @@ public class ComfyProcessController {
                 if (!hasEnableManager) {
                     command.add("--enable-manager");
                 }
-                if (!hasExtraPathsConfig) {
-                    configService.updateExtraModelPathsYaml();
-                    java.nio.file.Path extraPathsFile = comfyDir.resolve("extra_model_paths.yaml");
-                    if (java.nio.file.Files.exists(extraPathsFile)) {
-                        command.add("--extra-model-paths-config");
-                        command.add(extraPathsFile.toAbsolutePath().toString());
+
+                // ComfyUI automatically loads extra_model_paths.yaml from its root directory.
+                // Clean any redundant --extra-model-paths-config pointing to comfyDir's extra_model_paths.yaml
+                // to prevent duplicate search path registration.
+                configService.updateExtraModelPathsYaml();
+                List<String> cleanedCommand = new ArrayList<>();
+                for (int i = 0; i < command.size(); i++) {
+                    if (command.get(i).equals("--extra-model-paths-config") && i + 1 < command.size()) {
+                        try {
+                            java.nio.file.Path pathArg = java.nio.file.Paths.get(command.get(i + 1)).toAbsolutePath().normalize();
+                            java.nio.file.Path defaultPath = comfyDir.resolve("extra_model_paths.yaml").toAbsolutePath().normalize();
+                            if (pathArg.equals(defaultPath)) {
+                                i++; // skip both the flag and the path
+                                continue;
+                            }
+                        } catch (Exception ignored) {
+                        }
                     }
+                    cleanedCommand.add(command.get(i));
                 }
+                command = cleanedCommand;
 
                 // Check if extra ComfyUI data path is set and pass input/output directories to ComfyUI if different from root
                 boolean hasInputDirectory = false;

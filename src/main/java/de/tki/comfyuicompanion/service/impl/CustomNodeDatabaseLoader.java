@@ -3,11 +3,11 @@ package de.tki.comfyuicompanion.service.impl;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import de.tki.comfyuicompanion.service.provisioning.CustomNodeResolverService.CustomNodePackage;
+import de.tki.comfyuicompanion.util.ConfigConstants;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
-import java.io.File;
 import java.io.InputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -41,7 +41,7 @@ public class CustomNodeDatabaseLoader {
     private final HttpClient httpClient;
 
     public CustomNodeDatabaseLoader() {
-        this(new ObjectMapper(), Paths.get(System.getProperty("user.home", "."), ".comfyuicompanion", "cache", "manager"));
+        this(new ObjectMapper(), Paths.get(System.getProperty("user.home", "."), ConfigConstants.APPDATA_DIR, "cache", "manager"));
     }
 
     public CustomNodeDatabaseLoader(ObjectMapper objectMapper, Path cacheDir) {
@@ -107,8 +107,8 @@ public class CustomNodeDatabaseLoader {
                     cacheValid = true;
                 }
             } catch (Exception ignored) {
-            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
-        }
+                logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+            }
         }
 
         if (cacheValid) {
@@ -148,6 +148,7 @@ public class CustomNodeDatabaseLoader {
                 for (JsonNode entry : customNodes) {
                     String title = entry.path("title").asText("");
                     String name = entry.path("name").asText(title);
+                    String id = entry.path("id").asText("");
                     String reference = entry.path("reference").asText("");
                     if (reference.isBlank() && entry.has("files") && entry.get("files").isArray() && entry.get("files").size() > 0) {
                         reference = entry.get("files").get(0).asText("");
@@ -159,7 +160,12 @@ public class CustomNodeDatabaseLoader {
 
                     PackageMetadata meta = new PackageMetadata(name, reference, title, pipList);
                     if (!name.isBlank()) map.put(name.toLowerCase(Locale.ROOT), meta);
-                    if (!reference.isBlank()) map.put(reference.toLowerCase(Locale.ROOT), meta);
+                    if (!id.isBlank()) map.put(id.toLowerCase(Locale.ROOT), meta);
+                    if (!reference.isBlank()) {
+                        map.put(reference.toLowerCase(Locale.ROOT), meta);
+                        String slug = extractRepoSlug(reference);
+                        if (!slug.isBlank()) map.put(slug.toLowerCase(Locale.ROOT), meta);
+                    }
                     if (!title.isBlank()) map.put(title.toLowerCase(Locale.ROOT), meta);
                 }
             }
@@ -198,9 +204,13 @@ public class CustomNodeDatabaseLoader {
                 List<String> providedNodes = new ArrayList<>();
                 if (nodesArray.isArray()) {
                     for (JsonNode n : nodesArray) {
-                        if (n.isArray() && n.size() > 0) {
-                            providedNodes.add(n.get(0).asText());
-                        } else if (n.isTextual()) {
+                        if (n.isArray()) {
+                            for (JsonNode sub : n) {
+                                if (sub.isTextual() && !sub.asText().isBlank()) {
+                                    providedNodes.add(sub.asText());
+                                }
+                            }
+                        } else if (n.isTextual() && !n.asText().isBlank()) {
                             providedNodes.add(n.asText());
                         }
                     }
@@ -237,6 +247,17 @@ public class CustomNodeDatabaseLoader {
                 List.of("ColorMatch", "SetGetNode", "GetNode", "SetNode", "ImageBatchTest"));
         addFallback(target, "ControlNetAux", "https://github.com/Fannovel16/comfy_controlnet_preprocessors",
                 List.of("LineArtPreprocessor", "DWPreprocessor", "Zoe-DepthMapPreprocessor", "CannyEdgePreprocessor"));
+        addFallback(target, "rgthree-comfy", "https://github.com/rgthree/rgthree-comfy",
+                List.of("Seed (rgthree)", "RgthreeSeed", "Context (rgthree)", "RgthreeContext",
+                        "Context Big (rgthree)", "RgthreeBigContext", "Reroute (rgthree)", "RgthreeReroute",
+                        "Power Lora Loader (rgthree)", "RgthreePowerLoraLoader", "Display Any (rgthree)", "RgthreeDisplayAny"));
+        addFallback(target, "mikey_nodes", "https://github.com/bash-j/mikey_nodes",
+                List.of("Empty Latent Ratio Select SDXL", "Empty Latent Ratio Custom SDXL",
+                        "Empty Latent Ratio Select SDXL (Mikey)", "Save Image Ratio SDXL", "Save Image Ratio"));
+        addFallback(target, "efficiency-nodes-comfyui", "https://github.com/jags111/efficiency-nodes-comfyui",
+                List.of("Efficient Loader", "KSampler (Efficient)", "HighRes-Fix Script", "Image Overlay"));
+        addFallback(target, "was-node-suite-comfyui", "https://github.com/WASasquatch/was-node-suite-comfyui",
+                List.of("Image Filter Adjustments", "Image Blending Mode", "Text Find and Replace"));
     }
 
     private void addFallback(Map<String, CustomNodePackage> target, String name, String url, List<String> nodes) {
@@ -244,6 +265,15 @@ public class CustomNodeDatabaseLoader {
         for (String n : nodes) {
             target.put(n.toLowerCase(Locale.ROOT), pkg);
         }
+    }
+
+    private String extractRepoSlug(String url) {
+        if (url == null || url.isBlank()) return "";
+        String clean = url.trim();
+        if (clean.endsWith("/")) clean = clean.substring(0, clean.length() - 1);
+        if (clean.endsWith(".git")) clean = clean.substring(0, clean.length() - 4);
+        int idx = clean.lastIndexOf('/');
+        return idx >= 0 ? clean.substring(idx + 1) : clean;
     }
 
     private record PackageMetadata(String name, String gitUrl, String title, List<String> pipList) {}

@@ -11,6 +11,7 @@ param (
 )
 
 $ErrorActionPreference = "Stop"
+if ($PSScriptRoot) { Set-Location $PSScriptRoot }
 
 # Auto-detect WiX in standard paths if not yet in PATH
 $wixCandidates = @(
@@ -122,7 +123,9 @@ Compress-Archive -Path "dist/ComfyUICompanion" -DestinationPath "dist/ComfyUICom
 # Build Native Windows Installer EXE if WiX is available
 $hasWix = (Get-Command candle.exe -ErrorAction SilentlyContinue) -ne $null
 if ($hasWix) {
-    Write-Host "[5/5] Building Native Windows EXE Installer..." -ForegroundColor Cyan
+    Write-Host "[5/5] Building Native Windows EXE & MSI Installers..." -ForegroundColor Cyan
+    Get-ChildItem -Path "dist" -Filter "ComfyUICompanion-*.exe" -ErrorAction SilentlyContinue | Remove-Item -Force
+    Get-ChildItem -Path "dist" -Filter "ComfyUICompanion-*.msi" -ErrorAction SilentlyContinue | Remove-Item -Force
     jpackage `
       --type exe `
       --name "ComfyUICompanion" `
@@ -139,22 +142,132 @@ if ($hasWix) {
     if ($LASTEXITCODE -ne 0) {
         Write-Warning "jpackage exe installer build failed."
     }
+
+    jpackage `
+      --type msi `
+      --name "ComfyUICompanion" `
+      --app-image "dist/ComfyUICompanion" `
+      --dest "dist" `
+      --app-version "$appVersion" `
+      --vendor "TKI" `
+      --description "Enterprise AI Companion for ComfyUI" `
+      --icon "$icoPath" `
+      --win-dir-chooser `
+      --win-menu `
+      --win-shortcut
+
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warning "jpackage msi installer build failed."
+    }
 } else {
-    Write-Host "[5/5] WiX not found in PATH; skipping EXE installer build (App-Image and Portable ZIP created)." -ForegroundColor Yellow
+    Write-Host "[5/5] WiX not found in PATH; skipping EXE/MSI installer build (App-Image and Portable ZIP created)." -ForegroundColor Yellow
 }
 
 # Generate SHA-256 Checksums for dist files
-Get-ChildItem -Path "dist" -Filter "*.exe" | ForEach-Object {
-    $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower()
-    "$hash  $($_.Name)" | Set-Content "$($_.FullName).sha256"
-}
-Get-ChildItem -Path "dist" -Filter "*.zip" | ForEach-Object {
+Get-ChildItem -Path "dist" -Include "*.exe", "*.msi", "*.zip" | ForEach-Object {
     $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower()
     "$hash  $($_.Name)" | Set-Content "$($_.FullName).sha256"
 }
 
-Write-Host "[SUCCESS] Windows standalone packages created successfully!" -ForegroundColor Green
-Get-ChildItem -Path "dist" -Include "*.exe", "*.zip", "*.sha256" -Recurse | Select-Object Name, Length, LastWriteTime | Format-Table -AutoSize
+# Generate Official WinGet Manifests
+$wingetDir = "winget/manifests/t/Tki/ComfyUICompanion/$appVersion"
+New-Item -ItemType Directory -Force -Path $wingetDir | Out-Null
+
+$msiFile = "dist/ComfyUICompanion-$appVersion.msi"
+$exeFile = "dist/ComfyUICompanion-$appVersion.exe"
+$msiHash = if (Test-Path $msiFile) { (Get-FileHash $msiFile -Algorithm SHA256).Hash.ToLower() } else { "" }
+$exeHash = if (Test-Path $exeFile) { (Get-FileHash $exeFile -Algorithm SHA256).Hash.ToLower() } else { "" }
+
+$productCode = ""
+if (Test-Path $msiFile) {
+    try {
+        $msiObj = New-Object -ComObject WindowsInstaller.Installer
+        $db = $msiObj.OpenDatabase((Resolve-Path $msiFile).Path, 0)
+        $view = $db.OpenView("SELECT Value FROM Property WHERE Property = 'ProductCode'")
+        $view.Execute()
+        $rec = $view.Fetch()
+        if ($rec) { $productCode = $rec.StringData(1) }
+    } catch {
+        Write-Debug "Could not read MSI ProductCode: $_"
+    }
+}
+
+# 1. Version Manifest
+@"
+# yaml-language-server: `$schema=https://aka.ms/winget-manifest.version.1.6.0.schema.json
+
+PackageIdentifier: Tki.ComfyUICompanion
+PackageVersion: $appVersion
+DefaultLocale: en-US
+ManifestType: version
+ManifestVersion: 1.6.0
+"@ | Set-Content "$wingetDir/Tki.ComfyUICompanion.yaml" -Encoding utf8
+
+# 2. Installer Manifest
+$pcLine = if ($productCode) { "    ProductCode: '$productCode'" } else { "" }
+@"
+# yaml-language-server: `$schema=https://aka.ms/winget-manifest.installer.1.6.0.schema.json
+
+PackageIdentifier: Tki.ComfyUICompanion
+PackageVersion: $appVersion
+MinimumOSVersion: 10.0.0.0
+Platform:
+  - Windows.Desktop
+Scope: machine
+InstallModes:
+  - interactive
+  - silent
+  - silentWithProgress
+UpgradeBehavior: install
+ReleaseDate: $(Get-Date -Format 'yyyy-MM-dd')
+Installers:
+  - Architecture: x64
+    InstallerType: msi
+    InstallerUrl: https://github.com/thomaskippster/comfyuicompanion/releases/download/v$appVersion/ComfyUICompanion-$appVersion.msi
+    InstallerSha256: $msiHash
+$pcLine
+ManifestType: installer
+ManifestVersion: 1.6.0
+"@ | Set-Content "$wingetDir/Tki.ComfyUICompanion.installer.yaml" -Encoding utf8
+
+# 3. Default Locale Manifest
+@"
+# yaml-language-server: `$schema=https://aka.ms/winget-manifest.defaultLocale.1.6.0.schema.json
+
+PackageIdentifier: Tki.ComfyUICompanion
+PackageVersion: $appVersion
+PackageLocale: en-US
+Publisher: TKI
+PublisherUrl: https://github.com/thomaskippster
+PublisherSupportUrl: https://github.com/thomaskippster/comfyuicompanion/issues
+PackageName: ComfyUI Companion
+PackageUrl: https://github.com/thomaskippster/comfyuicompanion
+License: MIT
+LicenseUrl: https://github.com/thomaskippster/comfyuicompanion/blob/main/LICENSE
+Copyright: Copyright (c) 2026 TKI
+ShortDescription: Enterprise desktop companion and workflow orchestrator for ComfyUI.
+Description: ComfyUI Companion is a standalone desktop application and enterprise companion for ComfyUI, providing direct Civitai/HuggingFace model discovery, workflow adaptation, hardware VRAM verification, and automated prompt lab orchestration.
+Moniker: comfyuicompanion
+Tags:
+  - comfyui
+  - ai
+  - stable-diffusion
+  - generative-ai
+  - workflow
+  - lora
+  - image-generation
+ManifestType: defaultLocale
+ManifestVersion: 1.6.0
+"@ | Set-Content "$wingetDir/Tki.ComfyUICompanion.locale.en-US.yaml" -Encoding utf8
+
+# Validate with winget if available
+if (Get-Command winget -ErrorAction SilentlyContinue) {
+    Write-Host "[*] Validating WinGet Manifests..." -ForegroundColor Cyan
+    winget validate "$wingetDir"
+}
+
+Write-Host "[SUCCESS] Windows standalone packages and WinGet manifests created successfully!" -ForegroundColor Green
+Get-ChildItem -Path "dist" -Include "*.exe", "*.msi", "*.zip", "*.sha256" -Recurse | Select-Object Name, Length, LastWriteTime | Format-Table -AutoSize
 
 # Optional deployment to SourceForge
 if ($DeploySourceForge) {

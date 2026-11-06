@@ -38,7 +38,7 @@ public class HardwareProfileService implements IHardwareProfileService {
 
     @Override
     public synchronized HardwareProfile getHardwareProfile() {
-        if (cachedProfile == null) {
+        if (cachedProfile == null || (cachedProfile.tier() == HardwareTier.CPU_ONLY && hardwareMonitorService != null && hardwareMonitorService.getVramBytes() > 0)) {
             cachedProfile = detectProfile();
         }
         return cachedProfile;
@@ -104,7 +104,7 @@ public class HardwareProfileService implements IHardwareProfileService {
         if (vramBytes < 12L * GIB) {
             return HardwareTier.BUDGET;
         }
-        if (vramBytes < 20L * GIB) {
+        if (vramBytes < 15L * GIB) {
             return HardwareTier.MID_TIER;
         }
         return HardwareTier.HIGH_END;
@@ -121,6 +121,25 @@ public class HardwareProfileService implements IHardwareProfileService {
             if (gpuName != null && !gpuName.trim().isEmpty() && !"N/A".equalsIgnoreCase(gpuName)) {
                 String lower = gpuName.toLowerCase();
                 hasNvidia = lower.contains("nvidia") || lower.contains("geforce") || lower.contains("rtx") || lower.contains("gtx");
+            }
+        }
+
+        if (vram <= 0) {
+            try {
+                ProcessBuilder pb = new ProcessBuilder("nvidia-smi", "--query-gpu=name,memory.total", "--format=csv,noheader,nounits");
+                Process p = pb.start();
+                try (java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(p.getInputStream(), java.nio.charset.StandardCharsets.UTF_8))) {
+                    String line = r.readLine();
+                    if (line != null && line.contains(",")) {
+                        String[] parts = line.split(",");
+                        gpuName = parts[0].trim();
+                        vram = Long.parseLong(parts[1].trim()) * 1024L * 1024L;
+                        hasNvidia = true;
+                    }
+                }
+                p.waitFor(2, java.util.concurrent.TimeUnit.SECONDS);
+            } catch (Exception ignored) {
+                logger.trace("Direct nvidia-smi fallback query bypassed: {}", ignored.getMessage());
             }
         }
 

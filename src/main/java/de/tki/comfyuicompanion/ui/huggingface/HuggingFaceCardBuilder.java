@@ -14,6 +14,7 @@ import java.util.function.Consumer;
  * Builds individual visual cards for Hugging Face repositories in the gallery grid,
  * matching the dimensions, hover mechanics, status indicators, and responsive layout of the Blueprint Gallery.
  */
+@Deprecated
 public class HuggingFaceCardBuilder {
 
     private static final int CARD_WIDTH = 220;
@@ -123,11 +124,11 @@ public class HuggingFaceCardBuilder {
         info.add(titleLabel);
         info.add(Box.createVerticalStrut(3));
 
-        // Subtitle (Author • Task)
+        // Subtitle (Author | Task)
         String taskStr = (entry.pipelineTag() != null && !entry.pipelineTag().isBlank())
                 ? entry.pipelineTag()
                 : "Weights";
-        JLabel subtitleLabel = new JLabel(entry.author() + " • " + taskStr);
+        JLabel subtitleLabel = new JLabel(entry.author() + " | " + taskStr);
         subtitleLabel.setFont(new Font("SansSerif", Font.PLAIN, 10));
         subtitleLabel.setForeground(textDim);
         subtitleLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -138,13 +139,13 @@ public class HuggingFaceCardBuilder {
         String statusText;
         Color statusColor;
         if (isDownloading) {
-            statusText = "⏳  " + (downloadProgress != null && !downloadProgress.isBlank() ? downloadProgress : "Downloading...");
+            statusText = "" + (downloadProgress != null && !downloadProgress.isBlank() ? downloadProgress : "Downloading...");
             statusColor = BLUE_DOWNLOADING;
         } else if (isInstalled) {
-            statusText = "✔  Ready to use";
+            statusText = "Ready to use";
             statusColor = GREEN_READY;
         } else {
-            statusText = "⚠  Missing models";
+            statusText = "Missing models";
             statusColor = AMBER_PARTIAL;
         }
 
@@ -160,7 +161,7 @@ public class HuggingFaceCardBuilder {
         statsRow.setOpaque(false);
         statsRow.setAlignmentX(Component.LEFT_ALIGNMENT);
 
-        String statsText = String.format("❤️ %s • 📥 %s", formatCount(entry.likes()), formatCount(entry.downloads()));
+        String statsText = String.format("Likes: %s | Downloads: %s", formatCount(entry.likes()), formatCount(entry.downloads()));
         JLabel statsLabel = new JLabel(statsText);
         statsLabel.setFont(new Font("SansSerif", Font.PLAIN, 10));
         statsLabel.setForeground(textDim);
@@ -278,7 +279,7 @@ public class HuggingFaceCardBuilder {
 
     private static String truncate(String text, int maxChars) {
         if (text == null) return "";
-        return text.length() <= maxChars ? text : text.substring(0, maxChars - 1) + "…";
+        return text.length() <= maxChars ? text : text.substring(0, maxChars - 1) + "...";
     }
 }
 

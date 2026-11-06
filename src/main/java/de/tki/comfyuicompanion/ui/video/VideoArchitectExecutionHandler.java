@@ -6,6 +6,7 @@ import de.tki.comfyuicompanion.service.IVideoPromptOptimizer;
 import de.tki.comfyuicompanion.service.impl.ComfyPipelineService;
 import de.tki.comfyuicompanion.service.impl.ConfigService;
 import de.tki.comfyuicompanion.service.impl.Gemma4Service;
+import de.tki.comfyuicompanion.service.impl.LocalGemmaService.LlmModelPreset;
 import de.tki.comfyuicompanion.service.impl.LocalTTSService;
 import de.tki.comfyuicompanion.service.impl.Video4jEditorService;
 import org.slf4j.Logger;
@@ -18,7 +19,6 @@ import javax.swing.JProgressBar;
 import javax.swing.SwingUtilities;
 import java.awt.Component;
 import java.io.File;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
 
@@ -72,64 +72,55 @@ public class VideoArchitectExecutionHandler {
         this.renderCoordinator = renderCoordinator;
     }
 
-    public void deconstructScript(Component parent,
-                                  String idea,
-                                  int width,
-                                  int height,
-                                  double cfg,
-                                  int steps,
-                                  int motion,
-                                  DefaultListModel<Scene> timelineListModel,
-                                  JList<Scene> timelineListView,
-                                  JProgressBar progressBar,
-                                  Consumer<Boolean> buttonsDisabledSetter,
-                                  Consumer<String> consoleLogger,
-                                  Consumer<Scene> previewUpdater,
-                                  Runnable storyboardJsonUpdater) {
-        deconstructScript(parent, idea, null, width, height, cfg, steps, motion,
+    public void deconstructScript(Component parent, String idea, int width, int height, double cfg,
+                                  int steps, int motion, DefaultListModel<Scene> timelineListModel,
+                                  JList<Scene> timelineListView, JProgressBar progressBar,
+                                  Consumer<Boolean> buttonsDisabledSetter, Consumer<String> consoleLogger,
+                                  Consumer<Scene> previewUpdater, Runnable storyboardJsonUpdater) {
+        deconstructScript(parent, idea, null, null, width, height, cfg, steps, motion,
+                timelineListModel, timelineListView, progressBar, buttonsDisabledSetter,
+                consoleLogger, previewUpdater, storyboardJsonUpdater);
+    }
+
+    public void deconstructScript(Component parent, String idea, String targetModel, int width, int height,
+                                  double cfg, int steps, int motion, DefaultListModel<Scene> timelineListModel,
+                                  JList<Scene> timelineListView, JProgressBar progressBar,
+                                  Consumer<Boolean> buttonsDisabledSetter, Consumer<String> consoleLogger,
+                                  Consumer<Scene> previewUpdater, Runnable storyboardJsonUpdater) {
+        deconstructScript(parent, idea, targetModel, null, width, height, cfg, steps, motion,
                 timelineListModel, timelineListView, progressBar, buttonsDisabledSetter,
                 consoleLogger, previewUpdater, storyboardJsonUpdater);
     }
 
     /**
-     * Deconstructs a master video idea into cinematic storyboard scenes using Gemma AI
+     * Deconstructs a master video idea into cinematic storyboard scenes using the specified script LLM
      * with model-specific kinetic directives.
      */
-    public void deconstructScript(Component parent,
-                                  String idea,
-                                  String targetModel,
-                                  int width,
-                                  int height,
-                                  double cfg,
-                                  int steps,
-                                  int motion,
-                                  DefaultListModel<Scene> timelineListModel,
-                                  JList<Scene> timelineListView,
-                                  JProgressBar progressBar,
-                                  Consumer<Boolean> buttonsDisabledSetter,
-                                  Consumer<String> consoleLogger,
-                                  Consumer<Scene> previewUpdater,
+    public void deconstructScript(Component parent, String idea, String targetModel, String scriptLlm,
+                                  int width, int height, double cfg, int steps, int motion,
+                                  DefaultListModel<Scene> timelineListModel, JList<Scene> timelineListView,
+                                  JProgressBar progressBar, Consumer<Boolean> buttonsDisabledSetter,
+                                  Consumer<String> consoleLogger, Consumer<Scene> previewUpdater,
                                   Runnable storyboardJsonUpdater) {
         if (idea == null || idea.trim().isEmpty()) {
             consoleLogger.accept("Master script is empty!");
             return;
         }
 
-        if (gemma4Service != null && !gemma4Service.isGemmaAvailable()) {
-            String modelName = gemma4Service.getActiveModelDisplayName();
-            String approxSize = gemma4Service.getActivePreset().getApproxSize();
+        LlmModelPreset preset = resolveLlmPreset(scriptLlm);
+        String modelName = preset.getDisplayName();
+
+        if (gemma4Service != null && !isPresetDownloaded(preset)) {
             int choice = JOptionPane.showConfirmDialog(
                     parent,
                     "The local " + modelName + " AI model is not downloaded yet.\n\n" +
-                            "Would you like to download the " + modelName + " model (" + approxSize + ") now to unlock intelligent AI script deconstruction, visual prompt engineering, and scene timing?\n\n" +
+                            "Would you like to download " + modelName + " (" + preset.getApproxSize() + ") now to unlock intelligent AI script deconstruction?\n\n" +
                             "(Select 'No' to use standard rule-based segmentation)",
                     modelName + " Storyboard Deconstruction",
-                    JOptionPane.YES_NO_CANCEL_OPTION,
-                    JOptionPane.QUESTION_MESSAGE
-            );
+                    JOptionPane.YES_NO_CANCEL_OPTION, JOptionPane.QUESTION_MESSAGE);
 
             if (choice == JOptionPane.YES_OPTION) {
-                downloadGemmaAndDeconstruct(parent, idea, targetModel, width, height, cfg, steps, motion,
+                downloadLlmAndDeconstruct(parent, preset, idea, targetModel, width, height, cfg, steps, motion,
                         timelineListModel, timelineListView, progressBar, buttonsDisabledSetter,
                         consoleLogger, previewUpdater, storyboardJsonUpdater);
                 return;
@@ -138,33 +129,46 @@ public class VideoArchitectExecutionHandler {
             }
         }
 
-        executeDeconstructScriptTask(parent, idea, targetModel, width, height, cfg, steps, motion,
+        executeDeconstructScriptTask(parent, preset, idea, targetModel, width, height, cfg, steps, motion,
                 timelineListModel, timelineListView, buttonsDisabledSetter, consoleLogger,
                 previewUpdater, storyboardJsonUpdater);
     }
 
-    private void downloadGemmaAndDeconstruct(Component parent,
-                                             String idea,
-                                             String targetModel,
-                                             int width,
-                                             int height,
-                                             double cfg,
-                                             int steps,
-                                             int motion,
-                                             DefaultListModel<Scene> timelineListModel,
-                                             JList<Scene> timelineListView,
-                                             JProgressBar progressBar,
-                                             Consumer<Boolean> buttonsDisabledSetter,
-                                             Consumer<String> consoleLogger,
-                                             Consumer<Scene> previewUpdater,
-                                             Runnable storyboardJsonUpdater) {
-        String modelName = gemma4Service != null ? gemma4Service.getActiveModelDisplayName() : "LLM";
+    private LlmModelPreset resolveLlmPreset(String scriptLlm) {
+        if (scriptLlm != null && !scriptLlm.isBlank()) {
+            if (configService != null) {
+                configService.setLocalLlmModel(scriptLlm);
+            }
+            return LlmModelPreset.fromId(scriptLlm);
+        }
+        if (gemma4Service != null && gemma4Service.getActivePreset() != null) {
+            return gemma4Service.getActivePreset();
+        }
+        return LlmModelPreset.GEMMA_3_4B;
+    }
+
+    private boolean isPresetDownloaded(LlmModelPreset preset) {
+        if (gemma4Service == null || gemma4Service.getLocalGemmaService() == null) {
+            return false;
+        }
+        return gemma4Service.getLocalGemmaService().isModelDownloaded(preset);
+    }
+
+    private void downloadLlmAndDeconstruct(Component parent, LlmModelPreset preset, String idea,
+                                           String targetModel, int width, int height, double cfg,
+                                           int steps, int motion, DefaultListModel<Scene> timelineListModel,
+                                           JList<Scene> timelineListView, JProgressBar progressBar,
+                                           Consumer<Boolean> buttonsDisabledSetter,
+                                           Consumer<String> consoleLogger, Consumer<Scene> previewUpdater,
+                                           Runnable storyboardJsonUpdater) {
+        String modelName = preset.getDisplayName();
         buttonsDisabledSetter.accept(true);
         progressBar.setValue(0);
         progressBar.setVisible(true);
         consoleLogger.accept("Downloading " + modelName + " model from Hugging Face...");
 
-        gemma4Service.downloadGemmaModel(
+        gemma4Service.getLocalGemmaService().downloadModel(
+                preset,
                 (percent, msg) -> SwingUtilities.invokeLater(() -> {
                     progressBar.setValue((int) (percent * 100));
                     consoleLogger.accept(msg);
@@ -172,7 +176,7 @@ public class VideoArchitectExecutionHandler {
                 () -> SwingUtilities.invokeLater(() -> {
                     progressBar.setVisible(false);
                     consoleLogger.accept("✅ " + modelName + " model downloaded successfully! Starting AI script deconstruction...");
-                    executeDeconstructScriptTask(parent, idea, targetModel, width, height, cfg, steps, motion,
+                    executeDeconstructScriptTask(parent, preset, idea, targetModel, width, height, cfg, steps, motion,
                             timelineListModel, timelineListView, buttonsDisabledSetter,
                             consoleLogger, previewUpdater, storyboardJsonUpdater);
                 }),
@@ -180,36 +184,29 @@ public class VideoArchitectExecutionHandler {
                     progressBar.setVisible(false);
                     buttonsDisabledSetter.accept(false);
                     consoleLogger.accept("❌ " + modelName + " download failed: " + errorMsg);
-                    JOptionPane.showMessageDialog(parent, "Could not download " + modelName + " AI model:\n" + errorMsg, modelName + " Download Failed", JOptionPane.ERROR_MESSAGE);
+                    JOptionPane.showMessageDialog(parent, "Could not download " + modelName + " AI model:\n" + errorMsg,
+                            modelName + " Download Failed", JOptionPane.ERROR_MESSAGE);
                 })
         );
     }
 
-    private void executeDeconstructScriptTask(Component parent,
-                                              String idea,
-                                              String targetModel,
-                                              int width,
-                                              int height,
-                                              double cfg,
-                                              int steps,
-                                              int motion,
-                                              DefaultListModel<Scene> timelineListModel,
-                                              JList<Scene> timelineListView,
-                                              Consumer<Boolean> buttonsDisabledSetter,
-                                              Consumer<String> consoleLogger,
-                                              Consumer<Scene> previewUpdater,
+    private void executeDeconstructScriptTask(Component parent, LlmModelPreset preset, String idea,
+                                              String targetModel, int width, int height, double cfg,
+                                              int steps, int motion, DefaultListModel<Scene> timelineListModel,
+                                              JList<Scene> timelineListView, Consumer<Boolean> buttonsDisabledSetter,
+                                              Consumer<String> consoleLogger, Consumer<Scene> previewUpdater,
                                               Runnable storyboardJsonUpdater) {
         buttonsDisabledSetter.accept(true);
-        boolean usingLlm = gemma4Service != null && gemma4Service.isGemmaAvailable();
-        String modelName = gemma4Service != null ? gemma4Service.getActiveModelDisplayName() : "AI";
+        boolean usingLlm = isPresetDownloaded(preset);
+        String modelName = preset.getDisplayName();
         consoleLogger.accept(usingLlm ? "🤖 " + modelName + ": Analyzing script and generating storyboard..." : "Analyzing script...");
 
         Thread.ofVirtual().start(() -> {
             try {
                 String jsonStr = null;
-                if (gemma4Service != null && gemma4Service.isGemmaAvailable()) {
+                if (usingLlm && gemma4Service != null) {
                     try {
-                        jsonStr = gemma4Service.generateScript(idea, targetModel, width, height, 5);
+                        jsonStr = gemma4Service.generateScript(idea, targetModel, width, height, 5, preset);
                     } catch (Exception ex) {
                         logger.warn("LLM script generation threw: {}. Falling back to rule-based parser.", ex.getMessage());
                     }
@@ -250,22 +247,23 @@ public class VideoArchitectExecutionHandler {
         });
     }
 
-    public void executeAutoPilot(Component parent,
-                                 String idea,
-                                 String speakerPath,
-                                 int width,
-                                 int height,
-                                 double cfg,
-                                 int steps,
-                                 int motion,
-                                 DefaultListModel<Scene> timelineListModel,
-                                 JList<Scene> timelineListView,
-                                 JProgressBar progressBar,
-                                 Consumer<Boolean> buttonsDisabledSetter,
-                                 Consumer<String> consoleLogger,
-                                 Consumer<Scene> previewUpdater,
+    public void executeAutoPilot(Component parent, String idea, String speakerPath, int width, int height,
+                                 double cfg, int steps, int motion, DefaultListModel<Scene> timelineListModel,
+                                 JList<Scene> timelineListView, JProgressBar progressBar,
+                                 Consumer<Boolean> buttonsDisabledSetter, Consumer<String> consoleLogger,
+                                 Consumer<Scene> previewUpdater, Runnable storyboardJsonUpdater) {
+        executeAutoPilot(parent, idea, null, null, speakerPath, width, height, cfg, steps, motion,
+                timelineListModel, timelineListView, progressBar, buttonsDisabledSetter,
+                consoleLogger, previewUpdater, storyboardJsonUpdater);
+    }
+
+    public void executeAutoPilot(Component parent, String idea, String targetModel, String speakerPath,
+                                 int width, int height, double cfg, int steps, int motion,
+                                 DefaultListModel<Scene> timelineListModel, JList<Scene> timelineListView,
+                                 JProgressBar progressBar, Consumer<Boolean> buttonsDisabledSetter,
+                                 Consumer<String> consoleLogger, Consumer<Scene> previewUpdater,
                                  Runnable storyboardJsonUpdater) {
-        executeAutoPilot(parent, idea, null, speakerPath, width, height, cfg, steps, motion,
+        executeAutoPilot(parent, idea, targetModel, null, speakerPath, width, height, cfg, steps, motion,
                 timelineListModel, timelineListView, progressBar, buttonsDisabledSetter,
                 consoleLogger, previewUpdater, storyboardJsonUpdater);
     }
@@ -274,40 +272,33 @@ public class VideoArchitectExecutionHandler {
      * Executes the autonomous end-to-end video pipeline including model-specific Gemma storyboard
      * deconstruction, TTS generation, ComfyUI video rendering, and assembly.
      */
-    public void executeAutoPilot(Component parent,
-                                 String idea,
-                                 String targetModel,
-                                 String speakerPath,
-                                 int width,
-                                 int height,
-                                 double cfg,
-                                 int steps,
-                                 int motion,
-                                 DefaultListModel<Scene> timelineListModel,
-                                 JList<Scene> timelineListView,
-                                 JProgressBar progressBar,
-                                 Consumer<Boolean> buttonsDisabledSetter,
-                                 Consumer<String> consoleLogger,
-                                 Consumer<Scene> previewUpdater,
+    public void executeAutoPilot(Component parent, String idea, String targetModel, String scriptLlm,
+                                 String speakerPath, int width, int height, double cfg, int steps, int motion,
+                                 DefaultListModel<Scene> timelineListModel, JList<Scene> timelineListView,
+                                 JProgressBar progressBar, Consumer<Boolean> buttonsDisabledSetter,
+                                 Consumer<String> consoleLogger, Consumer<Scene> previewUpdater,
                                  Runnable storyboardJsonUpdater) {
         if (idea == null || idea.trim().isEmpty()) {
             consoleLogger.accept("Master script is empty! Agent needs a concept.");
             return;
         }
 
+        LlmModelPreset preset = resolveLlmPreset(scriptLlm);
+        String modelName = preset.getDisplayName();
+
         buttonsDisabledSetter.accept(true);
         progressBar.setValue(0);
         progressBar.setVisible(true);
-        consoleLogger.accept("Agent Auto-Pilot engaged. Phase 1: Script Deconstruction...");
+        consoleLogger.accept("Agent Auto-Pilot engaged (" + modelName + "). Phase 1: Script Deconstruction...");
 
         Thread.ofVirtual().start(() -> {
             try {
                 // PHASE 1: Director Agent
-                consoleLogger.accept("Director Agent: Generating storyboard JSON...");
+                consoleLogger.accept("Director Agent: Generating storyboard JSON with " + modelName + "...");
                 String jsonStr = null;
                 try {
-                    if (gemma4Service != null) {
-                        jsonStr = gemma4Service.generateScript(idea, targetModel, width, height, 5);
+                    if (gemma4Service != null && isPresetDownloaded(preset)) {
+                        jsonStr = gemma4Service.generateScript(idea, targetModel, width, height, 5, preset);
                     }
                 } catch (Exception ex) {
                     logger.warn("LLM script generation threw: {}. Using fallback deconstruction.", ex.getMessage());
@@ -362,9 +353,7 @@ public class VideoArchitectExecutionHandler {
 
                     for (int attempt = 1; attempt <= maxRetries; attempt++) {
                         final int att = attempt;
-                        SwingUtilities.invokeLater(() -> {
-                            progressBar.setValue((int) (((double) currentIdx / totalScenes) * 100));
-                        });
+                        SwingUtilities.invokeLater(() -> progressBar.setValue((int) (((double) currentIdx / totalScenes) * 100)));
                         consoleLogger.accept("Generation Agent (Scene " + currentIdx + "/" + totalScenes + "): " + scene.getSceneId() + (att > 1 ? " (Attempt " + att + ")" : ""));
 
                         try {
@@ -415,25 +404,16 @@ public class VideoArchitectExecutionHandler {
         });
     }
 
-    public void executeVideoGeneration(Component parent,
-                                       List<Scene> scenes,
-                                       String speakerPath,
-                                       int width,
-                                       int height,
-                                       JList<Scene> timelineListView,
-                                       JProgressBar progressBar,
-                                       Consumer<Boolean> buttonsDisabledSetter,
-                                       Consumer<String> consoleLogger,
-                                       Consumer<Scene> previewUpdater) {
+    public void executeVideoGeneration(Component parent, List<Scene> scenes, String speakerPath,
+                                       int width, int height, JList<Scene> timelineListView,
+                                       JProgressBar progressBar, Consumer<Boolean> buttonsDisabledSetter,
+                                       Consumer<String> consoleLogger, Consumer<Scene> previewUpdater) {
         renderCoordinator.executeVideoGeneration(parent, scenes, speakerPath, width, height,
                 timelineListView, progressBar, buttonsDisabledSetter, consoleLogger, previewUpdater);
     }
 
-    public void executeMasterRender(Component parent,
-                                    List<Scene> scenes,
-                                    JProgressBar progressBar,
-                                    Consumer<Boolean> buttonsDisabledSetter,
-                                    Consumer<String> consoleLogger) {
+    public void executeMasterRender(Component parent, List<Scene> scenes, JProgressBar progressBar,
+                                    Consumer<Boolean> buttonsDisabledSetter, Consumer<String> consoleLogger) {
         renderCoordinator.executeMasterRender(parent, scenes, progressBar, buttonsDisabledSetter, consoleLogger);
     }
 

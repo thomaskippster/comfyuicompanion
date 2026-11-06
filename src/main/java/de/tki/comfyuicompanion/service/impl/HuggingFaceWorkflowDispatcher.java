@@ -2,12 +2,15 @@ package de.tki.comfyuicompanion.service.impl;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import de.tki.comfyuicompanion.domain.CivitaiGenerationResult;
 import de.tki.comfyuicompanion.domain.HuggingFaceFileEntry;
 import de.tki.comfyuicompanion.domain.HuggingFaceModelEntry;
+import de.tki.comfyuicompanion.domain.ModelInfo;
 import de.tki.comfyuicompanion.dto.acl.RefreshModelsAclRequest;
 import de.tki.comfyuicompanion.service.IComfyLifecycleService;
+import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -21,12 +24,15 @@ import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
 /**
- * Dispatcher responsible for sending synthesized Hugging Face workflows to ComfyUI canvas via REST bridge,
- * triggering execution queues, and polling for generated image results.
+ * Dispatcher responsible for sending Hugging Face workflows (either real repository workflow JSONs
+ * or synthesized ComfyUI workflows) to the ComfyUI canvas via REST bridge or direct `/prompt` queue execution.
  */
 @Component
 public class HuggingFaceWorkflowDispatcher {
@@ -43,11 +49,11 @@ public class HuggingFaceWorkflowDispatcher {
     /**
      * Constructs a new HuggingFaceWorkflowDispatcher with required dependencies.
      *
-     * @param configService   configuration service
+     * @param configService    configuration service
      * @param lifecycleService ComfyUI lifecycle service
-     * @param comfyApiClient  client for ComfyUI REST endpoints
-     * @param workflowBuilder builder for HF workflows
-     * @param objectMapper    JSON object mapper
+     * @param comfyApiClient   client for ComfyUI REST endpoints
+     * @param workflowBuilder  builder for HF workflows
+     * @param objectMapper     JSON object mapper
      */
     @Autowired
     public HuggingFaceWorkflowDispatcher(
@@ -69,12 +75,13 @@ public class HuggingFaceWorkflowDispatcher {
     }
 
     /**
-     * Sends the visual GUI LiteGraph workflow into the running ComfyUI canvas.
+     * Sends a Hugging Face workflow into the running ComfyUI canvas, or falls back to
+     * direct `/prompt` execution if the canvas bridge is unavailable (matching Comfy.org Blueprints).
      *
      * @param repo         the Hugging Face repository entry
-     * @param selectedFile the selected model file
+     * @param selectedFile the selected model or workflow file
      * @param userPrompt   custom positive prompt text
-     * @return future resolving to true upon successful delivery
+     * @return future resolving to true upon successful delivery or execution queueing
      */
     public CompletableFuture<Boolean> sendWorkflowToComfyUI(
             HuggingFaceModelEntry repo,
@@ -87,29 +94,48 @@ public class HuggingFaceWorkflowDispatcher {
                 String comfyUrl = getSanitizedComfyUrl();
                 triggerModelRefresh(comfyUrl);
 
-                ObjectNode guiGraphNode = workflowBuilder.buildGuiWorkflow(repo, selectedFile, userPrompt);
-                saveWorkflowToUserWorkflows(repo, selectedFile, guiGraphNode);
+                HuggingFaceFileEntry effectiveFile = resolveEffectiveModelFile(repo, selectedFile);
+                ObjectNode workflowNode = resolveOrSynthesizeWorkflow(repo, selectedFile, effectiveFile, userPrompt);
+                ComfyWorkflowCompatibilitySanitizer sanitizer = new ComfyWorkflowCompatibilitySanitizer(objectMapper);
+                sanitizer.sanitizeWorkflow(workflowNode, sanitizer.fetchRegisteredNodes(comfyUrl, httpClient));
+                saveWorkflowToUserWorkflows(repo, effectiveFile, workflowNode);
 
-                ObjectNode bridgePayload = objectMapper.createObjectNode();
-                bridgePayload.set("workflow", guiGraphNode);
+                boolean isUiFormat = workflowNode.has("nodes") || workflowNode.has("last_node_id");
+                if (isUiFormat) {
+                    try {
+                        ObjectNode bridgePayload = objectMapper.createObjectNode();
+                        bridgePayload.set("workflow", workflowNode);
 
-                HttpRequest bridgeReq = HttpRequest.newBuilder()
-                        .uri(URI.create(comfyUrl + "/cmfc/load-workflow"))
-                        .header("Content-Type", "application/json")
-                        .POST(HttpRequest.BodyPublishers.ofString(bridgePayload.toString()))
-                        .timeout(Duration.ofSeconds(10))
-                        .build();
+                        HttpRequest bridgeReq = HttpRequest.newBuilder()
+                                .uri(URI.create(comfyUrl + "/cmfc/load-workflow"))
+                                .header("Content-Type", "application/json")
+                                .POST(HttpRequest.BodyPublishers.ofString(bridgePayload.toString()))
+                                .timeout(Duration.ofSeconds(10))
+                                .build();
 
-                HttpResponse<String> response = httpClient.send(bridgeReq, HttpResponse.BodyHandlers.ofString());
-                if (response.statusCode() >= 200 && response.statusCode() < 300) {
-                    log.info("Successfully loaded GUI workflow for '{}' ({}) into ComfyUI canvas.", repo.repoId(), selectedFile.filename());
-                    return true;
-                } else {
-                    log.warn("ComfyUI bridge rejected /cmfc/load-workflow (HTTP {}): {}", response.statusCode(), response.body());
-                    throw new IOException("ComfyUI bridge returned HTTP " + response.statusCode() + ": " + response.body());
+                        HttpResponse<String> response = httpClient.send(bridgeReq, HttpResponse.BodyHandlers.ofString());
+                        if (response.statusCode() >= 200 && response.statusCode() < 300) {
+                            log.info("Successfully loaded Hugging Face workflow for '{}' into ComfyUI canvas.", repo.repoId());
+                            return true;
+                        }
+                        log.warn("ComfyUI bridge returned HTTP {} for /cmfc/load-workflow; falling back to /prompt.", response.statusCode());
+                    } catch (Exception bridgeEx) {
+                        log.warn("ComfyUI bridge request failed ({}), attempting direct /prompt fallback.", bridgeEx.getMessage());
+                    }
                 }
+
+                // Fallback: convert UI workflow to API prompt (or use synthesized API workflow) and submit to /prompt
+                String promptPayloadJson = buildPromptPayloadForFallback(repo, effectiveFile, userPrompt, workflowNode);
+                HttpResponse<String> promptResp = submitPromptPayload(comfyUrl, promptPayloadJson);
+                if (promptResp != null && promptResp.statusCode() >= 200 && promptResp.statusCode() < 300) {
+                    log.info("Successfully queued Hugging Face workflow for '{}' via ComfyUI /prompt fallback.", repo.repoId());
+                    return true;
+                }
+                int code = promptResp != null ? promptResp.statusCode() : 0;
+                String body = promptResp != null ? promptResp.body() : "No response";
+                throw new IOException("ComfyUI rejected workflow submission (HTTP " + code + "): " + body);
             } catch (Exception e) {
-                log.error("Failed sending HF GUI workflow to ComfyUI: {}", e.getMessage(), e);
+                log.error("Failed sending HF workflow to ComfyUI: {}", e.getMessage(), e);
                 throw new RuntimeException(e);
             }
         }, runnable -> Thread.ofVirtual().name("HF-SendWorkflowWorker").start(runnable));
@@ -132,26 +158,31 @@ public class HuggingFaceWorkflowDispatcher {
                 ensureComfyUiHealthy();
 
                 String comfyUrl = getSanitizedComfyUrl();
-                String workflowJson = workflowBuilder.buildApiWorkflowJson(repo, selectedFile, userPrompt);
+                HuggingFaceFileEntry effectiveFile = resolveEffectiveModelFile(repo, selectedFile);
+                ObjectNode workflowNode = resolveOrSynthesizeWorkflow(repo, selectedFile, effectiveFile, userPrompt);
+                ComfyWorkflowCompatibilitySanitizer sanitizer = new ComfyWorkflowCompatibilitySanitizer(objectMapper);
+                sanitizer.sanitizeWorkflow(workflowNode, sanitizer.fetchRegisteredNodes(comfyUrl, httpClient));
 
                 // Optional canvas sync
-                try {
-                    ObjectNode guiGraphNode = workflowBuilder.buildGuiWorkflow(repo, selectedFile, userPrompt);
-                    ObjectNode bridgePayload = objectMapper.createObjectNode();
-                    bridgePayload.set("workflow", guiGraphNode);
+                if (workflowNode.has("nodes") || workflowNode.has("last_node_id")) {
+                    try {
+                        ObjectNode bridgePayload = objectMapper.createObjectNode();
+                        bridgePayload.set("workflow", workflowNode);
 
-                    HttpRequest bridgeReq = HttpRequest.newBuilder()
-                            .uri(URI.create(comfyUrl + "/cmfc/load-workflow"))
-                            .header("Content-Type", "application/json")
-                            .POST(HttpRequest.BodyPublishers.ofString(bridgePayload.toString()))
-                            .timeout(Duration.ofSeconds(6))
-                            .build();
-                    httpClient.send(bridgeReq, HttpResponse.BodyHandlers.ofString());
-                } catch (Exception bridgeEx) {
-                    log.debug("Bridge canvas sync bypassed for HF generation: {}", bridgeEx.getMessage());
+                        HttpRequest bridgeReq = HttpRequest.newBuilder()
+                                .uri(URI.create(comfyUrl + "/cmfc/load-workflow"))
+                                .header("Content-Type", "application/json")
+                                .POST(HttpRequest.BodyPublishers.ofString(bridgePayload.toString()))
+                                .timeout(Duration.ofSeconds(6))
+                                .build();
+                        httpClient.send(bridgeReq, HttpResponse.BodyHandlers.ofString());
+                    } catch (Exception bridgeEx) {
+                        log.debug("Bridge canvas sync bypassed for HF generation: {}", bridgeEx.getMessage());
+                    }
                 }
 
-                HttpResponse<String> promptResponse = comfyApiClient.postPrompt(comfyUrl, workflowJson);
+                String workflowJson = buildPromptPayloadForFallback(repo, effectiveFile, userPrompt, workflowNode);
+                HttpResponse<String> promptResponse = submitPromptPayload(comfyUrl, workflowJson);
                 if (promptResponse == null || promptResponse.statusCode() < 200 || promptResponse.statusCode() >= 300) {
                     int status = promptResponse != null ? promptResponse.statusCode() : 0;
                     String body = promptResponse != null ? promptResponse.body() : "No response";
@@ -160,7 +191,7 @@ public class HuggingFaceWorkflowDispatcher {
 
                 JsonNode resNode = objectMapper.readTree(promptResponse.body());
                 String promptId = resNode.path("prompt_id").asText("");
-                log.info("Successfully queued HF generation with prompt_id {} for {}", promptId, selectedFile.filename());
+                log.info("Successfully queued HF generation with prompt_id {} for {}", promptId, effectiveFile.filename());
 
                 ComfyApiClient.ImageOutput imgOutput = pollForOutput(comfyUrl, promptId);
 
@@ -178,12 +209,143 @@ public class HuggingFaceWorkflowDispatcher {
         }, runnable -> Thread.ofVirtual().name("HF-SendComfyWorker").start(runnable));
     }
 
-    private String getSanitizedComfyUrl() {
-        String comfyUrl = configService != null ? configService.getComfyUIUrl() : "http://localhost:8188";
+    /**
+     * Returns the configured and sanitized ComfyUI server base URL.
+     *
+     * @return sanitized ComfyUI URL
+     */
+    public String getSanitizedComfyUrl() {
+        String comfyUrl = configService != null ? configService.getComfyUIUrl() : "http://127.0.0.1:8188";
+        if (comfyUrl == null || comfyUrl.isBlank()) {
+            comfyUrl = "http://127.0.0.1:8188";
+        }
         if (comfyUrl.endsWith("/")) {
             comfyUrl = comfyUrl.substring(0, comfyUrl.length() - 1);
         }
         return comfyUrl;
+    }
+
+    private HuggingFaceFileEntry resolveEffectiveModelFile(HuggingFaceModelEntry repo, HuggingFaceFileEntry selectedFile) {
+        if (selectedFile != null && !HuggingFaceWorkflowAnalyzer.isWorkflowFile(selectedFile.rfilename())) {
+            return selectedFile;
+        }
+        if (repo != null && repo.files() != null) {
+            for (HuggingFaceFileEntry f : repo.files()) {
+                if (!HuggingFaceWorkflowAnalyzer.isWorkflowFile(f.rfilename())) {
+                    return f;
+                }
+            }
+        }
+        if (selectedFile != null) {
+            return selectedFile;
+        }
+        String fallbackName = (repo != null ? repo.modelName() : "model") + ".safetensors";
+        return new HuggingFaceFileEntry(fallbackName, fallbackName, 0L, "Unknown", "", "checkpoints", "Standard", false);
+    }
+
+    private ObjectNode resolveOrSynthesizeWorkflow(
+            HuggingFaceModelEntry repo,
+            HuggingFaceFileEntry selectedFile,
+            HuggingFaceFileEntry effectiveModelFile,
+            String userPrompt) {
+        String hfToken = configService != null ? configService.getHfToken() : null;
+        Optional<ObjectNode> remoteWorkflow = HuggingFaceWorkflowAnalyzer.tryFetchRemoteWorkflowJson(
+                repo, selectedFile, httpClient, hfToken, objectMapper);
+        if (remoteWorkflow.isPresent()) {
+            ObjectNode realNode = remoteWorkflow.get();
+            injectCustomPromptIfPresent(realNode, userPrompt);
+            adaptModelReferencesToLocalInstall(realNode, repo);
+            return realNode;
+        }
+        return workflowBuilder.buildGuiWorkflow(repo, effectiveModelFile, userPrompt);
+    }
+
+    /**
+     * Maps the repository's model files onto locally installed ones and splits missing
+     * All-in-One checkpoints into UNET/CLIP/VAE loaders, mirroring the Civitai behavior.
+     */
+    private void adaptModelReferencesToLocalInstall(ObjectNode workflow, HuggingFaceModelEntry repo) {
+        if (repo == null || repo.files() == null || repo.files().isEmpty() || configService == null) {
+            return;
+        }
+        try {
+            List<ModelInfo> models = new ArrayList<>();
+            for (HuggingFaceFileEntry f : repo.files()) {
+                if (f.suggestedFolder() == null || HuggingFaceWorkflowAnalyzer.isWorkflowFile(f.rfilename())) {
+                    continue;
+                }
+                ModelInfo info = new ModelInfo(f.suggestedFolder(), f.filename(), f.downloadUrl());
+                info.setFilename(f.filename());
+                models.add(info);
+            }
+            new CivitaiWorkflowFileResolver(objectMapper, configService, null).adaptModelReferences(workflow, models);
+        } catch (Exception ex) {
+            log.debug("Model reference adaptation skipped for {}: {}", repo.repoId(), ex.getMessage());
+        }
+    }
+
+    private void injectCustomPromptIfPresent(ObjectNode workflowNode, String userPrompt) {
+        if (userPrompt == null || userPrompt.isBlank() || !workflowNode.has("nodes")) {
+            return;
+        }
+        JsonNode nodes = workflowNode.get("nodes");
+        if (!nodes.isArray()) return;
+        for (JsonNode n : nodes) {
+            String type = n.path("type").asText("");
+            if ("CLIPTextEncode".equalsIgnoreCase(type) && n.has("widgets_values") && n.get("widgets_values").isArray()) {
+                ArrayNode wv = (ArrayNode) n.get("widgets_values");
+                if (!wv.isEmpty() && wv.get(0).isTextual()) {
+                    String current = wv.get(0).asText("");
+                    if (!current.toLowerCase(Locale.ROOT).contains("ugly")
+                            && !current.toLowerCase(Locale.ROOT).contains("bad hands")
+                            && !current.toLowerCase(Locale.ROOT).contains("worst quality")) {
+                        wv.set(0, userPrompt.trim());
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    private String buildPromptPayloadForFallback(
+            HuggingFaceModelEntry repo,
+            HuggingFaceFileEntry effectiveFile,
+            String userPrompt,
+            ObjectNode workflowNode) {
+        try {
+            JSONObject parsedObj = new JSONObject(workflowNode.toString());
+            if (parsedObj.has("nodes")) {
+                JSONObject flattened = ComfyPipelineService.flattenWorkflow(parsedObj);
+                JSONObject apiPayload = ComfyPipelineService.convertUiToApi(flattened);
+                if (apiPayload.has("prompt") && apiPayload.getJSONObject("prompt").length() > 0) {
+                    JSONObject wrapper = new JSONObject();
+                    wrapper.put("prompt", apiPayload.getJSONObject("prompt"));
+                    return wrapper.toString();
+                }
+            } else if (parsedObj.has("prompt")) {
+                return parsedObj.toString();
+            } else if (!parsedObj.isEmpty()) {
+                JSONObject wrapper = new JSONObject();
+                wrapper.put("prompt", parsedObj);
+                return wrapper.toString();
+            }
+        } catch (Exception ex) {
+            log.debug("UI-to-API conversion fallback triggered synthesized API workflow: {}", ex.getMessage());
+        }
+        return workflowBuilder.buildApiWorkflowJson(repo, effectiveFile, userPrompt);
+    }
+
+    private HttpResponse<String> submitPromptPayload(String comfyUrl, String promptPayloadJson) throws IOException, InterruptedException {
+        if (comfyApiClient != null) {
+            return comfyApiClient.postPrompt(comfyUrl, promptPayloadJson);
+        }
+        HttpRequest promptReq = HttpRequest.newBuilder()
+                .uri(URI.create(comfyUrl + "/prompt"))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(promptPayloadJson))
+                .timeout(Duration.ofSeconds(15))
+                .build();
+        return httpClient.send(promptReq, HttpResponse.BodyHandlers.ofString());
     }
 
     private void triggerModelRefresh(String comfyUrl) {
@@ -240,23 +402,14 @@ public class HuggingFaceWorkflowDispatcher {
             log.info("ComfyUI is not currently healthy/running. Requesting boot and awaiting readiness...");
             lifecycleService.start();
             int maxWaitSeconds = 90;
-            boolean healthy = false;
-            for (int w = 0; w < maxWaitSeconds; w++) {
+            for (int i = 0; i < maxWaitSeconds; i++) {
                 if (lifecycleService.isHealthy()) {
-                    healthy = true;
-                    break;
+                    log.info("ComfyUI is now healthy and ready.");
+                    return;
                 }
-                try {
-                    Thread.sleep(1000);
-                } catch (InterruptedException ie) {
-                    Thread.currentThread().interrupt();
-                    throw new IOException("Interrupted while awaiting ComfyUI startup", ie);
-                }
+                Thread.sleep(1000);
             }
-            if (!healthy) {
-                throw new IOException("ComfyUI server could not be started or did not reach a healthy state within 90s.");
-            }
-            log.info("ComfyUI server is now running and healthy. Proceeding with HF workflow dispatch.");
+            throw new IllegalStateException("ComfyUI failed to become healthy within " + maxWaitSeconds + " seconds.");
         }
     }
 }

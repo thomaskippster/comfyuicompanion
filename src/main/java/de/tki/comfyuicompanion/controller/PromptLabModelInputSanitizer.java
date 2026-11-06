@@ -7,17 +7,18 @@ import org.json.JSONObject;
 import org.springframework.stereotype.Component;
 
 import javax.swing.*;
-import java.awt.*;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 
 /**
- * Sanitizer component validating and resolving model filenames, samplers, and schedulers
- * in ComfyUI prompt graphs against available server models.
+ * Sanitizer component validating and resolving model filenames, samplers, schedulers,
+ * and missing required widget defaults in ComfyUI prompt graphs against live
+ * {@code /object_info} server specifications.
  */
 @Component
 public class PromptLabModelInputSanitizer {
@@ -28,22 +29,29 @@ public class PromptLabModelInputSanitizer {
     );
 
     /**
-     * Sanitizes and injects selected models into the ComfyUI workflow JSON before submission.
+     * Sanitizes and injects selected models and missing required widget defaults into the
+     * ComfyUI workflow JSON before submission.
      *
-     * @param promptObj the root prompt JSON object
-     * @param objectInfo the ComfyUI object info for validation
-     * @param promptLabView the prompt lab view
+     * @param promptObj           the root prompt JSON object
+     * @param objectInfo          the ComfyUI {@code /object_info} registry for validation and default resolution
+     * @param promptLabView       the prompt lab view
      * @param promptLabController the prompt lab controller
      */
     public void sanitizeModelInputsInPrompt(JSONObject promptObj, JSONObject objectInfo,
-                                           PromptLabView promptLabView, PromptLabController promptLabController) {
+                                            PromptLabView promptLabView, PromptLabController promptLabController) {
         if (promptObj == null) return;
         for (String key : promptObj.keySet()) {
             JSONObject node = promptObj.optJSONObject(key);
             if (node == null) continue;
             JSONObject inp = node.optJSONObject("inputs");
-            if (inp == null) continue;
+            if (inp == null) {
+                inp = new JSONObject();
+                node.put("inputs", inp);
+            }
             String classType = node.optString("class_type", "");
+
+            // Generically backfill any missing required widget defaults from ComfyUI's live /object_info schema
+            backfillMissingRequiredWidgetDefaults(inp, classType, objectInfo);
 
             if ("KSamplerSelect".equals(classType)) {
                 String sn = inp.optString("sampler_name", "");
@@ -77,7 +85,9 @@ public class PromptLabModelInputSanitizer {
                     }
 
                     boolean isModelKey = ik.endsWith("_name") || ik.endsWith("_path") || ik.equals("model") || ik.equals("vae") || ik.equals("clip") || ik.equals("unet");
-                    boolean isModelFile = cleaned.endsWith(".safetensors") || cleaned.endsWith(".ckpt") || cleaned.endsWith(".pt") || cleaned.endsWith(".bin") || cleaned.endsWith(".onnx") || cleaned.endsWith(".sft");
+                    boolean isModelFile = cleaned.endsWith(".safetensors") || cleaned.endsWith(".ckpt")
+                            || cleaned.endsWith(".pt") || cleaned.endsWith(".pth") || cleaned.endsWith(".gguf")
+                            || cleaned.endsWith(".bin") || cleaned.endsWith(".onnx") || cleaned.endsWith(".sft");
 
                     if (isModelKey || isModelFile) {
                         String matchedOption = null;
@@ -103,6 +113,70 @@ public class PromptLabModelInputSanitizer {
             }
         }
         PromptBlueprintApiService.sanitizeAllSeedsInPrompt(promptObj);
+    }
+
+    /**
+     * Generically inspects a node's {@code required} input specifications in ComfyUI's
+     * {@code /object_info} registry and populates any missing widget inputs with their
+     * server-declared default value or first valid option.
+     *
+     * @param nodeInputs the node's {@code inputs} JSON object
+     * @param classType  the ComfyUI node {@code class_type}
+     * @param objectInfo the live ComfyUI {@code /object_info} registry
+     */
+    public void backfillMissingRequiredWidgetDefaults(JSONObject nodeInputs, String classType, JSONObject objectInfo) {
+        if (nodeInputs == null || classType == null || classType.isBlank()
+                || objectInfo == null || !objectInfo.has(classType)) {
+            return;
+        }
+        JSONObject nodeInfo = objectInfo.optJSONObject(classType);
+        if (nodeInfo == null) return;
+        JSONObject inputSection = nodeInfo.optJSONObject("input");
+        if (inputSection == null) return;
+        JSONObject required = inputSection.optJSONObject("required");
+        if (required == null) return;
+
+        for (String reqKey : required.keySet()) {
+            if (nodeInputs.has(reqKey) && !nodeInputs.isNull(reqKey)) {
+                continue;
+            }
+            JSONArray spec = required.optJSONArray(reqKey);
+            Object defaultVal = resolveDefaultWidgetValueFromSpec(spec);
+            if (defaultVal != null) {
+                nodeInputs.put(reqKey, defaultVal);
+            }
+        }
+    }
+
+    private Object resolveDefaultWidgetValueFromSpec(JSONArray spec) {
+        if (spec == null || spec.isEmpty()) {
+            return null;
+        }
+        JSONObject meta = spec.length() > 1 ? spec.optJSONObject(1) : null;
+        if (meta != null && meta.has("default") && !meta.isNull("default")) {
+            return meta.get("default");
+        }
+        Object first = spec.get(0);
+        if (first instanceof JSONArray comboOptions && !comboOptions.isEmpty()) {
+            return comboOptions.get(0);
+        }
+        if (first instanceof String typeStr) {
+            String upper = typeStr.toUpperCase(Locale.ROOT);
+            if ("COMBO".equals(upper) && meta != null) {
+                JSONArray opts = meta.optJSONArray("options");
+                if (opts != null && !opts.isEmpty()) {
+                    return opts.get(0);
+                }
+            }
+            return switch (upper) {
+                case "BOOLEAN" -> Boolean.FALSE;
+                case "INT" -> 0;
+                case "FLOAT" -> 0.0;
+                case "STRING" -> "";
+                default -> null; // Connection socket (e.g. MODEL, CLIP, VAE, LATENT, *)
+            };
+        }
+        return null;
     }
 
     /**
@@ -178,7 +252,8 @@ public class PromptLabModelInputSanitizer {
                 if (val instanceof String s && !s.isBlank()) {
                     boolean isModelLoaderKey = MODEL_INPUT_KEYS.contains(ik);
                     boolean isModelFile = s.endsWith(".safetensors") || s.endsWith(".ckpt")
-                            || s.endsWith(".pt") || s.endsWith(".bin") || s.endsWith(".onnx") || s.endsWith(".sft");
+                            || s.endsWith(".pt") || s.endsWith(".pth") || s.endsWith(".gguf")
+                            || s.endsWith(".bin") || s.endsWith(".onnx") || s.endsWith(".sft");
                     if ((isModelLoaderKey || isModelFile) && isModelInputDefinedInObjectInfo(classType, ik, objectInfo)) {
                         String matched = findModelInObjectInfo(classType, ik, s, objectInfo);
                         if (matched == null) {
@@ -266,14 +341,14 @@ public class PromptLabModelInputSanitizer {
     /**
      * Resolves an exact comfy model option given a target value.
      *
-     * @param classType the node class type
-     * @param inputKey the input property key
-     * @param targetValue the target model value
+     * @param classType           the node class type
+     * @param inputKey            the input property key
+     * @param targetValue         the target model value
      * @param promptLabController controller providing registered model sets
      * @return the matched exact ComfyUI model name or null
      */
     public String findExactComfyModelOption(String classType, String inputKey, String targetValue, PromptLabController promptLabController) {
-        if (targetValue == null || targetValue.isBlank() || promptLabController == null) return targetValue;
+        if (targetValue == null || targetValue.isBlank() || promptLabController == null) return null;
         Set<String> options = null;
 
         if (inputKey.equals("unet_name")) {
@@ -311,10 +386,10 @@ public class PromptLabModelInputSanitizer {
     /**
      * Resolves a model name directly against the ComfyUI object info payload.
      *
-     * @param classType the node class type
-     * @param inputKey the input property key
+     * @param classType   the node class type
+     * @param inputKey    the input property key
      * @param targetValue the target model value
-     * @param objectInfo the ComfyUI object info
+     * @param objectInfo  the ComfyUI object info
      * @return the resolved model name
      */
     public String findModelInObjectInfo(String classType, String inputKey, String targetValue, JSONObject objectInfo) {

@@ -128,16 +128,22 @@ public class HardwareProfileService implements IHardwareProfileService {
             try {
                 ProcessBuilder pb = new ProcessBuilder("nvidia-smi", "--query-gpu=name,memory.total", "--format=csv,noheader,nounits");
                 Process p = pb.start();
-                try (java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(p.getInputStream(), java.nio.charset.StandardCharsets.UTF_8))) {
-                    String line = r.readLine();
-                    if (line != null && line.contains(",")) {
-                        String[] parts = line.split(",");
-                        gpuName = parts[0].trim();
-                        vram = Long.parseLong(parts[1].trim()) * 1024L * 1024L;
-                        hasNvidia = true;
+                try {
+                    try (java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(p.getInputStream(), java.nio.charset.StandardCharsets.UTF_8))) {
+                        String line = r.readLine();
+                        if (line != null && line.contains(",")) {
+                            String[] parts = line.split(",");
+                            gpuName = parts[0].trim();
+                            vram = Long.parseLong(parts[1].trim()) * 1024L * 1024L;
+                            hasNvidia = true;
+                        }
+                    }
+                    p.waitFor(2, java.util.concurrent.TimeUnit.SECONDS);
+                } finally {
+                    if (p.isAlive()) {
+                        p.destroyForcibly();
                     }
                 }
-                p.waitFor(2, java.util.concurrent.TimeUnit.SECONDS);
             } catch (Exception ignored) {
                 logger.trace("Direct nvidia-smi fallback query bypassed: {}", ignored.getMessage());
             }

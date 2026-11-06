@@ -62,7 +62,7 @@ public class MainSystemTrayHandler {
         try {
             tray.add(trayIcon);
         } catch (AWTException e) {
-            logger.error("TrayIcon could not be added.");
+            logger.warn("TrayIcon could not be added: {}", e.getMessage());
         }
     }
 }

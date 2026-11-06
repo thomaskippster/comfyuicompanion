@@ -128,7 +128,9 @@ public class VideoBatchRenderCoordinator {
                     progressBar.setVisible(false);
                     buttonsDisabledSetter.accept(false);
                     consoleLogger.accept("Generation failed: " + ex.getMessage());
-                    JOptionPane.showMessageDialog(parent, "Video generation failed:\n" + ex.getMessage(), "Generation Error", JOptionPane.ERROR_MESSAGE);
+                    if (!de.tki.comfyuicompanion.util.PlatformUtils.isUnattended()) {
+                        JOptionPane.showMessageDialog(parent, "Video generation failed:\n" + ex.getMessage(), "Generation Error", JOptionPane.ERROR_MESSAGE);
+                    }
                 });
             }
         });
@@ -353,7 +355,9 @@ public class VideoBatchRenderCoordinator {
                     progressBar.setVisible(false);
                     buttonsDisabledSetter.accept(false);
                     consoleLogger.accept("Stitching Complete! Saved as " + exportFile.getName());
-                    JOptionPane.showMessageDialog(parent, "Master render completed successfully!\nSaved to: " + exportFile.getAbsolutePath(), "Master Render Complete", JOptionPane.INFORMATION_MESSAGE);
+                    if (!de.tki.comfyuicompanion.util.PlatformUtils.isUnattended()) {
+                        JOptionPane.showMessageDialog(parent, "Master render completed successfully!\nSaved to: " + exportFile.getAbsolutePath(), "Master Render Complete", JOptionPane.INFORMATION_MESSAGE);
+                    }
                 });
             } catch (Exception ex) {
                 logger.error("Master render task failed", ex);
@@ -361,7 +365,9 @@ public class VideoBatchRenderCoordinator {
                     progressBar.setVisible(false);
                     buttonsDisabledSetter.accept(false);
                     consoleLogger.accept("Render Failed: " + ex.getMessage());
-                    JOptionPane.showMessageDialog(parent, "Master render failed:\n" + ex.getMessage(), "Render Error", JOptionPane.ERROR_MESSAGE);
+                    if (!de.tki.comfyuicompanion.util.PlatformUtils.isUnattended()) {
+                        JOptionPane.showMessageDialog(parent, "Master render failed:\n" + ex.getMessage(), "Render Error", JOptionPane.ERROR_MESSAGE);
+                    }
                 });
             }
         });

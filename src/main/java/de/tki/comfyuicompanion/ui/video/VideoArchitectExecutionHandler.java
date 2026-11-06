@@ -128,9 +128,7 @@ public class VideoArchitectExecutionHandler {
         LlmModelPreset preset = resolveLlmPreset(scriptLlm);
         String modelName = preset.getDisplayName();
 
-        boolean unattended = java.awt.GraphicsEnvironment.isHeadless()
-                || Boolean.getBoolean("companion.unattended")
-                || System.getProperty("surefire.test.class.path") != null;
+        boolean unattended = de.tki.comfyuicompanion.util.PlatformUtils.isUnattended();
 
         if (gemma4Service != null && !isPresetDownloaded(preset)) {
             if (unattended) {
@@ -401,7 +399,9 @@ public class VideoArchitectExecutionHandler {
                     progressBar.setVisible(false);
                     buttonsDisabledSetter.accept(false);
                     consoleLogger.accept("Auto-Pilot Failed: " + ex.getMessage());
-                    JOptionPane.showMessageDialog(parent, "Auto-Pilot failed:\n" + ex.getMessage(), "Auto-Pilot Error", JOptionPane.ERROR_MESSAGE);
+                    if (!de.tki.comfyuicompanion.util.PlatformUtils.isUnattended()) {
+                        JOptionPane.showMessageDialog(parent, "Auto-Pilot failed:\n" + ex.getMessage(), "Auto-Pilot Error", JOptionPane.ERROR_MESSAGE);
+                    }
                 });
             }
         });

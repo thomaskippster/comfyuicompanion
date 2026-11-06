@@ -84,7 +84,7 @@ public final class LegalNoticeDialog {
         // Section 1: Local Utility & Sole User Responsibility
         html.append("<div style='background-color: ").append(boxBg).append("; padding: 14px; border-radius: 8px; margin-bottom: 14px; border: 1px solid ").append(boxBorder).append(";'>");
         html.append("<h3 style='color: ").append(accentColor).append("; margin-top: 0; margin-bottom: 8px;'>1. Local Architecture & Sole User Responsibility</h3>");
-        html.append("<p style='font-size: 13px; line-height: 1.5; margin: 0; color: ").append(textColor).append(";'><b>ComfyUI Companion</b> is an open, neutral desktop companion and workflow manager for the local ComfyUI engine. " +
+        html.append("<p style='font-size: 13px; line-height: 1.5; margin: 0; color: ").append(textColor).append(";'><b>ComfyUI Companion</b> is an open, neutral desktop companion and workflow manager built for the local ComfyUI engine (not affiliated with ComfyUI / Comfy Org). " +
                 "All model execution and media generation (image diffusion, video rendering, and voice synthesis) occur exclusively on the user's local hardware. " +
                 "<b>The user is the sole producer, publisher, and creator of all generated content.</b> " +
                 "Full legal liability for prompts, outputs, copyright/trademark compliance, and licensing rests exclusively with the individual user. " +
@@ -151,12 +151,19 @@ public final class LegalNoticeDialog {
                 ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
         scrollPane.setBorder(null);
 
-        JPanel btnPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 10));
+        JPanel btnPanel = new JPanel(new BorderLayout(10, 0));
         btnPanel.setBackground(awtBg);
+        btnPanel.setBorder(BorderFactory.createEmptyBorder(8, 16, 12, 16));
+
+        JLabel disclaimerLbl = new JLabel("Built for ComfyUI · not affiliated with ComfyUI");
+        disclaimerLbl.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        disclaimerLbl.setForeground(isDark ? new Color(112, 138, 144) : new Color(120, 130, 140));
+        btnPanel.add(disclaimerLbl, BorderLayout.WEST);
+
         JButton closeBtn = new JButton("Understood / Close");
         closeBtn.putClientProperty("JButton.buttonType", "accent");
         closeBtn.addActionListener(e -> dialog.dispose());
-        btnPanel.add(closeBtn);
+        btnPanel.add(closeBtn, BorderLayout.EAST);
 
         dialog.setLayout(new BorderLayout());
         dialog.add(scrollPane, BorderLayout.CENTER);

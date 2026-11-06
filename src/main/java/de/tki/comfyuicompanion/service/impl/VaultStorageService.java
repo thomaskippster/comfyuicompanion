@@ -95,7 +95,7 @@ public class VaultStorageService {
                 }
                 return new VaultUnlockResult(decryptedJson, password, false);
             } catch (Exception e) {
-                logger.error("Failed to unlock vault: {}", e.getMessage(), e);
+                logger.warn("Vault unlock check failed ({}), re-initializing or prompting password.", e.getMessage());
                 throw new Exception("Wrong password or corrupted vault!");
             }
         } else {

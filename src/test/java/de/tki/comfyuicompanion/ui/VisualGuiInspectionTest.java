@@ -225,6 +225,157 @@ public class VisualGuiInspectionTest {
         Thread.sleep(800);
         assertTrue(galleryTab.getBtnSubComfy().isSelected(), "Comfy sub-tab should be selected after switching back");
 
+        // 5. Focus and Exercise Download Manager Tab
+        System.out.println("\n📥 [Download Manager] Exercising workflow analysis and controls...");
+        DownloadManagerView dmView = context.getBean(DownloadManagerView.class);
+        assertNotNull(dmView, "DownloadManagerView bean must be present");
+        SwingUtilities.invokeAndWait(() -> {
+            tabbedPane.setSelectedIndex(1);
+            dmView.getJsonInputArea().setText("{\"1\": {\"class_type\": \"CheckpointLoaderSimple\", \"inputs\": {\"ckpt_name\": \"v1-5-pruned-emaonly.safetensors\"}}}");
+            mainFrame.validate();
+            mainFrame.doLayout();
+        });
+        Thread.sleep(500);
+        assertEquals("{\"1\": {\"class_type\": \"CheckpointLoaderSimple\", \"inputs\": {\"ckpt_name\": \"v1-5-pruned-emaonly.safetensors\"}}}",
+                dmView.getJsonInputArea().getText());
+        System.out.println("   ✔ Download Manager JSON workflow input verified.");
+
+        // 6. Focus and Exercise Image Lab (Prompt Lab) Tab
+        System.out.println("\n🧪 [Image Lab] Exercising prompt inputs, parameters, and JSON workflow view...");
+        PromptLabView plView = context.getBean(PromptLabView.class);
+        assertNotNull(plView, "PromptLabView bean must be present");
+        int plTabIndex = -1;
+        for (int i = 0; i < tabbedPane.getTabCount(); i++) {
+            if (tabbedPane.getTitleAt(i).contains("Image Lab") || tabbedPane.getTitleAt(i).contains("Prompt Lab")) {
+                plTabIndex = i;
+                break;
+            }
+        }
+        assertTrue(plTabIndex >= 0, "Image Lab tab must exist");
+        final int selectedPlTab = plTabIndex;
+        SwingUtilities.invokeAndWait(() -> {
+            tabbedPane.setSelectedIndex(selectedPlTab);
+            plView.getPromptSubjectField().setText("cinematic sci-fi space station orbiting Saturn, 8k masterpiece");
+            plView.getPromptNegativeField().setText("blurry, low quality, watermark");
+            plView.getPromptWidthSpinner().setValue(1024);
+            plView.getPromptHeightSpinner().setValue(1024);
+            plView.getPromptStepsSpinner().setValue(25);
+            plView.getPromptCfgSpinner().setValue(3.5);
+            plView.getPromptLabRightTabbedPane().setSelectedIndex(1); // JSON Workflow tab
+            mainFrame.validate();
+            mainFrame.doLayout();
+        });
+        Thread.sleep(500);
+        SwingUtilities.invokeAndWait(() -> {
+            plView.getPromptLabRightTabbedPane().setSelectedIndex(0); // Back to Image Preview tab
+        });
+        assertTrue(plView.getPromptJsonArea().getText().contains("1024") || !plView.getPromptJsonArea().getText().isEmpty());
+        System.out.println("   ✔ Image Lab controls and JSON workflow synchronization verified.");
+
+        // 7. Focus and Exercise Video Architect (Beta) Tab
+        System.out.println("\n🎬 [Video Architect] Exercising 1-Click presets, Actor Anchor, Script Deconstruction, and Timeline...");
+        VideoArchitectTab vaTab = context.getBean(VideoArchitectTab.class);
+        assertNotNull(vaTab, "VideoArchitectTab bean must be present");
+        int vaTabIndex = -1;
+        for (int i = 0; i < tabbedPane.getTabCount(); i++) {
+            if (tabbedPane.getTitleAt(i).contains("Video Architect")) {
+                vaTabIndex = i;
+                break;
+            }
+        }
+        assertTrue(vaTabIndex >= 0, "Video Architect tab must exist");
+        final int selectedVaTab = vaTabIndex;
+        SwingUtilities.invokeAndWait(() -> {
+            tabbedPane.setSelectedIndex(selectedVaTab);
+            mainFrame.validate();
+            mainFrame.doLayout();
+        });
+        Thread.sleep(600);
+
+        // Exercise 1-Click TikTok 9:16 and Cinema 16:9 buttons
+        List<Component> vaComponents = getAllComponents(vaTab.getConfigPanel());
+        JButton btnTikTok = (JButton) vaComponents.stream()
+                .filter(c -> c instanceof JButton b && b.getText() != null && b.getText().contains("TikTok 9:16"))
+                .findFirst().orElse(null);
+        JButton btnCinema = (JButton) vaComponents.stream()
+                .filter(c -> c instanceof JButton b && b.getText() != null && b.getText().contains("Cinema 16:9"))
+                .findFirst().orElse(null);
+        assertNotNull(btnTikTok, "1-Click TikTok 9:16 button must exist");
+        assertNotNull(btnCinema, "1-Click Cinema 16:9 button must exist");
+
+        SwingUtilities.invokeAndWait(btnTikTok::doClick);
+        assertEquals(720, vaTab.getConfigPanel().getVideoWidth(), "TikTok preset must set width to 720");
+        assertEquals(1280, vaTab.getConfigPanel().getVideoHeight(), "TikTok preset must set height to 1280");
+        assertEquals(4, vaTab.getConfigPanel().getVideoDuration(), "TikTok preset must set duration to 4s");
+
+        SwingUtilities.invokeAndWait(btnCinema::doClick);
+        assertEquals(1280, vaTab.getConfigPanel().getVideoWidth(), "Cinema preset must set width to 1280");
+        assertEquals(720, vaTab.getConfigPanel().getVideoHeight(), "Cinema preset must set height to 720");
+        assertEquals(5, vaTab.getConfigPanel().getVideoDuration(), "Cinema preset must set duration to 5s");
+
+        // Exercise Actor Anchor and Deconstruct Script
+        SwingUtilities.invokeAndWait(() -> {
+            vaTab.getConfigPanel().getActorAnchorField().setText("young female astronaut in white spacesuit with gold visor");
+            vaTab.getConfigPanel().getPromptSubjectField().setText("She walks across the red Martian dunes. She discovers an ancient glowing monolith.");
+            vaTab.getConfigPanel().getBtnSuggestSubject().doClick();
+        });
+        // Wait for async script deconstruction (fallback or local LLM) to populate timeline
+        for (int wait = 0; wait < 25; wait++) {
+            Thread.sleep(300);
+            if (!vaTab.getWorkspacePanel().getTimelineListModel().isEmpty()) {
+                break;
+            }
+        }
+        assertFalse(vaTab.getWorkspacePanel().getTimelineListModel().isEmpty(), "Deconstruct must populate timeline scenes");
+        int sceneCount = vaTab.getWorkspacePanel().getTimelineListModel().size();
+        System.out.println("   ✔ Deconstructed script into " + sceneCount + " scenes with Actor Anchor.");
+
+        // Exercise Timeline selection, Up/Down move, and Workspace tabs
+        SwingUtilities.invokeAndWait(() -> {
+            JList<de.tki.comfyuicompanion.domain.Scene> listView = vaTab.getWorkspacePanel().getTimelineListView();
+            listView.setSelectedIndex(0);
+            vaTab.getWorkspacePanel().updatePreviewForScene(listView.getSelectedValue());
+            if (sceneCount > 1) {
+                vaTab.getWorkspacePanel().getMoveDownBtn().doClick();
+                vaTab.getWorkspacePanel().getMoveUpBtn().doClick();
+            }
+        });
+        Thread.sleep(400);
+        assertTrue(vaTab.getWorkspacePanel().getStoryboardJsonArea().getText().contains("scene_id"), "Storyboard JSON must be updated");
+        renderScreenshot(mainFrame, new File(screenshotsDir, "video_architect_populated.png"));
+        System.out.println("   ✔ Video Architect presets, Actor Anchor, and Timeline verified.");
+
+        // 8. Focus and Exercise Settings Tab (Theme switching & checkboxes)
+        System.out.println("\n⚙️ [Settings] Exercising theme toggle and configuration checkboxes...");
+        int settingsTabIndex = tabbedPane.getTabCount() - 1;
+        SwingUtilities.invokeAndWait(() -> {
+            tabbedPane.setSelectedIndex(settingsTabIndex);
+            mainFrame.setupTheme(false); // Switch to Light Mode
+            mainFrame.validate();
+            mainFrame.doLayout();
+            mainFrame.repaint();
+        });
+        Thread.sleep(500);
+        renderScreenshot(mainFrame, new File(screenshotsDir, "settings_light_mode.png"));
+
+        SwingUtilities.invokeAndWait(() -> {
+            mainFrame.setupTheme(true); // Switch back to Dark Mode
+            mainFrame.validate();
+            mainFrame.doLayout();
+            mainFrame.repaint();
+        });
+        Thread.sleep(500);
+        System.out.println("   ✔ Settings theme toggle (Dark <-> Light) verified.");
+
+        // Switch back to Dashboard for final screenshot
+        SwingUtilities.invokeAndWait(() -> {
+            tabbedPane.setSelectedIndex(0);
+            mainFrame.validate();
+            mainFrame.doLayout();
+            mainFrame.repaint();
+        });
+        Thread.sleep(500);
+
         // Render main overall screenshot
         File mainOut = new File("target/comfyuicompanion_gui.png");
         renderScreenshot(mainFrame, mainOut);

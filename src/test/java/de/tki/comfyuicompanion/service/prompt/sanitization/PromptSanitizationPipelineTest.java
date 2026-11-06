@@ -163,6 +163,83 @@ class PromptSanitizationPipelineTest {
         assertThat(report.resolvedClassTypes()).isEmpty();
     }
 
+    @Test
+    @DisplayName("Replaces missing custom image saver with core SaveImage preserving filename prefix")
+    void replacesMissingCustomImageSaverWithCoreSaveImage() {
+        JSONObject prompt = basePrompt();
+        prompt.remove("9"); // remove base SaveImage
+        prompt.put("10", node("SaveImageWebp", new JSONObject()
+                .put("images", link("8", 0))
+                .put("filename_prefix", "MyArt")
+                .put("lossless", true)));
+
+        PromptSanitizationReport report = pipeline.sanitize(prompt, objectInfo);
+
+        assertThat(prompt.has("10")).isTrue();
+        JSONObject replaced = prompt.getJSONObject("10");
+        assertThat(replaced.getString("class_type")).isEqualTo("SaveImage");
+        assertThat(replaced.getJSONObject("inputs").getString("filename_prefix")).isEqualTo("MyArt");
+        assertThat(replaced.getJSONObject("inputs").getJSONArray("images").getString(0)).isEqualTo("8");
+        assertThat(report.isExecutable()).isTrue();
+        assertThat(report.resolvedClassTypes()).contains("SaveImageWebp");
+    }
+
+    @Test
+    @DisplayName("Replaces missing custom tiled VAE decoder with core VAEDecode")
+    void replacesMissingTiledVaeDecoderWithCoreVaeDecode() {
+        JSONObject prompt = basePrompt();
+        prompt.remove("8"); // remove base VAEDecode
+        prompt.put("88", node("VAEDecodeTiled", new JSONObject()
+                .put("samples", link("3", 0))
+                .put("vae", link("4", 2))
+                .put("tile_size", 512)));
+        prompt.getJSONObject("9").getJSONObject("inputs").put("images", link("88", 0));
+
+        PromptSanitizationReport report = pipeline.sanitize(prompt, objectInfo);
+
+        assertThat(prompt.has("88")).isTrue();
+        JSONObject replaced = prompt.getJSONObject("88");
+        assertThat(replaced.getString("class_type")).isEqualTo("VAEDecode");
+        assertThat(replaced.getJSONObject("inputs").getJSONArray("samples").getString(0)).isEqualTo("3");
+        assertThat(replaced.getJSONObject("inputs").getJSONArray("vae").getString(0)).isEqualTo("4");
+        assertThat(report.isExecutable()).isTrue();
+        assertThat(report.resolvedClassTypes()).contains("VAEDecodeTiled");
+    }
+
+    @Test
+    @DisplayName("Bypasses missing LoRA loader and connects model directly to consumer")
+    void bypassesMissingLoraLoaderNode() {
+        JSONObject prompt = basePrompt();
+        prompt.put("20", node("Lora Loader (LoraManager)", new JSONObject()
+                .put("model", link("4", 0))
+                .put("lora_name", "detail_enhancer.safetensors")
+                .put("strength_model", 1.0)));
+        prompt.getJSONObject("3").getJSONObject("inputs").put("model", link("20", 0));
+
+        PromptSanitizationReport report = pipeline.sanitize(prompt, objectInfo);
+
+        assertThat(prompt.has("20")).isFalse();
+        JSONArray modelLink = prompt.getJSONObject("3").getJSONObject("inputs").getJSONArray("model");
+        assertThat(modelLink.getString(0)).isEqualTo("4");
+        assertThat(modelLink.getInt(1)).isZero();
+        assertThat(report.isExecutable()).isTrue();
+    }
+
+    @Test
+    @DisplayName("Bypasses missing VRAM cleanup node between VAE decode and SaveImage")
+    void bypassesMissingVramCleanupNode() {
+        JSONObject prompt = basePrompt();
+        prompt.put("50", node("VRAMCleanup", new JSONObject().put("anything", link("8", 0))));
+        prompt.getJSONObject("9").getJSONObject("inputs").put("images", link("50", 0));
+
+        PromptSanitizationReport report = pipeline.sanitize(prompt, objectInfo);
+
+        assertThat(prompt.has("50")).isFalse();
+        JSONArray imgLink = prompt.getJSONObject("9").getJSONObject("inputs").getJSONArray("images");
+        assertThat(imgLink.getString(0)).isEqualTo("8");
+        assertThat(report.isExecutable()).isTrue();
+    }
+
     // --- fixtures -------------------------------------------------------------------------------
 
     private JSONObject basePrompt() {

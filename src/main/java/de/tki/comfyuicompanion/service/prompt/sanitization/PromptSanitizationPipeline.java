@@ -45,6 +45,8 @@ public class PromptSanitizationPipeline {
         return new PromptSanitizationPipeline(List.of(
                 new MissingPassThroughBypassStage(),
                 new MissingPrimitiveInliningStage(),
+                new MissingOutputNodeReplacementStage(),
+                new MissingVaeConverterReplacementStage(),
                 new MissingLatentSourceReplacementStage(),
                 new MissingDanglingSinkPruningStage()));
     }

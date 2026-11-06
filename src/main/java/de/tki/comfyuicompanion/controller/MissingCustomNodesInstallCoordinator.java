@@ -48,6 +48,10 @@ public class MissingCustomNodesInstallCoordinator {
         if (missingNodeTypes == null || missingNodeTypes.isEmpty()) return;
         List<String> nodeTypes = List.copyOf(missingNodeTypes);
         if (bridgeService == null) {
+            if (de.tki.comfyuicompanion.util.PlatformUtils.isUnattended()) {
+                log.warn("Unattended mode: missing custom nodes {} and no bridge service available.", nodeTypes);
+                return;
+            }
             SwingUtilities.invokeLater(() -> showFallbackWarning(parent, nodeTypes));
             return;
         }
@@ -55,16 +59,52 @@ public class MissingCustomNodesInstallCoordinator {
         CompletableFuture<Void> dbReady = bridgeService.ensureDatabaseLoadedAsync();
         (dbReady != null ? dbReady : CompletableFuture.<Void>completedFuture(null))
                 .thenApply(ignored -> bridgeService.resolvePackagesForNodes(nodeTypes))
-                .whenComplete((packages, error) -> SwingUtilities.invokeLater(() -> {
+                .whenComplete((packages, error) -> {
                     if (error != null) {
                         log.warn("Could not resolve custom node packages for {}: {}", nodeTypes, error.getMessage());
                     }
-                    if (error != null || packages == null || packages.isEmpty()) {
-                        showFallbackWarning(parent, nodeTypes);
-                    } else {
-                        showInstallDialog(parent, packages);
+                    if (de.tki.comfyuicompanion.util.PlatformUtils.isUnattended()) {
+                        log.warn("Unattended mode: skipping modal dialog for missing nodes: {}. Packages resolved: {}",
+                                nodeTypes, packages != null ? packages.keySet() : 0);
+                        return;
                     }
-                }));
+                    SwingUtilities.invokeLater(() -> {
+                        if (error != null || packages == null || packages.isEmpty()) {
+                            showFallbackWarning(parent, nodeTypes);
+                        } else {
+                            showInstallDialog(parent, packages);
+                        }
+                    });
+                });
+    }
+
+    /**
+     * Programmatically installs packages for the given node class types without displaying GUI dialogs.
+     *
+     * @param missingNodeTypes collection of missing node class types
+     * @param progressCallback consumer receiving progress notifications
+     * @return future completing with true if all installations succeeded
+     */
+    public CompletableFuture<Boolean> installMissingPackagesAsync(Collection<String> missingNodeTypes, java.util.function.Consumer<String> progressCallback) {
+        if (missingNodeTypes == null || missingNodeTypes.isEmpty() || bridgeService == null) {
+            return CompletableFuture.completedFuture(false);
+        }
+        List<String> nodeTypes = List.copyOf(missingNodeTypes);
+        CompletableFuture<Void> dbReady = bridgeService.ensureDatabaseLoadedAsync();
+        return (dbReady != null ? dbReady : CompletableFuture.<Void>completedFuture(null))
+                .thenCompose(ignored -> {
+                    Map<CustomNodePackage, List<String>> packages = bridgeService.resolvePackagesForNodes(nodeTypes);
+                    if (packages == null || packages.isEmpty()) {
+                        log.warn("No custom node packages found in manager database for: {}", nodeTypes);
+                        return CompletableFuture.completedFuture(false);
+                    }
+                    java.util.List<CompletableFuture<Boolean>> futures = new java.util.ArrayList<>();
+                    for (CustomNodePackage pkg : packages.keySet()) {
+                        futures.add(bridgeService.installPackageAsync(pkg, progressCallback));
+                    }
+                    return CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
+                            .thenApply(v -> futures.stream().allMatch(f -> Boolean.TRUE.equals(f.join())));
+                });
     }
 
     private void showInstallDialog(java.awt.Component parent, Map<CustomNodePackage, List<String>> packages) {

@@ -17,6 +17,7 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -34,14 +35,22 @@ public class ComfyApiClient {
     private final ConfigService configService;
     private final HttpClient httpClient;
     private final de.tki.comfyuicompanion.service.gateway.ComfyUiGateway comfyUiGateway;
+    private final de.tki.comfyuicompanion.service.prompt.sanitization.PromptSanitizationPipeline promptSanitizer;
 
     @Autowired
-    public ComfyApiClient(ConfigService configService, @Autowired(required = false) de.tki.comfyuicompanion.service.gateway.ComfyUiGateway comfyUiGateway) {
+    public ComfyApiClient(ConfigService configService,
+                          @Autowired(required = false) de.tki.comfyuicompanion.service.gateway.ComfyUiGateway comfyUiGateway,
+                          @Autowired(required = false) de.tki.comfyuicompanion.service.prompt.sanitization.PromptSanitizationPipeline promptSanitizer) {
         this.configService = configService;
         this.comfyUiGateway = comfyUiGateway;
+        this.promptSanitizer = promptSanitizer != null ? promptSanitizer : de.tki.comfyuicompanion.service.prompt.sanitization.PromptSanitizationPipeline.createDefault();
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(5))
                 .build();
+    }
+
+    public ComfyApiClient(ConfigService configService, de.tki.comfyuicompanion.service.gateway.ComfyUiGateway comfyUiGateway) {
+        this(configService, comfyUiGateway, null);
     }
 
     /**
@@ -219,11 +228,14 @@ public class ComfyApiClient {
                 try {
                     org.json.JSONObject objectInfo = getObjectInfo(comfyUrl);
                     if (objectInfo != null) {
+                        if (promptSanitizer != null) {
+                            promptSanitizer.sanitize(promptObj, objectInfo);
+                        }
                         de.tki.comfyuicompanion.service.PromptBlueprintApiService.sanitizeModelInputs(promptObj, objectInfo);
                     }
                 } catch (Exception ignored) {
-            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
-        }
+                    logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+                }
                 safePayload = obj.toString();
             }
         } catch (Exception ignored) {
@@ -236,7 +248,57 @@ public class ComfyApiClient {
                 .POST(HttpRequest.BodyPublishers.ofString(safePayload))
                 .build();
 
-        return httpClient.send(promptReq, HttpResponse.BodyHandlers.ofString());
+        HttpResponse<String> response = httpClient.send(promptReq, HttpResponse.BodyHandlers.ofString());
+        if (response != null && response.statusCode() >= 400) {
+            diagnoseAndLogNodeErrors(response.body());
+        }
+        return response;
+    }
+
+    /**
+     * Extracts missing custom node class types from a ComfyUI error response payload.
+     *
+     * @param responseBody JSON error response from ComfyUI /prompt
+     * @return list of missing class types
+     */
+    public static List<String> extractMissingNodeClassesFromErrorResponse(String responseBody) {
+        List<String> missingClasses = new ArrayList<>();
+        if (responseBody == null || responseBody.isBlank()) return missingClasses;
+        try {
+            JSONObject errorJson = new JSONObject(responseBody);
+            JSONObject nodeErrors = errorJson.optJSONObject("node_errors");
+            if (nodeErrors != null) {
+                for (String nodeId : nodeErrors.keySet()) {
+                    JSONObject nodeErr = nodeErrors.optJSONObject(nodeId);
+                    if (nodeErr != null) {
+                        String classType = nodeErr.optString("class_type", "");
+                        JSONArray errList = nodeErr.optJSONArray("errors");
+                        if (errList != null) {
+                            for (int i = 0; i < errList.length(); i++) {
+                                JSONObject e = errList.optJSONObject(i);
+                                if (e != null && "class_not_found".equalsIgnoreCase(e.optString("type"))) {
+                                    String target = !classType.isBlank() ? classType : e.optString("message");
+                                    if (!target.isBlank() && !missingClasses.contains(target)) {
+                                        missingClasses.add(target);
+                                    }
+                                }
+                            }
+                        } else if (!classType.isBlank() && !missingClasses.contains(classType)) {
+                            missingClasses.add(classType);
+                        }
+                    }
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        return missingClasses;
+    }
+
+    private void diagnoseAndLogNodeErrors(String responseBody) {
+        List<String> missing = extractMissingNodeClassesFromErrorResponse(responseBody);
+        if (!missing.isEmpty()) {
+            logger.warn("⚠️ [ComfyApiClient] ComfyUI server reported missing custom node classes: {}", missing);
+        }
     }
 
     /**

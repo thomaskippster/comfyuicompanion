@@ -294,17 +294,7 @@ public class PromptLabExecutionHandler {
 
                 String promptJsonText = promptLabView.getPromptJsonArea().getText();
                 JSONObject parsedPrompt = new JSONObject(promptJsonText);
-                JSONObject promptToQueue;
-                if (parsedPrompt.has("prompt")) {
-                    promptToQueue = parsedPrompt.getJSONObject("prompt");
-                } else if (parsedPrompt.has("nodes")) {
-                    JSONObject flattened = de.tki.comfyuicompanion.service.impl.ComfyPipelineService.flattenWorkflow(parsedPrompt);
-                    JSONObject apiPayload = de.tki.comfyuicompanion.service.impl.ComfyPipelineService.convertUiToApi(flattened);
-                    promptToQueue = apiPayload.getJSONObject("prompt");
-                } else {
-                    promptToQueue = parsedPrompt;
-                }
-                PromptBlueprintApiService.cleanNonNodeKeys(promptToQueue);
+                JSONObject promptToQueue = PromptBlueprintApiService.extractPromptToQueue(parsedPrompt);
 
                 PromptBlueprintApiService.PromptLabInputs inputs = new PromptBlueprintApiService.PromptLabInputs(
                         assembledPrompt, negativePrompt, widthVal, heightVal, stepsVal, cfgVal,

@@ -20,7 +20,7 @@ public final class StandardModelDefaultsCatalog {
         ModelArchitecture effective = arch == null ? ModelArchitecture.ARCH_UNKNOWN : arch;
         String name = effective.name();
         return switch (effective) {
-            case ARCH_FLUX -> new ModelDefaults("FLUX1/ae.safetensors", "flux", "normal", "euler", name);
+            case ARCH_FLUX -> new ModelDefaults("ae.safetensors", "flux", "normal", "euler", name);
             case ARCH_SDXL -> new ModelDefaults("sdxl_vae.safetensors", "stable_diffusion", "normal", "euler", name);
             case ARCH_SD3 -> new ModelDefaults("sd3_vae.safetensors", "sd3", "normal", "euler", name);
             case ARCH_LUMINA2 -> new ModelDefaults("ae.safetensors", "longcat_image", "simple", "euler", name);

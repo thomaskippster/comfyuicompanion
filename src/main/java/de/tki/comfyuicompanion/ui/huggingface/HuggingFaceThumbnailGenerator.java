@@ -1,17 +1,21 @@
 package de.tki.comfyuicompanion.ui.huggingface;
 
 import de.tki.comfyuicompanion.domain.HuggingFaceModelEntry;
+import de.tki.comfyuicompanion.util.WorkflowImageLoader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.imageio.ImageIO;
-import java.awt.*;
+import java.awt.BasicStroke;
+import java.awt.Color;
+import java.awt.Component;
+import java.awt.Font;
+import java.awt.FontMetrics;
+import java.awt.GradientPaint;
+import java.awt.Graphics2D;
+import java.awt.Image;
+import java.awt.RenderingHints;
+import java.awt.geom.RoundRectangle2D;
 import java.awt.image.BufferedImage;
-import java.io.InputStream;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.Locale;
 import java.util.Map;
@@ -29,10 +33,6 @@ public final class HuggingFaceThumbnailGenerator {
     private static final int THUMB_HEIGHT = 300;
 
     private static final Map<String, Image> IMAGE_CACHE = new ConcurrentHashMap<>();
-    private static final HttpClient HTTP_CLIENT = HttpClient.newBuilder()
-            .followRedirects(HttpClient.Redirect.ALWAYS)
-            .connectTimeout(Duration.ofSeconds(10))
-            .build();
 
     private HuggingFaceThumbnailGenerator() {
         // Utility class
@@ -70,22 +70,11 @@ public final class HuggingFaceThumbnailGenerator {
 
         Thread.ofVirtual().name("HF-ThumbDownload").start(() -> {
             try {
-                HttpRequest request = HttpRequest.newBuilder()
-                        .uri(URI.create(url))
-                        .timeout(Duration.ofSeconds(12))
-                        .GET()
-                        .build();
-
-                HttpResponse<InputStream> response = HTTP_CLIENT.send(request, HttpResponse.BodyHandlers.ofInputStream());
-                if (response.statusCode() == 200) {
-                    try (InputStream in = response.body()) {
-                        BufferedImage img = ImageIO.read(in);
-                        if (img != null) {
-                            IMAGE_CACHE.put(url, img);
-                            if (repaintTarget != null) {
-                                repaintTarget.repaint();
-                            }
-                        }
+                BufferedImage img = WorkflowImageLoader.loadOrFetchCached(url, Duration.ofSeconds(10));
+                if (img != null) {
+                    IMAGE_CACHE.put(url, img);
+                    if (repaintTarget != null) {
+                        repaintTarget.repaint();
                     }
                 }
             } catch (Exception e) {
@@ -155,7 +144,7 @@ public final class HuggingFaceThumbnailGenerator {
         }
 
         // 6. Bottom Status Indicator
-        String bottomText = "⚡ ComfyUI Synthesized Workflow";
+        String bottomText = "ComfyUI Synthesized Workflow";
         g2.setColor(darkMode ? new Color(52, 211, 153) : new Color(5, 150, 105));
         g2.setFont(new Font("SansSerif", Font.BOLD, 12));
         g2.drawString(bottomText, 24, THUMB_HEIGHT - 24);
@@ -173,7 +162,7 @@ public final class HuggingFaceThumbnailGenerator {
         if (lower.contains("sd3")) return "STABLE DIFFUSION 3";
         if (lower.contains("qwen")) return "QWEN VISION";
         if (lower.contains("gguf")) return "GGUF QUANT";
-        return modelName.length() > 22 ? modelName.substring(0, 20) + "…" : modelName;
+        return modelName.length() > 22 ? modelName.substring(0, 20) + "..." : modelName;
     }
 
     private static void drawPillBadge(Graphics2D g2, int x, int y, String text, Color bg, Color fg) {

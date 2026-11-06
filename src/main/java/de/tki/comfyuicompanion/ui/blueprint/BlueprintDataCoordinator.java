@@ -14,6 +14,7 @@ import de.tki.comfyuicompanion.ui.BlueprintGalleryTab.BlueprintStatus;
 import de.tki.comfyuicompanion.ui.VideoPreviewDialog;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import de.tki.comfyuicompanion.util.WorkflowImageLoader;
 
 import javax.swing.JButton;
 import javax.swing.JOptionPane;
@@ -260,14 +261,17 @@ public class BlueprintDataCoordinator {
         // 1. Fast in-memory check via LocalModelValidator
         if (localModelValidator != null) {
             if (localModelValidator.isModelActive(reqName)) {
-                return "✅ Already exists";
+                return "Already exists";
             }
             if (localModelValidator.isModelArchived(reqName)) {
-                return "📦 Archived";
+                return "Archived";
             }
             Set<String> activeNames = localModelValidator.getActiveLocalModelNames();
-            if (activeNames != null && (activeNames.contains(lowerName) || activeNames.contains(baseName(lowerName)))) {
-                return "✅ Already exists";
+            String quantStem = LocalModelScanner.normalizeQuantizationStem(lowerName);
+            if (activeNames != null && (activeNames.contains(lowerName)
+                    || activeNames.contains(baseName(lowerName))
+                    || (!quantStem.isEmpty() && activeNames.contains(quantStem)))) {
+                return "Already exists";
             }
         }
 
@@ -275,14 +279,14 @@ public class BlueprintDataCoordinator {
         if (lowerName.equals("openai") || lowerName.equals("dall-e") || lowerName.equals("dalle") ||
             lowerName.equals("elevenlabs") || lowerName.equals("gemini") || lowerName.equals("anthropic") ||
             lowerName.equals("claude") || lowerName.equals("openrouter")) {
-            return "✅ Already exists";
+            return "Already exists";
         }
 
         // 3. Fast in-memory lookup in LocalModelScanner
         if (localModelScanner != null) {
             Optional<Path> cached = localModelScanner.findModelFromCache(reqName);
             if (cached.isPresent()) {
-                return "✅ Already exists";
+                return "Already exists";
             }
         }
 
@@ -298,26 +302,26 @@ public class BlueprintDataCoordinator {
 
         Path local = "root".equals(normalizedFolder) ? Paths.get(base, reqName) : Paths.get(base, normalizedFolder, reqName);
         if (Files.exists(local) && Files.isRegularFile(local)) {
-            return "✅ Already exists";
+            return "Already exists";
         }
 
         if (archive != null && !archive.trim().isEmpty()) {
             Path archivedPath = "root".equals(normalizedFolder) ? Paths.get(archive, reqName) : Paths.get(archive, normalizedFolder, reqName);
             if (Files.exists(archivedPath) && Files.isRegularFile(archivedPath)) {
-                return "📦 Archived";
+                return "Archived";
             }
         }
 
         if (info.getUrl() == null || info.getUrl().equals("MISSING")) {
             return "Idle";
         } else {
-            return "✅ Known Good";
+            return "Known Good";
         }
     }
 
     public boolean isModelPresentDeep(ModelInfo req) {
         String status = getModelStatus(req);
-        return status.equals("✅ Already exists");
+        return status.contains("Already exists");
     }
 
     public BlueprintStatus computeStatusInternal(BlueprintEntry entry) {
@@ -342,7 +346,7 @@ public class BlueprintDataCoordinator {
 
         if (triggerBtn != null) {
             triggerBtn.setEnabled(false);
-            triggerBtn.setText("⏳ Loading Preview...");
+            triggerBtn.setText("Loading Preview...");
         }
 
         CompletableFuture.supplyAsync(() -> {
@@ -383,7 +387,7 @@ public class BlueprintDataCoordinator {
         }, VIRTUAL_EXECUTOR).thenAccept(videoFile -> SwingUtilities.invokeLater(() -> {
             if (triggerBtn != null) {
                 triggerBtn.setEnabled(true);
-                triggerBtn.setText("▶  Play Preview");
+                triggerBtn.setText("Play Preview");
             }
             VideoPreviewDialog previewDialog = new VideoPreviewDialog(
                     parent,
@@ -399,7 +403,7 @@ public class BlueprintDataCoordinator {
             SwingUtilities.invokeLater(() -> {
                 if (triggerBtn != null) {
                     triggerBtn.setEnabled(true);
-                    triggerBtn.setText("▶  Play Preview");
+                    triggerBtn.setText("Play Preview");
                 }
                 JOptionPane.showMessageDialog(
                         parent,
@@ -413,21 +417,11 @@ public class BlueprintDataCoordinator {
     }
 
     private File getPreviewDiskCacheDir() {
-        File dir = new File(configService != null ? configService.getAppDataPath() : System.getProperty("user.home") + File.separator + ".comfyuicompanion", "cache" + File.separator + "previews");
-        if (!dir.exists()) {
-            dir.mkdirs();
-        }
-        return dir;
+        return WorkflowImageLoader.getPreviewCacheDir().toFile();
     }
 
     public static String hashUrl(String url) {
-        try {
-            java.security.MessageDigest md = java.security.MessageDigest.getInstance("SHA-256");
-            byte[] hash = md.digest(url.getBytes(java.nio.charset.StandardCharsets.UTF_8));
-            return java.util.HexFormat.of().formatHex(hash);
-        } catch (Exception e) {
-            return Integer.toHexString(url.hashCode());
-        }
+        return WorkflowImageLoader.hashUrl(url);
     }
 
     public static String baseName(String nameOrPath) {

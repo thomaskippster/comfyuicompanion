@@ -13,6 +13,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -122,7 +123,7 @@ public class CivitaiMetadataService implements ICivitaiMetadataService {
             }
         }
 
-        return httpClient.sendAsync(requestBuilder.build(), HttpResponse.BodyHandlers.ofString())
+        return httpClient.sendAsync(requestBuilder.build(), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8))
                 .thenAccept(response -> {
                     if (response.statusCode() == 200) {
                         parseEnumsResponse(response.body());

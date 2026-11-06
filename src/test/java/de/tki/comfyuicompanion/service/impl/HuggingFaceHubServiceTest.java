@@ -102,4 +102,69 @@ class HuggingFaceHubServiceTest {
         assertThat(inArchive).isTrue();
         assertThat(notInArchive).isFalse();
     }
+
+    @Test
+    @DisplayName("Should filter out pure model weight repositories without ComfyUI workflow JSON files")
+    void shouldFilterOutPureModelDumpsWhenOnlyWorkflowsEnabled() {
+        String apiJson = """
+                [
+                  {
+                    "id": "Winnougan/MiniMax-H3-INT4_Convrot_ComfyUI",
+                    "author": "Winnougan",
+                    "downloads": 50,
+                    "likes": 39,
+                    "pipeline_tag": "image-to-video",
+                    "tags": ["comfyui"],
+                    "siblings": [
+                      {"rfilename": "MMH3-FLA-TurboV1.2-int8-convrot-simple.safetensors"},
+                      {"rfilename": "qwen3vl_32b_minimax_h3-int4_convrot.safetensors"},
+                      {"rfilename": "config.json"}
+                    ]
+                  },
+                  {
+                    "id": "Comfy-Org/Wan_2.1_ComfyUI_Workflows",
+                    "author": "Comfy-Org",
+                    "downloads": 12000,
+                    "likes": 450,
+                    "pipeline_tag": "image-to-video",
+                    "tags": ["comfyui"],
+                    "siblings": [
+                      {"rfilename": "workflows/wan21_i2v_workflow.json"},
+                      {"rfilename": "wan2.1_i2v_480p_14B_fp8.safetensors"}
+                    ]
+                  }
+                ]
+                """;
+
+        List<HuggingFaceModelEntry> workflowRepos = service.parseModelEntries(apiJson, true);
+
+        assertThat(workflowRepos).hasSize(1);
+        assertThat(workflowRepos.get(0).repoId()).isEqualTo("Comfy-Org/Wan_2.1_ComfyUI_Workflows");
+        assertThat(workflowRepos.get(0).files()).extracting(HuggingFaceFileEntry::filename)
+                .contains("wan21_i2v_workflow.json", "wan2.1_i2v_480p_14B_fp8.safetensors");
+    }
+
+    @Test
+    @DisplayName("Should deduplicate multi-quantization files by functional role for a single workflow run")
+    void shouldDeduplicateMultiQuantizationFilesForSingleRun() {
+        List<HuggingFaceFileEntry> sevenFiles = List.of(
+                new HuggingFaceFileEntry("ckpt1.safetensors", "ckpt1.safetensors", 19000000000L, "19 GB", "http://dl/1", "checkpoints", "Mid", true),
+                new HuggingFaceFileEntry("ckpt2.safetensors", "ckpt2.safetensors", 21000000000L, "21 GB", "http://dl/2", "checkpoints", "High", true),
+                new HuggingFaceFileEntry("ckpt3.safetensors", "ckpt3.safetensors", 12000000000L, "12 GB", "http://dl/3", "checkpoints", "Std", true),
+                new HuggingFaceFileEntry("clip1.safetensors", "clip1.safetensors", 13000000000L, "13 GB", "http://dl/4", "clip", "Mid", true),
+                new HuggingFaceFileEntry("clip2.safetensors", "clip2.safetensors", 14000000000L, "14 GB", "http://dl/5", "clip", "Mid", true),
+                new HuggingFaceFileEntry("workflows/video_wf.json", "video_wf.json", 12000L, "Workflow JSON", "http://dl/wf", "workflows", "Workflow", false)
+        );
+
+        List<HuggingFaceFileEntry> required = HuggingFaceWorkflowAnalyzer.selectOperationalFilesForSingleRun(
+                sevenFiles,
+                sevenFiles.get(2),
+                f -> "ckpt3.safetensors".equals(f.filename()) || "clip1.safetensors".equals(f.filename()) ? "Installed" : "Missing"
+        );
+
+        // Only 1 primary checkpoint + 1 CLIP encoder are required for the workflow run
+        assertThat(required).hasSize(2);
+        assertThat(required).extracting(HuggingFaceFileEntry::filename)
+                .containsExactly("ckpt3.safetensors", "clip1.safetensors");
+    }
 }

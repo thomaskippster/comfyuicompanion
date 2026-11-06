@@ -23,7 +23,7 @@ import java.util.function.BiConsumer;
 public class DefaultDownloadManager implements IDownloadManager {
     private static final Logger logger = LoggerFactory.getLogger(DefaultDownloadManager.class);
     private final ThreadPoolExecutor executor = new ThreadPoolExecutor(3, 3, 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>());
-    private final HttpClient httpClient = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.ALWAYS).connectTimeout(Duration.ofSeconds(60)).build();
+    private final HttpClient httpClient = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.ALWAYS).connectTimeout(Duration.ofSeconds(5)).build();
     private final Set<Integer> completedIndices = ConcurrentHashMap.newKeySet();
     private final Map<Integer, String> statusMap = new ConcurrentHashMap<>();
     private final List<ModelInfo> activeQueueModels = new CopyOnWriteArrayList<>();
@@ -162,12 +162,18 @@ public class DefaultDownloadManager implements IDownloadManager {
         safeUpdateStatus(index, "Connecting...", statusUpdater);
         try {
             String url = info.getUrl();
-            if (url == null || url.isBlank() || url.equalsIgnoreCase("LOCAL") || (!url.toLowerCase().startsWith("http://") && !url.toLowerCase().startsWith("https://"))) {
-                logger.warn("Model [{}] does not have a valid remote download URL (url='{}'). Skipping download.", info.getName(), url);
-                if (!isStopped && isSelected(index)) {
-                    safeUpdateStatus(index, "❌ No download URL available", statusUpdater);
+            if (url == null || url.isBlank() || "MISSING".equalsIgnoreCase(url) || url.equalsIgnoreCase("LOCAL") || (!url.toLowerCase().startsWith("http://") && !url.toLowerCase().startsWith("https://"))) {
+                String fallback = de.tki.comfyuicompanion.service.workflow.WorkflowModelExtractor.resolveFallbackDownloadUrl(info.getFilename() != null ? info.getFilename() : info.getName(), info.getType());
+                if (fallback != null && !fallback.isBlank()) {
+                    url = fallback;
+                    info.setUrl(fallback);
+                } else {
+                    logger.warn("Model [{}] does not have a valid remote download URL (url='{}'). Skipping download.", info.getName(), url);
+                    if (!isStopped && isSelected(index)) {
+                        safeUpdateStatus(index, "❌ No download URL available", statusUpdater);
+                    }
+                    return;
                 }
-                return;
             }
             String sub = (info.getSave_path() == null || info.getSave_path().isEmpty() || "default".equalsIgnoreCase(info.getSave_path())) ?
                     ModelFolder.fromString(info.getType()).getDefaultFolderName() : info.getSave_path();
@@ -196,7 +202,7 @@ public class DefaultDownloadManager implements IDownloadManager {
             boolean inArchive = archive != null && !archive.isEmpty() && file.getAbsolutePath().toLowerCase().startsWith(new File(archive).getAbsolutePath().toLowerCase());
             if (file.exists() && (file.length() == 0 || inArchive) && !inArchive) file.delete();
             long existingSize = inArchive ? 0 : getExistingDownloadedBytes(targetFile);
-            String url = appendCivitaiTokenIfNeeded(info.getUrl());
+            String url = normalizeUrl(info.getUrl());
             if (checkDiskSpace(targetFile, 0, existingSize, index, statusUpdater)) return;
             if (waitForPauseAndCheckSelection(index, statusUpdater)) return;
 
@@ -306,12 +312,20 @@ public class DefaultDownloadManager implements IDownloadManager {
     }
 
     private boolean isRetriableException(Exception e) {
-        if (e instanceof InterruptedException || e instanceof java.net.UnknownHostException) return false;
+        if (e instanceof InterruptedException || e instanceof java.net.UnknownHostException || e instanceof java.net.ConnectException || e.getCause() instanceof java.net.ConnectException) return false;
         String msg = e.getMessage() != null ? e.getMessage().toLowerCase() : "";
         if (msg.contains("refused") || msg.contains("404") || msg.contains("not found")) return false;
         if (msg.contains("401") || msg.contains("403") || msg.contains("auth required") || msg.contains("key required")) return false;
         if (msg.contains("lfs stub")) return false;
         return true;
+    }
+
+    private String normalizeUrl(String url) {
+        if (url == null) return null;
+        if (url.contains("huggingface.co") && url.contains("/blob/")) {
+            url = url.replace("/blob/", "/resolve/");
+        }
+        return appendCivitaiTokenIfNeeded(url);
     }
 
     private String appendCivitaiTokenIfNeeded(String url) {

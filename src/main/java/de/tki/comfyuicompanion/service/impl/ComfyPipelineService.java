@@ -34,7 +34,7 @@ import java.util.concurrent.CompletableFuture;
 public class ComfyPipelineService {
 
     private static final Logger logger = LoggerFactory.getLogger(ComfyPipelineService.class);
-    private static final WorkflowTransformationService DEFAULT_TRANSFORMATION_SERVICE =
+    private static volatile WorkflowTransformationService activeTransformationService =
             new WorkflowTransformationService(null);
 
     /**
@@ -169,6 +169,9 @@ public class ComfyPipelineService {
         this.processTracker = processTracker;
         this.lifecycleService = lifecycleService;
         this.mediaTranscodingService = mediaTranscodingService;
+        if (workflowTransformationService != null) {
+            activeTransformationService = workflowTransformationService;
+        }
         ComfyNodeInspectionClient effInspection = inspectionClient != null ? inspectionClient : new ComfyNodeInspectionClient(this.httpClient);
         SceneSimulationService effSimulation = simulationService != null ? simulationService : new SceneSimulationService(processTracker);
         this.workflowBuilder = workflowBuilder != null ? workflowBuilder : new VideoWorkflowBuilder(effInspection, modelArchitectureService, hardwareProfileService, promptBlueprintApiService, comfyTemplateService, workflowTransformationService);
@@ -185,7 +188,7 @@ public class ComfyPipelineService {
      * @return converted API prompt JSON
      */
     public static JSONObject convertUiToApi(JSONObject uiWorkflow) {
-        return DEFAULT_TRANSFORMATION_SERVICE.convertUiToApi(uiWorkflow);
+        return activeTransformationService.convertUiToApi(uiWorkflow);
     }
 
     /**
@@ -195,7 +198,7 @@ public class ComfyPipelineService {
      * @return flattened UI workflow
      */
     public static JSONObject flattenWorkflow(JSONObject uiWorkflow) {
-        return DEFAULT_TRANSFORMATION_SERVICE.flattenWorkflow(uiWorkflow);
+        return activeTransformationService.flattenWorkflow(uiWorkflow);
     }
 
     /**
@@ -262,7 +265,6 @@ public class ComfyPipelineService {
     public CompletableFuture<File> generateKeyframe(Scene scene) {
         return scenePipelineRunner.executeKeyframe(scene);
     }
-
 
     /**
      * Generates a montage scene using existing source clips where applicable.

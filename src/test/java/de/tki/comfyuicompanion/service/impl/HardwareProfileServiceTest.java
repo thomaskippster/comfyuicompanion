@@ -28,7 +28,7 @@ public class HardwareProfileServiceTest {
 
         // Mid-Tier GPU (12 - 20 GB)
         assertEquals(HardwareTier.MID_TIER, HardwareProfileService.classifyTier(12L * GIB, true));
-        assertEquals(HardwareTier.MID_TIER, HardwareProfileService.classifyTier(16L * GIB, true));
+        assertEquals(HardwareTier.HIGH_END, HardwareProfileService.classifyTier(16L * GIB, true));
 
         // High-End GPU (>= 20 GB)
         assertEquals(HardwareTier.HIGH_END, HardwareProfileService.classifyTier(24L * GIB, true));
@@ -46,9 +46,9 @@ public class HardwareProfileServiceTest {
         assertTrue(budgetProfile.isWeakSystem());
         assertEquals("8.0 GiB", budgetProfile.formattedVram());
 
-        HardwareProfile midProfile = new HardwareProfile("NVIDIA GeForce RTX 4080", 16L * GIB, 64L * GIB, 24, true, HardwareTier.MID_TIER);
+        HardwareProfile midProfile = new HardwareProfile("NVIDIA GeForce RTX 3060", 12L * GIB, 64L * GIB, 24, true, HardwareTier.MID_TIER);
         assertFalse(midProfile.isWeakSystem());
-        assertEquals("16.0 GiB", midProfile.formattedVram());
+        assertEquals("12.0 GiB", midProfile.formattedVram());
 
         HardwareProfile highProfile = new HardwareProfile("NVIDIA GeForce RTX 4090", 24L * GIB, 64L * GIB, 32, true, HardwareTier.HIGH_END);
         assertFalse(highProfile.isWeakSystem());
@@ -72,15 +72,15 @@ public class HardwareProfileServiceTest {
         assertEquals(360, budgetConfig.defaultHeight());
         assertEquals("background_mode", budgetConfig.recommendedProfileId(), "Budget systems should recommend lowvram profile");
 
-        // 2. When monitor reports Mid-tier 16GB
-        Mockito.when(mockMonitor.getVramBytes()).thenReturn(16L * GIB);
-        Mockito.when(mockMonitor.getGpuName()).thenReturn("NVIDIA GeForce RTX 4080");
+        // 2. When monitor reports Mid-tier 12GB
+        Mockito.when(mockMonitor.getVramBytes()).thenReturn(12L * GIB);
+        Mockito.when(mockMonitor.getGpuName()).thenReturn("NVIDIA GeForce RTX 3060 12GB");
         service.refreshProfile();
 
         VideoPresetConfig midConfig = service.getRecommendedVideoConfig();
         assertNotNull(midConfig);
-        assertEquals(832, midConfig.defaultWidth());
-        assertEquals(480, midConfig.defaultHeight());
+        assertEquals(960, midConfig.defaultWidth());
+        assertEquals(544, midConfig.defaultHeight());
 
         // 3. When monitor reports High-end 24GB
         Mockito.when(mockMonitor.getVramBytes()).thenReturn(24L * GIB);

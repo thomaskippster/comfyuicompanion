@@ -29,6 +29,19 @@ import java.util.Map;
 public class ExtraModelPathsYamlSynchronizer {
     private static final Logger logger = LoggerFactory.getLogger(ExtraModelPathsYamlSynchronizer.class);
 
+    private final de.tki.comfyuicompanion.service.ILocalModelArchiveDetector archiveDetector;
+
+    public ExtraModelPathsYamlSynchronizer() {
+        this(null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public ExtraModelPathsYamlSynchronizer(
+            @org.springframework.beans.factory.annotation.Autowired(required = false)
+            de.tki.comfyuicompanion.service.ILocalModelArchiveDetector archiveDetector) {
+        this.archiveDetector = archiveDetector;
+    }
+
     /**
      * Loads extra model paths from existing YAML files into the provided {@link PathResolver}.
      *
@@ -143,32 +156,19 @@ public class ExtraModelPathsYamlSynchronizer {
                     data = new LinkedHashMap<>();
                 }
 
-                Map<String, Object> companionSection = new LinkedHashMap<>();
-                companionSection.put("base_path", normalizedModelsPath);
-                companionSection.put("checkpoints", "checkpoints");
-                companionSection.put("configs", "configs");
-                companionSection.put("vae", "vae");
-                companionSection.put("loras", "loras\nlycoris");
-                companionSection.put("upscale_models", "upscale_models\nrealesrgan");
-                companionSection.put("controlnet", "controlnet");
-                companionSection.put("clip", "clip\ntext_encoders");
-                companionSection.put("clip_vision", "clip_vision");
-                companionSection.put("style_models", "style_models");
-                companionSection.put("hypernetworks", "hypernetworks");
-                companionSection.put("embeddings", "embeddings");
-                companionSection.put("diffusers", "diffusers");
-                companionSection.put("gligen", "gligen");
-                companionSection.put("unet", "unet\ndiffusion_models");
-                companionSection.put("audio_encoders", "audio_encoders");
-                companionSection.put("vae_approx", "vae_approx");
-                companionSection.put("photomaker", "photomaker");
-                companionSection.put("ipadapter", "ipadapter");
-                companionSection.put("onnx", "onnx");
-                companionSection.put("llm", "llm");
-                companionSection.put("model_patches", "model_patches");
-                companionSection.put("latent_upscale_models", "latent_upscale_models");
+                data.put("comfyui_companion", buildModelFolderMapping(normalizedModelsPath));
 
-                data.put("comfyui_companion", companionSection);
+                if (archiveDetector != null) {
+                    List<Path> archiveRoots = archiveDetector.detectArchiveRoots();
+                    int archiveIndex = 1;
+                    for (Path archiveRoot : archiveRoots) {
+                        String normArchive = archiveRoot.toString().replace("\\", "/");
+                        if (!normArchive.equalsIgnoreCase(normalizedModelsPath)) {
+                            String sectionKey = "comfyui_archive_" + (archiveIndex++);
+                            data.put(sectionKey, buildModelFolderMapping(normArchive));
+                        }
+                    }
+                }
 
                 DumperOptions options = new DumperOptions();
                 options.setDefaultFlowStyle(DumperOptions.FlowStyle.BLOCK);
@@ -182,5 +182,34 @@ public class ExtraModelPathsYamlSynchronizer {
                 logger.error("Failed to update YAML at {}: {}", yamlPath, e.getMessage(), e);
             }
         }
+    }
+    private Map<String, Object> buildModelFolderMapping(String basePath) {
+        Map<String, Object> section = new LinkedHashMap<>();
+        section.put("base_path", basePath.replace("\\", "/"));
+        section.put("checkpoints", "checkpoints");
+        section.put("configs", "configs");
+        section.put("vae", "vae");
+        section.put("loras", "loras\nlycoris");
+        section.put("upscale_models", "upscale_models\nrealesrgan");
+        section.put("controlnet", "controlnet");
+        section.put("clip", "clip\ntext_encoders");
+        section.put("text_encoders", "text_encoders\nclip");
+        section.put("clip_vision", "clip_vision");
+        section.put("style_models", "style_models");
+        section.put("hypernetworks", "hypernetworks");
+        section.put("embeddings", "embeddings");
+        section.put("diffusers", "diffusers");
+        section.put("gligen", "gligen");
+        section.put("unet", "unet\ndiffusion_models\ncheckpoints");
+        section.put("diffusion_models", "diffusion_models\nunet\ncheckpoints");
+        section.put("audio_encoders", "audio_encoders");
+        section.put("vae_approx", "vae_approx");
+        section.put("photomaker", "photomaker");
+        section.put("ipadapter", "ipadapter");
+        section.put("onnx", "onnx");
+        section.put("llm", "llm");
+        section.put("model_patches", "model_patches");
+        section.put("latent_upscale_models", "latent_upscale_models");
+        return section;
     }
 }

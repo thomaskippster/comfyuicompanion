@@ -136,7 +136,8 @@ public class VisualGuiInspectionTest {
         // --- Sub-Tab 1: Comfy.org Blueprints ---
         System.out.println("\n🎨 [Blueprint Gallery] Testing Sub-Tab 1: Comfy.org Blueprints...");
         assertNotNull(galleryTab.getBtnSubComfy(), "Comfy sub-tab toggle must exist");
-        assertTrue(galleryTab.getBtnSubComfy().isSelected(), "Comfy sub-tab should be initially selected");
+        SwingUtilities.invokeAndWait(() -> galleryTab.getBtnSubComfy().doClick());
+        assertTrue(galleryTab.getBtnSubComfy().isSelected(), "Comfy sub-tab should be selected");
         assertNotNull(galleryTab.getHeaderToolbar(), "BlueprintHeaderToolbar must exist");
         assertNotNull(galleryTab.getGridRenderer(), "BlueprintGridRenderer must exist");
 

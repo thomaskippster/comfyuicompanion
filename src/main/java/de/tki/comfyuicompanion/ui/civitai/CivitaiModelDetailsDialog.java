@@ -1,13 +1,17 @@
 package de.tki.comfyuicompanion.ui.civitai;
 
+import java.io.File;
+
 import de.tki.comfyuicompanion.domain.CivitaiModelEntry;
 import de.tki.comfyuicompanion.domain.ModelFolder;
 import de.tki.comfyuicompanion.domain.ModelInfo;
 import de.tki.comfyuicompanion.service.ICivitaiOperationalModelService;
 import de.tki.comfyuicompanion.service.IDownloadManager;
 import de.tki.comfyuicompanion.service.impl.ConfigService;
+import de.tki.comfyuicompanion.ui.blueprint.WorkflowDialogDimensionHelper;
 import de.tki.comfyuicompanion.ui.icons.AppIcon;
 import de.tki.comfyuicompanion.ui.icons.SvgIconFactory;
+import de.tki.comfyuicompanion.util.WorkflowImageLoader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -30,54 +34,53 @@ import java.util.Locale;
 import java.util.function.Consumer;
 
 /**
- * Enterprise modal dialog for Civitai models matching the visual layout, metadata rows,
- * required model status table, and launch mechanics of the Comfy.org BlueprintDetailsDialog.
+ * Enterprise modal dialog for Civitai workflows and models matching the visual layout, metadata rows,
+ * and operational controls of official ComfyUI Blueprints.
  */
+@Deprecated
 public class CivitaiModelDetailsDialog extends JDialog {
 
     private static final Logger logger = LoggerFactory.getLogger(CivitaiModelDetailsDialog.class);
+
     private static final HttpClient HTTP_CLIENT = HttpClient.newBuilder()
-            .followRedirects(HttpClient.Redirect.ALWAYS)
             .connectTimeout(Duration.ofSeconds(10))
+            .followRedirects(HttpClient.Redirect.NORMAL)
             .build();
 
     private final CivitaiModelEntry entry;
     private final ICivitaiOperationalModelService operationalModelService;
     private final IDownloadManager downloadManager;
     private final ConfigService configService;
-    private final Consumer<CivitaiModelEntry> fallbackDownloadAction;
     private final Consumer<List<ModelInfo>> onSwitchToDownloadManager;
+    private final List<ModelInfo> requiredModels = new ArrayList<>();
 
-    private List<ModelInfo> requiredModels = new ArrayList<>();
-    private DefaultTableModel modelTblModel;
-    private JTable modelTable;
     private JLabel previewImageLabel;
-    private JButton btnDownloadMissing;
+    private JTable modelTable;
+    private DefaultTableModel modelTblModel;
     private JButton btnSendToComfy;
 
-    /**
-     * Constructs a new dialog matching BlueprintDetailsDialog conventions.
-     */
     public CivitaiModelDetailsDialog(Window owner,
                                      CivitaiModelEntry entry,
                                      ICivitaiOperationalModelService operationalModelService,
                                      IDownloadManager downloadManager,
                                      ConfigService configService,
                                      Consumer<List<ModelInfo>> onSwitchToDownloadManager) {
-        super(owner instanceof Frame ? (Frame) owner : null, "Civitai Model: " + entry.name(), true);
+        super(owner instanceof Frame ? (Frame) owner : null, "Blueprint: " + entry.name(), true);
         this.entry = entry;
         this.operationalModelService = operationalModelService;
         this.downloadManager = downloadManager;
         this.configService = configService;
-        this.fallbackDownloadAction = null;
         this.onSwitchToDownloadManager = onSwitchToDownloadManager;
 
-        initDialog();
+        resolveRequiredOperationalModels();
+
+        int modelCount = requiredModels.size();
+        WorkflowDialogDimensionHelper.applyOptimalSizeAndLocation(this, owner, true, 8, modelCount, false);
+
+        initUI(owner);
+        loadBannerImageAsync(owner);
     }
 
-    /**
-     * Backward-compatible convenience constructor.
-     */
     public CivitaiModelDetailsDialog(Window owner,
                                      CivitaiModelEntry entry,
                                      ICivitaiOperationalModelService operationalModelService,
@@ -86,52 +89,46 @@ public class CivitaiModelDetailsDialog extends JDialog {
         this(owner, entry, operationalModelService, downloadManager, configService, null);
     }
 
-    /**
-     * Minimal fallback constructor for legacy unit tests.
-     */
     public CivitaiModelDetailsDialog(Window owner, CivitaiModelEntry entry, boolean isInstalled, Consumer<CivitaiModelEntry> onDownload) {
-        super(owner instanceof Frame ? (Frame) owner : null, "Civitai Model: " + entry.name(), true);
-        this.entry = entry;
-        this.operationalModelService = null;
-        this.downloadManager = null;
-        this.configService = null;
-        this.fallbackDownloadAction = onDownload;
-        this.onSwitchToDownloadManager = null;
-
-        initDialog();
+        this(owner, entry, null, null, null, null);
     }
 
-    private void initDialog() {
-        setSize(1250, 760);
-        setLocationRelativeTo(getOwner());
-        setResizable(true);
-
-        boolean darkMode = configService == null || configService.isDarkMode();
-        Color bg = darkMode ? new Color(20, 22, 30) : new Color(245, 247, 250);
-        Color textPrimary = darkMode ? new Color(228, 230, 240) : new Color(30, 35, 45);
-        Color textSecondary = darkMode ? new Color(120, 126, 152) : new Color(90, 100, 110);
-
+    private void resolveRequiredOperationalModels() {
         if (operationalModelService != null) {
-            this.requiredModels = operationalModelService.resolveRequiredModels(entry);
-        } else {
-            ModelFolder folder = ModelFolder.fromString(entry.type());
-            ModelInfo info = new ModelInfo(folder.getDefaultFolderName(), entry.name(), entry.downloadUrl());
-            info.setFilename(entry.filename());
-            info.setSize(entry.formattedSize());
-            info.setByteSize(entry.fileSizeBytes());
-            info.setDescription("Missing");
-            this.requiredModels = new ArrayList<>(List.of(info));
+            List<ModelInfo> models = operationalModelService.resolveRequiredModels(entry);
+            if (models != null && !models.isEmpty()) {
+                requiredModels.addAll(models);
+            }
         }
 
-        String baseDir = configService != null ? configService.getModelsPath() : "models";
+        if (requiredModels.isEmpty()) {
+            ModelInfo primary = new ModelInfo();
+            primary.setName(entry.filename() != null ? entry.filename() : entry.name());
+            primary.setUrl(entry.downloadUrl());
+            primary.setSize(entry.formattedSize());
+            primary.setByteSize(entry.fileSizeBytes());
+            String targetFolder = ModelFolder.fromString(entry.type()).getDefaultFolderName();
+            primary.setType(targetFolder);
+            primary.setSave_path(targetFolder);
+            primary.setDescription("Missing");
+            requiredModels.add(primary);
+        }
+
+        String baseDir = configService != null ? configService.getModelsPath() : null;
         CivitaiModelActionsHelper.checkAndFlagIncompleteModels(baseDir, requiredModels);
+    }
+
+    private void initUI(Window owner) {
+        Color textPrimary = configService != null && configService.isDarkMode() ? new Color(228, 230, 240) : new Color(30, 35, 45);
+        Color textSecondary = configService != null && configService.isDarkMode() ? new Color(120, 126, 152) : new Color(90, 100, 110);
+        Color bg = configService != null && configService.isDarkMode() ? new Color(20, 22, 30) : new Color(245, 247, 250);
 
         JPanel root = new JPanel(new BorderLayout(0, 12));
         root.setBackground(bg);
         root.setBorder(new EmptyBorder(18, 20, 16, 20));
 
-        // 1. Header (Title + Open External Link)
-        JPanel header = new JPanel(new BorderLayout(10, 0));
+        // 1. Header Bar
+        JPanel header = new JPanel(new BorderLayout(8, 0));
         header.setOpaque(false);
 
         JLabel title = new JLabel(entry.name());
@@ -139,7 +136,7 @@ public class CivitaiModelDetailsDialog extends JDialog {
         title.setForeground(textPrimary);
         header.add(title, BorderLayout.WEST);
 
-        JButton btnOpenWeb = new JButton("Open on Civitai ↗", SvgIconFactory.get(AppIcon.LINK, 13));
+        JButton btnOpenWeb = new JButton("Open on Civitai", SvgIconFactory.get(AppIcon.LINK, 13));
         btnOpenWeb.setFont(new Font("SansSerif", Font.PLAIN, 11));
         btnOpenWeb.putClientProperty("Button.arc", 999);
         btnOpenWeb.addActionListener(e -> openUrl("https://civitai.com/models/" + entry.id()));
@@ -160,9 +157,7 @@ public class CivitaiModelDetailsDialog extends JDialog {
         imgPanel.setBorder(new EmptyBorder(0, 0, 14, 0));
         imgPanel.add(previewImageLabel);
         body.add(imgPanel);
-        loadAsyncPreviewBanner(entry.thumbnailUrl(), previewImageLabel);
 
-        // Metadata Rows
         addRow(body, "Type", entry.type(), textSecondary, textPrimary);
         if (entry.baseModel() != null && !entry.baseModel().isBlank()) {
             addRow(body, "Base Model", entry.baseModel(), textSecondary, textPrimary);
@@ -170,7 +165,7 @@ public class CivitaiModelDetailsDialog extends JDialog {
         if (entry.creator() != null && !entry.creator().isBlank()) {
             addRow(body, "Creator", entry.creator(), textSecondary, textPrimary);
         }
-        String stats = String.format(Locale.US, "⭐ %.1f  •  ⬇ %,d", entry.rating(), entry.downloadCount());
+        String stats = String.format(Locale.US, "Rating: %.1f  |  Downloads: %,d", entry.rating(), entry.downloadCount());
         addRow(body, "Community Stats", stats, textSecondary, textPrimary);
 
         if (entry.triggerWords() != null && !entry.triggerWords().isEmpty()) {
@@ -189,18 +184,26 @@ public class CivitaiModelDetailsDialog extends JDialog {
 
         // Hardware Compatibility Check
         String hwText = entry.fileSizeBytes() > 10L * 1024L * 1024L * 1024L
-                ? "🔴 High VRAM / Large Model — Requires 16GB+ VRAM or ComfyUI --lowvram"
-                : "🟢 Fits in VRAM — Standard requirements";
+                ? "High VRAM / Large Model - Requires 16GB+ VRAM or ComfyUI --lowvram"
+                : "Fits in VRAM - Standard requirements";
         Color hwColor = entry.fileSizeBytes() > 10L * 1024L * 1024L * 1024L ? new Color(239, 68, 68) : new Color(34, 197, 130);
         addRow(body, "Hardware Check", hwText, textSecondary, hwColor);
 
-        // Required Models Table
-        body.add(Box.createVerticalStrut(12));
-        JLabel tblHdr = new JLabel("Required Models Status:");
-        tblHdr.setFont(new Font("SansSerif", Font.PLAIN, 12));
-        tblHdr.setForeground(textPrimary);
-        tblHdr.setAlignmentX(Component.LEFT_ALIGNMENT);
-        body.add(tblHdr);
+        // Custom Nodes Verification
+        de.tki.comfyuicompanion.ui.dialog.CustomNodeVerificationPanel customNodesPanel =
+                new de.tki.comfyuicompanion.ui.dialog.CustomNodeVerificationPanel(this, configService, textSecondary);
+        addRowWithComponent(body, "Custom Nodes", customNodesPanel, textSecondary);
+        if (operationalModelService != null) {
+            customNodesPanel.verifyWorkflowAsync(() -> operationalModelService.generateGuiWorkflowJson(entry, requiredModels, null));
+        }
+
+        body.add(Box.createVerticalStrut(10));
+
+        JLabel reqLbl = new JLabel("Required Models Status:");
+        reqLbl.setFont(new Font("SansSerif", Font.BOLD, 11));
+        reqLbl.setForeground(textPrimary);
+        reqLbl.setAlignmentX(Component.LEFT_ALIGNMENT);
+        body.add(reqLbl);
         body.add(Box.createVerticalStrut(6));
 
         body.add(buildModelTablePanel(bg, textPrimary, textSecondary));
@@ -215,16 +218,21 @@ public class CivitaiModelDetailsDialog extends JDialog {
         JPanel bottom = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
         bottom.setBackground(bg);
 
-        btnDownloadMissing = new JButton("Download Missing Models", SvgIconFactory.get(AppIcon.DOWNLOAD, 14));
-        btnDownloadMissing.setFont(new Font("SansSerif", Font.BOLD, 11));
-        btnDownloadMissing.putClientProperty("Button.arc", 999);
-        btnDownloadMissing.setBackground(new Color(0, 150, 136));
-        btnDownloadMissing.setForeground(Color.WHITE);
-        if (missingCount == 0) {
-            btnDownloadMissing.setText("All Models Installed ✅");
-            btnDownloadMissing.setEnabled(false);
+        JButton btnSaveToVault = new JButton("Save Workflow to My Vault", SvgIconFactory.get(AppIcon.ARCHIVE, 14));
+        btnSaveToVault.setFont(new Font("SansSerif", Font.BOLD, 11));
+        btnSaveToVault.putClientProperty("Button.arc", 999);
+        btnSaveToVault.setBackground(new Color(0, 150, 136));
+        btnSaveToVault.setForeground(Color.WHITE);
+
+        File userWorkflowsDir = configService != null ? configService.getUserWorkflowsDir() : new File("user_workflows");
+        File vaultDir = new File(userWorkflowsDir, "vault");
+        String safeName = entry.name().replaceAll("[^a-zA-Z0-9._-]", "_");
+        if (new File(vaultDir, safeName + ".json").exists()) {
+            btnSaveToVault.setText("Saved in My Vault");
+            btnSaveToVault.setIcon(SvgIconFactory.get(AppIcon.CHECK, 14));
+            btnSaveToVault.setEnabled(false);
         }
-        btnDownloadMissing.addActionListener(e -> startMissingDownload());
+        btnSaveToVault.addActionListener(e -> CivitaiModelActionsHelper.saveWorkflowToVault(this, entry, requiredModels, operationalModelService, btnSaveToVault));
 
         btnSendToComfy = new JButton("Send to ComfyUI", SvgIconFactory.get(AppIcon.SEND, 14));
         btnSendToComfy.setFont(new Font("SansSerif", Font.BOLD, 11));
@@ -241,7 +249,7 @@ public class CivitaiModelDetailsDialog extends JDialog {
         btnClose.setFont(new Font("SansSerif", Font.PLAIN, 11));
         btnClose.addActionListener(e -> dispose());
 
-        bottom.add(btnDownloadMissing);
+        bottom.add(btnSaveToVault);
         bottom.add(btnSendToComfy);
         bottom.add(btnClose);
         root.add(bottom, BorderLayout.SOUTH);
@@ -252,15 +260,23 @@ public class CivitaiModelDetailsDialog extends JDialog {
     private JPanel buildModelTablePanel(Color bg, Color textPrimary, Color textSecondary) {
         String[] columns = {"Model Name", "Type / Folder", "Size", "Status"};
         modelTblModel = new DefaultTableModel(columns, 0) {
-            @Override public boolean isCellEditable(int r, int c) { return false; }
+            @Override
+            public boolean isCellEditable(int r, int c) {
+                return false;
+            }
         };
 
         for (ModelInfo info : requiredModels) {
-            String name = info.getFilename() != null && !info.getFilename().isBlank() ? info.getFilename() : info.getName();
+            String name = info.getName();
             String folder = info.getSave_path() != null ? info.getSave_path() : (info.getType() != null ? info.getType() : "checkpoints");
             String size = info.getSize() != null && !info.getSize().isBlank() ? info.getSize() : "Unknown";
             String st = info.getDescription() != null && !info.getDescription().isBlank() ? info.getDescription() : "Missing";
-            if ("installed".equalsIgnoreCase(info.getPopularity())) st = "✅ Already exists";
+            String nameLower = name != null ? name.toLowerCase(Locale.ROOT) : "";
+            if ("installed".equalsIgnoreCase(info.getPopularity())) {
+                st = "Already exists";
+            } else if ("workflows".equalsIgnoreCase(folder) || nameLower.endsWith(".zip") || nameLower.endsWith(".json")) {
+                st = "Workflow Bundle (Auto-fetched)";
+            }
             modelTblModel.addRow(new Object[]{name, folder, size, st});
         }
 
@@ -287,7 +303,7 @@ public class CivitaiModelDetailsDialog extends JDialog {
                 c.setForeground(textPrimary);
                 if (col == 3 && val != null) {
                     String s = val.toString();
-                    if (s.contains("Already") || s.contains("Installed")) c.setForeground(new Color(0, 180, 160));
+                    if (s.contains("Already") || s.contains("Installed") || s.contains("Workflow Bundle")) c.setForeground(new Color(0, 180, 160));
                     else if (s.contains("Incomplete") || s.contains("Missing")) c.setForeground(new Color(255, 153, 0));
                     else if (s.contains("Downloading")) c.setForeground(new Color(59, 130, 246));
                 }
@@ -297,114 +313,91 @@ public class CivitaiModelDetailsDialog extends JDialog {
         });
 
         JScrollPane tblScroll = new JScrollPane(modelTable);
-        int calcHeight = Math.min(220, Math.max(80, (requiredModels.size() + 1) * 26 + 6));
+        int calcHeight = WorkflowDialogDimensionHelper.calculateTablePreferredHeight(requiredModels.size());
         tblScroll.setPreferredSize(new Dimension(1190, calcHeight));
-        tblScroll.setMaximumSize(new Dimension(Integer.MAX_VALUE, calcHeight));
-        tblScroll.setAlignmentX(Component.LEFT_ALIGNMENT);
         tblScroll.getViewport().setBackground(bg);
+        tblScroll.setBorder(BorderFactory.createEmptyBorder());
 
-        JPanel panel = new JPanel(new BorderLayout());
-        panel.setOpaque(false);
-        panel.setAlignmentX(Component.LEFT_ALIGNMENT);
-        panel.add(tblScroll, BorderLayout.CENTER);
-        return panel;
+        JPanel p = new JPanel(new BorderLayout());
+        p.setOpaque(false);
+        p.setAlignmentX(Component.LEFT_ALIGNMENT);
+        p.add(tblScroll, BorderLayout.CENTER);
+        return p;
     }
 
-    private void startMissingDownload() {
-        if (downloadManager == null) {
-            if (fallbackDownloadAction != null) {
-                fallbackDownloadAction.accept(entry);
-                dispose();
-            }
-            return;
-        }
-
-        List<ModelInfo> missing = operationalModelService != null
-                ? operationalModelService.getMissingModels(requiredModels)
-                : requiredModels;
-
-        if (missing.isEmpty()) {
-            JOptionPane.showMessageDialog(this, "All required models are already installed locally!", "Information", JOptionPane.INFORMATION_MESSAGE);
-            return;
-        }
-
-        if (onSwitchToDownloadManager != null) {
-            dispose();
-            onSwitchToDownloadManager.accept(missing);
-        } else {
-            CivitaiModelActionsHelper.executeDownloadQueue(
-                    this, missing, downloadManager, configService, operationalModelService,
-                    (info, status) -> {}, () -> {}
-            );
-        }
-    }
-
-    private void dispatchSendWorkflow() {
-        if (operationalModelService == null) return;
-        btnSendToComfy.setEnabled(false);
-        btnSendToComfy.setText("Sending...");
-        String prompt = entry.triggerWords() != null && !entry.triggerWords().isEmpty() ? entry.triggerWords().get(0) : "";
-        CivitaiModelActionsHelper.dispatchSendWorkflow(
-                this, entry, requiredModels, prompt, operationalModelService, configService,
-                btnSendToComfy, null, this::dispose
-        );
-    }
-
-    private static void loadAsyncPreviewBanner(String url, JLabel target) {
+    private void loadBannerImageAsync(Window owner) {
+        String url = entry.thumbnailUrl();
         if (url == null || url.isBlank()) return;
-        Thread.ofVirtual().name("CivitaiBannerLoader").start(() -> {
+
+        Thread.ofVirtual().name("civitai-details-banner").start(() -> {
             try {
-                HttpRequest request = HttpRequest.newBuilder().uri(URI.create(url)).timeout(Duration.ofSeconds(10)).GET().build();
-                HttpResponse<InputStream> response = HTTP_CLIENT.send(request, HttpResponse.BodyHandlers.ofInputStream());
-                if (response.statusCode() == 200) {
-                    try (InputStream in = response.body()) {
-                        BufferedImage orig = ImageIO.read(in);
-                        if (orig != null) {
-                            int targetW = Math.min(1100, orig.getWidth());
-                            int targetH = (int) (orig.getHeight() * ((double) targetW / orig.getWidth()));
-                            if (targetH > 280) {
-                                targetH = 280;
-                                targetW = (int) (orig.getWidth() * ((double) targetH / orig.getHeight()));
-                            }
-                            Image scaled = orig.getScaledInstance(targetW, targetH, Image.SCALE_SMOOTH);
-                            SwingUtilities.invokeLater(() -> target.setIcon(new ImageIcon(scaled)));
-                        }
-                    }
+                BufferedImage img = WorkflowImageLoader.downloadAndDecodeImage(url, Duration.ofSeconds(15));
+                if (img != null) {
+                    SwingUtilities.invokeLater(() -> applyBannerImage(img, owner));
                 }
-            } catch (Exception ignored) {
-                logger.debug("Failed loading banner image: {}", ignored.getMessage());
+            } catch (Exception e) {
+                logger.debug("Failed to load Civitai banner: {}", e.getMessage());
             }
         });
     }
 
-    private static void addRow(JPanel parent, String label, String value, Color textSecondary, Color textPrimary) {
-        JPanel row = new JPanel(new BorderLayout(10, 0));
-        row.setOpaque(false);
-        row.setAlignmentX(Component.LEFT_ALIGNMENT);
-        row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 22));
-
-        JLabel lbl = new JLabel(label + ":");
-        lbl.setFont(new Font("SansSerif", Font.BOLD, 11));
-        lbl.setForeground(textSecondary);
-        lbl.setPreferredSize(new Dimension(140, 18));
-
-        JLabel val = new JLabel(value);
-        val.setFont(new Font("SansSerif", Font.PLAIN, 11));
-        val.setForeground(textPrimary);
-
-        row.add(lbl, BorderLayout.WEST);
-        row.add(val, BorderLayout.CENTER);
-        parent.add(row);
-        parent.add(Box.createVerticalStrut(3));
+    private void applyBannerImage(BufferedImage img, Window owner) {
+        int maxBannerH = WorkflowDialogDimensionHelper.calculateMaxBannerHeight(owner, 8, requiredModels.size(), false);
+        int targetW = 880;
+        int targetH = (int) (img.getHeight() * ((double) targetW / img.getWidth()));
+        if (targetH > maxBannerH) {
+            targetH = maxBannerH;
+            targetW = (int) (img.getWidth() * ((double) targetH / img.getHeight()));
+        }
+        Image scaled = img.getScaledInstance(targetW, targetH, Image.SCALE_SMOOTH);
+        previewImageLabel.setIcon(new ImageIcon(scaled));
+        revalidate();
+        repaint();
     }
 
-    private static void openUrl(String url) {
+    private void dispatchSendWorkflow() {
+        CivitaiModelActionsHelper.dispatchSendWorkflow(this, entry, requiredModels, operationalModelService, btnSendToComfy, null, null, configService, this::dispose);
+    }
+
+    private void addRow(JPanel parent, String label, String value, Color labelColor, Color valueColor) {
+        JPanel row = new JPanel(new BorderLayout(8, 0));
+        row.setOpaque(false);
+        row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 22));
+        row.setAlignmentX(Component.LEFT_ALIGNMENT);
+        JLabel l = new JLabel(label + ":");
+        l.setFont(new Font("SansSerif", Font.BOLD, 11));
+        l.setForeground(labelColor);
+        l.setPreferredSize(new Dimension(140, 20));
+        row.add(l, BorderLayout.WEST);
+
+        JLabel v = new JLabel(value);
+        v.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        v.setForeground(valueColor);
+        row.add(v, BorderLayout.CENTER);
+        parent.add(row);
+    }
+
+    private void addRowWithComponent(JPanel parent, String label, JComponent comp, Color labelColor) {
+        JPanel row = new JPanel(new BorderLayout(8, 0));
+        row.setOpaque(false);
+        row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 22));
+        row.setAlignmentX(Component.LEFT_ALIGNMENT);
+        JLabel l = new JLabel(label + ":");
+        l.setFont(new Font("SansSerif", Font.BOLD, 11));
+        l.setForeground(labelColor);
+        l.setPreferredSize(new Dimension(140, 20));
+        row.add(l, BorderLayout.WEST);
+        row.add(comp, BorderLayout.CENTER);
+        parent.add(row);
+    }
+
+    private void openUrl(String url) {
         try {
             if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
-                Desktop.getDesktop().browse(URI.create(url));
+                Desktop.getDesktop().browse(new URI(url));
             }
         } catch (Exception e) {
-            logger.warn("Could not open external URL {}: {}", url, e.getMessage());
+            logger.warn("Could not browse URL: {}", url);
         }
     }
 }

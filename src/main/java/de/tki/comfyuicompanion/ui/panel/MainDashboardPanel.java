@@ -40,6 +40,7 @@ public class MainDashboardPanel {
     private final IModelValidator modelValidator;
     private final CivitaiService civitaiService;
     private final IDownloadManager downloadManager;
+    private final VersionService versionService;
     private LaunchProfilePanel profilePanel;
     private DashboardConsolePanel consolePanel;
     private HardwareMonitorPanel monitorPanel;
@@ -49,14 +50,24 @@ public class MainDashboardPanel {
     private Consumer<LaunchProfile> startComfyHandler;
     private Runnable fullServiceRestartHandler, openBootstrapHandler;
 
-    /** Constructs a new coordinator with required application services. */
+    /** Constructs a new coordinator with required application services and version service. */
+    public MainDashboardPanel(JFrame parentFrame, ConfigService configService, ProfileManager profileManager,
+                              IComfyLifecycleService lifecycleService, UpdaterService updaterService,
+                              ModelHashRegistry hashRegistry, IModelValidator modelValidator,
+                              CivitaiService civitaiService, IDownloadManager downloadManager,
+                              VersionService versionService) {
+        this.parentFrame = parentFrame; this.configService = configService; this.profileManager = profileManager;
+        this.lifecycleService = lifecycleService; this.updaterService = updaterService; this.hashRegistry = hashRegistry;
+        this.modelValidator = modelValidator; this.civitaiService = civitaiService; this.downloadManager = downloadManager;
+        this.versionService = versionService;
+    }
+
+    /** Legacy constructor overload for backward compatibility. */
     public MainDashboardPanel(JFrame parentFrame, ConfigService configService, ProfileManager profileManager,
                               IComfyLifecycleService lifecycleService, UpdaterService updaterService,
                               ModelHashRegistry hashRegistry, IModelValidator modelValidator,
                               CivitaiService civitaiService, IDownloadManager downloadManager) {
-        this.parentFrame = parentFrame; this.configService = configService; this.profileManager = profileManager;
-        this.lifecycleService = lifecycleService; this.updaterService = updaterService; this.hashRegistry = hashRegistry;
-        this.modelValidator = modelValidator; this.civitaiService = civitaiService; this.downloadManager = downloadManager;
+        this(parentFrame, configService, profileManager, lifecycleService, updaterService, hashRegistry, modelValidator, civitaiService, downloadManager, null);
     }
 
     /**
@@ -83,6 +94,7 @@ public class MainDashboardPanel {
         statusTimer = new Timer(1000, e -> updateStatusUI());
         statusTimer.start();
         updateStatusUI();
+        refreshVersions(versionService, configService);
         return panel;
     }
 
@@ -231,16 +243,21 @@ public class MainDashboardPanel {
         if (stopBtn != null) stopBtn.setEnabled(r); if (browserBtn != null) browserBtn.setEnabled(r);
     }
 
-    /** Refreshes ComfyUI and Python version labels. */
+    /** Refreshes ComfyUI and Python version labels asynchronously without blocking the UI. */
     public void refreshVersions(VersionService vs, ConfigService cs) {
-        if (vs == null || cs == null) return;
-        String comfy = vs.getInstalledComfyVersion(cs.getComfyUIPath());
-        String python = vs.getInstalledPythonVersion(cs.getPythonPath());
-        if (lblComfyVersion != null) lblComfyVersion.setText("ComfyUI: " + comfy + " (Remote: Fetching...)");
-        if (lblPythonVersion != null) lblPythonVersion.setText("Python: " + python + " (Latest: " + vs.getRemotePythonVersion() + ")");
-        vs.getRemoteComfyVersionAsync().thenAccept(rc -> SwingUtilities.invokeLater(() -> {
-            if (lblComfyVersion != null) lblComfyVersion.setText("ComfyUI: " + comfy + " (Remote: " + rc + ")");
-        }));
+        VersionService activeVs = vs != null ? vs : this.versionService;
+        if (activeVs == null || cs == null) return;
+        Thread.ofVirtual().name("dashboard-version-refresh").start(() -> {
+            String comfy = activeVs.getInstalledComfyVersion(cs.getComfyUIPath());
+            String python = activeVs.getInstalledPythonVersion(cs.getPythonPath());
+            SwingUtilities.invokeLater(() -> {
+                if (lblComfyVersion != null) lblComfyVersion.setText("ComfyUI: " + comfy + " (Remote: Fetching...)");
+                if (lblPythonVersion != null) lblPythonVersion.setText("Python: " + python + " (Latest: " + activeVs.getRemotePythonVersion() + ")");
+            });
+            activeVs.getRemoteComfyVersionAsync().thenAccept(rc -> SwingUtilities.invokeLater(() -> {
+                if (lblComfyVersion != null) lblComfyVersion.setText("ComfyUI: " + comfy + " (Remote: " + rc + ")");
+            }));
+        });
     }
 
     /** Shows the initial offline banner in console. */

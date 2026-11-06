@@ -126,7 +126,7 @@ public class BlueprintScanService {
             try {
                 sharedDownloadClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build();
                 HttpRequest request = HttpRequest.newBuilder().uri(URI.create(comfyUrl + "/templates/index.json")).timeout(Duration.ofSeconds(3)).GET().build();
-                HttpResponse<String> response = sharedDownloadClient.send(request, HttpResponse.BodyHandlers.ofString());
+                HttpResponse<String> response = sharedDownloadClient.send(request, HttpResponse.BodyHandlers.ofString(java.nio.charset.StandardCharsets.UTF_8));
                 if (response.statusCode() == 200) {
                     JsonNode indexRoot = mapper.readTree(response.body());
                     serverDiscoveryService.parseSubtypesFromIndex(indexRoot, mediaSubtypes);

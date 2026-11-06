@@ -61,6 +61,12 @@ public class ThemedCheckBox extends JToggleButton {
         });
     }
 
+    @Override
+    public void updateUI() {
+        super.updateUI();
+        setDarkMode(de.tki.comfyuicompanion.ui.ThemeManager.isDarkMode());
+    }
+
     public void setDarkMode(boolean dark) {
         this.darkMode = dark;
         applyColors();

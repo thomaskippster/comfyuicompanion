@@ -43,7 +43,7 @@ class CivitaiLocalModelScannerTest {
     }
 
     @Test
-    @DisplayName("Should detect model in nested subfolder and update save_path accordingly")
+    @DisplayName("Should detect model in nested subfolder and standardize ae.safetensors save_path to vae root")
     void shouldDetectNestedModelFileAndSetSavePath() throws IOException {
         Path fluxDir = tempModelsDir.resolve("vae").resolve("FLUX1");
         Files.createDirectories(fluxDir);
@@ -56,7 +56,29 @@ class CivitaiLocalModelScannerTest {
         boolean present = scanner.isModelFilePresent(info);
 
         assertThat(present).isTrue();
-        assertThat(info.getSave_path()).isEqualTo("vae/FLUX1");
+        assertThat(info.getSave_path()).isEqualTo("vae");
+
+        // Verify idempotency on repeated calls
+        scanner.isModelFilePresent(info);
+        scanner.isModelFilePresent(info);
+        assertThat(info.getSave_path()).isEqualTo("vae");
+    }
+
+    @Test
+    @DisplayName("Should detect non-vae model in nested subfolder and update save_path to subfolder")
+    void shouldDetectNestedNonVaeModelFileAndSetSavePath() throws IOException {
+        Path loraDir = tempModelsDir.resolve("loras").resolve("style");
+        Files.createDirectories(loraDir);
+        Path file = loraDir.resolve("custom_style.safetensors");
+        Files.writeString(file, "sample lora content");
+
+        ModelInfo info = new ModelInfo("loras", "custom_style.safetensors", "LOCAL");
+        info.setFilename("custom_style.safetensors");
+
+        boolean present = scanner.isModelFilePresent(info);
+
+        assertThat(present).isTrue();
+        assertThat(info.getSave_path()).isEqualTo("loras/style");
     }
 
     @Test

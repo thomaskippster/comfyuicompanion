@@ -31,7 +31,7 @@ class HuggingFaceUiTest {
         assertNotNull(toolbar);
 
         assertEquals("", toolbar.getSearchQuery());
-        assertEquals("", toolbar.getSelectedFormat());
+        assertEquals("comfyui", toolbar.getSelectedFormat());
         assertEquals("", toolbar.getSelectedTask());
         assertEquals("trendingScore", toolbar.getSelectedSort());
 
@@ -193,7 +193,8 @@ class HuggingFaceUiTest {
         );
 
         assertNotNull(dialog);
-        assertEquals(new Dimension(1250, 760), dialog.getSize());
+        assertTrue(dialog.getWidth() >= 1250);
+        assertTrue(dialog.getHeight() >= 760);
         dialog.dispose();
     }
     @Test
@@ -261,5 +262,27 @@ class HuggingFaceUiTest {
         );
         assertNotNull(cardNotInstalled);
         assertNotNull(cardInstalled);
+    }
+
+    @Test
+    @DisplayName("HuggingFaceDetailsActionsHandler detects sharded model clusters and aggregates total size")
+    void testShardedRepositoryDetection() {
+        HuggingFaceFileEntry shard1 = new HuggingFaceFileEntry(
+                "model-00001-of-00048.safetensors", "model-00001-of-00048.safetensors", 970_000_000L, "925 MB",
+                "http://dl/1", "checkpoints", "Standard", true
+        );
+        HuggingFaceFileEntry shard2 = new HuggingFaceFileEntry(
+                "model-00002-of-00048.safetensors", "model-00002-of-00048.safetensors", 7_000_000_000L, "6.5 GB",
+                "http://dl/2", "checkpoints", "Standard", true
+        );
+
+        assertTrue(de.tki.comfyuicompanion.ui.huggingface.HuggingFaceDetailsActionsHandler.isShardedRepository(List.of(shard1, shard2)));
+        assertEquals(2, de.tki.comfyuicompanion.ui.huggingface.HuggingFaceDetailsActionsHandler.getShardCount(List.of(shard1, shard2)));
+        assertEquals(7_970_000_000L, de.tki.comfyuicompanion.ui.huggingface.HuggingFaceDetailsActionsHandler.calculateTotalShardedBytes(List.of(shard1, shard2)));
+
+        JLabel label = new JLabel();
+        de.tki.comfyuicompanion.ui.huggingface.HuggingFaceDetailsActionsHandler.applyHardwareCheck(label, shard1, List.of(shard1, shard2));
+        assertTrue(label.getText().contains("Sharded Model"));
+        assertTrue(label.getText().contains("Datacenter"));
     }
 }

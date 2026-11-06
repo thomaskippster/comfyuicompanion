@@ -1,0 +1,22 @@
+﻿# yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.6.0.schema.json
+
+PackageIdentifier: Tki.ComfyUICompanion
+PackageVersion: 2.0.2
+MinimumOSVersion: 10.0.0.0
+Platform:
+  - Windows.Desktop
+Scope: machine
+InstallModes:
+  - interactive
+  - silent
+  - silentWithProgress
+UpgradeBehavior: install
+ReleaseDate: 2026-10-31
+Installers:
+  - Architecture: x64
+    InstallerType: msi
+    InstallerUrl: https://github.com/thomaskippster/comfyuicompanion/releases/download/v2.0.2/ComfyUICompanion-2.0.2.msi
+    InstallerSha256: b550a3547cc7be467ecb0aa8244af4aa0c0abc95e300b70ddc51bed40dca03ff
+    ProductCode: '{A4975EE2-4CA2-3EE2-8FB9-B38D60EDB5B8}'
+ManifestType: installer
+ManifestVersion: 1.6.0

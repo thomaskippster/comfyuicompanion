@@ -4,24 +4,34 @@ import de.tki.comfyuicompanion.ui.BlueprintGalleryTab.BlueprintEntry;
 import de.tki.comfyuicompanion.ui.BlueprintGalleryTab.BlueprintStatus;
 import de.tki.comfyuicompanion.ui.icons.AppIcon;
 import de.tki.comfyuicompanion.ui.icons.SvgIconFactory;
+import de.tki.comfyuicompanion.ui.workflow.DebouncedSearchField;
 
-import javax.swing.*;
+import javax.swing.Box;
+import javax.swing.BoxLayout;
+import javax.swing.JButton;
+import javax.swing.JComboBox;
+import javax.swing.JLabel;
+import javax.swing.JPanel;
+import javax.swing.JTextField;
 import javax.swing.border.EmptyBorder;
-import java.awt.*;
+import java.awt.BorderLayout;
+import java.awt.Color;
+import java.awt.FlowLayout;
+import java.awt.Font;
 import java.awt.event.ActionListener;
-import java.awt.event.KeyAdapter;
-import java.awt.event.KeyEvent;
 import java.util.List;
 import java.util.function.Function;
 
 /**
  * Header toolbar for the Blueprint Gallery tab.
- * Encapsulates search input, category dropdown, filter checkboxes,
+ * Encapsulates debounced search input, category dropdown, filter checkboxes,
  * summary counts, status notifications, and the refresh button.
+ *
+ * @author Senior Java Developer
  */
 public class BlueprintHeaderToolbar extends JPanel {
 
-    private final JTextField txtSearch;
+    private final DebouncedSearchField txtSearch;
     private final JComboBox<String> cbCategory;
     private final ThemedCheckBox chkReadyOnly;
     private final ThemedCheckBox chkHideCloud;
@@ -61,15 +71,10 @@ public class BlueprintHeaderToolbar extends JPanel {
         JPanel mainControls = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
         mainControls.setOpaque(false);
 
-        txtSearch = new JTextField(15);
-        txtSearch.putClientProperty("JTextField.placeholderText", "Search blueprints...");
-        txtSearch.putClientProperty("JTextField.leadingIcon", SvgIconFactory.get(AppIcon.SEARCH));
-        txtSearch.addKeyListener(new KeyAdapter() {
-            @Override
-            public void keyReleased(KeyEvent e) {
-                if (onSearchChanged != null) {
-                    onSearchChanged.run();
-                }
+        txtSearch = new DebouncedSearchField("Search blueprints...", 15, 300);
+        txtSearch.setOnSearch(text -> {
+            if (onSearchChanged != null) {
+                onSearchChanged.run();
             }
         });
 
@@ -269,9 +274,9 @@ public class BlueprintHeaderToolbar extends JPanel {
                 missing++;
             }
         }
-        String suffix = checking > 0 ? "  ·  " + checking + " checking" : "";
-        setSummaryText(total + " workflows on Comfy.org  ·  "
-                + ready + " ready  ·  " + partial + " partial  ·  " + missing + " not installed" + suffix);
+        String suffix = checking > 0 ? " | " + checking + " checking" : "";
+        setSummaryText(total + " workflows on Comfy.org | "
+                + ready + " ready | " + partial + " partial | " + missing + " not installed" + suffix);
     }
 
     /**
@@ -296,7 +301,7 @@ public class BlueprintHeaderToolbar extends JPanel {
         }
         if (refreshing) {
             btnRefresh.setEnabled(false);
-            btnRefresh.setText("Refreshing…");
+            btnRefresh.setText("Refreshing...");
         } else {
             btnRefresh.setEnabled(true);
             btnRefresh.setText("Refresh");

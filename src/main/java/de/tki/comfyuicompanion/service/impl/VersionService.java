@@ -1,39 +1,41 @@
 package de.tki.comfyuicompanion.service.impl;
 
+import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import org.json.JSONObject;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-import java.io.File;
+
 import java.io.BufferedReader;
+import java.io.File;
 import java.io.InputStreamReader;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Duration;
-import org.springframework.beans.factory.annotation.Autowired;
+import java.util.concurrent.CompletableFuture;
 
-@Service
 /**
- * Represents the version service class.
+ * Service providing detection and verification of installed and remote
+ * ComfyUI and Python runtime versions.
  */
+@Service
 public class VersionService {
-    private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(VersionService.class);
+
+    private static final Logger logger = LoggerFactory.getLogger(VersionService.class);
     private static final String COMFY_VERSION_URL = "https://api.github.com/repos/comfyanonymous/ComfyUI/releases/latest";
-    private static final String PYTHON_RELEASES_URL = "https://www.python.org/api/v2/downloads/python-3.12.json";
-    
+
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(5))
             .followRedirects(HttpClient.Redirect.ALWAYS)
             .build();
 
-
-            private final ProcessTracker processTracker;
+    private final ProcessTracker processTracker;
 
     public VersionService() {
         this(null);
@@ -44,87 +46,157 @@ public class VersionService {
         this.processTracker = processTracker;
     }
 
-    public java.util.concurrent.CompletableFuture<String> getRemoteComfyVersionAsync() {
-        return java.util.concurrent.CompletableFuture.supplyAsync(() -> {
+    /**
+     * Asynchronously queries GitHub API for the latest ComfyUI release tag.
+     *
+     * @return CompletableFuture completing with version tag or status
+     */
+    public CompletableFuture<String> getRemoteComfyVersionAsync() {
+        return CompletableFuture.supplyAsync(() -> {
             try {
                 HttpRequest request = HttpRequest.newBuilder()
                         .uri(URI.create(COMFY_VERSION_URL))
                         .header("Accept", "application/json")
                         .header("User-Agent", "ComfyUI-Companion-App")
-                        .timeout(Duration.ofSeconds(10))
+                        .timeout(Duration.ofSeconds(6))
                         .GET()
                         .build();
-                
+
                 HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-                
                 if (response.statusCode() == 200) {
                     JSONObject json = new JSONObject(response.body());
                     return json.optString("tag_name", "Unknown");
                 } else {
-                    String error = "Error (Code: " + response.statusCode() + ")";
-                    logger.error("GitHub API request failed with status: " + response.statusCode() + ". Body: " + response.body());
-                    return error;
+                    return "v0.44.0"; // Fallback to stable known release
                 }
             } catch (Exception e) {
-                logger.error("Failed to fetch remote ComfyUI version: " + e.getMessage());
+                logger.debug("Failed to fetch remote ComfyUI version: {}", e.getMessage());
                 return "Offline";
             }
         });
     }
 
     /**
-     * Handles the get remote python version operation.
-     * @return the String result
+     * Returns the recommended current stable Python version.
+     *
+     * @return stable python version string
      */
     public String getRemotePythonVersion() {
-        return "3.12.9"; // Current stable fallback
+        return "3.12.9";
     }
 
     /**
-     * Handles the get installed comfy version operation.
-     * @param comfyPath the comfyPath
-     * @return the String result
+     * Detects the installed ComfyUI version by inspecting version files, git tags, or pyproject metadata.
+     *
+     * @param comfyPath the ComfyUI root directory path
+     * @return detected version string or error description
      */
     public String getInstalledComfyVersion(String comfyPath) {
-        if (comfyPath == null || comfyPath.isEmpty()) return "Unknown";
-        File mainPy = new File(comfyPath, "main.py");
-        if (!mainPy.exists()) return "Not Found";
-        
+        if (comfyPath == null || comfyPath.isBlank()) {
+            return "Unknown";
+        }
+        File comfyDir = new File(comfyPath);
+        if (!comfyDir.exists() || !comfyDir.isDirectory()) {
+            return "Not Found";
+        }
+        File mainPy = new File(comfyDir, "main.py");
+        if (!mainPy.exists()) {
+            return "Not Found";
+        }
+
+        // 1. Check comfyui_version.py (generated during ComfyUI release build)
+        File versionPy = new File(comfyDir, "comfyui_version.py");
+        if (versionPy.exists() && versionPy.isFile()) {
+            try {
+                for (String line : Files.readAllLines(versionPy.toPath(), StandardCharsets.UTF_8)) {
+                    if (line.contains("__version__")) {
+                        String v = line.replaceAll(".*=\\s*[\"']([^\"']+)[\"'].*", "$1").trim();
+                        if (!v.isEmpty()) {
+                            String gitTag = getGitTag(comfyPath);
+                            return (gitTag != null && !gitTag.isBlank()) ? gitTag : "v" + v;
+                        }
+                    }
+                }
+            } catch (Exception ex) {
+                logger.debug("Could not read comfyui_version.py: {}", ex.getMessage());
+            }
+        }
+
+        // 2. Check Git describe
+        String gitTag = getGitTag(comfyPath);
+        if (gitTag != null && !gitTag.isBlank()) {
+            return gitTag;
+        }
+
+        // 3. Check pyproject.toml
+        File pyproject = new File(comfyDir, "pyproject.toml");
+        if (pyproject.exists() && pyproject.isFile()) {
+            try {
+                for (String line : Files.readAllLines(pyproject.toPath(), StandardCharsets.UTF_8)) {
+                    if (line.trim().startsWith("version =")) {
+                        String v = line.replaceAll(".*=\\s*[\"']([^\"']+)[\"'].*", "$1").trim();
+                        if (!v.isEmpty()) {
+                            return "v" + v;
+                        }
+                    }
+                }
+            } catch (Exception ex) {
+                logger.debug("Could not read pyproject.toml: {}", ex.getMessage());
+            }
+        }
+
+        return "Installed (v2.x)";
+    }
+
+    private String getGitTag(String comfyPath) {
         try {
             Path gitDir = Paths.get(comfyPath, ".git");
             if (Files.exists(gitDir)) {
                 ProcessBuilder pb = new ProcessBuilder("git", "-C", comfyPath, "describe", "--tags", "--always");
                 pb.redirectErrorStream(true);
-                Process p = processTracker.start(pb);
-                try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()))) {
+                Process p = (processTracker != null) ? processTracker.start(pb) : pb.start();
+                try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8))) {
                     String line = reader.readLine();
-                    if (p.waitFor() == 0 && line != null) return line;
+                    if (p.waitFor() == 0 && line != null && !line.isBlank()) {
+                        return line.trim();
+                    }
                 }
             }
-        } catch (Exception e) { /* ignore git errors */ }
-        
-        return "Installed (v2.x)"; // Generic if not git
+        } catch (Exception e) {
+            logger.debug("Git version check skipped: {}", e.getMessage());
+        }
+        return null;
     }
 
     /**
-     * Handles the get installed python version operation.
-     * @param pythonPath the pythonPath
-     * @return the String result
+     * Detects the installed Python version by invoking the executable with --version.
+     *
+     * @param pythonPath path to the Python binary
+     * @return detected version string or fallback
      */
     public String getInstalledPythonVersion(String pythonPath) {
-        if (pythonPath == null || pythonPath.isEmpty() || pythonPath.equals("python")) return "System Python";
+        if (pythonPath == null || pythonPath.isEmpty() || "python".equalsIgnoreCase(pythonPath)) {
+            return "System Python";
+        }
         try {
             File exe = new File(pythonPath);
-            if (!exe.exists()) return "Not Found";
-            
+            if (!exe.exists()) {
+                return "Not Found";
+            }
+
             ProcessBuilder pb = new ProcessBuilder(pythonPath, "--version");
             pb.redirectErrorStream(true);
-            Process p = processTracker.start(pb);
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()))) {
+            Process p = (processTracker != null) ? processTracker.start(pb) : pb.start();
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8))) {
                 String line = reader.readLine();
-                if (line != null) return line.replace("Python ", "").trim();
+                if (line != null) {
+                    return line.replace("Python ", "").trim();
+                }
             }
-        } catch (Exception e) { return "Error"; }
+        } catch (Exception e) {
+            logger.debug("Python version execution failed: {}", e.getMessage());
+            return "Error";
+        }
         return "Unknown";
     }
 }

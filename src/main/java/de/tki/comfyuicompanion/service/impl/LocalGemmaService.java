@@ -221,10 +221,15 @@ public class LocalGemmaService {
      * Initializes and loads the configured LLM model in memory.
      * Note: Must be called from the gemmaExecutor thread.
      */
-    private void ensureModelLoaded() throws IOException {
+    public void ensureModelLoaded() throws IOException {
+        ensureModelLoaded(getActivePreset());
+    }
+
+    public void ensureModelLoaded(LlmModelPreset preset) throws IOException {
         synchronized (lock) {
             resetUnloadTimer();
-            File modelFile = getModelFile();
+            LlmModelPreset eff = preset != null ? preset : getActivePreset();
+            File modelFile = getModelFile(eff);
             if (model != null && (loadedModelPath == null || !loadedModelPath.equals(modelFile.getAbsolutePath()))) {
                 unloadModelSync();
             }
@@ -275,11 +280,14 @@ public class LocalGemmaService {
      * Runs inference on the local Gemma model.
      */
     public String generateCompletion(String systemInstruction, String userPrompt, float temperature, int maxTokens) throws IOException {
+        return generateCompletion(systemInstruction, userPrompt, temperature, maxTokens, getActivePreset());
+    }
+
+    public String generateCompletion(String systemInstruction, String userPrompt, float temperature, int maxTokens, LlmModelPreset preset) throws IOException {
         try {
             return gemmaExecutor.submit(() -> {
-                ensureModelLoaded();
-                
-                LlmModelPreset activePreset = getActivePreset();
+                LlmModelPreset activePreset = preset != null ? preset : getActivePreset();
+                ensureModelLoaded(activePreset);
                 String prompt = activePreset.getChatTemplate().format(systemInstruction, userPrompt);
                 
                 synchronized (lock) {

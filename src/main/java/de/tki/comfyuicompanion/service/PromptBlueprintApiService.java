@@ -1,5 +1,7 @@
 package de.tki.comfyuicompanion.service;
 
+import de.tki.comfyuicompanion.service.impl.ComfyPipelineService;
+import de.tki.comfyuicompanion.service.pipeline.SubgraphFlattener;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -20,9 +22,6 @@ import java.util.Set;
  * Never touches model loaders, class_type fields, or graph wiring.
  */
 @Service
-/**
- * Represents the prompt blueprint api service class.
- */
 public class PromptBlueprintApiService {
     private static final Logger logger = LoggerFactory.getLogger(PromptBlueprintApiService.class);
 
@@ -234,12 +233,42 @@ public class PromptBlueprintApiService {
                                 inp.put(ik, Math.abs(numVal) % 2147483647L);
                             }
                         } catch (NumberFormatException ignored) {
-            logger.trace("Invalid numeric format: {}", ignored.getMessage());
-        }
+                            logger.trace("Invalid numeric format: {}", ignored.getMessage());
+                        }
                     }
                 }
             }
         }
+    }
+
+    /**
+     * Extracts the executable API prompt dictionary from a parsed JSON root object,
+     * converting UI graphs or backfilling subgraph definitions as needed, and cleaning
+     * non-node metadata keys.
+     *
+     * @param parsedPrompt the parsed root JSON object from the editor or blueprint
+     * @return the sanitized prompt dictionary ready for input injection and submission
+     */
+    public static JSONObject extractPromptToQueue(JSONObject parsedPrompt) {
+        if (parsedPrompt == null) {
+            return new JSONObject();
+        }
+        JSONObject promptToQueue;
+        if (parsedPrompt.has("prompt")) {
+            promptToQueue = parsedPrompt.getJSONObject("prompt");
+            if (parsedPrompt.has("definitions")) {
+                SubgraphFlattener.backfillFromSubgraphDefinitions(
+                        promptToQueue, parsedPrompt.optJSONObject("definitions"));
+            }
+        } else if (parsedPrompt.has("nodes")) {
+            JSONObject flattened = ComfyPipelineService.flattenWorkflow(parsedPrompt);
+            JSONObject apiPayload = ComfyPipelineService.convertUiToApi(flattened);
+            promptToQueue = apiPayload.getJSONObject("prompt");
+        } else {
+            promptToQueue = parsedPrompt;
+        }
+        cleanNonNodeKeys(promptToQueue);
+        return promptToQueue;
     }
 
     /**

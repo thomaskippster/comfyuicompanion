@@ -5,8 +5,15 @@ import de.tki.comfyuicompanion.domain.HuggingFaceModelEntry;
 import de.tki.comfyuicompanion.service.IDownloadManager;
 import de.tki.comfyuicompanion.service.IHuggingFaceHubService;
 import de.tki.comfyuicompanion.service.impl.ConfigService;
+import de.tki.comfyuicompanion.service.impl.HuggingFaceWorkflowAnalyzer;
 import de.tki.comfyuicompanion.service.impl.HuggingFaceWorkflowDispatcher;
 import org.slf4j.Logger;
+import de.tki.comfyuicompanion.domain.WorkflowDescriptor;
+import de.tki.comfyuicompanion.service.vault.WorkflowVaultCoordinator;
+import de.tki.comfyuicompanion.service.workflow.IWorkflowSourceStrategy;
+import de.tki.comfyuicompanion.service.workflow.impl.HuggingFaceWorkflowStrategy;
+import de.tki.comfyuicompanion.ui.workflow.UnifiedWorkflowDetailsDialog;
+
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
@@ -40,6 +47,20 @@ public class HuggingFaceGalleryView extends JPanel {
     private volatile List<HuggingFaceModelEntry> currentResults = Collections.emptyList();
     private java.util.function.Consumer<List<de.tki.comfyuicompanion.domain.ModelInfo>> onSwitchToDownloadManager;
 
+    @Autowired(required = false)
+    private WorkflowVaultCoordinator vaultCoordinator;
+
+    @Autowired(required = false)
+    private de.tki.comfyuicompanion.service.IModelSearchService modelSearchService;
+
+    public void setVaultCoordinator(WorkflowVaultCoordinator vaultCoordinator) {
+        this.vaultCoordinator = vaultCoordinator;
+    }
+
+    public void setModelSearchService(de.tki.comfyuicompanion.service.IModelSearchService modelSearchService) {
+        this.modelSearchService = modelSearchService;
+    }
+
     /**
      * Constructs a new HuggingFaceGalleryView with injected dependencies.
      *
@@ -61,7 +82,7 @@ public class HuggingFaceGalleryView extends JPanel {
         this.workflowDispatcher = workflowDispatcher;
 
         this.headerToolbar = new HuggingFaceHeaderToolbar();
-        this.gridRenderer = new HuggingFaceGridRenderer();
+        this.gridRenderer = new HuggingFaceGridRenderer(huggingFaceHubService);
 
         buildUi();
     }
@@ -154,11 +175,17 @@ public class HuggingFaceGalleryView extends JPanel {
                 ).join();
 
                 this.currentResults = results != null ? results : Collections.emptyList();
+                final java.util.Set<String> installedIds = new java.util.HashSet<>();
+                for (HuggingFaceModelEntry repo : this.currentResults) {
+                    if (isRepoInstalled(repo)) {
+                        installedIds.add(repo.repoId());
+                    }
+                }
                 SwingUtilities.invokeLater(() -> {
                     try {
                     gridRenderer.renderEntries(
                             currentResults,
-                            this::isRepoInstalled,
+                            repo -> repo != null && installedIds.contains(repo.repoId()),
                             this::handleDetails,
                             this::handleDetails
                     );
@@ -178,7 +205,7 @@ public class HuggingFaceGalleryView extends JPanel {
                         }
                     }
 
-                    headerToolbar.setStatusText(currentResults.size() + " models found on Hugging Face");
+                    headerToolbar.setStatusText(currentResults.size() + " workflows found on Hugging Face");
                     headerToolbar.setRefreshEnabled(true);
                     } catch (Exception ex) {
                         log.error("Failed rendering Hugging Face grid: {}", ex.getMessage(), ex);
@@ -190,7 +217,7 @@ public class HuggingFaceGalleryView extends JPanel {
                 log.error("Failed searching Hugging Face repositories: {}", ex.getMessage(), ex);
                 SwingUtilities.invokeLater(() -> {
                     gridRenderer.showError(ex.getMessage());
-                    headerToolbar.setStatusText("Error fetching Hugging Face models");
+                    headerToolbar.setStatusText("Error fetching Hugging Face workflows");
                     headerToolbar.setRefreshEnabled(true);
                 });
             } finally {
@@ -207,32 +234,48 @@ public class HuggingFaceGalleryView extends JPanel {
     public void handleDetails(HuggingFaceModelEntry entry) {
         if (entry == null) return;
         Window owner = SwingUtilities.getWindowAncestor(this);
-        HuggingFaceModelDetailsDialog dialog = new HuggingFaceModelDetailsDialog(
+        IWorkflowSourceStrategy strategy = new HuggingFaceWorkflowStrategy(huggingFaceHubService);
+        WorkflowDescriptor desc = strategy.toWorkflowDescriptor(entry);
+        new UnifiedWorkflowDetailsDialog(
                 owner,
-                entry,
-                huggingFaceHubService,
-                downloadManager,
+                desc,
+                strategy,
                 configService,
-                workflowDispatcher,
-                this::checkFileStatus,
+                null,
+                modelSearchService,
+                vaultCoordinator,
+                json -> {
+                    if (workflowDispatcher != null && entry.files() != null && !entry.files().isEmpty()) {
+                        workflowDispatcher.sendWorkflowToComfyUI(entry, entry.files().get(0), "");
+                    }
+                },
                 onSwitchToDownloadManager
-        );
-        dialog.setVisible(true);
+        ).setVisible(true);
     }
 
     private boolean isRepoInstalled(HuggingFaceModelEntry repo) {
         if (repo == null || huggingFaceHubService == null || repo.files() == null || repo.files().isEmpty()) {
             return false;
         }
-        for (HuggingFaceFileEntry f : repo.files()) {
+        List<HuggingFaceFileEntry> requiredForRun = HuggingFaceWorkflowAnalyzer.selectOperationalFilesForSingleRun(
+                repo.files(), null, this::checkFileStatus);
+        if (requiredForRun.isEmpty()) {
+            return true;
+        }
+        for (HuggingFaceFileEntry f : requiredForRun) {
             if (!huggingFaceHubService.isFileInstalled(f.filename(), f.suggestedFolder())) {
                 return false;
             }
         }
         return true;
     }
+
     private String checkFileStatus(HuggingFaceFileEntry file) {
         if (file == null || huggingFaceHubService == null) return "Missing";
+        if (HuggingFaceWorkflowAnalyzer.isWorkflowFile(file.rfilename())
+                || "workflows".equalsIgnoreCase(file.suggestedFolder())) {
+            return "Workflow JSON";
+        }
         if (huggingFaceHubService.isFileInstalled(file.filename(), file.suggestedFolder())) {
             return "Installed";
         }

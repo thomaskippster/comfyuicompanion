@@ -57,6 +57,7 @@ public class DownloadManagerView extends JPanel {
         void onStartDownloadQueue();
         void onTogglePause();
         void onStopDownloadQueue();
+        default void onRemoveFromQueue() {}
     }
 
     private DownloadManagerListener listener;
@@ -70,6 +71,7 @@ public class DownloadManagerView extends JPanel {
     private JButton downloadButton;
     private JButton pauseButton;
     private JButton stopButton;
+    private JButton removeButton;
 
     public DownloadManagerView() {
         setLayout(new BorderLayout(10, 10));
@@ -205,6 +207,9 @@ public class DownloadManagerView extends JPanel {
                     String status = (String) getValueAt(r, 7);
                     return status != null && !status.contains("Already exists");
                 }
+                if (c == 6) {
+                    return true;
+                }
                 return false; 
             }
         };
@@ -259,7 +264,38 @@ public class DownloadManagerView extends JPanel {
         col7.setPreferredWidth(130);
         col7.setMinWidth(80);
 
+        modelTable.getSelectionModel().addListSelectionListener(e -> {
+            if (!e.getValueIsAdjusting() && listener != null) {
+                listener.onUpdateDownloadButtonsState();
+            }
+        });
+        modelTable.addKeyListener(new java.awt.event.KeyAdapter() {
+            @Override public void keyPressed(java.awt.event.KeyEvent e) {
+                if (e.getKeyCode() == java.awt.event.KeyEvent.VK_DELETE) {
+                    if (listener != null) listener.onRemoveFromQueue();
+                }
+            }
+        });
         modelTable.addMouseListener(new MouseAdapter() {
+            @Override public void mousePressed(MouseEvent e) { maybeShowPopup(e); }
+            @Override public void mouseReleased(MouseEvent e) { maybeShowPopup(e); }
+            private void maybeShowPopup(MouseEvent e) {
+                if (e.isPopupTrigger()) {
+                    int row = modelTable.rowAtPoint(e.getPoint());
+                    if (row >= 0) {
+                        if (!modelTable.isRowSelected(row)) {
+                            modelTable.setRowSelectionInterval(row, row);
+                        }
+                        JPopupMenu popup = new JPopupMenu();
+                        JMenuItem removeItem = new JMenuItem("Remove from Queue", SvgIconFactory.get(AppIcon.REMOVE));
+                        removeItem.addActionListener(ev -> {
+                            if (listener != null) listener.onRemoveFromQueue();
+                        });
+                        popup.add(removeItem);
+                        popup.show(e.getComponent(), e.getX(), e.getY());
+                    }
+                }
+            }
             @Override public void mouseClicked(MouseEvent e) {
                 int row = modelTable.rowAtPoint(e.getPoint());
                 int col = modelTable.columnAtPoint(e.getPoint());
@@ -322,9 +358,16 @@ public class DownloadManagerView extends JPanel {
             if (listener != null) listener.onStopDownloadQueue();
         });
 
+        removeButton = new JButton("Remove from Queue", SvgIconFactory.get(AppIcon.REMOVE));
+        removeButton.setEnabled(false);
+        removeButton.addActionListener(e -> {
+            if (listener != null) listener.onRemoveFromQueue();
+        });
+
         actionButtons.add(downloadButton);
         actionButtons.add(pauseButton);
         actionButtons.add(stopButton);
+        actionButtons.add(removeButton);
         
         bottomPanel.add(progressPanel, BorderLayout.CENTER);
         bottomPanel.add(actionButtons, BorderLayout.EAST);
@@ -369,6 +412,7 @@ public class DownloadManagerView extends JPanel {
     public JButton getDownloadButton() { return downloadButton; }
     public JButton getPauseButton() { return pauseButton; }
     public JButton getStopButton() { return stopButton; }
+    public JButton getRemoveButton() { return removeButton; }
 
     @Override
     public void addNotify() {

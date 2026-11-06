@@ -16,6 +16,7 @@ import java.util.Enumeration;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.function.Consumer;
+import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
@@ -112,6 +113,9 @@ public class CustomNodePostDownloadHandler implements ICustomNodePostDownloadHan
                 logger.info("Extracting custom node archive {} to {}", targetFile, targetDir);
 
                 extractEntries(zipFile, targetDir, nodePrefix);
+
+                // Patch legacy node imports for ComfyUI 0.42+ compatibility (e.g. SeargeSDXL)
+                patchLegacyCustomNodeCompatibility(targetDir);
 
                 // Extract bundled workflows into ComfyUI workflow storage
                 extractBundledWorkflows(zipFile, comfyPath, out);
@@ -218,6 +222,61 @@ public class CustomNodePostDownloadHandler implements ICustomNodePostDownloadHan
                     logger.debug("Failed to extract workflow JSON {}: {}", name, e.getMessage());
                 }
             }
+        }
+    }
+
+    /**
+     * Patches legacy custom nodes (such as SeargeSDXL) to remain compatible with
+     * ComfyUI 0.42+ where sampler helper methods moved from comfy.sample to comfy.sampler_helpers.
+     *
+     * @param targetDir custom node installation directory
+     */
+    private void patchLegacyCustomNodeCompatibility(Path targetDir) {
+        if (targetDir == null || !Files.isDirectory(targetDir)) {
+            return;
+        }
+
+        try {
+            Path initPy = targetDir.resolve("__init__.py");
+            if (Files.isRegularFile(initPy)) {
+                String content = Files.readString(initPy);
+                if (!content.contains("sampler_helpers")) {
+                    String shim = "# --- ComfyUI Companion Legacy Compatibility Layer ---\n" +
+                            "try:\n" +
+                            "    import comfy.sample\n" +
+                            "    import comfy.sampler_helpers as _cmfc_sh\n" +
+                            "    for _cmfc_attr in ['prepare_mask', 'get_additional_models', 'convert_cond', 'cleanup_additional_models']:\n" +
+                            "        if not hasattr(comfy.sample, _cmfc_attr) and hasattr(_cmfc_sh, _cmfc_attr):\n" +
+                            "            setattr(comfy.sample, _cmfc_attr, getattr(_cmfc_sh, _cmfc_attr))\n" +
+                            "except Exception:\n" +
+                            "    pass\n" +
+                            "# ----------------------------------------------------\n\n";
+                    Files.writeString(initPy, shim + content);
+                    logger.info("Applied legacy compatibility shim to {}", initPy);
+                }
+            }
+
+            // Also check for specific imports like 'from comfy.sample import prepare_mask'
+            try (Stream<Path> walk = Files.walk(targetDir, 5)) {
+                walk.filter(p -> Files.isRegularFile(p) && p.getFileName().toString().endsWith(".py"))
+                        .forEach(pyFile -> {
+                            try {
+                                String pyContent = Files.readString(pyFile);
+                                if (pyContent.contains("from comfy.sample import prepare_mask")) {
+                                    String patched = pyContent.replace(
+                                            "from comfy.sample import prepare_mask",
+                                            "try:\n    from comfy.sample import prepare_mask\nexcept ImportError:\n    from comfy.sampler_helpers import prepare_mask"
+                                    );
+                                    Files.writeString(pyFile, patched);
+                                    logger.info("Patched prepare_mask import in legacy node file {}", pyFile);
+                                }
+                            } catch (Exception ex) {
+                                logger.debug("Could not inspect/patch python file {}: {}", pyFile, ex.getMessage());
+                            }
+                        });
+            }
+        } catch (Exception e) {
+            logger.warn("Could not apply legacy compatibility patches to {}: {}", targetDir, e.getMessage());
         }
     }
 }

@@ -40,12 +40,14 @@ public record HuggingFaceFileEntry(
         }
     }
 
-    private static String formatBytes(long bytes) {
+    public static String formatBytes(long bytes) {
         if (bytes <= 0) return "Unknown";
         if (bytes >= 1024L * 1024L * 1024L) {
             return String.format(java.util.Locale.ROOT, "%.2f GB", bytes / (1024.0 * 1024.0 * 1024.0));
         } else if (bytes >= 1024L * 1024L) {
             return String.format(java.util.Locale.ROOT, "%.1f MB", bytes / (1024.0 * 1024.0));
+        } else if (bytes >= 1024L) {
+            return String.format(java.util.Locale.ROOT, "%.1f KB", bytes / 1024.0);
         } else {
             return bytes + " B";
         }

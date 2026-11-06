@@ -256,6 +256,10 @@ public class Main extends JFrame {
                 }
                 updateAiModelDisplay();
 
+                if (uiComponents.dashboardPanelCoordinator != null) {
+                    uiComponents.dashboardPanelCoordinator.refreshVersions(versionService, configService);
+                }
+
                 if (hardwareMonitorService != null) {
                     hardwareMonitorService.start(stats -> SwingUtilities.invokeLater(() -> {
                         if (uiComponents.dashboardPanelCoordinator != null) {

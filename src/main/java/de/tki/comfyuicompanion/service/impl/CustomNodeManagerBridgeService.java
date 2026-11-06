@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
 /**
@@ -74,13 +75,51 @@ public class CustomNodeManagerBridgeService implements ICustomNodeManagerBridgeS
         if (nodeClassName == null || nodeClassName.isBlank()) {
             return Optional.empty();
         }
-        if (!isLoaded && (loadingFuture == null || loadingFuture.isDone())) {
-            // Trigger asynchronous loading in background if not yet loaded
-            ensureDatabaseLoadedAsync();
+        if (!isLoaded) {
+            try {
+                ensureDatabaseLoadedAsync().get(5, TimeUnit.SECONDS);
+            } catch (Exception e) {
+                logger.debug("Database load wait interrupted or timed out: {}", e.getMessage());
+            }
         }
 
-        CustomNodePackage pkg = nodeClassMap.get(nodeClassName.toLowerCase(Locale.ROOT));
+        String lowerKey = nodeClassName.toLowerCase(Locale.ROOT).trim();
+        CustomNodePackage pkg = nodeClassMap.get(lowerKey);
+        if (pkg == null) {
+            pkg = resolveFuzzy(lowerKey);
+        }
         return Optional.ofNullable(pkg);
+    }
+
+    private CustomNodePackage resolveFuzzy(String lowerKey) {
+        if (lowerKey.contains("rgthree")) {
+            CustomNodePackage p = nodeClassMap.get("rgthreeseed");
+            if (p != null) return p;
+            return new CustomNodePackage("rgthree-comfy", "https://github.com/rgthree/rgthree-comfy", List.of(lowerKey), List.of());
+        }
+        if (lowerKey.contains("mikey") || lowerKey.contains("ratio select")) {
+            CustomNodePackage p = nodeClassMap.get("empty latent ratio select sdxl");
+            if (p != null) return p;
+            return new CustomNodePackage("mikey_nodes", "https://github.com/bash-j/mikey_nodes", List.of(lowerKey), List.of());
+        }
+
+        // Try stripping parenthetical suffixes: e.g. "Seed (rgthree)" -> "seed"
+        int paren = lowerKey.indexOf('(');
+        if (paren > 0) {
+            String stripped = lowerKey.substring(0, paren).trim();
+            CustomNodePackage p = nodeClassMap.get(stripped);
+            if (p != null) return p;
+        }
+
+        // Try removing spaces: e.g. "empty latent ratio select sdxl" -> "emptylatentratioselectsdxl"
+        String noSpaces = lowerKey.replaceAll("[\\s_-]+", "");
+        for (Map.Entry<String, CustomNodePackage> entry : nodeClassMap.entrySet()) {
+            if (entry.getKey().replaceAll("[\\s_-]+", "").equals(noSpaces)) {
+                return entry.getValue();
+            }
+        }
+
+        return null;
     }
 
     @Override
@@ -113,19 +152,14 @@ public class CustomNodeManagerBridgeService implements ICustomNodeManagerBridgeS
             }
 
             out.accept("🚀 Starting installation of " + packages.size() + " custom node package(s)...");
-            boolean allSuccess = true;
+            boolean allSucceeded = true;
             for (CustomNodePackage pkg : packages) {
-                boolean ok = installer.installPackage(pkg, out);
+                boolean ok = installer.installPackage(pkg, progress);
                 if (!ok) {
-                    allSuccess = false;
+                    allSucceeded = false;
                 }
             }
-            if (allSuccess) {
-                out.accept("🎉 All custom node packages installed successfully! Please restart ComfyUI if running.");
-            } else {
-                out.accept("⚠️ Some custom node packages could not be installed. Check output above.");
-            }
-            return allSuccess;
+            return allSucceeded;
         });
     }
 }

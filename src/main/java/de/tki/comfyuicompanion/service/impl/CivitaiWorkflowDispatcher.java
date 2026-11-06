@@ -7,6 +7,7 @@ import de.tki.comfyuicompanion.domain.CivitaiGenerationResult;
 import de.tki.comfyuicompanion.domain.CivitaiModelEntry;
 import de.tki.comfyuicompanion.domain.ModelInfo;
 import de.tki.comfyuicompanion.service.IComfyLifecycleService;
+import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -25,8 +26,8 @@ import java.util.Locale;
 import java.util.concurrent.CompletableFuture;
 
 /**
- * Dispatcher responsible for sending synthesized workflows to ComfyUI canvas via REST bridge,
- * triggering execution queues, and polling for generated image results.
+ * Dispatcher responsible for sending Civitai workflows to the ComfyUI canvas via REST bridge,
+ * falling back to direct `/prompt` execution when the bridge is inactive, and polling for generated outputs.
  */
 @Component
 public class CivitaiWorkflowDispatcher {
@@ -43,11 +44,11 @@ public class CivitaiWorkflowDispatcher {
     /**
      * Constructs a new CivitaiWorkflowDispatcher with required dependencies.
      *
-     * @param configService configuration service
-     * @param lifecycleService ComfyUI lifecycle management service
-     * @param comfyApiClient client for ComfyUI REST endpoints
+     * @param configService      configuration service
+     * @param lifecycleService   ComfyUI lifecycle management service
+     * @param comfyApiClient     client for ComfyUI REST endpoints
      * @param guiWorkflowBuilder builder for GUI workflows
-     * @param objectMapper JSON object mapper
+     * @param objectMapper       JSON object mapper
      */
     @Autowired
     public CivitaiWorkflowDispatcher(
@@ -69,13 +70,14 @@ public class CivitaiWorkflowDispatcher {
     }
 
     /**
-     * Sends the visual GUI LiteGraph workflow into the running ComfyUI canvas.
+     * Sends the visual GUI LiteGraph workflow into the running ComfyUI canvas,
+     * falling back to direct `/prompt` queue submission if the canvas bridge is unavailable.
      *
-     * @param entry the model entry
+     * @param entry          the model or workflow entry
      * @param requiredModels list of required model infos
-     * @param userPrompt custom user prompt text
-     * @param missingModels list of missing model files (must be empty to proceed)
-     * @return future resolving to true if successfully received
+     * @param userPrompt     custom user prompt text
+     * @param missingModels  list of missing model files (must be empty to proceed)
+     * @return future resolving to true if successfully received or queued
      */
     public CompletableFuture<Boolean> sendWorkflowToComfyUI(
             CivitaiModelEntry entry,
@@ -97,26 +99,43 @@ public class CivitaiWorkflowDispatcher {
                 triggerModelRefresh(comfyUrl);
 
                 ObjectNode guiGraphNode = guiWorkflowBuilder.buildGuiWorkflow(entry, requiredModels, userPrompt);
+                ComfyWorkflowCompatibilitySanitizer sanitizer = new ComfyWorkflowCompatibilitySanitizer(objectMapper);
+                sanitizer.sanitizeWorkflow(guiGraphNode, sanitizer.fetchRegisteredNodes(comfyUrl, httpClient));
                 saveWorkflowToUserWorkflows(entry, guiGraphNode);
 
-                ObjectNode bridgePayload = objectMapper.createObjectNode();
-                bridgePayload.set("workflow", guiGraphNode);
+                boolean isUiFormat = guiGraphNode.has("nodes") || guiGraphNode.has("last_node_id");
+                if (isUiFormat) {
+                    try {
+                        ObjectNode bridgePayload = objectMapper.createObjectNode();
+                        bridgePayload.set("workflow", guiGraphNode);
 
-                HttpRequest bridgeReq = HttpRequest.newBuilder()
-                        .uri(URI.create(comfyUrl + "/cmfc/load-workflow"))
-                        .header("Content-Type", "application/json")
-                        .POST(HttpRequest.BodyPublishers.ofString(bridgePayload.toString()))
-                        .timeout(Duration.ofSeconds(10))
-                        .build();
+                        HttpRequest bridgeReq = HttpRequest.newBuilder()
+                                .uri(URI.create(comfyUrl + "/cmfc/load-workflow"))
+                                .header("Content-Type", "application/json")
+                                .POST(HttpRequest.BodyPublishers.ofString(bridgePayload.toString()))
+                                .timeout(Duration.ofSeconds(10))
+                                .build();
 
-                HttpResponse<String> response = httpClient.send(bridgeReq, HttpResponse.BodyHandlers.ofString());
-                if (response.statusCode() >= 200 && response.statusCode() < 300) {
-                    log.info("Successfully loaded GUI workflow for '{}' into ComfyUI canvas via bridge.", entry.name());
-                    return true;
-                } else {
-                    log.warn("ComfyUI bridge rejected /cmfc/load-workflow (HTTP {}): {}", response.statusCode(), response.body());
-                    throw new IOException("ComfyUI bridge returned HTTP " + response.statusCode() + ": " + response.body());
+                        HttpResponse<String> response = httpClient.send(bridgeReq, HttpResponse.BodyHandlers.ofString());
+                        if (response.statusCode() >= 200 && response.statusCode() < 300) {
+                            log.info("Successfully loaded GUI workflow for '{}' into ComfyUI canvas via bridge.", entry.name());
+                            return true;
+                        }
+                        log.warn("ComfyUI bridge returned HTTP {} for /cmfc/load-workflow; falling back to /prompt.", response.statusCode());
+                    } catch (Exception bridgeEx) {
+                        log.warn("ComfyUI bridge request failed ({}), attempting direct /prompt fallback.", bridgeEx.getMessage());
+                    }
                 }
+
+                String promptPayloadJson = convertGuiToPromptPayload(guiGraphNode);
+                HttpResponse<String> promptResp = submitPromptPayload(comfyUrl, promptPayloadJson);
+                if (promptResp != null && promptResp.statusCode() >= 200 && promptResp.statusCode() < 300) {
+                    log.info("Successfully queued Civitai workflow for '{}' via ComfyUI /prompt fallback.", entry.name());
+                    return true;
+                }
+                int code = promptResp != null ? promptResp.statusCode() : 0;
+                String body = promptResp != null ? promptResp.body() : "No response";
+                throw new IOException("ComfyUI rejected workflow submission (HTTP " + code + "): " + body);
             } catch (Exception e) {
                 log.error("Failed sending GUI workflow to ComfyUI: {}", e.getMessage(), e);
                 throw new RuntimeException(e);
@@ -127,7 +146,7 @@ public class CivitaiWorkflowDispatcher {
     /**
      * Submits an API prompt workflow to ComfyUI and polls for the finished output.
      *
-     * @param entry the model entry
+     * @param entry        the model entry
      * @param workflowJson the API workflow JSON string
      * @return future with the generation result
      */
@@ -185,8 +204,53 @@ public class CivitaiWorkflowDispatcher {
         }, runnable -> Thread.ofVirtual().name("Civitai-SendComfyWorker").start(runnable));
     }
 
+    private String convertGuiToPromptPayload(ObjectNode guiGraphNode) {
+        try {
+            JSONObject parsedObj = new JSONObject(guiGraphNode.toString());
+            if (parsedObj.has("nodes")) {
+                JSONObject flattened = ComfyPipelineService.flattenWorkflow(parsedObj);
+                JSONObject apiPayload = ComfyPipelineService.convertUiToApi(flattened);
+                if (apiPayload.has("prompt") && apiPayload.getJSONObject("prompt").length() > 0) {
+                    JSONObject wrapper = new JSONObject();
+                    wrapper.put("prompt", apiPayload.getJSONObject("prompt"));
+                    return wrapper.toString();
+                }
+            } else if (parsedObj.has("prompt")) {
+                return parsedObj.toString();
+            } else {
+                JSONObject wrapper = new JSONObject();
+                wrapper.put("prompt", parsedObj);
+                return wrapper.toString();
+            }
+        } catch (Exception ex) {
+            log.debug("UI-to-API conversion fallback: {}", ex.getMessage());
+        }
+        ObjectNode fallback = objectMapper.createObjectNode();
+        fallback.set("prompt", guiGraphNode);
+        return fallback.toString();
+    }
+
+    private HttpResponse<String> submitPromptPayload(String comfyUrl, String promptPayloadJson) throws IOException, InterruptedException {
+        if (comfyApiClient != null) {
+            HttpResponse<String> resp = comfyApiClient.postPrompt(comfyUrl, promptPayloadJson);
+            if (resp != null) {
+                return resp;
+            }
+        }
+        HttpRequest promptReq = HttpRequest.newBuilder()
+                .uri(URI.create(comfyUrl + "/prompt"))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(promptPayloadJson))
+                .timeout(Duration.ofSeconds(15))
+                .build();
+        return httpClient.send(promptReq, HttpResponse.BodyHandlers.ofString());
+    }
+
     private String getSanitizedComfyUrl() {
         String comfyUrl = configService != null ? configService.getComfyUIUrl() : "http://localhost:8188";
+        if (comfyUrl == null || comfyUrl.isBlank()) {
+            comfyUrl = "http://localhost:8188";
+        }
         if (comfyUrl.endsWith("/")) {
             comfyUrl = comfyUrl.substring(0, comfyUrl.length() - 1);
         }
@@ -257,13 +321,12 @@ public class CivitaiWorkflowDispatcher {
                     Thread.sleep(1000);
                 } catch (InterruptedException ie) {
                     Thread.currentThread().interrupt();
-                    throw new IOException("Interrupted while awaiting ComfyUI startup", ie);
+                    break;
                 }
             }
             if (!healthy) {
-                throw new IOException("ComfyUI server could not be started or did not reach a healthy state within 90s.");
+                throw new IllegalStateException("ComfyUI server did not become healthy within 90 seconds.");
             }
-            log.info("ComfyUI server is now running and healthy. Proceeding with workflow dispatch.");
         }
     }
 }

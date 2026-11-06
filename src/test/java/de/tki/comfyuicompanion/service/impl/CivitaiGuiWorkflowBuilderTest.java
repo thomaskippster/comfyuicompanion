@@ -2,6 +2,7 @@ package de.tki.comfyuicompanion.service.impl;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import de.tki.comfyuicompanion.domain.CivitaiModelEntry;
 import de.tki.comfyuicompanion.domain.ModelInfo;
@@ -204,6 +205,70 @@ class CivitaiGuiWorkflowBuilderTest {
         JsonNode loraNode = findNodeById(workflow.get("nodes"), 10);
         assertThat(loraNode).isNotNull();
         assertThat(loraNode.path("widgets_values").get(0).asText()).isEqualTo("ZIT_CPA_FREE.safetensors");
+    }
+
+    @Test
+    @DisplayName("Should strictly prevent workflow zip archives from being passed to CheckpointLoaderSimple")
+    void shouldNeverPassZipFileAsCheckpointLoaderName() {
+        CivitaiModelEntry workflowEntry = new CivitaiModelEntry(
+                999L, "WAN 2.2 Workflow T2V", "Workflows", "pgc", "Wan Video", "desc",
+                "http://img", "http://dl", "wan22WorkflowT2VI2VT2I_v185.zip", "64 MB", 64000000L,
+                1000, 5.0, List.of(), false
+        );
+
+        ModelInfo zipInfo = new ModelInfo("workflows", "wan22WorkflowT2VI2VT2I_v185.zip", "REMOTE");
+        zipInfo.setFilename("wan22WorkflowT2VI2VT2I_v185.zip");
+
+        ModelInfo baseModelInfo = new ModelInfo("diffusion_models", "wan2.1_i2v_480p_14B_fp16.safetensors", "LOCAL");
+        baseModelInfo.setFilename("wan2.1_i2v_480p_14B_fp16.safetensors");
+
+        ObjectNode workflow = builder.buildGuiWorkflow(workflowEntry, List.of(zipInfo, baseModelInfo));
+
+        JsonNode loaderNode = findNodeByType(workflow.get("nodes"), "UNETLoader", "CheckpointLoaderSimple");
+        assertThat(loaderNode).isNotNull();
+        String chosenModel = loaderNode.path("widgets_values").get(0).asText();
+        assertThat(chosenModel).doesNotEndWith(".zip");
+        assertThat(chosenModel).isEqualTo("wan2.1_i2v_480p_14B_fp16.safetensors");
+    }
+
+    @Test
+    @DisplayName("Should load real LiteGraph workflow when resolved by CivitaiWorkflowFileResolver")
+    void shouldLoadRealWorkflowWhenResolved() {
+        CivitaiWorkflowFileResolver mockResolver = org.mockito.Mockito.mock(CivitaiWorkflowFileResolver.class);
+        ObjectNode realGraph = objectMapper.createObjectNode();
+        ArrayNode realNodes = objectMapper.createArrayNode();
+        ObjectNode n = objectMapper.createObjectNode();
+        n.put("id", 100);
+        n.put("type", "CustomRealNode");
+        realNodes.add(n);
+        realGraph.set("nodes", realNodes);
+
+        org.mockito.Mockito.when(mockResolver.tryResolveRealWorkflow(org.mockito.ArgumentMatchers.any()))
+                .thenReturn(java.util.Optional.of(realGraph));
+
+        CivitaiGuiWorkflowBuilder builderWithResolver = new CivitaiGuiWorkflowBuilder(
+                objectMapper, null, null, null, mockResolver
+        );
+
+        CivitaiModelEntry workflowEntry = new CivitaiModelEntry(
+                999L, "WAN 2.2 Workflow", "Workflows", "pgc", "Wan Video", "desc",
+                "http://img", "http://dl", "wan22Workflow.zip", "64 MB", 64000000L,
+                1000, 5.0, List.of(), false
+        );
+
+        ObjectNode result = builderWithResolver.buildGuiWorkflow(workflowEntry, List.of(), "custom prompt");
+        assertThat(result.path("nodes").get(0).path("type").asText()).isEqualTo("CustomRealNode");
+        org.mockito.Mockito.verify(mockResolver).injectUserPrompt(realGraph, "custom prompt");
+    }
+
+    private JsonNode findNodeByType(JsonNode nodes, String... types) {
+        List<String> typeList = List.of(types);
+        for (JsonNode n : nodes) {
+            if (typeList.contains(n.path("type").asText())) {
+                return n;
+            }
+        }
+        return null;
     }
 
     private JsonNode findNodeById(JsonNode nodes, int id) {

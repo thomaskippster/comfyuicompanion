@@ -7,6 +7,13 @@ import de.tki.comfyuicompanion.service.ICivitaiOperationalModelService;
 import de.tki.comfyuicompanion.service.IDownloadManager;
 import de.tki.comfyuicompanion.service.impl.ConfigService;
 import de.tki.comfyuicompanion.ui.huggingface.HuggingFaceGalleryView;
+import de.tki.comfyuicompanion.domain.WorkflowDescriptor;
+import de.tki.comfyuicompanion.service.vault.WorkflowVaultCoordinator;
+import de.tki.comfyuicompanion.service.impl.WorkflowVaultRepositoryImpl;
+import de.tki.comfyuicompanion.service.workflow.IWorkflowSourceStrategy;
+import de.tki.comfyuicompanion.service.workflow.impl.CivitaiWorkflowStrategy;
+import de.tki.comfyuicompanion.ui.workflow.UnifiedWorkflowDetailsDialog;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -54,6 +61,20 @@ public class CivitaiGalleryTab extends JPanel {
     private volatile List<CivitaiModelEntry> currentResults = Collections.emptyList();
     private java.util.function.Consumer<List<ModelInfo>> onSwitchToDownloadManager;
 
+    @Autowired(required = false)
+    private WorkflowVaultCoordinator vaultCoordinator;
+
+    @Autowired(required = false)
+    private de.tki.comfyuicompanion.service.IModelSearchService modelSearchService;
+
+    public void setVaultCoordinator(WorkflowVaultCoordinator vaultCoordinator) {
+        this.vaultCoordinator = vaultCoordinator;
+    }
+
+    public void setModelSearchService(de.tki.comfyuicompanion.service.IModelSearchService modelSearchService) {
+        this.modelSearchService = modelSearchService;
+    }
+
     /**
      * Constructs a new CivitaiGalleryTab with all dependencies.
      *
@@ -83,7 +104,7 @@ public class CivitaiGalleryTab extends JPanel {
         this.modelFavoritesRepository = modelFavoritesRepository;
 
         headerToolbar = new CivitaiHeaderToolbar();
-        gridRenderer = new CivitaiGridRenderer();
+        gridRenderer = new CivitaiGridRenderer(operationalModelService);
 
         buildUi();
 
@@ -326,7 +347,7 @@ public class CivitaiGalleryTab extends JPanel {
         boolean allowNsfw = headerToolbar.isAllowNsfw();
         boolean favoritesOnly = headerToolbar.isFavoritesOnly();
 
-        headerToolbar.setStatusText("Fetching models from Civitai...");
+        headerToolbar.setStatusText("Fetching workflows from Civitai...");
         headerToolbar.setRefreshEnabled(false);
         gridRenderer.showLoading();
 
@@ -344,16 +365,19 @@ public class CivitaiGalleryTab extends JPanel {
                     results = rawResults;
                 }
                 this.currentResults = results != null ? results : Collections.emptyList();
+                final java.util.Set<Long> installedIds = new java.util.HashSet<>();
+                for (CivitaiModelEntry entry : this.currentResults) {
+                    boolean inst = operationalModelService != null
+                            ? operationalModelService.areAllModelsInstalled(operationalModelService.resolveRequiredModels(entry))
+                            : civitaiHubService.isModelInstalled(entry);
+                    if (inst) {
+                        installedIds.add(entry.id());
+                    }
+                }
                 SwingUtilities.invokeLater(() -> {
                     gridRenderer.renderEntries(
                             results,
-                            entry -> {
-                                if (operationalModelService != null) {
-                                    List<ModelInfo> req = operationalModelService.resolveRequiredModels(entry);
-                                    return operationalModelService.areAllModelsInstalled(req);
-                                }
-                                return civitaiHubService.isModelInstalled(entry);
-                            },
+                            entry -> entry != null && installedIds.contains(entry.id()),
                             this::handleDownload,
                             this::handleDetails
                     );
@@ -368,14 +392,14 @@ public class CivitaiGalleryTab extends JPanel {
                         }
                     }
 
-                    headerToolbar.setStatusText(currentResults.size() + " models found");
+                    headerToolbar.setStatusText(currentResults.size() + " workflows found");
                     headerToolbar.setRefreshEnabled(true);
                 });
             } catch (Exception ex) {
-                logger.error("Failed to fetch Civitai models: {}", ex.getMessage(), ex);
+                logger.error("Failed to fetch Civitai workflows: {}", ex.getMessage(), ex);
                 SwingUtilities.invokeLater(() -> {
                     gridRenderer.showError(ex.getMessage());
-                    headerToolbar.setStatusText("Error fetching models");
+                    headerToolbar.setStatusText("Error fetching workflows");
                     headerToolbar.setRefreshEnabled(true);
                 });
             } finally {
@@ -402,15 +426,23 @@ public class CivitaiGalleryTab extends JPanel {
     public void handleDetails(CivitaiModelEntry entry) {
         if (entry == null) return;
         Window owner = SwingUtilities.getWindowAncestor(this);
-        CivitaiModelDetailsDialog dialog = new CivitaiModelDetailsDialog(
+        IWorkflowSourceStrategy strategy = new CivitaiWorkflowStrategy(operationalModelService);
+        WorkflowDescriptor desc = strategy.toWorkflowDescriptor(entry);
+        new UnifiedWorkflowDetailsDialog(
                 owner,
-                entry,
-                operationalModelService,
-                downloadManager,
+                desc,
+                strategy,
                 configService,
+                null,
+                modelSearchService,
+                vaultCoordinator,
+                json -> {
+                    if (operationalModelService != null) {
+                        operationalModelService.sendWorkflowToComfyUI(entry, desc.requiredModels(), null);
+                    }
+                },
                 onSwitchToDownloadManager
-        );
-        dialog.setVisible(true);
+        ).setVisible(true);
     }
 
     /**

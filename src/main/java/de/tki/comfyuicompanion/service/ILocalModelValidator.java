@@ -59,4 +59,14 @@ public interface ILocalModelValidator {
     default java.util.List<de.tki.comfyuicompanion.domain.ModelInfo> getCachedModelsForWorkflow(String idOrTitle) {
         return java.util.Collections.emptyList();
     }
+
+    /**
+     * Resolves the local file path of an active model by filename or quantization stem if present.
+     *
+     * @param modelName the model file name
+     * @return optional path to the local model file
+     */
+    default java.util.Optional<java.nio.file.Path> findLocalModelPath(String modelName) {
+        return java.util.Optional.empty();
+    }
 }

@@ -7,6 +7,7 @@ import de.tki.comfyuicompanion.service.SafePathValidator;
 import de.tki.comfyuicompanion.service.impl.ConfigService;
 import de.tki.comfyuicompanion.service.impl.CustomNodeInstaller;
 import de.tki.comfyuicompanion.service.impl.CustomNodeManagerBridgeService;
+import de.tki.comfyuicompanion.service.workflow.ComfyCoreNodesCatalog;
 import de.tki.comfyuicompanion.util.ConfigConstants;
 import org.eclipse.jgit.api.Git;
 import org.slf4j.Logger;
@@ -60,7 +61,7 @@ public class CustomNodeResolverService {
         register("Comfyroll", "https://github.com/Suzie1/ComfyUI_Comfyroll_CustomNodes",
                 "CR Prompt Text", "CR Image Input Switch", "CR Text", "CR Conditioning Input Switch");
         register("KJNodes", "https://github.com/kijai/ComfyUI-KJNodes",
-                "ColorMatch", "SetGetNode", "GetNode", "SetNode", "ImageBatchTest");
+                "ColorMatch", "SetGetNode", "GetNode", "SetNode", "ImageBatchTest", "ConditioningMultiCombine");
         register("ControlNetAux", "https://github.com/Fannovel16/comfy_controlnet_preprocessors",
                 "LineArtPreprocessor", "DWPreprocessor", "Zoe-DepthMapPreprocessor", "CannyEdgePreprocessor");
         register("LivePortrait", "https://github.com/kijai/ComfyUI-LivePortrait",
@@ -69,6 +70,30 @@ public class CustomNodeResolverService {
                 "Wav2Lip", "Wav2LipPreprocessor");
         register("SadTalker", "https://github.com/OpenTalker/SadTalker",
                 "SadTalker", "SadTalkerLoader");
+        register("ComfyUI-WanVideoWrapper", "https://github.com/kijai/ComfyUI-WanVideoWrapper",
+                "WanVideoSampler", "WanVideoDecode", "WanVideoBlockSwap", "WanVideoLoraSelectMulti",
+                "WanVideoTorchCompileSettings", "WanVideoModelLoader", "WanVideoTextEncode",
+                "WanVideoImageToVideo", "WanVideoControlNet", "WanVideoPrompt", "WanVideoControlNetLoader",
+                "WanVideoVAELoader", "WanVideoTextEncodeCached");
+        register("cg-use-everywhere", "https://github.com/chrisgoringe/cg-use-everywhere",
+                "Anything Everywhere", "Seed Everywhere", "Anything Everywhere?", "Anything Everywhere3",
+                "Prompts Everywhere", "Use Everywhere Server");
+        register("comfyui-custom-scripts", "https://github.com/pythongosssss/ComfyUI-Custom-Scripts",
+                "PlaySound|pysssss", "ShowText|pysssss", "ConstrainImage|pysssss", "MathExpression|pysssss",
+                "PresetText|pysssss", "CheckpointLoaderSimple|pysssss");
+        register("crt-nodes", "https://github.com/PGCRT/CRT-Nodes",
+                "FancyNoteNode", "FancyTimerNode", "CRTOptions", "CRTSwitch");
+        register("ComfyUI-Chibi-Nodes", "https://github.com/chibiace/ComfyUI-Chibi-Nodes",
+                "Textbox", "ChibiNode");
+        register("ComfyUI-Video-Helper-Suite", "https://github.com/Kosinkadink/ComfyUI-Video-Helper-Suite",
+                "VHS_LoadVideo", "VHS_VideoCombine", "VHS_LoadImages", "VHS_SplitMasks", "VHS_VideoCombine_adv");
+        register("rgthree-comfy", "https://github.com/rgthree/rgthree-comfy",
+                "Seed (rgthree)", "RgthreeSeed", "Context (rgthree)", "RgthreeContext",
+                "Context Big (rgthree)", "RgthreeBigContext", "Reroute (rgthree)", "RgthreeReroute",
+                "Power Lora Loader (rgthree)", "RgthreePowerLoraLoader", "Display Any (rgthree)", "RgthreeDisplayAny");
+        register("mikey_nodes", "https://github.com/bash-j/mikey_nodes",
+                "Empty Latent Ratio Select SDXL", "Empty Latent Ratio Custom SDXL",
+                "Empty Latent Ratio Select SDXL (Mikey)", "Save Image Ratio SDXL");
     }
 
     private static void register(String name, String gitUrl, String... nodeTypes) {
@@ -144,12 +169,32 @@ public class CustomNodeResolverService {
 
         try {
             JsonNode root = objectMapper.readTree(workflowJson);
+            Set<String> localSubgraphIds = new HashSet<>();
+
+            // 1a. Check LiteGraph Subgraphs definitions.subgraphs
+            if (root.has("definitions") && root.get("definitions").has("subgraphs") && root.get("definitions").get("subgraphs").isArray()) {
+                for (JsonNode sg : root.get("definitions").get("subgraphs")) {
+                    if (sg.has("id")) {
+                        localSubgraphIds.add(sg.get("id").asText());
+                    }
+                    if (sg.has("nodes") && sg.get("nodes").isArray()) {
+                        for (JsonNode sn : sg.get("nodes")) {
+                            if (sn.has("type")) {
+                                types.add(sn.get("type").asText());
+                            }
+                        }
+                    }
+                }
+            }
 
             // 1. GUI Format: root.nodes = [...]
             if (root.has("nodes") && root.get("nodes").isArray()) {
                 for (JsonNode node : root.get("nodes")) {
                     if (node.has("type")) {
-                        types.add(node.get("type").asText());
+                        String nodeType = node.get("type").asText();
+                        if (!localSubgraphIds.contains(nodeType)) {
+                            types.add(nodeType);
+                        }
                     }
                 }
             }
@@ -161,10 +206,15 @@ public class CustomNodeResolverService {
                     Map.Entry<String, JsonNode> entry = fields.next();
                     JsonNode val = entry.getValue();
                     if (val.isObject() && val.has("class_type")) {
-                        types.add(val.get("class_type").asText());
+                        String classType = val.get("class_type").asText();
+                        if (!localSubgraphIds.contains(classType)) {
+                            types.add(classType);
+                        }
                     }
                 }
             }
+
+            types.removeAll(localSubgraphIds);
         } catch (Exception e) {
             logger.error("Failed to parse node types from workflow: {}", e.getMessage());
         }
@@ -203,8 +253,50 @@ public class CustomNodeResolverService {
     }
 
     /**
+     * Resolves a custom node package via ComfyUI-Manager bridge or static mappings.
+     *
+     * @param nodeType node class name
+     * @return resolved package optional
+     */
+    public Optional<CustomNodePackage> resolvePackage(String nodeType) {
+        if (nodeType == null || nodeType.isBlank()) {
+            return Optional.empty();
+        }
+        Optional<CustomNodePackage> resolved = findKnownPackage(nodeType);
+        if (resolved.isEmpty() && managerBridgeService != null) {
+            resolved = managerBridgeService.resolveNodePackage(nodeType);
+        }
+        return resolved;
+    }
+
+    /**
+     * Scans the local ComfyUI custom_nodes directory for installed package folder names.
+     *
+     * @return set of lowercase installed custom node directory names
+     */
+    public Set<String> scanLocalInstalledCustomNodes() {
+        Set<String> installed = new HashSet<>();
+        String comfyPath = configService != null ? configService.getComfyUIPath() : null;
+        if (comfyPath == null || comfyPath.isBlank()) {
+            return installed;
+        }
+        File customNodesDir = new File(comfyPath, "custom_nodes");
+        if (customNodesDir.exists() && customNodesDir.isDirectory()) {
+            File[] files = customNodesDir.listFiles();
+            if (files != null) {
+                for (File f : files) {
+                    if (f.isDirectory() && !f.getName().startsWith(".")) {
+                        installed.add(f.getName().toLowerCase(Locale.ROOT));
+                    }
+                }
+            }
+        }
+        return installed;
+    }
+
+    /**
      * Analyzes a workflow against ComfyUI registered nodes and produces a resolution report,
-     * looking up missing nodes in ComfyUI-Manager's extension mappings.
+     * looking up missing nodes in ComfyUI-Manager's extension mappings or local custom_nodes disk directory.
      *
      * @param workflowJson workflow JSON content
      * @return mono emitting the node resolution report
@@ -214,27 +306,30 @@ public class CustomNodeResolverService {
         return getRegisteredComfyUiNodes().map(registered -> {
             Set<String> missing = new LinkedHashSet<>();
             Set<CustomNodePackage> packages = new LinkedHashSet<>();
+            Set<String> localPacks = scanLocalInstalledCustomNodes();
 
             for (String req : required) {
                 // Ignore standard basic nodes that are universally built into ComfyUI
                 if (isCoreNode(req)) {
                     continue;
                 }
-                if (!registered.isEmpty() && !registered.contains(req)) {
+
+                boolean isInstalled = false;
+                if (!registered.isEmpty()) {
+                    isInstalled = registered.contains(req);
+                } else {
+                    // When ComfyUI is offline, inspect local custom_nodes directory
+                    Optional<CustomNodePackage> resolvedPkg = resolvePackage(req);
+                    if (resolvedPkg.isPresent()) {
+                        String repoName = extractRepoName(resolvedPkg.get().gitUrl()).toLowerCase(Locale.ROOT);
+                        String pkgName = resolvedPkg.get().packageName().toLowerCase(Locale.ROOT);
+                        isInstalled = localPacks.contains(repoName) || localPacks.contains(pkgName);
+                    }
+                }
+
+                if (!isInstalled) {
                     missing.add(req);
-
-                    // 1. Resolve via ComfyUI-Manager Bridge
-                    Optional<CustomNodePackage> resolvedPkg = Optional.empty();
-                    if (managerBridgeService != null) {
-                        resolvedPkg = managerBridgeService.resolveNodePackage(req);
-                    }
-
-                    // 2. Fallback to static mapping
-                    if (resolvedPkg.isEmpty()) {
-                        resolvedPkg = Optional.ofNullable(KNOWN_CUSTOM_NODES.get(req.toLowerCase(Locale.ROOT)));
-                    }
-
-                    resolvedPkg.ifPresent(packages::add);
+                    resolvePackage(req).ifPresent(packages::add);
                 }
             }
 
@@ -312,12 +407,6 @@ public class CustomNodeResolverService {
     }
 
     private boolean isCoreNode(String nodeType) {
-        return switch (nodeType) {
-            case "KSampler", "KSamplerAdvanced", "CheckpointLoaderSimple", "CLIPTextEncode",
-                 "VAEDecode", "VAEEncode", "EmptyLatentImage", "SaveImage", "PreviewImage",
-                 "LoadImage", "CLIPLoader", "VAELoader", "UNETLoader", "DualCLIPLoader",
-                 "ConditioningCombine", "ConditioningAverage", "LatentUpscale" -> true;
-            default -> false;
-        };
+        return ComfyCoreNodesCatalog.isCoreNode(nodeType);
     }
 }

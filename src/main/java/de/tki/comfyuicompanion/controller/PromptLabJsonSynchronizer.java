@@ -2,6 +2,7 @@ package de.tki.comfyuicompanion.controller;
 
 import de.tki.comfyuicompanion.service.PromptBlueprintApiService;
 import de.tki.comfyuicompanion.service.impl.ComfyPipelineService;
+import de.tki.comfyuicompanion.service.pipeline.SubgraphFlattener;
 import de.tki.comfyuicompanion.ui.PromptLabView;
 import org.json.JSONObject;
 import org.slf4j.Logger;
@@ -87,6 +88,10 @@ public class PromptLabJsonSynchronizer {
             return null;
         }
         if (root.has("prompt")) {
+            if (root.has("definitions")) {
+                SubgraphFlattener.backfillFromSubgraphDefinitions(
+                        root.optJSONObject("prompt"), root.optJSONObject("definitions"));
+            }
             return root;
         }
         if (root.has("nodes")) {

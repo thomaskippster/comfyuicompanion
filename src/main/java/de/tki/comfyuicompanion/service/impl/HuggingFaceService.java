@@ -44,7 +44,7 @@ public class HuggingFaceService {
                 .GET()
                 .timeout(Duration.ofSeconds(30)).build();
 
-        return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString())
+        return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString(java.nio.charset.StandardCharsets.UTF_8))
                 .thenApply(response -> {
                     List<ModelInfo> results = new ArrayList<>();
                     try {

@@ -32,13 +32,13 @@ public class BlueprintHardwareAdvisor {
      */
     public enum CompatibilityLevel {
         /** Models fit comfortably inside dedicated GPU VRAM. */
-        FITS_IN_VRAM("🟢 Fits in VRAM", new Color(34, 197, 130)),
+        FITS_IN_VRAM("Fits in VRAM", new Color(34, 197, 130)),
         /** Models exceed comfortable VRAM margin and require ComfyUI weight offloading / --lowvram. */
-        REQUIRES_OFFLOAD("🟡 Offload / --lowvram", new Color(245, 158, 11)),
+        REQUIRES_OFFLOAD("Offload / --lowvram", new Color(245, 158, 11)),
         /** Insufficient free disk space for missing models or extreme VRAM deficit. */
-        INSUFFICIENT_RESOURCES("🔴 High VRAM / Low Disk", new Color(239, 68, 68)),
+        INSUFFICIENT_RESOURCES("High VRAM / Low Disk", new Color(239, 68, 68)),
         /** Cloud API or lightweight workflow requiring minimal local GPU memory. */
-        CLOUD_OR_LIGHT("🟢 Lightweight / Cloud", new Color(34, 197, 130));
+        CLOUD_OR_LIGHT("Lightweight / Cloud", new Color(34, 197, 130));
 
         private final String label;
         private final Color badgeColor;
@@ -154,7 +154,7 @@ public class BlueprintHardwareAdvisor {
                     missingBytes / (double) GB, freeDiskBytes / (double) GB);
             return new CompatibilityReport(
                     CompatibilityLevel.INSUFFICIENT_RESOURCES,
-                    "🔴 Insufficient Disk",
+                    "Insufficient Disk",
                     summary,
                     estimatedVram, missingBytes, availableVramBytes, freeDiskBytes
             );
@@ -214,8 +214,8 @@ public class BlueprintHardwareAdvisor {
             try {
                 rawSize = modelSizeResolver.apply(info);
             } catch (Exception ignored) {
-            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
-        }
+                logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+            }
         }
 
         long parsed = parseFormattedSize(rawSize);
@@ -282,8 +282,8 @@ public class BlueprintHardwareAdvisor {
                     default -> (long) val;
                 };
             } catch (NumberFormatException ignored) {
-            logger.trace("Invalid numeric format: {}", ignored.getMessage());
-        }
+                logger.trace("Invalid numeric format: {}", ignored.getMessage());
+            }
         }
         return 0L;
     }

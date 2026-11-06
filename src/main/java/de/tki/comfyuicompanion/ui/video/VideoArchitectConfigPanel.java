@@ -130,7 +130,7 @@ public class VideoArchitectConfigPanel extends CardPanel {
         add(modelRow);
         add(Box.createVerticalStrut(6));
 
-        videoPresetLabel = new JLabel("Detected Preset: Wan 2.2 Cinematic Video (832x480 | 16 fps, Safe VRAM)") {
+        videoPresetLabel = new JLabel("Detected Preset: Wan 2.2 Cinematic Video (1280x720 | 16 fps, Safe VRAM)") {
             @Override
             public void updateUI() {
                 super.updateUI();
@@ -370,4 +370,20 @@ public class VideoArchitectConfigPanel extends CardPanel {
     public int getVideoSteps() { return samplingParamsPanel.getVideoSteps(); }
     public double getVideoCfg() { return samplingParamsPanel.getVideoCfg(); }
     public int getVideoMotion() { return samplingParamsPanel.getVideoMotion(); }
+
+    /** @return the selected local script LLM identifier (e.g. 'gemma-3-4b') */
+    public String getSelectedLocalLlm() {
+        return samplingParamsPanel != null ? samplingParamsPanel.getSelectedLocalLlm() : "gemma-3-4b";
+    }
+
+    /**
+     * Sets the selected local script LLM identifier.
+     *
+     * @param model model identifier
+     */
+    public void setSelectedLocalLlm(String model) {
+        if (samplingParamsPanel != null) {
+            samplingParamsPanel.setSelectedLocalLlm(model);
+        }
+    }
 }

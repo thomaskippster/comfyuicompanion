@@ -241,6 +241,9 @@ public class HardwareMonitorService {
      * @return GPU model name
      */
     public synchronized String getGpuName() {
+        if (vramTotal == 0 && !hasNvidia) {
+            queryNvidiaGpu();
+        }
         if (gpuName != null && !"N/A".equals(gpuName)) {
             lastKnownGpuName = gpuName;
         }

@@ -25,6 +25,13 @@ import java.io.File;
 @Component
 public class PromptLabView extends JPanel {
 
+    public static final String DEFAULT_POSITIVE_PROMPT =
+            "retro cyberpunk A vast desert landscape with towering rock formations, a deep valley stretching into the distance. In the far background, a futuristic cyberpunk city with glowing neon lights and towering skyscrapers, barely visible through a thin dust haze. The foreground features rolling sand dunes with intricate wind patterns. A breathtaking night sky filled with stars, nebulae, and distant planets illuminates the scene, casting a soft glow on the environment. The atmosphere is mysterious, with a sense of vastness and isolation. . 80's inspired, synthwave, neon, vibrant, detailed, retro futurism";
+
+    public static final String DEFAULT_NEGATIVE_PROMPT =
+            "(low quality, blurry, oversaturated, unrealistic proportions, distorted perspective, low detail, artifacts, watermark, cropped, cluttered composition, noisy background, unrealistic reflections, poor depth of field, overexposed), modern, desaturated, black and white, realism, low contrast";
+
+
     public interface PromptLabController {
         void onRefreshModels();
         void onSuggestSubject();
@@ -162,7 +169,7 @@ public class PromptLabView extends JPanel {
         subjectRow.setPreferredSize(new Dimension(100, 38));
         subjectRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 38));
 
-        promptSubjectField = new JTextField("cybernetic tiger, detailed, 8k");
+        promptSubjectField = new JTextField(DEFAULT_POSITIVE_PROMPT);
         promptSubjectField.setFont(new Font("SansSerif", Font.PLAIN, 14));
         promptSubjectField.setMinimumSize(new Dimension(80, 34));
         promptSubjectField.setPreferredSize(new Dimension(100, 34));
@@ -199,7 +206,7 @@ public class PromptLabView extends JPanel {
         leftPanel.add(lblNegative);
         leftPanel.add(Box.createVerticalStrut(4));
 
-        promptNegativeField = new JTextField("blurry, low quality, distortion, bad anatomy");
+        promptNegativeField = new JTextField(DEFAULT_NEGATIVE_PROMPT);
         promptNegativeField.setFont(new Font("SansSerif", Font.PLAIN, 12));
         promptNegativeField.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
         promptNegativeField.setMinimumSize(new Dimension(80, 32));

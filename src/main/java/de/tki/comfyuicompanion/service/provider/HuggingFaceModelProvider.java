@@ -65,7 +65,7 @@ public class HuggingFaceModelProvider implements ModelProviderStrategy {
         String url = API_BASE + "/models?limit=20&full=full&search=" + URLEncoder.encode(query, StandardCharsets.UTF_8);
         HttpRequest request = createRequestBuilder(url).GET().timeout(Duration.ofSeconds(20)).build();
 
-        return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString())
+        return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8))
                 .thenApply(response -> {
                     List<ModelInfo> results = new ArrayList<>();
                     if (response.statusCode() == 200) {

@@ -23,6 +23,7 @@ public class VideoSamplingParamsPanel extends JPanel {
     private final JComboBox<String> cmbLocalLlm;
     private final JCheckBox chkLipSync;
     private final JComboBox<String> cmbLipSyncEngine;
+    private final JComboBox<String> cmbResolution;
 
     /**
      * Constructs a new VideoSamplingParamsPanel with default configuration.
@@ -48,17 +49,55 @@ public class VideoSamplingParamsPanel extends JPanel {
         add(lblDimensions);
         add(Box.createVerticalStrut(5));
 
+        videoWidthSpinner = new JSpinner(new SpinnerNumberModel(1280, 256, 3840, 16));
+        videoHeightSpinner = new JSpinner(new SpinnerNumberModel(720, 256, 2160, 16));
+        videoDurationSpinner = new JSpinner(new SpinnerNumberModel(5, 1, 60, 1));
+
+        JPanel resRow = new JPanel(new BorderLayout(6, 0));
+        resRow.setOpaque(false);
+        resRow.setAlignmentX(Component.LEFT_ALIGNMENT);
+        resRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 28));
+        JLabel lblRes = new JLabel("Resolution Preset:");
+        lblRes.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        cmbResolution = new JComboBox<>(new String[]{
+                "720p HD (1280x720) - Recommended",
+                "1080p Full HD (1920x1080) - High Quality",
+                "576p Wide (1024x576) - Balanced",
+                "480p SD (832x480) - Fast Draft",
+                "Custom (Use Spinners)"
+        });
+        cmbResolution.setFont(new Font("SansSerif", Font.PLAIN, 12));
+        cmbResolution.addActionListener(e -> {
+            int idx = cmbResolution.getSelectedIndex();
+            if (idx == 0) {
+                videoWidthSpinner.setValue(1280);
+                videoHeightSpinner.setValue(720);
+            } else if (idx == 1) {
+                videoWidthSpinner.setValue(1920);
+                videoHeightSpinner.setValue(1080);
+            } else if (idx == 2) {
+                videoWidthSpinner.setValue(1024);
+                videoHeightSpinner.setValue(576);
+            } else if (idx == 3) {
+                videoWidthSpinner.setValue(832);
+                videoHeightSpinner.setValue(480);
+            }
+        });
+        resRow.add(lblRes, BorderLayout.WEST);
+        resRow.add(cmbResolution, BorderLayout.CENTER);
+        add(resRow);
+        add(Box.createVerticalStrut(6));
+
         JPanel sizeRow = new JPanel(new GridLayout(1, 3, 8, 0));
         sizeRow.setOpaque(false);
         sizeRow.setAlignmentX(Component.LEFT_ALIGNMENT);
         sizeRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 50));
 
-        videoWidthSpinner = new JSpinner(new SpinnerNumberModel(1280, 256, 3840, 16));
-        videoHeightSpinner = new JSpinner(new SpinnerNumberModel(720, 256, 2160, 16));
-        videoDurationSpinner = new JSpinner(new SpinnerNumberModel(5, 1, 60, 1));
         sizeRow.add(createSpinnerPanel("Width", videoWidthSpinner));
         sizeRow.add(createSpinnerPanel("Height", videoHeightSpinner));
         sizeRow.add(createSpinnerPanel("Scene Sec", videoDurationSpinner));
+        videoWidthSpinner.addChangeListener(e -> syncResolutionFromSpinners());
+        videoHeightSpinner.addChangeListener(e -> syncResolutionFromSpinners());
         add(sizeRow);
         add(Box.createVerticalStrut(16));
 
@@ -68,6 +107,7 @@ public class VideoSamplingParamsPanel extends JPanel {
         lblSampler.setAlignmentX(Component.LEFT_ALIGNMENT);
         add(lblSampler);
         add(Box.createVerticalStrut(5));
+
 
         JPanel samplerRow = new JPanel(new GridLayout(1, 3, 8, 0));
         samplerRow.setOpaque(false);
@@ -136,19 +176,21 @@ public class VideoSamplingParamsPanel extends JPanel {
         JLabel lblLlm = new JLabel("Script LLM:");
         lblLlm.setFont(new Font("SansSerif", Font.PLAIN, 11));
         cmbLocalLlm = new JComboBox<>(new String[]{
+                "gemma-3-4b",
                 "qwen-2.5-1.5b",
                 "llama-3.2-3b",
                 "phi-3.5-mini",
-                "gemma-3-4b",
                 "qwen-2.5-7b"
         });
         cmbLocalLlm.setFont(new Font("SansSerif", Font.PLAIN, 12));
         if (configService != null && configService.getLocalLlmModel() != null) {
             cmbLocalLlm.setSelectedItem(configService.getLocalLlmModel());
+        } else {
+            cmbLocalLlm.setSelectedItem("gemma-3-4b");
         }
         cmbLocalLlm.addActionListener(e -> {
             if (configService != null) {
-                configService.setLocalLlmModel((String) cmbLocalLlm.getSelectedItem());
+                configService.setLocalLlmModel(getSelectedLocalLlm());
             }
         });
         llmRow.add(lblLlm, BorderLayout.WEST);
@@ -252,4 +294,43 @@ public class VideoSamplingParamsPanel extends JPanel {
 
     /** @return selected lip sync engine identifier */
     public String getSelectedLipSyncEngine() { return (String) cmbLipSyncEngine.getSelectedItem(); }
+
+    /** @return the local script LLM combo box component */
+        /** @return the resolution preset combo box */
+    public JComboBox<String> getCmbResolution() { return cmbResolution; }
+
+    private void syncResolutionFromSpinners() {
+        int w = getVideoWidth();
+        int h = getVideoHeight();
+        if (w == 1280 && h == 720) {
+            if (cmbResolution.getSelectedIndex() != 0) cmbResolution.setSelectedIndex(0);
+        } else if (w == 1920 && h == 1080) {
+            if (cmbResolution.getSelectedIndex() != 1) cmbResolution.setSelectedIndex(1);
+        } else if (w == 1024 && h == 576) {
+            if (cmbResolution.getSelectedIndex() != 2) cmbResolution.setSelectedIndex(2);
+        } else if (w == 832 && h == 480) {
+            if (cmbResolution.getSelectedIndex() != 3) cmbResolution.setSelectedIndex(3);
+        } else {
+            if (cmbResolution.getSelectedIndex() != 4) cmbResolution.setSelectedIndex(4);
+        }
+    }
+
+    public JComboBox<String> getCmbLocalLlm() { return cmbLocalLlm; }
+
+    /** @return the selected script LLM model identifier (e.g. 'gemma-3-4b') */
+    public String getSelectedLocalLlm() {
+        Object item = cmbLocalLlm != null ? cmbLocalLlm.getSelectedItem() : null;
+        return item != null ? item.toString() : "gemma-3-4b";
+    }
+
+    /**
+     * Sets the active script LLM selection in the combo box.
+     *
+     * @param model model identifier
+     */
+    public void setSelectedLocalLlm(String model) {
+        if (cmbLocalLlm != null && model != null) {
+            cmbLocalLlm.setSelectedItem(model);
+        }
+    }
 }

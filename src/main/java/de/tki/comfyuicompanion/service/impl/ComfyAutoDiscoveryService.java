@@ -222,8 +222,7 @@ public class ComfyAutoDiscoveryService {
                 } catch (Exception ignored) {
             logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
         }
-                String cmd = String.format("\"%s\" \"%s\" --listen 127.0.0.1 --port %d --enable-manager --extra-model-paths-config \"%s\"",
-                        python, mainPy.getAbsolutePath(), port, new File(root, "extra_model_paths.yaml").getAbsolutePath());
+                String cmd = String.format("\"%s\" \"%s\" --listen 127.0.0.1 --port %d --enable-manager", python, mainPy.getAbsolutePath(), port);
                 settings.put("comfy_launch_command", cmd);
                 logger.info("🚀 [Config] Generated Launch Command: {}", cmd);
             } else {

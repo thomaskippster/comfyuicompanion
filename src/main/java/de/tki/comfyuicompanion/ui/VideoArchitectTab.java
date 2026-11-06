@@ -156,7 +156,12 @@ public class VideoArchitectTab extends JPanel {
     }
 
     private void handleDeconstructScript() {
+        String selectedLlm = configPanel.getSelectedLocalLlm();
+        if (configService != null) {
+            configService.setLocalLlmModel(selectedLlm);
+        }
         executionHandler.deconstructScript(this, configPanel.getPromptSubject(), configPanel.getSelectedModel(),
+                selectedLlm,
                 configPanel.getVideoWidth(), configPanel.getVideoHeight(), configPanel.getVideoCfg(),
                 configPanel.getVideoSteps(), configPanel.getVideoMotion(),
                 workspacePanel.getTimelineListModel(), workspacePanel.getTimelineListView(),
@@ -166,7 +171,12 @@ public class VideoArchitectTab extends JPanel {
     }
 
     private void handleAutoPilot() {
+        String selectedLlm = configPanel.getSelectedLocalLlm();
+        if (configService != null) {
+            configService.setLocalLlmModel(selectedLlm);
+        }
         executionHandler.executeAutoPilot(this, configPanel.getPromptSubject(), configPanel.getSelectedModel(),
+                selectedLlm,
                 configPanel.getSpeakerImagePath(), configPanel.getVideoWidth(), configPanel.getVideoHeight(),
                 configPanel.getVideoCfg(), configPanel.getVideoSteps(), configPanel.getVideoMotion(),
                 workspacePanel.getTimelineListModel(), workspacePanel.getTimelineListView(),

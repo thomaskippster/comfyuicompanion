@@ -77,7 +77,7 @@ public class ComfyModelAnalyzer implements IModelAnalyzer {
                     if (info.getSave_path() != null && info.getSave_path().contains("/") && match.getSave_path() != null && !match.getSave_path().contains("/")) {
                         // Keep info.save_path
                     } else {
-                        info.setSave_path(match.getSave_path());
+                        if (name.equalsIgnoreCase("ae.safetensors") || name.toLowerCase(java.util.Locale.ROOT).startsWith("ae.")) { info.setSave_path("models/vae"); } else { info.setSave_path(match.getSave_path()); }
                     }
                     
                     info.setSize(match.getSize());

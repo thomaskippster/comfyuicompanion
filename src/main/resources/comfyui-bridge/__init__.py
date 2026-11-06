@@ -1,6 +1,38 @@
 # Companion for ComfyUI Bridge
 # GitHub Repository: https://github.com/thomaskippster/comfyuicompanion
 # Note: There is also a direct Pinokio install and a pre-compiled JAR available – you can find those links on the GitHub repo.
+
+# --- ComfyUI Legacy Custom Nodes Compatibility Layer (ComfyUI 0.42+ sampler_helpers migration) ---
+try:
+    import comfy.sample
+    import comfy.sampler_helpers as _cmfc_sampler_helpers
+    for _cmfc_attr in ['prepare_mask', 'get_additional_models', 'convert_cond', 'cleanup_additional_models']:
+        if not hasattr(comfy.sample, _cmfc_attr) and hasattr(_cmfc_sampler_helpers, _cmfc_attr):
+            setattr(comfy.sample, _cmfc_attr, getattr(_cmfc_sampler_helpers, _cmfc_attr))
+except Exception as _cmfc_ex:
+    pass
+# -------------------------------------------------------------------------------------------------
+
+# --- Silence benign Windows WinError 10054 ConnectionResetError in asyncio Proactor loop ---
+try:
+    import sys
+    if sys.platform == "win32":
+        from asyncio.proactor_events import _ProactorBasePipeTransport
+        _orig_call_connection_lost = _ProactorBasePipeTransport._call_connection_lost
+
+        def _silent_connection_lost(self, exc=None):
+            if isinstance(exc, ConnectionResetError) and getattr(exc, "winerror", None) == 10054:
+                exc = None
+            try:
+                _orig_call_connection_lost(self, exc)
+            except ConnectionResetError:
+                pass
+
+        _ProactorBasePipeTransport._call_connection_lost = _silent_connection_lost
+except Exception:
+    pass
+# -------------------------------------------------------------------------------------------
+
 import server
 import folder_paths
 import asyncio
@@ -13,14 +45,19 @@ print("\033[96m[CMFC] Note: Direct Pinokio install & pre-compiled JAR available 
 
 def _route_registered(method, path):
     """Return True if the given (method, path) is already exposed by PromptServer."""
-    for route in server.PromptServer.instance.routes:
+    instance = getattr(server.PromptServer, "instance", None)
+    if instance is None or not hasattr(instance, "routes"):
+        return False
+    for route in instance.routes:
         if route.method == method and route.path == path:
             return True
     return False
 
 
-if not _route_registered("POST", "/cmfc/refresh-models"):
-    @server.PromptServer.instance.routes.post("/cmfc/refresh-models")
+prompt_instance = getattr(server.PromptServer, "instance", None)
+
+if prompt_instance is not None and not _route_registered("POST", "/cmfc/refresh-models"):
+    @prompt_instance.routes.post("/cmfc/refresh-models")
     async def refresh_models(request):
         data = await request.json() if request.has_body else {}
         force_reload = bool(data.get("force_reload", False))
@@ -41,22 +78,22 @@ if not _route_registered("POST", "/cmfc/refresh-models"):
                 folder_paths.cache_helper.clear()
 
             # Force ComfyUI to rebuild the node metadata.
-            server.PromptServer.instance.object_info = None
+            prompt_instance.object_info = None
         except Exception as e:
             print(f"[CMFC] Error: {e}")
 
-        server.PromptServer.instance.send_sync("cmfc-refresh-ui", {
+        prompt_instance.send_sync("cmfc-refresh-ui", {
             "status": "ok",
             "force_reload": force_reload,
         })
 
         return web.json_response({"status": "ok"})
-else:
+elif prompt_instance is not None:
     print("[CMFC] Route /cmfc/refresh-models already registered, skipping.")
 
 
-if not _route_registered("POST", "/cmfc/load-workflow"):
-    @server.PromptServer.instance.routes.post("/cmfc/load-workflow")
+if prompt_instance is not None and not _route_registered("POST", "/cmfc/load-workflow"):
+    @prompt_instance.routes.post("/cmfc/load-workflow")
     async def load_workflow(request):
         data = await request.json() if request.has_body else {}
         workflow = data.get("workflow")
@@ -66,20 +103,20 @@ if not _route_registered("POST", "/cmfc/load-workflow"):
                 status=400,
             )
 
-        server.PromptServer.instance.send_sync("cmfc-load-workflow", {
+        prompt_instance.send_sync("cmfc-load-workflow", {
             "workflow": workflow,
         })
         return web.json_response({"status": "ok"})
-else:
+elif prompt_instance is not None:
     print("[CMFC] Route /cmfc/load-workflow already registered, skipping.")
 
 
-if not _route_registered("POST", "/cmfc/convert-workflow"):
-    @server.PromptServer.instance.routes.post("/cmfc/convert-workflow")
+if prompt_instance is not None and not _route_registered("POST", "/cmfc/convert-workflow"):
+    @prompt_instance.routes.post("/cmfc/convert-workflow")
     async def convert_workflow(request):
         """
         Accepts a GUI-format workflow JSON from the Java companion app and relays
-        it to the browser via WebSocket.  The JS bridge will call app.graphToPrompt()
+        it to the browser via WebSocket. The JS bridge will call app.graphToPrompt()
         and POST the resulting API JSON back to http://127.0.0.1:12345/api/workflow-ready.
         """
         try:
@@ -100,14 +137,62 @@ if not _route_registered("POST", "/cmfc/convert-workflow"):
             )
 
         print("[CMFC] Relaying GUI workflow to browser for app.graphToPrompt() conversion")
-        server.PromptServer.instance.send_sync("cmfc-convert-workflow", {
+        prompt_instance.send_sync("cmfc-convert-workflow", {
             "workflow": workflow,
             "callbackUrl": callback_url,
         })
 
         return web.json_response({"status": "ok", "message": "Conversion request sent to browser"})
-else:
+elif prompt_instance is not None:
     print("[CMFC] Route /cmfc/convert-workflow already registered, skipping.")
+
+
+if prompt_instance is not None and not _route_registered("POST", "/cmfc/inspect-workflow"):
+    @prompt_instance.routes.post("/cmfc/inspect-workflow")
+    async def inspect_workflow(request):
+        """
+        Generic workflow inspection service querying ComfyUI's internal runtime registry (nodes.NODE_CLASS_MAPPINGS).
+        Identifies missing custom node types directly from the running ComfyUI instance without hardcoded lists.
+        """
+        try:
+            data = await request.json()
+        except Exception:
+            return web.json_response({"status": "error", "message": "Invalid JSON body"}, status=400)
+
+        workflow = data.get("workflow", {})
+        nodes_list = workflow.get("nodes", [])
+
+        try:
+            import nodes as comfy_nodes
+            registered = set(comfy_nodes.NODE_CLASS_MAPPINGS.keys())
+        except Exception:
+            registered = set()
+
+        frontend_builtins = {
+            "note", "markdownnote", "reroute", "primitivenode",
+            "primitiveint", "primitivefloat", "primitivestring",
+            "primitivestringmultiline", "primitiveboolean"
+        }
+
+        missing_nodes = []
+        for n in nodes_list:
+            if isinstance(n, dict):
+                ntype = n.get("type", "")
+                if ntype and ntype.lower() not in frontend_builtins and ntype not in registered:
+                    missing_nodes.append({
+                        "id": n.get("id"),
+                        "type": ntype,
+                        "title": n.get("title", ntype)
+                    })
+
+        return web.json_response({
+            "status": "ok",
+            "installed_count": len(registered),
+            "missing_count": len(missing_nodes),
+            "missing_nodes": missing_nodes,
+        })
+elif prompt_instance is not None:
+    print("[CMFC] Route /cmfc/inspect-workflow already registered, skipping.")
 
 
 WEB_DIRECTORY = "web"

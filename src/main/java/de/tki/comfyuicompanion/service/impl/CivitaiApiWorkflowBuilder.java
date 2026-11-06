@@ -75,6 +75,9 @@ public class CivitaiApiWorkflowBuilder {
 
             // 1. Identify and configure base model / UNET loader
             String activeModelName = entry.filename();
+            boolean isArchiveOrWorkflow = (activeModelName != null && (activeModelName.toLowerCase(Locale.ROOT).endsWith(".zip") || activeModelName.toLowerCase(Locale.ROOT).endsWith(".json")))
+                    || typeLower.contains("workflow");
+
             if (typeLower.contains("lora") || typeLower.contains("locon")) {
                 if (requiredModels != null) {
                     for (ModelInfo info : requiredModels) {
@@ -96,6 +99,30 @@ public class CivitaiApiWorkflowBuilder {
                     log.warn("LoRA model '{}' had no distinct base checkpoint resolved in dependencies. Falling back to checkpoint '{}'.",
                             entry.filename(), activeModelName);
                 }
+            } else if (isArchiveOrWorkflow) {
+                // Defensive guard: Workflow archives (.zip, .json) must NEVER be set as ckpt_name or unet_name in ComfyUI loaders
+                String candidate = null;
+                if (requiredModels != null) {
+                    for (ModelInfo info : requiredModels) {
+                        String itype = info.getType() != null ? info.getType().toLowerCase(Locale.ROOT) : "";
+                        if (itype.contains("checkpoint") || itype.contains("unet") || itype.contains("diffusion")) {
+                            String fn = info.getFilename() != null && !info.getFilename().isBlank() ? info.getFilename() : info.getName();
+                            if (fn != null && !fn.equalsIgnoreCase(activeModelName)
+                                    && !fn.toLowerCase(Locale.ROOT).endsWith(".zip")
+                                    && !fn.toLowerCase(Locale.ROOT).endsWith(".json")
+                                    && !fn.toLowerCase(Locale.ROOT).endsWith(".png")) {
+                                candidate = fn;
+                                break;
+                            }
+                        }
+                    }
+                }
+                if (candidate == null) {
+                    candidate = modelScanner != null
+                            ? modelScanner.findFirstLocalCheckpointName().orElse("v1-5-pruned-emaonly.safetensors")
+                            : "v1-5-pruned-emaonly.safetensors";
+                }
+                activeModelName = candidate;
             }
 
             String ckptNodeId = null;

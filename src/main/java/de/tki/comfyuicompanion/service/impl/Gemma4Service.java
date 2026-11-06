@@ -103,8 +103,13 @@ public class Gemma4Service {
      * @throws Exception if generation fails or model is not downloaded
      */
     public String generateScript(String idea, String targetModel, int width, int height, int sceneCount) throws Exception {
-        if (localGemmaService == null || !localGemmaService.isModelDownloaded()) {
-            String modelName = getActiveModelDisplayName();
+        return generateScript(idea, targetModel, width, height, sceneCount, null);
+    }
+
+    public String generateScript(String idea, String targetModel, int width, int height, int sceneCount, LocalGemmaService.LlmModelPreset preset) throws Exception {
+        LocalGemmaService.LlmModelPreset effPreset = preset != null ? preset : getActivePreset();
+        if (localGemmaService == null || !localGemmaService.isModelDownloaded(effPreset)) {
+            String modelName = effPreset.getDisplayName();
             throw new IllegalStateException("Local " + modelName + " model is not downloaded. " +
                     "Please download the " + modelName + " model first to unlock AI storyboard deconstruction.");
         }
@@ -124,7 +129,7 @@ public class Gemma4Service {
 
         // Use 0.65f temperature to prevent phrase-repetition loops while maintaining strict JSON adherence
         try {
-            return localGemmaService.generateCompletion(systemPrompt, userPrompt, 0.65f, 2048);
+            return localGemmaService.generateCompletion(systemPrompt, userPrompt, 0.65f, 2048, effPreset);
         } finally {
             // Immediate VRAM purge: unload local LLM instantly so 100% of GPU VRAM is available for ComfyUI
             localGemmaService.unloadModelSync();

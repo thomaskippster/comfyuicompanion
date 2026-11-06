@@ -31,7 +31,7 @@ import java.util.stream.Stream;
  * Enterprise service implementation of {@link IHuggingFaceHubService}.
  * Communicates with the official Hugging Face Hub REST API, applies Bearer authentication
  * from the encrypted vault, enforces youth protection by filtering NSFW tags,
- * and coordinates intelligent target folder routing and local installation checks.
+ * filters for ComfyUI workflow repositories, and coordinates target folder routing.
  */
 @Service
 public class HuggingFaceHubService implements IHuggingFaceHubService {
@@ -77,29 +77,31 @@ public class HuggingFaceHubService implements IHuggingFaceHubService {
             String sort,
             int limit) {
 
+        int effectiveLimit = limit > 0 ? limit : 30;
+        int apiLimit = Math.min(Math.max(effectiveLimit * 3, 80), 100);
+
         StringBuilder urlBuilder = new StringBuilder(API_BASE)
                 .append("/models?full=true&direction=-1")
-                .append("&limit=").append(limit > 0 ? Math.min(limit, 100) : 30);
+                .append("&limit=").append(apiLimit);
 
         if (query != null && !query.isBlank()) {
             urlBuilder.append("&search=").append(URLEncoder.encode(query.trim(), StandardCharsets.UTF_8));
         }
 
-        // Build combined filter parameters
+        // Always enforce comfyui filter so only ComfyUI workflow repositories are queried
         List<String> filters = new ArrayList<>();
+        filters.add("comfyui");
         if (formatFilter != null && !formatFilter.equalsIgnoreCase("all") && !formatFilter.equalsIgnoreCase("all formats") && !formatFilter.isBlank()) {
-            if (formatFilter.equalsIgnoreCase("comfyui workflows") || formatFilter.equalsIgnoreCase("workflows")) {
-                filters.add("comfyui");
-            } else {
+            if (!formatFilter.equalsIgnoreCase("comfyui workflows")
+                    && !formatFilter.equalsIgnoreCase("workflows")
+                    && !formatFilter.equalsIgnoreCase("comfyui")) {
                 filters.add(formatFilter.toLowerCase(Locale.ROOT));
             }
         }
         if (taskFilter != null && !taskFilter.equalsIgnoreCase("all") && !taskFilter.isBlank()) {
             filters.add(taskFilter.toLowerCase(Locale.ROOT));
         }
-        if (!filters.isEmpty()) {
-            urlBuilder.append("&filter=").append(URLEncoder.encode(String.join(",", filters), StandardCharsets.UTF_8));
-        }
+        urlBuilder.append("&filter=").append(URLEncoder.encode(String.join(",", filters), StandardCharsets.UTF_8));
 
         // Sorting
         String sortParam = switch (sort != null ? sort.toLowerCase(Locale.ROOT) : "") {
@@ -115,13 +117,14 @@ public class HuggingFaceHubService implements IHuggingFaceHubService {
                 .timeout(Duration.ofSeconds(20))
                 .build();
 
-        return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString())
+        return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8))
                 .thenApply(response -> {
                     if (response.statusCode() != 200) {
                         log.warn("Hugging Face API search returned status: {}", response.statusCode());
                         return Collections.<HuggingFaceModelEntry>emptyList();
                     }
-                    return parseModelEntries(response.body());
+                    List<HuggingFaceModelEntry> parsed = parseModelEntries(response.body(), true);
+                    return parsed.size() > effectiveLimit ? parsed.subList(0, effectiveLimit) : parsed;
                 })
                 .exceptionally(ex -> {
                     log.error("Failed querying Hugging Face repositories: {}", ex.getMessage(), ex);
@@ -141,7 +144,7 @@ public class HuggingFaceHubService implements IHuggingFaceHubService {
                 .timeout(Duration.ofSeconds(20))
                 .build();
 
-        return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString())
+        return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8))
                 .thenApply(response -> {
                     if (response.statusCode() != 200) {
                         log.warn("Hugging Face API repo blobs returned status {} for {}", response.statusCode(), repoId);
@@ -200,7 +203,15 @@ public class HuggingFaceHubService implements IHuggingFaceHubService {
         return info;
     }
 
-    private List<HuggingFaceModelEntry> parseModelEntries(String jsonBody) {
+    /**
+     * Parses a JSON array of Hugging Face model repositories, optionally restricting
+     * results to repositories containing ComfyUI workflow JSON definitions.
+     *
+     * @param jsonBody      raw JSON array string from the Hugging Face Hub API
+     * @param onlyWorkflows when true, excludes pure model weight dumps without workflow JSON files
+     * @return list of parsed {@link HuggingFaceModelEntry} instances
+     */
+    List<HuggingFaceModelEntry> parseModelEntries(String jsonBody, boolean onlyWorkflows) {
         List<HuggingFaceModelEntry> entries = new ArrayList<>();
         try {
             JsonNode root = objectMapper.readTree(jsonBody);
@@ -221,6 +232,11 @@ public class HuggingFaceHubService implements IHuggingFaceHubService {
                         continue; // Strictly enforce youth protection
                     }
 
+                    JsonNode siblingsNode = item.get("siblings");
+                    if (onlyWorkflows && !HuggingFaceWorkflowAnalyzer.hasWorkflowInSiblings(siblingsNode)) {
+                        continue;
+                    }
+
                     String repoId = item.path("id").asText("");
                     if (repoId.isBlank()) continue;
 
@@ -234,19 +250,35 @@ public class HuggingFaceHubService implements IHuggingFaceHubService {
 
                     List<HuggingFaceFileEntry> siblingsList = new ArrayList<>();
                     String previewUrl = null;
-                    if (item.has("siblings") && item.get("siblings").isArray()) {
-                        for (JsonNode sib : item.get("siblings")) {
+                    if (siblingsNode != null && siblingsNode.isArray()) {
+                        for (JsonNode sib : siblingsNode) {
                             String rfn = sib.path("rfilename").asText("");
+                            long size = sib.path("size").asLong(0L);
+                            if (sib.has("lfs") && sib.get("lfs").has("size")) {
+                                size = sib.get("lfs").path("size").asLong(size);
+                            }
+                            String encodedRfn = rfn.replace(" ", "%20");
                             if (isModelFile(rfn)) {
                                 String fn = rfn.contains("/") ? rfn.substring(rfn.lastIndexOf('/') + 1) : rfn;
-                                siblingsList.add(new HuggingFaceFileEntry(rfn, fn, 0L, "Unknown",
-                                        "https://huggingface.co/" + repoId + "/resolve/main/" + rfn + "?download=true",
+                                String estSize = size > 0 ? null : de.tki.comfyuicompanion.service.workflow.WorkflowModelExtractor.estimateKnownModelSize(fn);
+                                siblingsList.add(new HuggingFaceFileEntry(rfn, fn, size,
+                                        size > 0 ? null : (estSize != null ? estSize : "Unknown"),
+                                        "https://huggingface.co/" + repoId + "/resolve/main/" + encodedRfn + "?download=true",
                                         folderRouter.determineTargetFolder(rfn, tags, repoId),
                                         "Standard",
+                                        size > 0
+                                ));
+                            } else if (HuggingFaceWorkflowAnalyzer.isWorkflowFile(rfn)) {
+                                String fn = rfn.contains("/") ? rfn.substring(rfn.lastIndexOf('/') + 1) : rfn;
+                                siblingsList.add(new HuggingFaceFileEntry(rfn, fn, size,
+                                        size > 0 ? null : "14.2 KB",
+                                        "https://huggingface.co/" + repoId + "/resolve/main/" + encodedRfn + "?download=true",
+                                        "workflows",
+                                        "ComfyUI Workflow",
                                         false
                                 ));
                             } else if (previewUrl == null && isImageFile(rfn)) {
-                                previewUrl = "https://huggingface.co/" + repoId + "/resolve/main/" + rfn;
+                                previewUrl = "https://huggingface.co/" + repoId + "/resolve/main/" + encodedRfn;
                             }
                         }
                     }
@@ -269,7 +301,15 @@ public class HuggingFaceHubService implements IHuggingFaceHubService {
         return entries;
     }
 
-    private List<HuggingFaceFileEntry> parseRepositoryFiles(String repoId, String jsonBody) {
+    /**
+     * Parses the repository file manifest for a specific Hugging Face repository,
+     * including both model weights and ComfyUI workflow JSON files.
+     *
+     * @param repoId   repository identifier
+     * @param jsonBody raw JSON response from the Hugging Face model endpoint
+     * @return list of parsed {@link HuggingFaceFileEntry} items
+     */
+    List<HuggingFaceFileEntry> parseRepositoryFiles(String repoId, String jsonBody) {
         List<HuggingFaceFileEntry> files = new ArrayList<>();
         try {
             JsonNode root = objectMapper.readTree(jsonBody);
@@ -283,7 +323,9 @@ public class HuggingFaceHubService implements IHuggingFaceHubService {
             if (root.has("siblings") && root.get("siblings").isArray()) {
                 for (JsonNode sib : root.get("siblings")) {
                     String rfilename = sib.path("rfilename").asText("");
-                    if (!isModelFile(rfilename)) {
+                    boolean modelFile = isModelFile(rfilename);
+                    boolean workflowFile = !modelFile && HuggingFaceWorkflowAnalyzer.isWorkflowFile(rfilename);
+                    if (!modelFile && !workflowFile) {
                         continue;
                     }
 
@@ -295,15 +337,17 @@ public class HuggingFaceHubService implements IHuggingFaceHubService {
                     }
 
                     String fn = rfilename.contains("/") ? rfilename.substring(rfilename.lastIndexOf('/') + 1) : rfilename;
-                    String suggestedFolder = folderRouter.determineTargetFolder(rfilename, tags, repoId);
-                    String vramHint = folderRouter.determineVramHint(fn, size);
-                    String downloadUrl = "https://huggingface.co/" + repoId + "/resolve/main/" + rfilename + "?download=true";
+                    String suggestedFolder = workflowFile ? "workflows" : folderRouter.determineTargetFolder(rfilename, tags, repoId);
+                    String vramHint = workflowFile ? "ComfyUI Workflow" : folderRouter.determineVramHint(fn, size);
+                    String encodedRfn = rfilename.replace(" ", "%20");
+                    String downloadUrl = "https://huggingface.co/" + repoId + "/resolve/main/" + encodedRfn + "?download=true";
+                    String fallbackSize = size > 0 ? null : (workflowFile ? "14.2 KB" : de.tki.comfyuicompanion.service.workflow.WorkflowModelExtractor.estimateKnownModelSize(fn));
 
                     files.add(new HuggingFaceFileEntry(
                             rfilename,
                             fn,
                             size,
-                            null,
+                            fallbackSize,
                             downloadUrl,
                             suggestedFolder,
                             vramHint,
@@ -350,5 +394,3 @@ public class HuggingFaceHubService implements IHuggingFaceHubService {
         return builder;
     }
 }
-
-

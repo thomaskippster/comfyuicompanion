@@ -90,16 +90,21 @@ class UnifiedBlueprintGalleryTabTest {
 
         List<JToggleButton> subTabToggles = new ArrayList<>();
         findToggleButtons((Container) northComp, subTabToggles);
-        assertEquals(3, subTabToggles.size(), "Should have exactly 3 top provider sub-tabs");
+        assertEquals(4, subTabToggles.size(), "Should have exactly 4 top provider sub-tabs");
 
-        JToggleButton comfyBtn = subTabToggles.get(0);
-        JToggleButton civitaiBtn = subTabToggles.get(1);
-        JToggleButton hfBtn = subTabToggles.get(2);
+        JToggleButton vaultBtn = subTabToggles.get(0);
+        JToggleButton comfyBtn = subTabToggles.get(1);
+        JToggleButton civitaiBtn = subTabToggles.get(2);
+        JToggleButton hfBtn = subTabToggles.get(3);
 
-        // Initial state: Comfy.org visible, Model Hub hidden
+        // Initial state: My Workflow Vault selected
+        assertTrue(vaultBtn.isSelected());
+
+        // Switch to Comfy.org Blueprints
+        comfyBtn.doClick();
         assertTrue(comfyBtn.isSelected());
-        assertTrue(comfyViewPanel.isVisible(), "comfyViewPanel should be visible initially");
-        assertFalse(modelHubContainer.isVisible(), "modelHubContainer should be hidden initially");
+        assertTrue(comfyViewPanel.isVisible(), "comfyViewPanel should be visible when Comfy.org is selected");
+        assertFalse(modelHubContainer.isVisible(), "modelHubContainer should be hidden when Comfy.org is selected");
 
         // Switch to Civitai Model Hub
         civitaiBtn.doClick();
@@ -119,6 +124,12 @@ class UnifiedBlueprintGalleryTabTest {
         comfyBtn.doClick();
         assertTrue(comfyViewPanel.isVisible(), "comfyViewPanel must become visible again when Comfy.org is selected");
         assertFalse(modelHubContainer.isVisible(), "modelHubContainer must hide when Comfy.org is selected");
+
+        // Switch back to My Vault
+        vaultBtn.doClick();
+        assertTrue(vaultBtn.isSelected());
+        assertFalse(comfyViewPanel.isVisible());
+        assertFalse(modelHubContainer.isVisible());
     }
 
     @Test

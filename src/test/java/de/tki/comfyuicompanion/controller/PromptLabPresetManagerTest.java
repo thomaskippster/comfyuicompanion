@@ -111,6 +111,17 @@ class PromptLabPresetManagerTest {
     void shouldHandleNullInputsGracefully() {
         presetManager.applyModelPreset(null, "flux", "flux", null, null);
         presetManager.applyModelPreset(promptLabView, null, "flux", null, null);
-        presetManager.applyModelPreset(promptLabView, "flux", null, null, null);
+        presetManager.applyModelPreset(promptLabView, "flux", null, null, null);
+    }
+
+    @Test
+    @DisplayName("PromptLabView should initialize with configured retro cyberpunk default positive and negative prompts")
+    void shouldInitializeWithDefaultPrompts() {
+        if (java.awt.GraphicsEnvironment.isHeadless()) return;
+        PromptLabView view = new PromptLabView();
+        assertThat(view.getPromptSubjectField().getText()).isEqualTo(PromptLabView.DEFAULT_POSITIVE_PROMPT);
+        assertThat(view.getPromptSubjectField().getText()).contains("retro cyberpunk");
+        assertThat(view.getPromptNegativeField().getText()).isEqualTo(PromptLabView.DEFAULT_NEGATIVE_PROMPT);
+        assertThat(view.getPromptNegativeField().getText()).contains("low quality, blurry, oversaturated");
     }
 }

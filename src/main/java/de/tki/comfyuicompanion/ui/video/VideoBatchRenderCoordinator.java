@@ -13,6 +13,7 @@ import de.tki.comfyuicompanion.service.impl.VideoVisionFeedbackService;
 import de.tki.comfyuicompanion.service.pipeline.VideoVramOptimizer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import javax.swing.JList;
 import javax.swing.JOptionPane;
@@ -28,6 +29,7 @@ import java.util.function.Consumer;
  * Coordinates batch rendering of scene video segments in ComfyUI,
  * retry mechanisms, disk resolution of generated clips, and master video stitching via FFmpeg.
  */
+@org.springframework.stereotype.Component
 public class VideoBatchRenderCoordinator {
 
     private static final Logger logger = LoggerFactory.getLogger(VideoBatchRenderCoordinator.class);
@@ -56,13 +58,14 @@ public class VideoBatchRenderCoordinator {
     /**
      * Constructs a new VideoBatchRenderCoordinator with explicit supplementary services.
      */
+    @Autowired
     public VideoBatchRenderCoordinator(ConfigService configService,
                                        ComfyPipelineService comfyPipelineService,
                                        Video4jEditorService video4jEditorService,
                                        IComfyLifecycleService lifecycleService,
-                                       IVideoFrameChainingService frameChainingService,
-                                       IVideoVramOptimizer vramOptimizer,
-                                       IVideoVisionFeedbackService visionFeedbackService) {
+                                       @Autowired(required = false) IVideoFrameChainingService frameChainingService,
+                                       @Autowired(required = false) IVideoVramOptimizer vramOptimizer,
+                                       @Autowired(required = false) IVideoVisionFeedbackService visionFeedbackService) {
         this.configService = configService;
         this.comfyPipelineService = comfyPipelineService;
         this.video4jEditorService = video4jEditorService;

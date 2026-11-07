@@ -198,10 +198,36 @@ public class OpenCvImageFilterEngine {
             videoPath = scene.getSourceClipPath();
         }
         if (videoPath == null || videoPath.trim().isEmpty() || !new File(videoPath).exists()) {
-            return null;
+            if (scene.getSpeakerImagePath() != null && !scene.getSpeakerImagePath().trim().isEmpty() && new File(scene.getSpeakerImagePath()).exists()) {
+                videoPath = scene.getSpeakerImagePath();
+            } else {
+                return null;
+            }
         }
         if (new File(videoPath).length() < 100) {
             return null;
+        }
+
+        String lower = videoPath.toLowerCase();
+        boolean isStaticImage = lower.endsWith(".png") || lower.endsWith(".jpg") || lower.endsWith(".jpeg") || lower.endsWith(".webp");
+        if (isStaticImage) {
+            try {
+                BufferedImage bImg = javax.imageio.ImageIO.read(new File(videoPath));
+                if (bImg != null) {
+                    if (Math.abs(alpha - 1.0) < 0.01 && Math.abs(beta) < 0.01) {
+                        return bImg;
+                    }
+                    int type = bImg.getType();
+                    if (type == 0 || type == BufferedImage.TYPE_CUSTOM) {
+                        type = BufferedImage.TYPE_INT_RGB;
+                    }
+                    BufferedImage dest = new BufferedImage(bImg.getWidth(), bImg.getHeight(), type);
+                    java.awt.image.RescaleOp op = new java.awt.image.RescaleOp((float) alpha, (float) beta, null);
+                    return op.filter(bImg, dest);
+                }
+            } catch (Throwable ex) {
+                logger.debug("Pure AWT image preview fallback: {}", ex.getMessage());
+            }
         }
 
         try {
@@ -230,10 +256,17 @@ public class OpenCvImageFilterEngine {
             return null;
         }
         String videoPath = scene.getVideoPath();
-        if (videoPath == null || videoPath.trim().isEmpty() || !new File(videoPath).exists()) {
-            return null;
+        if (videoPath == null || videoPath.trim().isEmpty()) {
+            videoPath = scene.getSourceClipPath();
         }
-        if (new File(videoPath).length() < 1024) {
+        if (videoPath == null || videoPath.trim().isEmpty() || !new File(videoPath).exists()) {
+            if (scene.getSpeakerImagePath() != null && !scene.getSpeakerImagePath().trim().isEmpty() && new File(scene.getSpeakerImagePath()).exists()) {
+                videoPath = scene.getSpeakerImagePath();
+            } else {
+                return null;
+            }
+        }
+        if (new File(videoPath).length() < 100) {
             return null;
         }
 

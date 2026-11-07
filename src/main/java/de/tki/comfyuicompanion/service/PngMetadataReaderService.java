@@ -124,6 +124,17 @@ public class PngMetadataReaderService {
             }
         }
 
+        if (workflowJson != null && !workflowJson.isBlank()) {
+            try {
+                ComfyGenerationMetadata meta = parseComfyWorkflowJson(workflowJson, promptJson);
+                if (meta.hasParameters()) {
+                    return meta;
+                }
+            } catch (Exception ex) {
+                log.debug("Failed to parse workflow UI JSON: {}", ex.getMessage());
+            }
+        }
+
         if (parameters != null && !parameters.isBlank()) {
             return parseParametersBlock(parameters, promptJson, workflowJson);
         }
@@ -244,6 +255,65 @@ public class PngMetadataReaderService {
                 positivePrompt, negativePrompt, modelName, seed, steps, cfg, sampler, scheduler, width, height,
                 promptJson, rawWorkflow
         );
+    }
+
+    private ComfyGenerationMetadata parseComfyWorkflowJson(String workflowJson, String rawPrompt) {
+        JSONObject root = new JSONObject(workflowJson);
+        JSONArray nodes = root.optJSONArray("nodes");
+        if (nodes == null) {
+            return new ComfyGenerationMetadata(null, null, null, null, null, null, null, null, null, null, rawPrompt, workflowJson);
+        }
+
+        String positivePrompt = null;
+        String negativePrompt = null;
+        String modelName = null;
+        Long seed = null;
+        Integer steps = null;
+        Double cfg = null;
+        String sampler = null;
+        String scheduler = null;
+        Integer width = null;
+        Integer height = null;
+
+        for (int i = 0; i < nodes.length(); i++) {
+            JSONObject node = nodes.optJSONObject(i);
+            if (node == null) continue;
+            String type = node.optString("type", "");
+            JSONArray widgets = node.optJSONArray("widgets_values");
+
+            if (type.contains("KSampler") && widgets != null && widgets.length() >= 6) {
+                if (seed == null && widgets.opt(0) instanceof Number n) seed = n.longValue();
+                if (steps == null && widgets.opt(2) instanceof Number n) steps = n.intValue();
+                if (cfg == null && widgets.opt(3) instanceof Number n) cfg = n.doubleValue();
+                if (sampler == null && widgets.opt(4) instanceof String s) sampler = s;
+                if (scheduler == null && widgets.opt(5) instanceof String s) scheduler = s;
+            }
+
+            if (type.contains("CheckpointLoader") && widgets != null && widgets.length() > 0) {
+                if (modelName == null && widgets.opt(0) instanceof String s) modelName = s;
+            }
+
+            if (type.contains("EmptyLatentImage") && widgets != null && widgets.length() >= 2) {
+                if (width == null && widgets.opt(0) instanceof Number n) width = n.intValue();
+                if (height == null && widgets.opt(1) instanceof Number n) height = n.intValue();
+            }
+
+            if (type.equals("CLIPTextEncode") && widgets != null && widgets.length() > 0) {
+                String text = widgets.optString(0, "").trim();
+                if (!text.isEmpty()) {
+                    String title = node.optString("title", "").toLowerCase();
+                    if (title.contains("negative") && negativePrompt == null) {
+                        negativePrompt = text;
+                    } else if (positivePrompt == null) {
+                        positivePrompt = text;
+                    } else if (negativePrompt == null) {
+                        negativePrompt = text;
+                    }
+                }
+            }
+        }
+
+        return new ComfyGenerationMetadata(positivePrompt, negativePrompt, modelName, seed, steps, cfg, sampler, scheduler, width, height, rawPrompt, workflowJson);
     }
 
     private ComfyGenerationMetadata parseParametersBlock(String params, String rawPrompt, String rawWorkflow) {

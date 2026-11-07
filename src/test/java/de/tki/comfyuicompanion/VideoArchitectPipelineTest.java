@@ -378,6 +378,29 @@ public class VideoArchitectPipelineTest {
     }
 
     @Test
+    public void testVideo4jEditorServiceEnhancementAwtWithKeyframeImage(@org.junit.jupiter.api.io.TempDir java.nio.file.Path tempDir) throws Exception {
+        ConfigService mockConfig = Mockito.mock(ConfigService.class);
+        Video4jEditorService service = new Video4jEditorService(mockConfig);
+
+        java.awt.image.BufferedImage sample = new java.awt.image.BufferedImage(64, 64, java.awt.image.BufferedImage.TYPE_3BYTE_BGR);
+        java.awt.Graphics2D g = sample.createGraphics();
+        g.setColor(java.awt.Color.BLUE);
+        g.fillRect(0, 0, 64, 64);
+        g.dispose();
+
+        File keyframeFile = tempDir.resolve("sample_keyframe.png").toFile();
+        javax.imageio.ImageIO.write(sample, "png", keyframeFile);
+
+        Scene scene = new Scene("S1", "Keyframe preview test");
+        scene.setSpeakerImagePath(keyframeFile.getAbsolutePath());
+
+        java.awt.image.BufferedImage result = service.applyBasicEnhancementAwt(scene, 1.2, 5.0);
+        assertNotNull(result, "Should successfully load and enhance preview from scene speakerImagePath keyframe");
+        assertEquals(64, result.getWidth());
+        assertEquals(64, result.getHeight());
+    }
+
+    @Test
     public void testApplyTrimmingWithPunctuationAndQuotesInNarrationText() throws Exception {
         ConfigService mockConfig = Mockito.mock(ConfigService.class);
         File projectDir = new File("").getAbsoluteFile();

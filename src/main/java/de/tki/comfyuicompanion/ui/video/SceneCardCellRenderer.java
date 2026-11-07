@@ -125,8 +125,10 @@ public class SceneCardCellRenderer extends JPanel implements ListCellRenderer<Sc
             narrationLabel.setVisible(false);
         }
 
+        String kfInfo = (scene.getSpeakerImagePath() != null && !scene.getSpeakerImagePath().trim().isEmpty())
+                ? " | Keyframe: " + new File(scene.getSpeakerImagePath()).getName() : "";
         String audioInfo = hasAudio ? " | Audio: " + new File(scene.getAudioPath()).getName() : "";
-        pathLabel.setText("File: " + (hasVideo ? scene.getVideoPath() : "Not generated") + audioInfo);
+        pathLabel.setText("File: " + (hasVideo ? scene.getVideoPath() : "Not generated") + kfInfo + audioInfo);
 
         if (isSelected) {
             setBackground(list.getSelectionBackground());

@@ -128,7 +128,7 @@ public class VideoArchitectTab extends JPanel {
         this.configService = configService;
         this.timelineCoordinator = new VideoArchitectTimelineCoordinator(configService);
         this.promptOptimizer = promptOptimizer != null ? promptOptimizer : new VideoPromptOptimizer();
-        this.presetCoordinator = new VideoArchitectPresetCoordinator(hardwareProfileService);
+        this.presetCoordinator = new VideoArchitectPresetCoordinator(hardwareProfileService, strategyRegistry);
         VideoBatchRenderCoordinator batchRenderCoordinator = renderCoordinator != null ? renderCoordinator
                 : new VideoBatchRenderCoordinator(configService, comfyPipelineService, video4jEditorService, lifecycleService);
         this.executionHandler = new VideoArchitectExecutionHandler(

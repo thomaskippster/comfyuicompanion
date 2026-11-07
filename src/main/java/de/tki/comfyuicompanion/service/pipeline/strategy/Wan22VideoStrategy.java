@@ -64,6 +64,21 @@ public class Wan22VideoStrategy implements IVideoModelStrategy {
     }
 
     @Override
+    public de.tki.comfyuicompanion.domain.VideoPresetConfig getDefaultPreset(boolean isLowVram) {
+        int w = isLowVram ? 1024 : 1280;
+        int h = isLowVram ? 576 : 720;
+        return new de.tki.comfyuicompanion.domain.VideoPresetConfig(
+                DISPLAY_NAME, w, h, 20, 3.0, 127, ID,
+                "Detected Preset: Wan 2.2 Cinematic Video (" + w + "x" + h + " | 16 fps)"
+        );
+    }
+
+    @Override
+    public boolean isVramIntensive() {
+        return true; // 14B parameter model
+    }
+
+    @Override
     public JSONObject buildWorkflow(String serverUrl,
                                     Scene scene,
                                     String speakerImage,

@@ -72,6 +72,15 @@ public class PromptBlueprintApiService {
             }
         }
 
+        boolean hasLoadImage = false;
+        for (String k : promptObj.keySet()) {
+            JSONObject n = promptObj.optJSONObject(k);
+            if (n != null && "LoadImage".equals(n.optString("class_type", ""))) {
+                hasLoadImage = true;
+                break;
+            }
+        }
+
         for (String key : promptObj.keySet()) {
             JSONObject node = promptObj.optJSONObject(key);
             if (node == null) continue;
@@ -129,7 +138,9 @@ public class PromptBlueprintApiService {
                 inp.put("steps", inputs.steps());
                 inp.put("cfg",   effectiveCfg);
                 if (inputs.denoise() >= 0.0 && inputs.denoise() <= 1.0) {
-                    inp.put("denoise", inputs.denoise());
+                    double safeDenoise = (hasLoadImage && inputs.inputImageFile() != null && !inputs.inputImageFile().isBlank())
+                            ? inputs.denoise() : 1.0;
+                    inp.put("denoise", safeDenoise);
                 }
             } else if ("BasicScheduler".equals(ct) || "BetaScheduler".equals(ct) || "Flux2Scheduler".equals(ct) || "SDTurboScheduler".equals(ct)) {
                 inp.put("steps", inputs.steps());

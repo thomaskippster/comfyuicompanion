@@ -313,7 +313,11 @@ public class VideoWorkflowBuilder {
             double defaultCfg = isFlux ? 1.0 : 6.5;
             String sampler = isFlux ? "euler" : "dpmpp_2m";
             String scheduler = isFlux ? "simple" : "karras";
-            double denoise = (speakerImage != null && !speakerImage.isBlank()) ? 0.88 : 1.0;
+            boolean hasLoadImage = promptObj.keySet().stream().anyMatch(k -> {
+                JSONObject n = promptObj.optJSONObject(k);
+                return n != null && "LoadImage".equals(n.optString("class_type", ""));
+            });
+            double denoise = (hasLoadImage && speakerImage != null && !speakerImage.isBlank()) ? 0.88 : 1.0;
 
             PromptBlueprintApiService.PromptLabInputs inputs = new PromptBlueprintApiService.PromptLabInputs(
                     scene.getPrompt(),

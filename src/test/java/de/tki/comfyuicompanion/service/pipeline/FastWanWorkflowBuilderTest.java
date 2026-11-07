@@ -71,6 +71,14 @@ class FastWanWorkflowBuilderTest {
     }
 
     @Test
+    void testVaeResolutionPrioritizesWan22VaeOverWan21() {
+        FastWanWorkflowBuilder builder = new FastWanWorkflowBuilder(null, null);
+
+        String vae = builder.resolveVae(List.of("ae.safetensors", "wan_2.1_vae.safetensors", "wan2.2_vae.safetensors"));
+        assertEquals("wan2.2_vae.safetensors", vae, "FastWan 5B requires Wan 2.2 48-channel VAE");
+    }
+
+    @Test
     void testTextToVideoOmitsStartImageWhenNoSpeakerImageProvided() {
         FastWanWorkflowBuilder builder = new FastWanWorkflowBuilder(null, null);
 

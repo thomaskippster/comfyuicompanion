@@ -4,6 +4,7 @@ import de.tki.comfyuicompanion.service.impl.ConfigService;
 import de.tki.comfyuicompanion.service.pipeline.strategy.VideoModelStrategyRegistry;
 import de.tki.comfyuicompanion.ui.CardPanel;
 import de.tki.comfyuicompanion.ui.ThemeManager;
+import de.tki.comfyuicompanion.ui.dialog.RecentGenerationsAssetPickerDialog;
 import de.tki.comfyuicompanion.ui.icons.AppIcon;
 import de.tki.comfyuicompanion.ui.icons.SvgIconFactory;
 
@@ -19,6 +20,7 @@ import javax.swing.JSpinner;
 import javax.swing.JTextField;
 import javax.swing.SpinnerNumberModel;
 import javax.swing.SwingConstants;
+import javax.swing.SwingUtilities;
 import javax.swing.UIManager;
 import javax.swing.filechooser.FileNameExtensionFilter;
 import java.awt.BorderLayout;
@@ -28,6 +30,7 @@ import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.GridLayout;
+import java.awt.Window;
 import java.io.File;
 import java.util.function.Consumer;
 
@@ -283,18 +286,38 @@ public class VideoArchitectConfigPanel extends CardPanel {
         JPanel speakerBtnGroup = new JPanel(new FlowLayout(FlowLayout.RIGHT, 4, 0));
         speakerBtnGroup.setOpaque(false);
 
+        JButton pickGalleryBtn = new JButton("✨ Gallery...", SvgIconFactory.get(AppIcon.GALLERY, 12));
+        pickGalleryBtn.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        pickGalleryBtn.setToolTipText("Select image from recent ComfyUI outputs");
+        pickGalleryBtn.addActionListener(e -> onPickFromGallery());
+
         browseSpeaker = new JButton("Browse...");
+        browseSpeaker.setFont(new Font("SansSerif", Font.PLAIN, 11));
         browseSpeaker.addActionListener(e -> onBrowseSpeakerImage());
 
         clearSpeaker = new JButton(SvgIconFactory.get(AppIcon.CLOSE, 12));
         clearSpeaker.setToolTipText("Clear Start Image (Pure Text-to-Video)");
         clearSpeaker.addActionListener(e -> onClearSpeakerImage());
 
+        speakerBtnGroup.add(pickGalleryBtn);
         speakerBtnGroup.add(browseSpeaker);
         speakerBtnGroup.add(clearSpeaker);
         speakerRow.add(speakerBtnGroup, BorderLayout.EAST);
         add(speakerRow);
         add(Box.createVerticalStrut(16));
+    }
+
+    private void onPickFromGallery() {
+        Window owner = SwingUtilities.getWindowAncestor(this);
+        RecentGenerationsAssetPickerDialog dlg = new RecentGenerationsAssetPickerDialog(owner, configService, "Select Start Image from Output Gallery");
+        dlg.setVisible(true);
+        File selected = dlg.getSelectedFile();
+        if (selected != null) {
+            speakerImageField.setText(selected.getAbsolutePath());
+            if (configService != null) {
+                configService.setSpeakerImagePath(selected.getAbsolutePath());
+            }
+        }
     }
 
     private void onBrowseSpeakerImage() {

@@ -21,6 +21,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -57,9 +58,9 @@ class PromptLabStatusPollerTest {
         JProgressBar bar = new JProgressBar();
         JLabel label = new JLabel();
         JTextArea console = new JTextArea();
-        when(view.getPromptLabProgressBar()).thenReturn(bar);
-        when(view.getPromptImagePreviewLabel()).thenReturn(label);
-        when(view.getPromptLabConsole()).thenReturn(console);
+        lenient().when(view.getPromptLabProgressBar()).thenReturn(bar);
+        lenient().when(view.getPromptImagePreviewLabel()).thenReturn(label);
+        lenient().when(view.getPromptLabConsole()).thenReturn(console);
 
         poller.pollPromptStatus("http://127.0.0.1:8188", "test-prompt-id", view, img -> {});
 

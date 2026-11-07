@@ -1,7 +1,7 @@
 module.exports = {
-  version: "2.0",
+  version: "2.1.0",
   title: "Companion for ComfyUI",
-  description: "AI-powered model downloader, workflow bridge, timeline video editor, and manager for ComfyUI. Note: There is also a direct Pinokio install and a pre-compiled JAR available – you can find those links on the GitHub repo.",
+  description: "AI-powered model downloader, workflow bridge, timeline video editor, and manager for ComfyUI. Features modular Video Diffusion Strategies (Wan 2.2, Wan 2.1 I2V, LTX, Hunyuan), TikTok/Reels 9:16 vertical presets, and automatic missing-node sanitization.",
   icon: "assets/icon.png",
   menu: async (kernel, info) => {
     let installed = await kernel.exists("target/comfyuicompanion.jar")

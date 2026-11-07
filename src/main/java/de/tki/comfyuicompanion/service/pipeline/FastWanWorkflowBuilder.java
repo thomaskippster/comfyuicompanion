@@ -76,7 +76,6 @@ public class FastWanWorkflowBuilder {
             List<String> availableVaes) {
 
         String promptText = scene.getPrompt() != null ? scene.getPrompt() : "";
-        String cleanSpeakerImage = (speakerImage == null || speakerImage.trim().isEmpty()) ? null : speakerImage;
         JSONObject workflowJson = new JSONObject();
 
         String unetName = resolveFastWanModel(availableUnets, availableCheckpoints);
@@ -85,8 +84,8 @@ public class FastWanWorkflowBuilder {
 
         int width = scene.getWidth() > 0 ? scene.getWidth() : 832;
         int height = scene.getHeight() > 0 ? scene.getHeight() : 480;
-        width = Math.max(256, (width / 16) * 16);
-        height = Math.max(256, (height / 16) * 16);
+        width = Math.max(256, (width / 32) * 32);
+        height = Math.max(256, (height / 32) * 32);
 
         float duration = 5.0f;
         if (scene.getEndFrame() > scene.getStartFrame()) {
@@ -118,34 +117,75 @@ public class FastWanWorkflowBuilder {
         workflowJson.put("32", makeNode("ComfyMathExpression", new JSONObject().put("expression", "floor(a * b + 1)").put("values.a", link("30", 0)).put("values.b", link("31", 0))));
 
         // 4. Source Image Conditioning (Image-to-Video) or Blank Latents (Text-to-Video)
-        JSONObject wanInputs = new JSONObject()
-                .put("width", width)
-                .put("height", height)
-                .put("length", link("32", 1))
-                .put("batch_size", 1)
-                .put("positive", link("21", 0))
-                .put("negative", link("20", 0))
-                .put("vae", link("10", 0));
-
-        if (cleanSpeakerImage != null) {
-            workflowJson.put("40", makeNode("LoadImage", new JSONObject().put("image", cleanSpeakerImage)));
-            wanInputs.put("start_image", link("40", 0));
+        String cleanSpeakerImage = null;
+        if (speakerImage != null && !speakerImage.trim().isEmpty()) {
+            String trimmed = speakerImage.trim();
+            if (trimmed.contains(":") || trimmed.startsWith("/") || trimmed.startsWith("\\")) {
+                cleanSpeakerImage = new java.io.File(trimmed).getName();
+            } else {
+                cleanSpeakerImage = trimmed;
+            }
         }
 
-        // 5. Wan Video Conditioning & Diffusion Sampling
-        workflowJson.put("50", makeNode("WanImageToVideo", wanInputs));
+        boolean useWan22Latent = inspectionClient == null
+                || inspectionClient.isNodeClassAvailable(serverUrl, "Wan22ImageToVideoLatent")
+                || !inspectionClient.isNodeClassAvailable(serverUrl, "WanImageToVideo");
 
-        workflowJson.put("60", makeNode("KSampler", new JSONObject()
-                .put("seed", seed)
-                .put("steps", steps)
-                .put("cfg", cfg)
-                .put("sampler_name", "euler")
-                .put("scheduler", "simple")
-                .put("denoise", 1.0)
-                .put("model", link("12", 0))
-                .put("positive", link("50", 0))
-                .put("negative", link("50", 1))
-                .put("latent_image", link("50", 2))));
+        if (useWan22Latent) {
+            JSONObject latentInputs = new JSONObject()
+                    .put("vae", link("10", 0))
+                    .put("width", width)
+                    .put("height", height)
+                    .put("length", link("32", 1))
+                    .put("batch_size", 1);
+
+            if (cleanSpeakerImage != null) {
+                workflowJson.put("40", makeNode("LoadImage", new JSONObject().put("image", cleanSpeakerImage)));
+                latentInputs.put("start_image", link("40", 0));
+            }
+
+            workflowJson.put("50", makeNode("Wan22ImageToVideoLatent", latentInputs));
+
+            workflowJson.put("60", makeNode("KSampler", new JSONObject()
+                    .put("seed", seed)
+                    .put("steps", steps)
+                    .put("cfg", cfg)
+                    .put("sampler_name", "euler")
+                    .put("scheduler", "simple")
+                    .put("denoise", 1.0)
+                    .put("model", link("12", 0))
+                    .put("positive", link("21", 0))
+                    .put("negative", link("20", 0))
+                    .put("latent_image", link("50", 0))));
+        } else {
+            JSONObject wanInputs = new JSONObject()
+                    .put("width", width)
+                    .put("height", height)
+                    .put("length", link("32", 1))
+                    .put("batch_size", 1)
+                    .put("positive", link("21", 0))
+                    .put("negative", link("20", 0))
+                    .put("vae", link("10", 0));
+
+            if (cleanSpeakerImage != null) {
+                workflowJson.put("40", makeNode("LoadImage", new JSONObject().put("image", cleanSpeakerImage)));
+                wanInputs.put("start_image", link("40", 0));
+            }
+
+            workflowJson.put("50", makeNode("WanImageToVideo", wanInputs));
+
+            workflowJson.put("60", makeNode("KSampler", new JSONObject()
+                    .put("seed", seed)
+                    .put("steps", steps)
+                    .put("cfg", cfg)
+                    .put("sampler_name", "euler")
+                    .put("scheduler", "simple")
+                    .put("denoise", 1.0)
+                    .put("model", link("12", 0))
+                    .put("positive", link("50", 0))
+                    .put("negative", link("50", 1))
+                    .put("latent_image", link("50", 2))));
+        }
 
         // 6. Decode & Video Export
         workflowJson.put("70", makeNode("VAEDecode", new JSONObject().put("samples", link("60", 0)).put("vae", link("10", 0))));

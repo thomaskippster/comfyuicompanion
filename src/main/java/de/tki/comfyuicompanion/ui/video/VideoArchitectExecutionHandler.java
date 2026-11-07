@@ -85,7 +85,8 @@ public class VideoArchitectExecutionHandler {
         this.lifecycleService = lifecycleService;
         this.scriptParser = scriptParser;
         this.promptOptimizer = promptOptimizer;
-        this.renderCoordinator = renderCoordinator;
+        this.renderCoordinator = renderCoordinator != null ? renderCoordinator
+                : new VideoBatchRenderCoordinator(configService, comfyPipelineService, video4jEditorService, lifecycleService);
         this.audioService = audioService != null ? audioService
                 : new de.tki.comfyuicompanion.service.impl.LocalAudioService(configService, lifecycleService, null);
     }

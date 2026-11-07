@@ -313,4 +313,26 @@ public class VideoArchitectSceneTest {
         JSpinner heightSpinner = (JSpinner) heightSpinnerField.get(tab);
         assertEquals(720, heightSpinner.getValue(), "Default height should be 720 (16:9 HD widescreen preset)");
     }
+
+    @Test
+    public void testVideoArchitectExecutionHandlerRenderCoordinatorSafety() {
+        ConfigService mockConfig = Mockito.mock(ConfigService.class);
+        ComfyPipelineService mockPipeline = Mockito.mock(ComfyPipelineService.class);
+        Video4jEditorService mockEditor = Mockito.mock(Video4jEditorService.class);
+        Gemma4Service mockGemma = Mockito.mock(Gemma4Service.class);
+        IComfyLifecycleService mockLifecycle = Mockito.mock(IComfyLifecycleService.class);
+
+        VideoArchitectTab tab = new VideoArchitectTab(
+                mockConfig, mockPipeline, mockEditor, mockGemma, mockLifecycle
+        );
+
+        assertNotNull(tab.getExecutionHandler());
+        assertDoesNotThrow(() -> tab.getExecutionHandler().executeVideoGeneration(
+                tab, java.util.Collections.emptyList(), null, 1280, 720,
+                new javax.swing.JList<>(), new javax.swing.JProgressBar(),
+                disabled -> {},
+                msg -> {},
+                scene -> {}
+        ));
+    }
 }

@@ -16,6 +16,7 @@ import de.tki.comfyuicompanion.ui.video.VideoArchitectPresetCoordinator;
 import de.tki.comfyuicompanion.ui.video.VideoArchitectThemeHandler;
 import de.tki.comfyuicompanion.ui.video.VideoArchitectTimelineCoordinator;
 import de.tki.comfyuicompanion.ui.video.VideoArchitectWorkspacePanel;
+import de.tki.comfyuicompanion.ui.video.VideoBatchRenderCoordinator;
 import de.tki.comfyuicompanion.ui.video.VideoScriptParser;
 import org.springframework.beans.factory.annotation.Autowired;
 
@@ -85,7 +86,18 @@ public class VideoArchitectTab extends JPanel {
                              IComfyLifecycleService lifecycleService, LocalTTSService ttsService,
                              IHardwareProfileService hardwareProfileService,
                              IVideoPromptOptimizer promptOptimizer) {
-        this(configService, comfyPipelineService, video4jEditorService, gemma4Service, lifecycleService, ttsService, hardwareProfileService, promptOptimizer, null, null);
+        this(configService, comfyPipelineService, video4jEditorService, gemma4Service, lifecycleService, ttsService, hardwareProfileService, promptOptimizer, null, null, null);
+    }
+
+    public VideoArchitectTab(ConfigService configService, ComfyPipelineService comfyPipelineService,
+                             Video4jEditorService video4jEditorService, Gemma4Service gemma4Service,
+                             IComfyLifecycleService lifecycleService,
+                             LocalTTSService ttsService,
+                             IHardwareProfileService hardwareProfileService,
+                             IVideoPromptOptimizer promptOptimizer,
+                             de.tki.comfyuicompanion.service.ILocalAudioService audioService,
+                             de.tki.comfyuicompanion.service.pipeline.strategy.VideoModelStrategyRegistry strategyRegistry) {
+        this(configService, comfyPipelineService, video4jEditorService, gemma4Service, lifecycleService, ttsService, hardwareProfileService, promptOptimizer, audioService, strategyRegistry, null);
     }
 
     /**
@@ -99,6 +111,9 @@ public class VideoArchitectTab extends JPanel {
      * @param ttsService             the local TTS engine
      * @param hardwareProfileService the hardware monitor service
      * @param promptOptimizer        the video prompt optimizer
+     * @param audioService           the local audio and SFX service
+     * @param strategyRegistry       the video model strategy registry
+     * @param renderCoordinator      the batch render coordinator
      */
     @Autowired
     public VideoArchitectTab(ConfigService configService, ComfyPipelineService comfyPipelineService,
@@ -108,15 +123,18 @@ public class VideoArchitectTab extends JPanel {
                              @Autowired(required = false) IHardwareProfileService hardwareProfileService,
                              @Autowired(required = false) IVideoPromptOptimizer promptOptimizer,
                              @Autowired(required = false) de.tki.comfyuicompanion.service.ILocalAudioService audioService,
-                             @Autowired(required = false) de.tki.comfyuicompanion.service.pipeline.strategy.VideoModelStrategyRegistry strategyRegistry) {
+                             @Autowired(required = false) de.tki.comfyuicompanion.service.pipeline.strategy.VideoModelStrategyRegistry strategyRegistry,
+                             @Autowired(required = false) VideoBatchRenderCoordinator renderCoordinator) {
         this.configService = configService;
         this.timelineCoordinator = new VideoArchitectTimelineCoordinator(configService);
         this.promptOptimizer = promptOptimizer != null ? promptOptimizer : new VideoPromptOptimizer();
         this.presetCoordinator = new VideoArchitectPresetCoordinator(hardwareProfileService);
+        VideoBatchRenderCoordinator batchRenderCoordinator = renderCoordinator != null ? renderCoordinator
+                : new VideoBatchRenderCoordinator(configService, comfyPipelineService, video4jEditorService, lifecycleService);
         this.executionHandler = new VideoArchitectExecutionHandler(
                 configService, comfyPipelineService, video4jEditorService,
                 ttsService, gemma4Service, lifecycleService, this.scriptParser, this.promptOptimizer,
-                null, audioService);
+                batchRenderCoordinator, audioService);
 
         if (configService != null) {
             configService.setSpeakerImagePath("");

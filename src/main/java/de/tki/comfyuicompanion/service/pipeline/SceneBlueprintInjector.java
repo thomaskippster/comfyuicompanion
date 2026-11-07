@@ -368,4 +368,28 @@ public class SceneBlueprintInjector {
         }
         return null;
     }
+
+    /**
+     * Validates whether all node class types declared in a candidate workflow prompt exist on the ComfyUI server.
+     *
+     * @param workflowJson the workflow prompt JSON
+     * @param availableNodeClasses set of registered node class names from ComfyUI
+     * @return {@code true} if all nodes are available, {@code false} if any required node class is missing
+     */
+    public boolean areAllNodesAvailable(JSONObject workflowJson, java.util.Set<String> availableNodeClasses) {
+        if (workflowJson == null || availableNodeClasses == null || availableNodeClasses.isEmpty()) {
+            return false;
+        }
+        JSONObject promptObj = workflowJson.has("prompt") ? workflowJson.getJSONObject("prompt") : workflowJson;
+        for (String key : promptObj.keySet()) {
+            JSONObject node = promptObj.optJSONObject(key);
+            if (node == null) continue;
+            String classType = node.optString("class_type", "");
+            if (!classType.isBlank() && !availableNodeClasses.contains(classType)) {
+                logger.info("ℹ️ [SceneBlueprintInjector] Blueprint node '{}' (ID: {}) is not installed on ComfyUI.", classType, key);
+                return false;
+            }
+        }
+        return true;
+    }
 }

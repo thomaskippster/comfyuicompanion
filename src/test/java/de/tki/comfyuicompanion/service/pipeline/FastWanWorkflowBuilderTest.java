@@ -69,4 +69,31 @@ class FastWanWorkflowBuilderTest {
         );
         assertEquals("Wan2_2-TI2V-5B-FastWanFullAttn_bf16.safetensors", resolved);
     }
+
+    @Test
+    void testTextToVideoOmitsStartImageWhenNoSpeakerImageProvided() {
+        FastWanWorkflowBuilder builder = new FastWanWorkflowBuilder(null, null);
+
+        Scene scene = new Scene();
+        scene.setPrompt("A futuristic cybernetic city at sunrise.");
+        scene.setWidth(832);
+        scene.setHeight(480);
+
+        JSONObject workflow = builder.generateFastWanWorkflowJson(
+                "http://127.0.0.1:8188",
+                scene,
+                null,
+                123L,
+                "t2v_test",
+                List.of("Wan2_2-TI2V-5B-FastWanFullAttn_bf16.safetensors"),
+                List.of(),
+                List.of("umt5_xxl_fp8_e4m3fn_scaled.safetensors"),
+                List.of("wan_2.1_vae.safetensors")
+        );
+
+        assertNotNull(workflow);
+        assertFalse(workflow.has("40"), "Should not contain LoadImage or EmptyImage node when no start image provided");
+        JSONObject wanNodeInputs = workflow.getJSONObject("50").getJSONObject("inputs");
+        assertFalse(wanNodeInputs.has("start_image"), "WanImageToVideo should not have start_image input in pure text-to-video mode");
+    }
 }

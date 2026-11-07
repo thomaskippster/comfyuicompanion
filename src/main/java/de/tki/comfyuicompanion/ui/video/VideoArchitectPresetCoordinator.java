@@ -91,7 +91,7 @@ public class VideoArchitectPresetCoordinator {
                 videoPresetLabel.setText("Detected Preset: " + config.recommendedModel() + " (" + config.defaultWidth() + "x" + config.defaultHeight() + " | Safe VRAM)");
             }
             if (logMessage && loggerFn != null) {
-                loggerFn.accept("⚡ Hardware-Vorkonfiguration angewendet: " + config.statusDescription());
+                loggerFn.accept("⚡ Hardware preset applied: " + config.statusDescription());
             }
         }
     }
@@ -120,7 +120,15 @@ public class VideoArchitectPresetCoordinator {
             isLowVram = profile != null && profile.isWeakSystem();
         }
 
-        if (selected.contains("LTX-Video")) {
+        if (selected.contains("FastWan") || selected.contains("5B")) {
+            int w = 832;
+            int h = 480;
+            if (videoPresetLabel != null) videoPresetLabel.setText("Detected Preset: FastWan 2.2 5B (" + w + "x" + h + " | 6 Steps, 16GB VRAM Fast)");
+            if (videoWidthSpinner != null) videoWidthSpinner.setValue(w);
+            if (videoHeightSpinner != null) videoHeightSpinner.setValue(h);
+            if (videoStepsSpinner != null) videoStepsSpinner.setValue(6);
+            if (videoCfgSpinner != null) videoCfgSpinner.setValue(1.0);
+        } else if (selected.contains("LTX-Video")) {
             int w = isLowVram ? 1024 : 1280;
             int h = isLowVram ? 576 : 720;
             if (videoPresetLabel != null) videoPresetLabel.setText("Detected Preset: LTX-Video High-Speed (" + w + "x" + h + " | 24 fps)");
@@ -169,7 +177,7 @@ public class VideoArchitectPresetCoordinator {
 
         if (hardwareProfileService != null) {
             HardwareProfile profile = hardwareProfileService.getHardwareProfile();
-            if (profile != null && profile.isWeakSystem() && (selected.contains("Wan") || selected.contains("Hunyuan"))) {
+            if (profile != null && profile.isWeakSystem() && !selected.contains("FastWan") && !selected.contains("5B") && (selected.contains("Wan") || selected.contains("Hunyuan"))) {
                 if (loggerFn != null) {
                     loggerFn.accept("⚠️ Notice: " + selected + " is very VRAM-intensive (14B). On your system (" + profile.formattedVram() + " VRAM), LTX-Video is recommended.");
                 }

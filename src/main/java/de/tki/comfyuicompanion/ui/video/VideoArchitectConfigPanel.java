@@ -138,6 +138,7 @@ public class VideoArchitectConfigPanel extends CardPanel {
         String[] modelNames = (strategyRegistry != null && strategyRegistry.getDisplayNames().length > 0)
                 ? strategyRegistry.getDisplayNames()
                 : new String[]{
+                "FastWan 5B (Wan 2.2 - 16GB VRAM)",
                 "Text to Video (Wan 2.2)",
                 "Text to Video (LTX-Video 0.9.5)",
                 "Image to Video (Wan 2.1)",
@@ -449,13 +450,11 @@ public class VideoArchitectConfigPanel extends CardPanel {
     public JSpinner getVideoCfgSpinner() { return samplingParamsPanel.getVideoCfgSpinner(); }
     public JSpinner getVideoMotionSpinner() { return samplingParamsPanel.getVideoMotionSpinner(); }
     public JButton getBtnAutoPilot() { return btnAutoPilot; }
-
     public String getPromptSubject() { return promptSubjectField != null ? promptSubjectField.getText().trim() : ""; }
     public String getActorAnchor() { return actorAnchorField != null ? actorAnchorField.getText().trim() : ""; }
     public JTextField getActorAnchorField() { return actorAnchorField; }
     public String getSelectedModel() { return videoModelCombo != null ? (String) videoModelCombo.getSelectedItem() : ""; }
     public String getSpeakerImagePath() { return speakerImageField != null ? speakerImageField.getText().trim() : ""; }
-
     public int getVideoWidth() { return samplingParamsPanel.getVideoWidth(); }
     public int getVideoHeight() { return samplingParamsPanel.getVideoHeight(); }
     public int getVideoDuration() { return samplingParamsPanel.getVideoDuration(); }

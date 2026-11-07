@@ -23,16 +23,26 @@ public class SceneBlueprintInjector {
     private static final Logger logger = LoggerFactory.getLogger(SceneBlueprintInjector.class);
 
     private final WorkflowTransformationService workflowTransformationService;
+    private final de.tki.comfyuicompanion.service.impl.ComfyPngMetadataReader pngMetadataReader;
 
     public SceneBlueprintInjector() {
-        this(null);
+        this(null, null);
+    }
+
+    public SceneBlueprintInjector(WorkflowTransformationService workflowTransformationService) {
+        this(workflowTransformationService, null);
     }
 
     @Autowired
-    public SceneBlueprintInjector(@Autowired(required = false) WorkflowTransformationService workflowTransformationService) {
+    public SceneBlueprintInjector(
+            @Autowired(required = false) WorkflowTransformationService workflowTransformationService,
+            @Autowired(required = false) de.tki.comfyuicompanion.service.impl.ComfyPngMetadataReader pngMetadataReader) {
         this.workflowTransformationService = workflowTransformationService != null
                 ? workflowTransformationService
                 : new WorkflowTransformationService(null);
+        this.pngMetadataReader = pngMetadataReader != null
+                ? pngMetadataReader
+                : new de.tki.comfyuicompanion.service.impl.ComfyPngMetadataReader();
     }
 
     /**
@@ -230,6 +240,10 @@ public class SceneBlueprintInjector {
         if (comfyPath != null && !comfyPath.trim().isEmpty()) {
             candidateDirs.add(new File(comfyPath, "companion_blueprints"));
             candidateDirs.add(new File(comfyPath, "resources/ComfyUI/companion_blueprints"));
+            candidateDirs.add(new File(comfyPath, "user/default/workflows/Wan2.2"));
+            candidateDirs.add(new File(comfyPath, "user/default/workflows/FastWan 2.2 5B"));
+            candidateDirs.add(new File(comfyPath, "user/default/workflows"));
+            candidateDirs.add(new File(comfyPath, "models/workflows"));
         }
         candidateDirs.add(new File("companion_blueprints"));
         candidateDirs.add(new File(System.getProperty("user.dir"), "companion_blueprints"));
@@ -248,7 +262,7 @@ public class SceneBlueprintInjector {
     }
 
     /**
-     * Parses a blueprint file from JSON, handling format conversion if necessary.
+     * Parses a blueprint file from JSON or PNG, handling format conversion if necessary.
      *
      * @param blueprintFile blueprint file
      * @return parsed JSON object or null
@@ -258,6 +272,22 @@ public class SceneBlueprintInjector {
             return null;
         }
         try {
+            if (blueprintFile.getName().toLowerCase().endsWith(".png")) {
+                var metaOpt = de.tki.comfyuicompanion.service.impl.ComfyPngMetadataReader.readMetadata(blueprintFile);
+                if (metaOpt.isPresent()) {
+                    var meta = metaOpt.get();
+                    if (meta.promptJson() != null && !meta.promptJson().isBlank()) {
+                        return new JSONObject(meta.promptJson());
+                    }
+                    if (meta.workflowJson() != null && !meta.workflowJson().isBlank()) {
+                        JSONObject uiJson = new JSONObject(meta.workflowJson());
+                        JSONObject flattened = workflowTransformationService.flattenWorkflow(uiJson);
+                        return workflowTransformationService.convertUiToApi(flattened);
+                    }
+                }
+                return null;
+            }
+
             String content = Files.readString(blueprintFile.toPath(), StandardCharsets.UTF_8);
             JSONObject json = new JSONObject(content);
             if (json.has("prompt") || json.keySet().stream().anyMatch(key -> {

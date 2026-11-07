@@ -39,7 +39,7 @@ public class VideoArchitectTab extends JPanel {
 
     private final ConfigService configService;
     private final VideoArchitectExecutionHandler executionHandler;
-    private final VideoArchitectTimelineCoordinator timelineCoordinator = new VideoArchitectTimelineCoordinator();
+    private final VideoArchitectTimelineCoordinator timelineCoordinator;
     private final VideoArchitectPresetCoordinator presetCoordinator;
     private final VideoScriptParser scriptParser = new VideoScriptParser();
     private final IVideoPromptOptimizer promptOptimizer;
@@ -110,6 +110,7 @@ public class VideoArchitectTab extends JPanel {
                              @Autowired(required = false) de.tki.comfyuicompanion.service.ILocalAudioService audioService,
                              @Autowired(required = false) de.tki.comfyuicompanion.service.pipeline.strategy.VideoModelStrategyRegistry strategyRegistry) {
         this.configService = configService;
+        this.timelineCoordinator = new VideoArchitectTimelineCoordinator(configService);
         this.promptOptimizer = promptOptimizer != null ? promptOptimizer : new VideoPromptOptimizer();
         this.presetCoordinator = new VideoArchitectPresetCoordinator(hardwareProfileService);
         this.executionHandler = new VideoArchitectExecutionHandler(

@@ -3,6 +3,7 @@ package de.tki.comfyuicompanion.ui.video;
 import de.tki.comfyuicompanion.domain.Scene;
 import de.tki.comfyuicompanion.service.IVideoPromptOptimizer;
 import de.tki.comfyuicompanion.service.impl.Video4jEditorService;
+import de.tki.comfyuicompanion.service.impl.ConfigService;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.slf4j.Logger;
@@ -24,6 +25,15 @@ import java.util.function.Consumer;
 public class VideoArchitectTimelineCoordinator {
 
     private static final Logger logger = LoggerFactory.getLogger(VideoArchitectTimelineCoordinator.class);
+    private final ConfigService configService;
+
+    public VideoArchitectTimelineCoordinator() {
+        this(null);
+    }
+
+    public VideoArchitectTimelineCoordinator(ConfigService configService) {
+        this.configService = configService;
+    }
 
     /**
      * Reorders a scene up or down in the timeline list model.
@@ -149,10 +159,12 @@ public class VideoArchitectTimelineCoordinator {
                                    JSpinner videoHeightSpinner,
                                    IVideoPromptOptimizer promptOptimizer,
                                    Runnable onUpdated, Consumer<String> loggerFn) {
+        int widthVal = (videoWidthSpinner != null && videoWidthSpinner.getValue() instanceof Number n) ? n.intValue() : 1280;
+        int heightVal = (videoHeightSpinner != null && videoHeightSpinner.getValue() instanceof Number n) ? n.intValue() : 720;
         new SceneEditDialog(parent, targetScene, isNew,
                 timelineListModel.size() + 1,
-                (Integer) videoWidthSpinner.getValue(),
-                (Integer) videoHeightSpinner.getValue(),
+                widthVal,
+                heightVal,
                 promptOptimizer,
                 sc -> {
                     if (isNew) {
@@ -163,7 +175,8 @@ public class VideoArchitectTimelineCoordinator {
                         loggerFn.accept("Updated Scene: " + sc.getSceneId());
                     }
                     if (onUpdated != null) onUpdated.run();
-                }).setVisible(true);
+                },
+                configService).setVisible(true);
     }
 
     /**

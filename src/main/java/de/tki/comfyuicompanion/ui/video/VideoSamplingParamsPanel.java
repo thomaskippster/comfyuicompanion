@@ -262,22 +262,22 @@ public class VideoSamplingParamsPanel extends JPanel {
     public JSpinner getVideoMotionSpinner() { return videoMotionSpinner; }
 
     /** @return the video width value */
-    public int getVideoWidth() { return (Integer) videoWidthSpinner.getValue(); }
+    public int getVideoWidth() { return ((Number) videoWidthSpinner.getValue()).intValue(); }
 
     /** @return the video height value */
-    public int getVideoHeight() { return (Integer) videoHeightSpinner.getValue(); }
+    public int getVideoHeight() { return ((Number) videoHeightSpinner.getValue()).intValue(); }
 
     /** @return the video duration value */
-    public int getVideoDuration() { return (Integer) videoDurationSpinner.getValue(); }
+    public int getVideoDuration() { return ((Number) videoDurationSpinner.getValue()).intValue(); }
 
     /** @return the video steps value */
-    public int getVideoSteps() { return (Integer) videoStepsSpinner.getValue(); }
+    public int getVideoSteps() { return ((Number) videoStepsSpinner.getValue()).intValue(); }
 
     /** @return the CFG scale value */
     public double getVideoCfg() { return ((Number) videoCfgSpinner.getValue()).doubleValue(); }
 
     /** @return the motion bucket value */
-    public int getVideoMotion() { return (Integer) videoMotionSpinner.getValue(); }
+    public int getVideoMotion() { return ((Number) videoMotionSpinner.getValue()).intValue(); }
 
     /** @return the audio lip-sync checkbox */
     public JCheckBox getChkLipSync() { return chkLipSync; }

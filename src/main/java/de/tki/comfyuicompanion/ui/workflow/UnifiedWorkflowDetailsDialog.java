@@ -443,8 +443,18 @@ public class UnifiedWorkflowDetailsDialog extends JDialog {
                 String msg = cause.getMessage() != null ? cause.getMessage() : ex.getMessage();
                 SwingUtilities.invokeLater(() -> {
                     btnSave.setEnabled(true);
-                    btnSave.setText("Save Workflow to My Vault");
-                    if (msg != null && (msg.contains("401") || msg.contains("403") || msg.toLowerCase().contains("gated"))) { int res = JOptionPane.showOptionDialog(this, "<html><body style='width: 320px;'><b>Hugging Face Gated Repository</b><br><br>Access to this workflow is restricted. Please accept the model terms on HuggingFace.co and add your Hugging Face Access Token in <b>Settings &rarr; API Keys</b>.</body></html>", "Authentication Required", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE, null, new Object[]{"Open Settings", "Close"}, "Open Settings"); if (res == 0) { JFrame p = (JFrame) SwingUtilities.getWindowAncestor(this); ApiKeysSettingsDialog.showApiKeysDialog(p, configService, () -> {}); } } else { JOptionPane.showMessageDialog(this, "Failed to save workflow: " + msg, "Error", JOptionPane.ERROR_MESSAGE); }
+                    if (msg != null && (msg.contains("401") || msg.contains("403") || msg.toLowerCase().contains("gated"))) {
+                        int res = JOptionPane.showOptionDialog(this,
+                                "<html><body style='width: 320px;'><b>Hugging Face Gated Repository</b><br><br>Access to this workflow is restricted. Please accept the model terms on HuggingFace.co and add your Hugging Face Access Token in <b>Settings &rarr; API Keys</b>.</body></html>",
+                                "Authentication Required", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE, null,
+                                new Object[]{"Open Settings", "Close"}, "Open Settings");
+                        if (res == 0) {
+                            Window p = SwingUtilities.getWindowAncestor(this);
+                            ApiKeysSettingsDialog.showApiKeysDialog(p, configService, () -> {});
+                        }
+                    } else {
+                        JOptionPane.showMessageDialog(this, "Failed to save workflow: " + msg, "Error", JOptionPane.ERROR_MESSAGE);
+                    }
                 });
             }
         });

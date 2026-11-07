@@ -256,7 +256,7 @@ public class VideoArchitectWorkspacePanel extends CardPanel {
      */
     public void logToConsole(String message) {
         SwingUtilities.invokeLater(() -> {
-            if (videoConsoleArea == null || !videoConsoleArea.isDisplayable()) {
+            if (videoConsoleArea == null) {
                 return;
             }
             String time = LocalTime.now().format(TIME_FORMATTER);

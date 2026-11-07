@@ -14,12 +14,14 @@ import javax.swing.table.TableColumn;
 import javax.swing.table.TableColumnModel;
 import java.awt.BorderLayout;
 import java.awt.Color;
+import java.awt.Dialog;
 import java.awt.Dimension;
 import java.awt.FileDialog;
 import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.Frame;
 import java.awt.GridLayout;
+import java.awt.Window;
 import java.awt.datatransfer.DataFlavor;
 import java.awt.dnd.DnDConstants;
 import java.awt.dnd.DropTarget;
@@ -162,7 +164,10 @@ public class DownloadManagerView extends JPanel {
         jsonButtons.setOpaque(false);
         JButton loadJsonBtn = new JButton("Load Workflow...", SvgIconFactory.get(AppIcon.FILE_TEXT));
         loadJsonBtn.addActionListener(e -> {
-            FileDialog fd = new FileDialog((Frame) SwingUtilities.getWindowAncestor(this), "Select Workflow", FileDialog.LOAD);
+            Window win = SwingUtilities.getWindowAncestor(this);
+            FileDialog fd = (win instanceof Dialog d)
+                    ? new FileDialog(d, "Select Workflow", FileDialog.LOAD)
+                    : new FileDialog(win instanceof Frame f ? f : null, "Select Workflow", FileDialog.LOAD);
             fd.setVisible(true);
             if (fd.getFile() != null) {
                 File file = new File(fd.getDirectory(), fd.getFile());
@@ -172,7 +177,10 @@ public class DownloadManagerView extends JPanel {
 
         JButton importModelListBtn = new JButton("Import Model List...", SvgIconFactory.get(AppIcon.FOLDER));
         importModelListBtn.addActionListener(e -> {
-            FileDialog fd = new FileDialog((Frame) SwingUtilities.getWindowAncestor(this), "Select Model List JSON", FileDialog.LOAD);
+            Window win = SwingUtilities.getWindowAncestor(this);
+            FileDialog fd = (win instanceof Dialog d)
+                    ? new FileDialog(d, "Select Model List JSON", FileDialog.LOAD)
+                    : new FileDialog(win instanceof Frame f ? f : null, "Select Model List JSON", FileDialog.LOAD);
             fd.setVisible(true);
             if (fd.getFile() != null) {
                 File file = new File(fd.getDirectory(), fd.getFile());

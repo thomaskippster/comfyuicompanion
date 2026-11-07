@@ -3,9 +3,12 @@ package de.tki.comfyuicompanion.controller;
 import de.tki.comfyuicompanion.service.impl.ComfyApiClient;
 import de.tki.comfyuicompanion.service.impl.ComfyWebSocketClient;
 import de.tki.comfyuicompanion.ui.PromptLabView;
+import de.tki.comfyuicompanion.ui.icons.AppIcon;
+import de.tki.comfyuicompanion.ui.icons.SvgIconFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.swing.JButton;
 import javax.swing.JProgressBar;
 import javax.swing.SwingUtilities;
 import java.awt.Image;
@@ -143,6 +146,12 @@ public class PromptLabStatusPoller {
                                 if (promptLabView.getPromptLabConsole() != null) {
                                     promptLabView.getPromptLabConsole().append("Image generated and loaded successfully!\n\n");
                                 }
+                                JButton btn = promptLabView.getBtnSendToComfy();
+                                if (btn != null) {
+                                    btn.setEnabled(true);
+                                    btn.setText("Generate");
+                                    btn.setIcon(SvgIconFactory.get(AppIcon.IMAGE_LAB));
+                                }
                             });
                             done = true;
                             break;
@@ -199,6 +208,12 @@ public class PromptLabStatusPoller {
                         }
                         if (connDead && promptLabView.getPromptLabConsole() != null) {
                             promptLabView.getPromptLabConsole().append("❌ Generation aborted: ComfyUI server stopped or crashed (Connection refused).\n\n");
+                        }
+                        JButton btn = promptLabView.getBtnSendToComfy();
+                        if (btn != null) {
+                            btn.setEnabled(true);
+                            btn.setText("Generate");
+                            btn.setIcon(SvgIconFactory.get(AppIcon.IMAGE_LAB));
                         }
                     });
                 }

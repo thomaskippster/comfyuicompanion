@@ -49,7 +49,7 @@ public class DownloadArchiveDialog {
      * Opens the Archive Manager dialog with tabs for archiving and restoring models.
      */
     public void showArchiveDialog() {
-        JDialog dialog = new JDialog((JFrame) SwingUtilities.getWindowAncestor(view), "Archive Manager", true);
+        JDialog dialog = new JDialog(SwingUtilities.getWindowAncestor(view), "Archive Manager", Dialog.ModalityType.APPLICATION_MODAL);
         dialog.setLayout(new BorderLayout());
         dialog.setSize(1000, 700);
         dialog.setLocationRelativeTo(view);
@@ -240,7 +240,7 @@ public class DownloadArchiveDialog {
 
     private void showModalProgressDialog(String title, String statusPrefix, List<Integer> selectedRows,
                                          DefaultTableModel sourceModel, DefaultTableModel targetModel, TaskExecutor executor) {
-        JDialog progressDialog = new JDialog((JFrame) SwingUtilities.getWindowAncestor(view), title, true);
+        JDialog progressDialog = new JDialog(SwingUtilities.getWindowAncestor(view), title, Dialog.ModalityType.APPLICATION_MODAL);
         progressDialog.setLayout(new BorderLayout(10, 10));
         progressDialog.setSize(500, 180);
         progressDialog.setLocationRelativeTo(view);

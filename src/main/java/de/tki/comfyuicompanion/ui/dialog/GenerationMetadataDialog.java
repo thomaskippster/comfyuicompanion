@@ -183,9 +183,12 @@ public class GenerationMetadataDialog extends JDialog {
     private void loadThumbnailAsync(File f, JLabel target) {
         java.util.concurrent.CompletableFuture.runAsync(() -> {
             try {
-                ImageIcon icon = new ImageIcon(f.getAbsolutePath());
-                Image img = icon.getImage().getScaledInstance(80, 80, Image.SCALE_SMOOTH);
-                SwingUtilities.invokeLater(() -> target.setIcon(new ImageIcon(img)));
+                if (f.exists() && f.length() > 0) {
+                    byte[] bytes = java.nio.file.Files.readAllBytes(f.toPath());
+                    ImageIcon icon = new ImageIcon(bytes);
+                    Image img = icon.getImage().getScaledInstance(80, 80, Image.SCALE_SMOOTH);
+                    SwingUtilities.invokeLater(() -> target.setIcon(new ImageIcon(img)));
+                }
             } catch (Exception ignored) {
             }
         });

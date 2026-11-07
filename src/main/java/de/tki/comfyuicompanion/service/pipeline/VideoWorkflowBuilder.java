@@ -127,6 +127,9 @@ public class VideoWorkflowBuilder {
         List<String> availableUnets = inspectionClient.fetchObjectInfoOptions(serverUrl, "UNETLoader", "unet_name");
         List<String> availableLoras = inspectionClient.fetchObjectInfoOptions(serverUrl, "LoraLoader", "lora_name");
         List<String> availableClips = inspectionClient.fetchObjectInfoOptions(serverUrl, "CLIPLoader", "clip_name");
+        if (availableClips.isEmpty()) {
+            availableClips = inspectionClient.fetchObjectInfoOptions(serverUrl, "DualCLIPLoader", "clip_name1");
+        }
         List<String> availableVaes = inspectionClient.fetchObjectInfoOptions(serverUrl, "VAELoader", "vae_name");
 
         String highNoiseUnet = resolveVideoModel("video_wan_high_unet", "Wan2.2\\wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors", availableUnets);
@@ -376,6 +379,9 @@ public class VideoWorkflowBuilder {
         List<String> availableCkpts = inspectionClient.fetchAvailableCheckpoints(serverUrl);
         List<String> availableUnets = inspectionClient.fetchObjectInfoOptions(serverUrl, "UNETLoader", "unet_name");
         List<String> availableClips = inspectionClient.fetchObjectInfoOptions(serverUrl, "CLIPLoader", "clip_name");
+        if (availableClips.isEmpty()) {
+            availableClips = inspectionClient.fetchObjectInfoOptions(serverUrl, "DualCLIPLoader", "clip_name1");
+        }
         List<String> availableVaes = inspectionClient.fetchObjectInfoOptions(serverUrl, "VAELoader", "vae_name");
         List<String> availableLoras = inspectionClient.fetchObjectInfoOptions(serverUrl, "LoraLoader", "lora_name");
 
@@ -403,13 +409,17 @@ public class VideoWorkflowBuilder {
                     inputs.put("unet_name", match);
                     logger.info("🔄 [VideoWorkflowBuilder] Sanitized UNET '{}' -> '{}' in node {}", currentUnet, match, key);
                 }
-            } else if ("CLIPLoader".equals(classType)) {
-                String currentClip = inputs.optString("clip_name", "");
-                if (!availableClips.isEmpty() && !availableClips.contains(currentClip)) {
-                    String match = inspectionClient.findExactModelName(currentClip, availableClips);
-                    if (!availableClips.contains(match)) match = availableClips.get(0);
-                    inputs.put("clip_name", match);
-                    logger.info("🔄 [VideoWorkflowBuilder] Sanitized CLIP '{}' -> '{}' in node {}", currentClip, match, key);
+            } else if ("CLIPLoader".equals(classType) || "DualCLIPLoader".equals(classType) || "TripleCLIPLoader".equals(classType)) {
+                for (String ck : new String[]{"clip_name", "clip_name1", "clip_name2", "clip_name3"}) {
+                    if (inputs.has(ck)) {
+                        String currentClip = inputs.optString(ck, "");
+                        if (!availableClips.isEmpty() && !availableClips.contains(currentClip)) {
+                            String match = inspectionClient.findExactModelName(currentClip, availableClips);
+                            if (!availableClips.contains(match)) match = availableClips.get(0);
+                            inputs.put(ck, match);
+                            logger.info("🔄 [VideoWorkflowBuilder] Sanitized CLIP {} '{}' -> '{}' in node {}", ck, currentClip, match, key);
+                        }
+                    }
                 }
             } else if ("VAELoader".equals(classType)) {
                 String currentVae = inputs.optString("vae_name", "");

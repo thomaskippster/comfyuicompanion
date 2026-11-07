@@ -26,7 +26,7 @@ public class FastWanWorkflowBuilder {
 
     public static final String DEFAULT_FASTWAN_MODEL = "Wan2_2-TI2V-5B-FastWanFullAttn_bf16.safetensors";
     public static final String DEFAULT_WAN_CLIP = "umt5_xxl_fp8_e4m3fn_scaled.safetensors";
-    public static final String DEFAULT_WAN_VAE = "wan_2.1_vae.safetensors";
+    public static final String DEFAULT_WAN_VAE = "wan2.2_vae.safetensors";
 
     private final ComfyNodeInspectionClient inspectionClient;
     private final IVideoVramOptimizer vramOptimizer;
@@ -195,11 +195,18 @@ public class FastWanWorkflowBuilder {
         return DEFAULT_WAN_CLIP;
     }
 
-    private String resolveVae(List<String> vaes) {
+    public String resolveVae(List<String> vaes) {
         if (vaes != null) {
+            // FastWan 5B utilizes 48 latent channels and strictly requires the Wan 2.2 VAE
             for (String v : vaes) {
                 String low = v.toLowerCase();
-                if (low.contains("wan_2.2") || low.contains("wan2.2") || low.contains("wan_2.1") || low.contains("wan2.1") || low.contains("wan")) {
+                if (low.contains("wan2.2") || low.contains("wan_2.2") || low.contains("wan2_2")) {
+                    return v;
+                }
+            }
+            for (String v : vaes) {
+                String low = v.toLowerCase();
+                if (low.contains("wan")) {
                     return v;
                 }
             }

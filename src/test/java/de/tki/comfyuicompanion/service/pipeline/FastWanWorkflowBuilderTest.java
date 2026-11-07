@@ -43,16 +43,22 @@ class FastWanWorkflowBuilderTest {
         assertTrue(workflow.has("20")); // Negative CLIPTextEncode
         assertTrue(workflow.has("21")); // Positive CLIPTextEncode
         assertTrue(workflow.has("40")); // LoadImage
-        assertTrue(workflow.has("50")); // WanImageToVideo
+        assertTrue(workflow.has("50")); // Wan22ImageToVideoLatent (native Wan 2.2 start image anchor)
         assertTrue(workflow.has("60")); // KSampler
         assertTrue(workflow.has("70")); // VAEDecode
         assertTrue(workflow.has("80")); // CreateVideo
         assertTrue(workflow.has("90")); // SaveVideo
 
-        assertEquals("Wan2_2-TI2V-5B-FastWanFullAttn_bf16.safetensors",
-                workflow.getJSONObject("12").getJSONObject("inputs").getString("unet_name"));
+        assertEquals("Wan22ImageToVideoLatent", workflow.getJSONObject("50").getString("class_type"));
         assertEquals("input_speaker.png",
                 workflow.getJSONObject("40").getJSONObject("inputs").getString("image"));
+        // Wan22ImageToVideoLatent anchors start_image directly
+        assertEquals("40", workflow.getJSONObject("50").getJSONObject("inputs").getJSONArray("start_image").getString(0));
+        assertEquals("50", workflow.getJSONObject("60").getJSONObject("inputs").getJSONArray("latent_image").getString(0));
+        assertEquals("21", workflow.getJSONObject("60").getJSONObject("inputs").getJSONArray("positive").getString(0));
+
+        assertEquals("Wan2_2-TI2V-5B-FastWanFullAttn_bf16.safetensors",
+                workflow.getJSONObject("12").getJSONObject("inputs").getString("unet_name"));
         assertEquals(6,
                 workflow.getJSONObject("60").getJSONObject("inputs").getInt("steps"));
         assertEquals(1.0,
@@ -103,5 +109,37 @@ class FastWanWorkflowBuilderTest {
         assertFalse(workflow.has("40"), "Should not contain LoadImage or EmptyImage node when no start image provided");
         JSONObject wanNodeInputs = workflow.getJSONObject("50").getJSONObject("inputs");
         assertFalse(wanNodeInputs.has("start_image"), "WanImageToVideo should not have start_image input in pure text-to-video mode");
+    }
+
+    @Test
+    void testFallbackToWanImageToVideoWhenWan22LatentNodeMissing() {
+        ComfyNodeInspectionClient mockClient = org.mockito.Mockito.mock(ComfyNodeInspectionClient.class);
+        org.mockito.Mockito.when(mockClient.isNodeClassAvailable("http://127.0.0.1:8188", "Wan22ImageToVideoLatent")).thenReturn(false);
+        org.mockito.Mockito.when(mockClient.isNodeClassAvailable("http://127.0.0.1:8188", "WanImageToVideo")).thenReturn(true);
+
+        FastWanWorkflowBuilder builder = new FastWanWorkflowBuilder(mockClient, null);
+
+        Scene scene = new Scene();
+        scene.setPrompt("A cybernetic rover exploring Titan");
+        scene.setWidth(832);
+        scene.setHeight(480);
+
+        JSONObject workflow = builder.generateFastWanWorkflowJson(
+                "http://127.0.0.1:8188",
+                scene,
+                "input_speaker.png",
+                42L,
+                "legacy_fallback",
+                List.of("Wan2_2-TI2V-5B-FastWanFullAttn_bf16.safetensors"),
+                List.of(),
+                List.of("umt5_xxl_fp8_e4m3fn_scaled.safetensors"),
+                List.of("wan2.2_vae.safetensors")
+        );
+
+        assertNotNull(workflow);
+        assertEquals("WanImageToVideo", workflow.getJSONObject("50").getString("class_type"),
+                "Should gracefully fall back to WanImageToVideo on older ComfyUI installations");
+        assertEquals("50", workflow.getJSONObject("60").getJSONObject("inputs").getJSONArray("latent_image").getString(0));
+        assertEquals(2, workflow.getJSONObject("60").getJSONObject("inputs").getJSONArray("latent_image").getInt(1));
     }
 }

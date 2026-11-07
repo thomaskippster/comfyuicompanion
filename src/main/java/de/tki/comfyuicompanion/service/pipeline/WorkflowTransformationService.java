@@ -86,6 +86,7 @@ public class WorkflowTransformationService {
         FALLBACK_WIDGET_MAP.put("BetaScheduler", List.of("scheduler", "steps", "denoise"));
         FALLBACK_WIDGET_MAP.put("LoraLoader", List.of("lora_name", "strength_model", "strength_clip"));
         FALLBACK_WIDGET_MAP.put("WanImageToVideo", List.of("width", "height", "length", "batch_size"));
+        FALLBACK_WIDGET_MAP.put("Wan22ImageToVideoLatent", List.of("width", "height", "length", "batch_size"));
         FALLBACK_WIDGET_MAP.put("KSamplerAdvanced", List.of("add_noise", "noise_seed", "control_after_generate", "steps", "cfg", "sampler_name", "scheduler", "start_at_step", "end_at_step", "return_with_leftover_noise"));
     }
 

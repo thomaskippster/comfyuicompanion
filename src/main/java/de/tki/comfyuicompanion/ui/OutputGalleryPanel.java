@@ -405,19 +405,22 @@ public class OutputGalleryPanel extends JPanel {
             
             java.util.concurrent.CompletableFuture.runAsync(() -> {
                 try {
-                    ImageIcon rawIcon = new ImageIcon(file.toString());
-                    Image rawImage = rawIcon.getImage();
-                    if (rawImage != null) {
-                        Image scaledImage = rawImage.getScaledInstance(120, 120, Image.SCALE_FAST);
-                        ImageIcon icon = new ImageIcon(scaledImage);
-                        SwingUtilities.invokeLater(() -> {
-                            imageLabel.setText("");
-                            imageLabel.setIcon(icon);
-                        });
+                    if (java.nio.file.Files.exists(file) && java.nio.file.Files.size(file) > 0) {
+                        byte[] bytes = java.nio.file.Files.readAllBytes(file);
+                        ImageIcon rawIcon = new ImageIcon(bytes);
+                        Image rawImage = rawIcon.getImage();
+                        if (rawImage != null) {
+                            Image scaledImage = rawImage.getScaledInstance(120, 120, Image.SCALE_FAST);
+                            ImageIcon icon = new ImageIcon(scaledImage);
+                            SwingUtilities.invokeLater(() -> {
+                                imageLabel.setText("");
+                                imageLabel.setIcon(icon);
+                            });
+                        }
                     }
-                } catch (RuntimeException ignored) {
-            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
-        }
+                } catch (Exception ignored) {
+                    logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+                }
             });
             
             JLabel nameLabel = new JLabel(name, SwingConstants.CENTER);

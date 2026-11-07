@@ -126,6 +126,10 @@ public class SceneBlueprintInjector {
                     injected = true;
                     logger.info("📥 [SceneBlueprintInjector] Injected visual_prompt into CLIPTextEncode node ID: {}", key);
                 }
+            } else if ("WanVideoTextEncode".equals(classType)) {
+                inputs.put("positive_prompt", promptText);
+                injected = true;
+                logger.info("📥 [SceneBlueprintInjector] Injected visual_prompt into WanVideoTextEncode node ID: {}", key);
             } else if ("98ee9e5b-467b-40aa-a534-36033f27d0b4".equals(classType)
                     || "84e2cf3f-de93-40ef-ab22-b9375296917b".equals(classType)) {
                 if (inputs.has("text")) {
@@ -139,6 +143,10 @@ public class SceneBlueprintInjector {
                 inputs.put("value", promptText);
                 injected = true;
                 logger.info("📥 [SceneBlueprintInjector] Injected visual_prompt into PrimitiveStringMultiline node ID: {}", key);
+            } else if (inputs.has("positive_prompt")) {
+                inputs.put("positive_prompt", promptText);
+                injected = true;
+                logger.info("📥 [SceneBlueprintInjector] Injected visual_prompt into generic node '{}' ID: {}", classType, key);
             }
         }
 
@@ -207,6 +215,22 @@ public class SceneBlueprintInjector {
                         inputs.put("denoise", 0.88);
                     }
                 }
+            } else if ("WanVideoSampler".equals(classType)) {
+                int wanSteps = scene.getSteps() > 0 ? scene.getSteps() : 6;
+                inputs.put("steps", wanSteps);
+                double wanCfg = scene.getCfgScale() > 0 ? scene.getCfgScale() : 1.0;
+                inputs.put("cfg", wanCfg);
+                logger.info("📥 [SceneBlueprintInjector] Injected FastWan sampler parameters (steps: {}, cfg: {}) into node ID: {}", wanSteps, wanCfg, key);
+            } else if ("WanVideoTextEncode".equals(classType)) {
+                if (scene.getNegativePrompt() != null && !scene.getNegativePrompt().isBlank()) {
+                    inputs.put("negative_prompt", scene.getNegativePrompt().trim());
+                    logger.info("📥 [SceneBlueprintInjector] Injected negative prompt into WanVideoTextEncode node ID: {}", key);
+                }
+            } else if ("WanVideoEmptyEmbeds".equals(classType)) {
+                if (scene.getWidth() > 0) inputs.put("width", scene.getWidth());
+                if (scene.getHeight() > 0) inputs.put("height", scene.getHeight());
+                int frames = (int) Math.round(sceneDuration * 16.0);
+                if (frames > 0) inputs.put("num_frames", frames);
             }
 
             if ("CLIPTextEncode".equals(classType)) {

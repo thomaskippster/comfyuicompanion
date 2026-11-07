@@ -258,15 +258,18 @@ public class RecentGenerationsAssetPickerDialog extends JDialog {
 
         CompletableFuture.runAsync(() -> {
             try {
-                ImageIcon rawIcon = new ImageIcon(file.getAbsolutePath());
-                Image raw = rawIcon.getImage();
-                if (raw != null) {
-                    Image scaled = raw.getScaledInstance(120, 110, Image.SCALE_FAST);
-                    ImageIcon icon = new ImageIcon(scaled);
-                    SwingUtilities.invokeLater(() -> {
-                        thumbLabel.setText("");
-                        thumbLabel.setIcon(icon);
-                    });
+                if (file.exists() && file.length() > 0) {
+                    byte[] bytes = java.nio.file.Files.readAllBytes(file.toPath());
+                    ImageIcon rawIcon = new ImageIcon(bytes);
+                    Image raw = rawIcon.getImage();
+                    if (raw != null) {
+                        Image scaled = raw.getScaledInstance(120, 110, Image.SCALE_FAST);
+                        ImageIcon icon = new ImageIcon(scaled);
+                        SwingUtilities.invokeLater(() -> {
+                            thumbLabel.setText("");
+                            thumbLabel.setIcon(icon);
+                        });
+                    }
                 }
             } catch (Exception ignored) {
             }

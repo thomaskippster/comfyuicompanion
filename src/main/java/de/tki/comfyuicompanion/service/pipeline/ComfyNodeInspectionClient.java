@@ -163,10 +163,31 @@ public class ComfyNodeInspectionClient {
                     }
                 }
             }
-            if (expectedClean.contains("umt5") || (expectedClean.contains("t5") && expectedClean.contains("xxl"))) {
+            if (expectedClean.contains("umt5") || expectedClean.contains("t5")) {
                 for (String av : available) {
                     String avLow = av.toLowerCase();
                     if (avLow.contains("umt5") || (avLow.contains("t5") && avLow.contains("xxl"))) {
+                        return av;
+                    }
+                }
+                for (String av : available) {
+                    if (av.toLowerCase().contains("t5")) {
+                        return av;
+                    }
+                }
+            }
+            if (expectedClean.contains("clip_l") || expectedClean.contains("clip-l") || expectedClean.contains("vi-l")) {
+                for (String av : available) {
+                    String avLow = av.toLowerCase();
+                    if (avLow.contains("clip_l") || avLow.contains("clip-l") || avLow.contains("vi-l")) {
+                        return av;
+                    }
+                }
+            }
+            if (expectedClean.contains("clip_g") || expectedClean.contains("clip-g")) {
+                for (String av : available) {
+                    String avLow = av.toLowerCase();
+                    if (avLow.contains("clip_g") || avLow.contains("clip-g")) {
                         return av;
                     }
                 }

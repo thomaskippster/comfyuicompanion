@@ -28,15 +28,25 @@ public class Wan22FastWan5BStrategy implements IVideoModelStrategy {
     private final FastWanWorkflowBuilder fastWanWorkflowBuilder;
     private final SceneBlueprintInjector blueprintInjector;
     private final ConfigService configService;
+    private final de.tki.comfyuicompanion.service.pipeline.ComfyNodeInspectionClient inspectionClient;
+
+    public Wan22FastWan5BStrategy(
+            FastWanWorkflowBuilder fastWanWorkflowBuilder,
+            @Autowired(required = false) SceneBlueprintInjector blueprintInjector,
+            @Autowired(required = false) ConfigService configService) {
+        this(fastWanWorkflowBuilder, blueprintInjector, configService, null);
+    }
 
     @Autowired
     public Wan22FastWan5BStrategy(
             FastWanWorkflowBuilder fastWanWorkflowBuilder,
             @Autowired(required = false) SceneBlueprintInjector blueprintInjector,
-            @Autowired(required = false) ConfigService configService) {
+            @Autowired(required = false) ConfigService configService,
+            @Autowired(required = false) de.tki.comfyuicompanion.service.pipeline.ComfyNodeInspectionClient inspectionClient) {
         this.fastWanWorkflowBuilder = fastWanWorkflowBuilder != null ? fastWanWorkflowBuilder : new FastWanWorkflowBuilder();
         this.blueprintInjector = blueprintInjector;
         this.configService = configService;
+        this.inspectionClient = inspectionClient != null ? inspectionClient : new de.tki.comfyuicompanion.service.pipeline.ComfyNodeInspectionClient();
     }
 
     @Override
@@ -127,25 +137,36 @@ public class Wan22FastWan5BStrategy implements IVideoModelStrategy {
 
         // 1. Attempt generic blueprint discovery from user workflows or Vault
         if (blueprintInjector != null) {
-            String comfyPath = configService != null ? configService.getComfyUIPath() : null;
-            String directionKeyword = (effectiveImage != null && !effectiveImage.isBlank()) ? "i2v" : "t2v";
+            try {
+                String comfyPath = configService != null ? configService.getComfyUIPath() : null;
+                String directionKeyword = (effectiveImage != null && !effectiveImage.isBlank()) ? "i2v" : "t2v";
 
-            JSONObject blueprint = blueprintInjector.findBlueprintByKeywords(comfyPath, "fastwan", "5b", directionKeyword);
-            if (blueprint == null) {
-                String blueprintName = (effectiveImage != null && !effectiveImage.isBlank())
-                        ? "WAN 2.2 FASTWAN 5B I2V.png"
-                        : "WAN 2.2 FASTWAN 5B T2V.png";
-                blueprint = blueprintInjector.loadBlueprintWorkflow(blueprintName, comfyPath);
-            }
-
-            if (blueprint != null) {
-                log.info("📄 [Wan22FastWan5BStrategy] Successfully loaded FastWan 5B blueprint from workflows/vault.");
-                blueprintInjector.injectPrompt(blueprint, scene.getPrompt());
-                blueprintInjector.injectParamsIntoBlueprint(blueprint, seed, filenamePrefix, scene);
-                if (effectiveImage != null && !effectiveImage.isBlank()) {
-                    blueprintInjector.injectSpeakerImage(blueprint, effectiveImage);
+                JSONObject blueprint = blueprintInjector.findBlueprintByKeywords(comfyPath, "fastwan", "5b", directionKeyword);
+                if (blueprint == null) {
+                    String blueprintName = (effectiveImage != null && !effectiveImage.isBlank())
+                            ? "WAN 2.2 FASTWAN 5B I2V.png"
+                            : "WAN 2.2 FASTWAN 5B T2V.png";
+                    blueprint = blueprintInjector.loadBlueprintWorkflow(blueprintName, comfyPath);
                 }
-                return blueprint;
+
+                if (blueprint != null) {
+                    boolean requiresWanWrapper = containsNodeClass(blueprint, "WanVideoModelLoader");
+                    boolean wrapperAvailable = !requiresWanWrapper || inspectionClient.isNodeClassAvailable(serverUrl, "WanVideoModelLoader");
+
+                    if (wrapperAvailable) {
+                        log.info("📄 [Wan22FastWan5BStrategy] Successfully loaded FastWan 5B blueprint from workflows/vault.");
+                        blueprintInjector.injectPrompt(blueprint, scene.getPrompt());
+                        blueprintInjector.injectParamsIntoBlueprint(blueprint, seed, filenamePrefix, scene);
+                        if (effectiveImage != null && !effectiveImage.isBlank()) {
+                            blueprintInjector.injectSpeakerImage(blueprint, effectiveImage);
+                        }
+                        return blueprint;
+                    } else {
+                        log.info("ℹ️ [Wan22FastWan5BStrategy] Blueprint requires 'WanVideoModelLoader' (not installed). Using native ComfyUI core pipeline.");
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("⚠️ [Wan22FastWan5BStrategy] Blueprint loading/injection failed ({}). Falling back to pure native ComfyUI pipeline.", e.getMessage());
             }
         }
 
@@ -153,5 +174,16 @@ public class Wan22FastWan5BStrategy implements IVideoModelStrategy {
         return fastWanWorkflowBuilder.generateFastWanWorkflowJson(
                 serverUrl, scene, effectiveImage, seed, filenamePrefix,
                 availableUnets, availableCheckpoints, availableClips, availableVaes);
+    }
+
+    private boolean containsNodeClass(JSONObject workflowJson, String targetClass) {
+        JSONObject promptObj = workflowJson.has("prompt") ? workflowJson.getJSONObject("prompt") : workflowJson;
+        for (String key : promptObj.keySet()) {
+            JSONObject node = promptObj.optJSONObject(key);
+            if (node != null && targetClass.equals(node.optString("class_type", ""))) {
+                return true;
+            }
+        }
+        return false;
     }
 }

@@ -226,6 +226,13 @@ public class MainWindowBuilder {
             components.videoArchitectWrapper.add(fallback, BorderLayout.CENTER);
         }
 
+        // Asset Bridge Coordinator
+        components.assetBridgeCoordinator = new AssetBridgeCoordinator(configService);
+        components.assetBridgeCoordinator.registerUiReferences(components.mainTabs, promptLabView, promptLabController, videoArchitectTab);
+        if (components.galleryPanel != null) {
+            components.galleryPanel.setAssetBridgeCoordinator(components.assetBridgeCoordinator);
+        }
+
         // Settings
         components.settingsPanelCoordinator = new MainSettingsPanel(main, configService, modelArchitectureService);
         components.settingsPanelCoordinator.setOnTabVisibilityChanged(main::updateTabVisibility);
@@ -358,6 +365,7 @@ public class MainWindowBuilder {
         public JPanel dashboardPanel;
         public JPanel downloadManagerPanel;
         public OutputGalleryPanel galleryPanel;
+        public AssetBridgeCoordinator assetBridgeCoordinator;
         public JPanel blueprintGalleryWrapper;
         public JPanel civitaiHubWrapper;
         public PromptLabExecutionHandler promptLabExecutionHandler;

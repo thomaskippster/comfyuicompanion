@@ -103,6 +103,7 @@ public class OutputGalleryPanel extends JPanel {
     private final Map<Path, JCheckBox> checkboxMap = new HashMap<>();
     
     private final de.tki.comfyuicompanion.service.SafePathValidator safePathValidator;
+    private AssetBridgeCoordinator assetBridgeCoordinator;
     private JButton deleteBtn;
     private JButton selectAllBtn;
     private JButton clearBtn;
@@ -112,7 +113,7 @@ public class OutputGalleryPanel extends JPanel {
      * @param configService config service
      */
     public OutputGalleryPanel(ConfigService configService) {
-        this(configService, new de.tki.comfyuicompanion.service.SafePathValidator());
+        this(configService, new de.tki.comfyuicompanion.service.SafePathValidator(), null);
     }
 
     /**
@@ -121,8 +122,19 @@ public class OutputGalleryPanel extends JPanel {
      * @param safePathValidator path validator
      */
     public OutputGalleryPanel(ConfigService configService, de.tki.comfyuicompanion.service.SafePathValidator safePathValidator) {
+        this(configService, safePathValidator, null);
+    }
+
+    /**
+     * Constructs a new OutputGalleryPanel with safe path validator and asset bridge coordinator.
+     * @param configService config service
+     * @param safePathValidator path validator
+     * @param assetBridgeCoordinator asset bridge coordinator
+     */
+    public OutputGalleryPanel(ConfigService configService, de.tki.comfyuicompanion.service.SafePathValidator safePathValidator, AssetBridgeCoordinator assetBridgeCoordinator) {
         this.configService = configService;
         this.safePathValidator = safePathValidator != null ? safePathValidator : new de.tki.comfyuicompanion.service.SafePathValidator();
+        this.assetBridgeCoordinator = assetBridgeCoordinator;
         setLayout(new BorderLayout());
         setOpaque(false);
         
@@ -415,8 +427,24 @@ public class OutputGalleryPanel extends JPanel {
         
         tile.addMouseListener(new MouseAdapter() {
             @Override
+            public void mousePressed(MouseEvent e) {
+                if (e.isPopupTrigger()) {
+                    showTileContextMenu(tile, file, e.getX(), e.getY());
+                }
+            }
+
+            @Override
+            public void mouseReleased(MouseEvent e) {
+                if (e.isPopupTrigger()) {
+                    showTileContextMenu(tile, file, e.getX(), e.getY());
+                }
+            }
+
+            @Override
             public void mouseClicked(MouseEvent e) {
-                if (SwingUtilities.isLeftMouseButton(e)) {
+                if (SwingUtilities.isRightMouseButton(e) || e.isPopupTrigger()) {
+                    showTileContextMenu(tile, file, e.getX(), e.getY());
+                } else if (SwingUtilities.isLeftMouseButton(e)) {
                     if (e.getClickCount() == 2) {
                         showMediaViewer(file);
                     } else {
@@ -437,6 +465,120 @@ public class OutputGalleryPanel extends JPanel {
         
         updateTileBorder(tile, file);
         return tile;
+    }
+
+    public void setAssetBridgeCoordinator(AssetBridgeCoordinator assetBridgeCoordinator) {
+        this.assetBridgeCoordinator = assetBridgeCoordinator;
+    }
+
+    private void showTileContextMenu(Component invoker, Path file, int x, int y) {
+        JPopupMenu menu = new JPopupMenu();
+        File f = file.toFile();
+        String name = file.getFileName().toString().toLowerCase();
+        boolean isPng = name.endsWith(".png");
+        boolean isImage = isPng || name.endsWith(".jpg") || name.endsWith(".jpeg") || name.endsWith(".webp");
+
+        if (isPng) {
+            JMenuItem metaItem = new JMenuItem("Inspect Generation Metadata...", SvgIconFactory.get(AppIcon.QUICK_CHECK, 14));
+            metaItem.setFont(new Font("SansSerif", Font.BOLD, 12));
+            metaItem.addActionListener(e -> {
+                Window owner = SwingUtilities.getWindowAncestor(this);
+                if (assetBridgeCoordinator != null) {
+                    assetBridgeCoordinator.showMetadataDialog(owner, f);
+                } else {
+                    var meta = new de.tki.comfyuicompanion.service.PngMetadataReaderService().extractMetadata(f);
+                    new de.tki.comfyuicompanion.ui.dialog.GenerationMetadataDialog(owner, f, meta, null).setVisible(true);
+                }
+            });
+            menu.add(metaItem);
+            menu.addSeparator();
+        }
+
+        if (isImage) {
+            JMenu imageLabMenu = new JMenu("Send to Image Lab");
+            imageLabMenu.setIcon(SvgIconFactory.get(AppIcon.IMAGE_LAB, 14));
+
+            JMenuItem remixItem = new JMenuItem("Apply Prompt & Sampling Parameters", SvgIconFactory.get(AppIcon.LAUNCH, 12));
+            remixItem.addActionListener(e -> {
+                if (assetBridgeCoordinator != null) {
+                    assetBridgeCoordinator.sendToImageLab(f, true);
+                }
+            });
+            imageLabMenu.add(remixItem);
+
+            JMenuItem previewItem = new JMenuItem("Load as Canvas Preview", SvgIconFactory.get(AppIcon.GALLERY, 12));
+            previewItem.addActionListener(e -> {
+                if (assetBridgeCoordinator != null) {
+                    assetBridgeCoordinator.sendToImageLab(f, false);
+                }
+            });
+            imageLabMenu.add(previewItem);
+            menu.add(imageLabMenu);
+
+            JMenu videoMenu = new JMenu("Send to Video Architect");
+            videoMenu.setIcon(SvgIconFactory.get(AppIcon.VIDEO_ARCHITECT, 14));
+
+            JMenuItem speakerItem = new JMenuItem("Set as Start / Speaker Image", SvgIconFactory.get(AppIcon.LAUNCH, 12));
+            speakerItem.addActionListener(e -> {
+                if (assetBridgeCoordinator != null) {
+                    assetBridgeCoordinator.sendToVideoArchitectAsSpeaker(f);
+                }
+            });
+            videoMenu.add(speakerItem);
+
+            JMenuItem newSceneItem = new JMenuItem("Add as New Video Scene", SvgIconFactory.get(AppIcon.ADD, 12));
+            newSceneItem.addActionListener(e -> {
+                if (assetBridgeCoordinator != null) {
+                    assetBridgeCoordinator.sendToVideoArchitectAsNewScene(f, null);
+                }
+            });
+            videoMenu.add(newSceneItem);
+
+            JMenuItem keyframeItem = new JMenuItem("Assign to Selected Scene", SvgIconFactory.get(AppIcon.EDIT, 12));
+            keyframeItem.addActionListener(e -> {
+                if (assetBridgeCoordinator != null) {
+                    assetBridgeCoordinator.assignKeyframeToSelectedScene(f);
+                }
+            });
+            videoMenu.add(keyframeItem);
+
+            menu.add(videoMenu);
+            menu.addSeparator();
+        }
+
+        JMenuItem copyPathItem = new JMenuItem("Copy File Path", SvgIconFactory.get(AppIcon.FILE_TEXT, 14));
+        copyPathItem.addActionListener(e -> {
+            Toolkit.getDefaultToolkit().getSystemClipboard().setContents(
+                    new java.awt.datatransfer.StringSelection(file.toAbsolutePath().toString()), null);
+        });
+        menu.add(copyPathItem);
+
+        JMenuItem openFolderItem = new JMenuItem("Open in File Explorer", SvgIconFactory.get(AppIcon.FOLDER, 14));
+        openFolderItem.addActionListener(e -> {
+            try {
+                if (Desktop.isDesktopSupported()) {
+                    File parent = f.getParentFile();
+                    if (parent != null && parent.exists()) {
+                        Desktop.getDesktop().open(parent);
+                    }
+                }
+            } catch (Exception ex) {
+                logger.warn("Failed to open file explorer: {}", ex.getMessage());
+            }
+        });
+        menu.add(openFolderItem);
+
+        menu.addSeparator();
+
+        JMenuItem deleteItem = new JMenuItem("Delete File", SvgIconFactory.get(AppIcon.DELETE, 14));
+        deleteItem.addActionListener(e -> {
+            selectedFiles.clear();
+            selectedFiles.add(file);
+            deleteSelectedFiles();
+        });
+        menu.add(deleteItem);
+
+        menu.show(invoker, x, y);
     }
 
     private void showMediaViewer(Path file) {

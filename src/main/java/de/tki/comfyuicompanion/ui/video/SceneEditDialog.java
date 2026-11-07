@@ -2,7 +2,9 @@ package de.tki.comfyuicompanion.ui.video;
 
 import de.tki.comfyuicompanion.domain.Scene;
 import de.tki.comfyuicompanion.service.IVideoPromptOptimizer;
+import de.tki.comfyuicompanion.service.impl.ConfigService;
 import de.tki.comfyuicompanion.ui.ThemeManager;
+import de.tki.comfyuicompanion.ui.dialog.RecentGenerationsAssetPickerDialog;
 import de.tki.comfyuicompanion.ui.icons.AppIcon;
 import de.tki.comfyuicompanion.ui.icons.SvgIconFactory;
 
@@ -26,6 +28,7 @@ import java.awt.Font;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Insets;
+import java.io.File;
 import java.util.function.Consumer;
 
 /**
@@ -41,11 +44,23 @@ public class SceneEditDialog extends JDialog {
                            int defaultHeight,
                            IVideoPromptOptimizer promptOptimizer,
                            Consumer<Scene> onSaved) {
+        this(parent, targetScene, isNew, defaultSceneIndex, defaultWidth, defaultHeight, promptOptimizer, onSaved, null);
+    }
+
+    public SceneEditDialog(Component parent,
+                           Scene targetScene,
+                           boolean isNew,
+                           int defaultSceneIndex,
+                           int defaultWidth,
+                           int defaultHeight,
+                           IVideoPromptOptimizer promptOptimizer,
+                           Consumer<Scene> onSaved,
+                           ConfigService configService) {
         super(SwingUtilities.getWindowAncestor(parent),
                 isNew ? "Add New Scene" : "Edit Scene: " + (targetScene != null ? targetScene.getSceneId() : ""),
                 Dialog.ModalityType.APPLICATION_MODAL);
 
-        setSize(560, 580);
+        setSize(580, 640);
         setLocationRelativeTo(parent);
         setLayout(new BorderLayout(10, 10));
 
@@ -108,6 +123,50 @@ public class SceneEditDialog extends JDialog {
         formPanel.add(cmbCameraMotion, gbc);
 
         gbc.gridx = 0; gbc.gridy = 3;
+        formPanel.add(new JLabel("Start Keyframe Image:"), gbc);
+        gbc.gridx = 1;
+        JPanel keyframePanel = new JPanel(new BorderLayout(4, 0));
+        keyframePanel.setOpaque(false);
+        JTextField keyframeField = new JTextField(targetScene != null && targetScene.getSpeakerImagePath() != null ? targetScene.getSpeakerImagePath() : "");
+        keyframePanel.add(keyframeField, BorderLayout.CENTER);
+
+        JPanel keyframeBtnGroup = new JPanel(new FlowLayout(FlowLayout.RIGHT, 4, 0));
+        keyframeBtnGroup.setOpaque(false);
+
+        JButton btnGalleryKf = new JButton("✨ Gallery...", SvgIconFactory.get(AppIcon.GALLERY, 12));
+        btnGalleryKf.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        btnGalleryKf.setToolTipText("Select image from recent ComfyUI outputs");
+        btnGalleryKf.addActionListener(e -> {
+            RecentGenerationsAssetPickerDialog dlg = new RecentGenerationsAssetPickerDialog(SceneEditDialog.this, configService, "Select Scene Start Keyframe");
+            dlg.setVisible(true);
+            File f = dlg.getSelectedFile();
+            if (f != null) {
+                keyframeField.setText(f.getAbsolutePath());
+            }
+        });
+        keyframeBtnGroup.add(btnGalleryKf);
+
+        JButton btnBrowseKf = new JButton("Browse...");
+        btnBrowseKf.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        btnBrowseKf.addActionListener(e -> {
+            javax.swing.JFileChooser chooser = new javax.swing.JFileChooser();
+            chooser.setDialogTitle("Select Scene Start Keyframe Image");
+            chooser.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("Images (*.png, *.jpg, *.jpeg, *.webp)", "png", "jpg", "jpeg", "webp"));
+            if (chooser.showOpenDialog(SceneEditDialog.this) == javax.swing.JFileChooser.APPROVE_OPTION) {
+                keyframeField.setText(chooser.getSelectedFile().getAbsolutePath());
+            }
+        });
+        keyframeBtnGroup.add(btnBrowseKf);
+
+        JButton btnClearKf = new JButton(SvgIconFactory.get(AppIcon.CLOSE, 11));
+        btnClearKf.setToolTipText("Clear Keyframe (Pure Text-to-Video)");
+        btnClearKf.addActionListener(e -> keyframeField.setText(""));
+        keyframeBtnGroup.add(btnClearKf);
+
+        keyframePanel.add(keyframeBtnGroup, BorderLayout.EAST);
+        formPanel.add(keyframePanel, gbc);
+
+        gbc.gridx = 0; gbc.gridy = 4;
         formPanel.add(new JLabel("Narration Text:"), gbc);
         gbc.gridx = 1;
         JTextArea narrationArea = new JTextArea(targetScene != null && targetScene.getNarrationText() != null ? targetScene.getNarrationText() : "", 2, 20);
@@ -115,7 +174,7 @@ public class SceneEditDialog extends JDialog {
         narrationArea.setWrapStyleWord(true);
         formPanel.add(new JScrollPane(narrationArea), gbc);
 
-        gbc.gridx = 0; gbc.gridy = 4;
+        gbc.gridx = 0; gbc.gridy = 5;
         formPanel.add(new JLabel("SFX / Audio Prompt:"), gbc);
         gbc.gridx = 1;
         JPanel sfxContainer = new JPanel(new BorderLayout(0, 4));
@@ -136,7 +195,7 @@ public class SceneEditDialog extends JDialog {
         sfxContainer.add(btnSuggestSfx, BorderLayout.SOUTH);
         formPanel.add(sfxContainer, gbc);
 
-        gbc.gridx = 0; gbc.gridy = 5;
+        gbc.gridx = 0; gbc.gridy = 6;
         formPanel.add(new JLabel("SFX Audio File:"), gbc);
         gbc.gridx = 1;
         JPanel sfxFilePanel = new JPanel(new BorderLayout(4, 0));
@@ -156,7 +215,7 @@ public class SceneEditDialog extends JDialog {
         sfxFilePanel.add(btnBrowseSfx, BorderLayout.EAST);
         formPanel.add(sfxFilePanel, gbc);
 
-        gbc.gridx = 0; gbc.gridy = 6;
+        gbc.gridx = 0; gbc.gridy = 7;
         formPanel.add(new JLabel("Duration (sec):"), gbc);
         gbc.gridx = 1;
         int currentDur = 5;
@@ -166,14 +225,14 @@ public class SceneEditDialog extends JDialog {
         JSpinner durationSpinner = new JSpinner(new SpinnerNumberModel(currentDur, 1, 60, 1));
         formPanel.add(durationSpinner, gbc);
 
-        gbc.gridx = 0; gbc.gridy = 7;
+        gbc.gridx = 0; gbc.gridy = 8;
         formPanel.add(new JLabel("CFG Scale:"), gbc);
         gbc.gridx = 1;
         double cfg = targetScene != null ? targetScene.getCfgScale() : 3.5;
         JSpinner cfgSpinner = new JSpinner(new SpinnerNumberModel(cfg, 0.5, 20.0, 0.5));
         formPanel.add(cfgSpinner, gbc);
 
-        gbc.gridx = 0; gbc.gridy = 8;
+        gbc.gridx = 0; gbc.gridy = 9;
         formPanel.add(new JLabel("Steps:"), gbc);
         gbc.gridx = 1;
         int steps = targetScene != null ? targetScene.getSteps() : 28;
@@ -197,6 +256,8 @@ public class SceneEditDialog extends JDialog {
             String sid = idField.getText().trim().isEmpty() ? "S1" : idField.getText().trim();
             sc.setSceneId(sid);
             sc.setPrompt(promptArea.getText().trim());
+            String kf = keyframeField.getText().trim();
+            sc.setSpeakerImagePath(kf.isEmpty() ? null : kf);
             sc.setNarrationText(narrationArea.getText().trim());
             sc.setSfxPrompt(sfxPromptArea.getText().trim());
             String customSfx = sfxFileField.getText().trim();

@@ -216,6 +216,18 @@ public class MainSettingsDialogs {
      * @param onSaved       callback executed when settings are successfully saved
      */
     public static void showApiKeysDialog(JFrame parent, ConfigService configService, Runnable onSaved) {
+        showApiKeysDialog((Window) parent, configService, onSaved);
+    }
+
+    /**
+     * Displays the centralized API keys, cloud tokens, and audio service configuration dialog
+     * by delegating to {@link ApiKeysSettingsDialog}.
+     *
+     * @param parent        the parent Window (JFrame or JDialog)
+     * @param configService configuration service for reading and saving credentials
+     * @param onSaved       callback executed when settings are successfully saved
+     */
+    public static void showApiKeysDialog(Window parent, ConfigService configService, Runnable onSaved) {
         ApiKeysSettingsDialog.showApiKeysDialog(parent, configService, onSaved);
     }
 

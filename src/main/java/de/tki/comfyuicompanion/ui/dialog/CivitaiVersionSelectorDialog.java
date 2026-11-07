@@ -45,7 +45,7 @@ public class CivitaiVersionSelectorDialog {
         String initialName = (String) tableModel.getValueAt(row, 2);
         String cleanedQuery = initialName.replaceAll("(?i)\\.(safetensors|ckpt|sft|pt|bin)$", "").trim();
 
-        JDialog dialog = new JDialog((JFrame) SwingUtilities.getWindowAncestor(view), "Civitai Version Selector", true);
+        JDialog dialog = new JDialog(SwingUtilities.getWindowAncestor(view), "Civitai Version Selector", Dialog.ModalityType.APPLICATION_MODAL);
         dialog.setSize(950, 650);
         dialog.setLocationRelativeTo(view);
         dialog.setLayout(new BorderLayout(10, 10));

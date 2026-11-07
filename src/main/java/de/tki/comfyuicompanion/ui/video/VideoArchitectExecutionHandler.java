@@ -355,7 +355,9 @@ public class VideoArchitectExecutionHandler {
                 });
 
                 // PHASE 1.5: Narration Agent (TTS)
-                File narrationDir = new File("output", "narration");
+                String resolvedBase = (configService != null && configService.getResolvedOutputDir() != null && !configService.getResolvedOutputDir().isBlank())
+                        ? configService.getResolvedOutputDir() : "output";
+                File narrationDir = new File(resolvedBase, "narration");
                 if (!narrationDir.exists()) narrationDir.mkdirs();
                 int narrationOk = 0;
                 for (int ni = 0; ni < generatedScenes.size(); ni++) {
@@ -367,7 +369,7 @@ public class VideoArchitectExecutionHandler {
                 consoleLogger.accept("Narration: " + narrationOk + "/" + generatedScenes.size() + " scenes have audio ready.");
 
                 // PHASE 1.6: Sound Effects & Ambient Audio Agent (SFX)
-                File sfxDir = new File("output", "sfx");
+                File sfxDir = new File(resolvedBase, "sfx");
                 if (!sfxDir.exists()) sfxDir.mkdirs();
                 int sfxOk = 0;
                 for (int si = 0; si < generatedScenes.size(); si++) {

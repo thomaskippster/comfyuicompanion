@@ -282,6 +282,7 @@ public class PromptLabExecutionHandler {
         }
 
         backgroundExecutor.execute(() -> {
+            boolean queuedSuccessfully = false;
             try {
                 boolean connected = ensureComfyServerOnline(comfyUrl, null);
 
@@ -345,6 +346,7 @@ public class PromptLabExecutionHandler {
                 payload.put("prompt", promptToQueue);
                 payload.put("client_id", statusPoller.getClientId());
 
+                queuedSuccessfully = false;
                 HttpResponse<String> queueResponse = comfyApiClient.postPrompt(comfyUrl, payload.toString());
                 if (queueResponse != null && queueResponse.statusCode() == 200) {
                     JSONObject queueResult = new JSONObject(queueResponse.body());
@@ -352,6 +354,7 @@ public class PromptLabExecutionHandler {
                     if (console != null) {
                         SwingUtilities.invokeLater(() -> console.append("✅ Queued with ID: " + promptId + "\n"));
                     }
+                    queuedSuccessfully = true;
                     startPollingPromptStatus(promptId);
                 } else {
                     String err = queueResponse != null ? queueResponse.body() : "No response";
@@ -366,13 +369,15 @@ public class PromptLabExecutionHandler {
                     SwingUtilities.invokeLater(() -> console.append("❌ Pipeline failed: " + ex.getMessage() + "\n"));
                 }
             } finally {
-                SwingUtilities.invokeLater(() -> {
-                    if (btnSend != null) {
-                        btnSend.setEnabled(true);
-                        btnSend.setText("Generate");
-                        btnSend.setIcon(SvgIconFactory.get(AppIcon.IMAGE_LAB));
-                    }
-                });
+                if (!queuedSuccessfully) {
+                    SwingUtilities.invokeLater(() -> {
+                        if (btnSend != null) {
+                            btnSend.setEnabled(true);
+                            btnSend.setText("Generate");
+                            btnSend.setIcon(SvgIconFactory.get(AppIcon.IMAGE_LAB));
+                        }
+                    });
+                }
             }
         });
     }

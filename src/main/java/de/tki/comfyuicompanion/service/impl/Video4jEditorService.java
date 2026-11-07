@@ -210,7 +210,9 @@ public class Video4jEditorService {
         }
 
         File concatList = ffmpegProcessRunner.createConcatListFile(mergedSegments);
-        File exportFile = new File(new File("output"), "master_export.mp4").getAbsoluteFile();
+        String resolvedOut = (configService != null && configService.getResolvedOutputDir() != null && !configService.getResolvedOutputDir().isBlank())
+                ? configService.getResolvedOutputDir() : "output";
+        File exportFile = new File(new File(resolvedOut), "master_export.mp4").getAbsoluteFile();
         if (exportFile.getParentFile() != null) exportFile.getParentFile().mkdirs();
 
         try {

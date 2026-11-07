@@ -582,8 +582,41 @@ public class OutputGalleryPanel extends JPanel {
     }
 
     private void showMediaViewer(Path file) {
+        String name = file.getFileName().toString().toLowerCase();
+        Window owner = SwingUtilities.getWindowAncestor(this);
+
+        if (name.endsWith(".mp4")) {
+            try {
+                VideoPreviewDialog previewDialog = new VideoPreviewDialog(owner, file.getFileName().toString(), file.toFile(),
+                        configService != null ? configService.isDarkMode() : ThemeManager.isDarkMode());
+                previewDialog.setVisible(true);
+                return;
+            } catch (Throwable t) {
+                logger.debug("Internal VideoPreviewDialog unavailable, falling back to desktop player: {}", t.getMessage());
+            }
+        } else if (name.endsWith(".png") || name.endsWith(".jpg") || name.endsWith(".jpeg") || name.endsWith(".webp")) {
+            if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.OPEN)) {
+                try {
+                    Desktop.getDesktop().open(file.toFile());
+                    return;
+                } catch (Exception ex) {
+                    logger.debug("Desktop open failed: {}", ex.getMessage());
+                }
+            }
+            if (assetBridgeCoordinator != null) {
+                assetBridgeCoordinator.showMetadataDialog(owner, file.toFile());
+                return;
+            }
+        }
+
         try {
-            Desktop.getDesktop().open(file.toFile());
+            if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.OPEN)) {
+                Desktop.getDesktop().open(file.toFile());
+            } else {
+                JOptionPane.showMessageDialog(this,
+                        "Opening external viewer is not supported on this system.\nFile: " + file.toAbsolutePath(),
+                        "Notice", JOptionPane.INFORMATION_MESSAGE);
+            }
         } catch (java.io.IOException | RuntimeException ex) {
             JOptionPane.showMessageDialog(this, "Failed to open file in external viewer: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
         }

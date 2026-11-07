@@ -356,4 +356,36 @@ public class VideoArchitectSceneTest {
         assertTrue(messages.stream().anyMatch(m -> m.contains("Starting ComfyUI server automatically")));
         assertTrue(messages.stream().anyMatch(m -> m.contains("online and ready")));
     }
+
+    @Test
+    public void testCancelExecutionSignalsCoordinatorAndInterrupt() {
+        ConfigService mockConfig = Mockito.mock(ConfigService.class);
+        ComfyPipelineService mockPipeline = Mockito.mock(ComfyPipelineService.class);
+        Video4jEditorService mockEditor = Mockito.mock(Video4jEditorService.class);
+        IComfyLifecycleService mockLifecycle = Mockito.mock(IComfyLifecycleService.class);
+
+        de.tki.comfyuicompanion.ui.video.VideoBatchRenderCoordinator coordinator = new de.tki.comfyuicompanion.ui.video.VideoBatchRenderCoordinator(
+                mockConfig, mockPipeline, mockEditor, mockLifecycle
+        );
+
+        assertFalse(coordinator.isCancellationRequested());
+        coordinator.cancelExecution();
+        assertTrue(coordinator.isCancellationRequested());
+        Mockito.verify(mockPipeline).interruptActiveExecution();
+    }
+
+    @Test
+    public void testWorkspacePanelAbortButtonToggledDuringExecution() {
+        de.tki.comfyuicompanion.ui.video.VideoArchitectWorkspacePanel panel =
+                new de.tki.comfyuicompanion.ui.video.VideoArchitectWorkspacePanel(null, null, null);
+
+        assertNotNull(panel.getBtnAbortExecution());
+        assertFalse(panel.getBtnAbortExecution().isEnabled(), "Abort button must be disabled initially when idle");
+
+        panel.setButtonsDisabled(true);
+        assertTrue(panel.getBtnAbortExecution().isEnabled(), "Abort button must be enabled when execution is running");
+
+        panel.setButtonsDisabled(false);
+        assertFalse(panel.getBtnAbortExecution().isEnabled(), "Abort button must be disabled when execution finishes/stops");
+    }
 }

@@ -49,8 +49,7 @@ public class VideoArchitectExecutionHandler {
                                          VideoScriptParser scriptParser,
                                          IVideoPromptOptimizer promptOptimizer) {
         this(configService, comfyPipelineService, video4jEditorService, ttsService, gemma4Service,
-                lifecycleService, scriptParser, promptOptimizer,
-                new VideoBatchRenderCoordinator(configService, comfyPipelineService, video4jEditorService, lifecycleService));
+                lifecycleService, scriptParser, promptOptimizer, null, null);
     }
 
     public VideoArchitectExecutionHandler(ConfigService configService,
@@ -63,8 +62,7 @@ public class VideoArchitectExecutionHandler {
                                          IVideoPromptOptimizer promptOptimizer,
                                          VideoBatchRenderCoordinator renderCoordinator) {
         this(configService, comfyPipelineService, video4jEditorService, ttsService, gemma4Service,
-                lifecycleService, scriptParser, promptOptimizer, renderCoordinator,
-                new de.tki.comfyuicompanion.service.impl.LocalAudioService(configService, lifecycleService, null));
+                lifecycleService, scriptParser, promptOptimizer, renderCoordinator, null);
     }
 
     public VideoArchitectExecutionHandler(ConfigService configService,
@@ -97,8 +95,7 @@ public class VideoArchitectExecutionHandler {
                                   Consumer<Boolean> buttonsDisabledSetter, Consumer<String> consoleLogger,
                                   Consumer<Scene> previewUpdater, Runnable storyboardJsonUpdater) {
         deconstructScript(parent, idea, null, null, width, height, cfg, steps, motion,
-                timelineListModel, timelineListView, progressBar, buttonsDisabledSetter,
-                consoleLogger, previewUpdater, storyboardJsonUpdater);
+                timelineListModel, timelineListView, progressBar, buttonsDisabledSetter, consoleLogger, previewUpdater, storyboardJsonUpdater);
     }
 
     public void deconstructScript(Component parent, String idea, String targetModel, int width, int height,
@@ -107,8 +104,7 @@ public class VideoArchitectExecutionHandler {
                                   Consumer<Boolean> buttonsDisabledSetter, Consumer<String> consoleLogger,
                                   Consumer<Scene> previewUpdater, Runnable storyboardJsonUpdater) {
         deconstructScript(parent, idea, targetModel, null, width, height, cfg, steps, motion,
-                timelineListModel, timelineListView, progressBar, buttonsDisabledSetter,
-                consoleLogger, previewUpdater, storyboardJsonUpdater);
+                timelineListModel, timelineListView, progressBar, buttonsDisabledSetter, consoleLogger, previewUpdater, storyboardJsonUpdater);
     }
 
     /**
@@ -386,6 +382,11 @@ public class VideoArchitectExecutionHandler {
                 renderCoordinator.executeVideoGenerationSync(parent, generatedScenes, speakerPath, width, height,
                         timelineListView, progressBar, buttonsDisabledSetter, consoleLogger, previewUpdater);
 
+                if (renderCoordinator.isCancellationRequested()) {
+                    consoleLogger.accept("🛑 Auto-Pilot stopped by user before video stitching.");
+                    return;
+                }
+
                 // PHASE 3: Editor Agent (FFmpeg)
                 consoleLogger.accept("Editor Agent: Stitching video segments via FFmpeg...");
                 File exportFile = video4jEditorService.executeMasterRender(generatedScenes);
@@ -421,6 +422,15 @@ public class VideoArchitectExecutionHandler {
     public void executeMasterRender(Component parent, List<Scene> scenes, JProgressBar progressBar,
                                     Consumer<Boolean> buttonsDisabledSetter, Consumer<String> consoleLogger) {
         renderCoordinator.executeMasterRender(parent, scenes, progressBar, buttonsDisabledSetter, consoleLogger);
+    }
+
+    /**
+     * Signals cancellation to the underlying batch render coordinator.
+     */
+    public void cancelExecution() {
+        if (renderCoordinator != null) {
+            renderCoordinator.cancelExecution();
+        }
     }
 
     public boolean generateNarrationAudio(Scene scene, File outputDir) {
@@ -483,9 +493,5 @@ public class VideoArchitectExecutionHandler {
             logger.error("SFX generation failed for scene {}: {}", scene.getSceneId(), ex.getMessage());
         }
         return false;
-    }
-
-    private void ensureComfyUiHealthy() throws Exception {
-        renderCoordinator.ensureComfyUiHealthy();
     }
 }

@@ -22,7 +22,10 @@ import org.springframework.stereotype.Service;
 
 import java.io.File;
 import java.io.IOException;
+import java.net.URI;
 import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
 
@@ -342,5 +345,29 @@ public class ComfyPipelineService {
 
     private void injectAudio(JSONObject workflowJson, String filename) {
         scenePipelineRunner.injectAudio(workflowJson, filename);
+    }
+
+    /**
+     * Sends an execution interrupt signal to the active ComfyUI server.
+     *
+     * @return true if the interrupt request was sent and acknowledged
+     */
+    public boolean interruptActiveExecution() {
+        String serverUrl = configService != null ? configService.getComfyUIUrl() : "http://127.0.0.1:8188";
+        try {
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(serverUrl + "/interrupt"))
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.noBody())
+                    .timeout(Duration.ofSeconds(4))
+                    .build();
+            HttpResponse<String> resp = (httpClient != null ? httpClient : HttpClient.newHttpClient())
+                    .send(request, HttpResponse.BodyHandlers.ofString());
+            logger.info("🛑 Sent /interrupt to ComfyUI (HTTP {})", resp.statusCode());
+            return resp.statusCode() >= 200 && resp.statusCode() < 300;
+        } catch (Exception e) {
+            logger.warn("Failed to send /interrupt to ComfyUI: {}", e.getMessage());
+            return false;
+        }
     }
 }

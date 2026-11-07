@@ -71,6 +71,7 @@ public class VideoArchitectWorkspacePanel extends CardPanel {
     private JProgressBar videoProgressBar;
     private JButton btnGenerateScenes;
     private JButton btnMasterRender;
+    private JButton btnAbortExecution;
 
     /**
      * Constructs a new VideoArchitectWorkspacePanel.
@@ -203,7 +204,7 @@ public class VideoArchitectWorkspacePanel extends CardPanel {
         rightBottomPanel.add(centerBottom, BorderLayout.CENTER);
 
         // Execution buttons
-        JPanel executionRow = new JPanel(new GridLayout(1, 2, 10, 0));
+        JPanel executionRow = new JPanel(new GridLayout(1, 3, 10, 0));
         executionRow.setOpaque(false);
         executionRow.setPreferredSize(new Dimension(0, 45));
 
@@ -217,8 +218,16 @@ public class VideoArchitectWorkspacePanel extends CardPanel {
         btnMasterRender.putClientProperty("Button.background", new Color(255, 204, 0));
         btnMasterRender.putClientProperty("Button.foreground", Color.BLACK);
 
+        btnAbortExecution = new JButton("Abort / Stop", SvgIconFactory.get(AppIcon.STOP));
+        btnAbortExecution.setFont(new Font("SansSerif", Font.BOLD, 14));
+        btnAbortExecution.putClientProperty("Button.background", new Color(220, 38, 38));
+        btnAbortExecution.putClientProperty("Button.foreground", Color.WHITE);
+        btnAbortExecution.setEnabled(false);
+        btnAbortExecution.setToolTipText("Immediately halts video generation or stitching and sends /interrupt to ComfyUI");
+
         executionRow.add(btnGenerateScenes);
         executionRow.add(btnMasterRender);
+        executionRow.add(btnAbortExecution);
 
         rightBottomPanel.add(executionRow, BorderLayout.SOUTH);
         add(rightBottomPanel, BorderLayout.SOUTH);
@@ -419,6 +428,17 @@ public class VideoArchitectWorkspacePanel extends CardPanel {
     }
 
     /**
+     * Sets the action callback when Abort / Stop button is clicked.
+     *
+     * @param action the callback to execute
+     */
+    public void setOnAbortExecution(Runnable action) {
+        if (btnAbortExecution != null && action != null) {
+            btnAbortExecution.addActionListener(e -> action.run());
+        }
+    }
+
+    /**
      * Disables or enables interactive workspace buttons during execution.
      *
      * @param disabled true to disable buttons, false to enable
@@ -427,6 +447,9 @@ public class VideoArchitectWorkspacePanel extends CardPanel {
         VideoArchitectThemeHandler.setButtonsDisabled(disabled, btnGenerateScenes, btnMasterRender,
                 getAddSceneBtn(), getEditSceneBtn(), getMoveUpBtn(), getMoveDownBtn(),
                 getVisualFilterBtn(), getPlayVideoBtn(), getDeleteBtn(), getClearListBtn());
+        if (btnAbortExecution != null) {
+            btnAbortExecution.setEnabled(disabled);
+        }
     }
 
     public DefaultListModel<Scene> getTimelineListModel() { return sequencePanel != null ? sequencePanel.getTimelineListModel() : null; }
@@ -438,6 +461,7 @@ public class VideoArchitectWorkspacePanel extends CardPanel {
     public JProgressBar getVideoProgressBar() { return videoProgressBar; }
     public JButton getBtnGenerateScenes() { return btnGenerateScenes; }
     public JButton getBtnMasterRender() { return btnMasterRender; }
+    public JButton getBtnAbortExecution() { return btnAbortExecution; }
     public JButton getAddSceneBtn() { return sequencePanel != null ? sequencePanel.getAddSceneBtn() : null; }
     public JButton getEditSceneBtn() { return sequencePanel != null ? sequencePanel.getEditSceneBtn() : null; }
     public JButton getVisualFilterBtn() { return sequencePanel != null ? sequencePanel.getVisualFilterBtn() : null; }

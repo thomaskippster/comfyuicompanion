@@ -161,6 +161,7 @@ public class VideoArchitectTab extends JPanel {
         configPanel.setOnAutoPilot(this::handleAutoPilot);
         workspacePanel.setOnGenerateScenes(this::handleVideoGeneration);
         workspacePanel.setOnMasterRender(this::handleMasterRender);
+        workspacePanel.setOnAbortExecution(this::handleAbortExecution);
 
         this.speakerImageField = configPanel.getSpeakerImageField();
         this.videoWidthSpinner = configPanel.getVideoWidthSpinner();
@@ -235,6 +236,15 @@ public class VideoArchitectTab extends JPanel {
     private void handleMasterRender() {
         executionHandler.executeMasterRender(this, workspacePanel.getAllScenes(),
                 workspacePanel.getVideoProgressBar(), this::setButtonsDisabled, workspacePanel::logToConsole);
+    }
+
+    private void handleAbortExecution() {
+        if (workspacePanel != null) {
+            workspacePanel.logToConsole("🛑 Aborting active task and signalling ComfyUI /interrupt...");
+        }
+        if (executionHandler != null) {
+            executionHandler.cancelExecution();
+        }
     }
 
     private void setButtonsDisabled(boolean disabled) {

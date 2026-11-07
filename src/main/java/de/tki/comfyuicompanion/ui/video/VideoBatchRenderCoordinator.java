@@ -23,6 +23,7 @@ import java.awt.Component;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
 /**
@@ -41,6 +42,8 @@ public class VideoBatchRenderCoordinator {
     private final IVideoFrameChainingService frameChainingService;
     private final IVideoVramOptimizer vramOptimizer;
     private final IVideoVisionFeedbackService visionFeedbackService;
+    private final AtomicBoolean cancellationRequested = new AtomicBoolean(false);
+    private volatile Thread activeWorkerThread;
 
     /**
      * Constructs a new VideoBatchRenderCoordinator with default supplementary services.
@@ -76,18 +79,31 @@ public class VideoBatchRenderCoordinator {
     }
 
     /**
-     * Executes video generation for all scenes currently present in the timeline.
+     * Signals cancellation of running video tasks, immediately sending an /interrupt request
+     * to ComfyUI, terminating retry attempts, and interrupting background worker threads.
+     */
+    public void cancelExecution() {
+        cancellationRequested.set(true);
+        if (comfyPipelineService != null) {
+            comfyPipelineService.interruptActiveExecution();
+        }
+        Thread worker = activeWorkerThread;
+        if (worker != null && worker.isAlive()) {
+            worker.interrupt();
+        }
+    }
+
+    /**
+     * Checks whether execution cancellation has been requested.
      *
-     * @param parent               parent component for dialogs
-     * @param scenes               list of scenes to generate
-     * @param speakerPath          optional start image path
-     * @param width                video width
-     * @param height               video height
-     * @param timelineListView     timeline list component to repaint
-     * @param progressBar          progress bar
-     * @param buttonsDisabledSetter callback to enable/disable UI controls
-     * @param consoleLogger        console output callback
-     * @param previewUpdater       callback to update current scene preview
+     * @return true if cancellation requested
+     */
+    public boolean isCancellationRequested() {
+        return cancellationRequested.get();
+    }
+
+    /**
+     * Executes video generation for all scenes currently present in the timeline.
      */
     public void executeVideoGeneration(Component parent,
                                        List<Scene> scenes,
@@ -104,6 +120,8 @@ public class VideoBatchRenderCoordinator {
             return;
         }
 
+        cancellationRequested.set(false);
+
         for (Scene sc : scenes) {
             sc.setWidth(width);
             sc.setHeight(height);
@@ -116,27 +134,38 @@ public class VideoBatchRenderCoordinator {
         progressBar.setValue(0);
         progressBar.setVisible(true);
 
-        Thread.ofVirtual().start(() -> {
+        Thread worker = Thread.ofVirtual().start(() -> {
             try {
                 executeVideoGenerationSync(parent, scenes, speakerPath, width, height,
                         timelineListView, progressBar, buttonsDisabledSetter, consoleLogger, previewUpdater);
                 SwingUtilities.invokeLater(() -> {
                     progressBar.setVisible(false);
                     buttonsDisabledSetter.accept(false);
-                    consoleLogger.accept("All " + scenes.size() + " scene videos generated! Click 'Stitch Videos' to combine.");
+                    if (cancellationRequested.get()) {
+                        consoleLogger.accept("🛑 Video generation aborted by user.");
+                    } else {
+                        consoleLogger.accept("All " + scenes.size() + " scene videos generated! Click 'Stitch Videos' to combine.");
+                    }
                 });
             } catch (Exception ex) {
-                logger.error("Video generation failed", ex);
+                logger.warn("Video generation terminated: {}", ex.getMessage());
                 SwingUtilities.invokeLater(() -> {
                     progressBar.setVisible(false);
                     buttonsDisabledSetter.accept(false);
-                    consoleLogger.accept("Generation failed: " + ex.getMessage());
-                    if (!de.tki.comfyuicompanion.util.PlatformUtils.isUnattended()) {
-                        JOptionPane.showMessageDialog(parent, "Video generation failed:\n" + ex.getMessage(), "Generation Error", JOptionPane.ERROR_MESSAGE);
+                    if (cancellationRequested.get()) {
+                        consoleLogger.accept("🛑 Video generation aborted by user.");
+                    } else {
+                        consoleLogger.accept("Generation failed: " + ex.getMessage());
+                        if (!de.tki.comfyuicompanion.util.PlatformUtils.isUnattended()) {
+                            JOptionPane.showMessageDialog(parent, "Video generation failed:\n" + ex.getMessage(), "Generation Error", JOptionPane.ERROR_MESSAGE);
+                        }
                     }
                 });
+            } finally {
+                activeWorkerThread = null;
             }
         });
+        this.activeWorkerThread = worker;
     }
 
     /**
@@ -175,6 +204,10 @@ public class VideoBatchRenderCoordinator {
         if (twoPhase) {
             consoleLogger.accept("🎨 [Pass 1/2] Storyboard Phase: Generating keyframes for timeline scenes...");
             for (int i = 0; i < scenes.size(); i++) {
+                if (cancellationRequested.get()) {
+                    consoleLogger.accept("🛑 Storyboard keyframe phase aborted by user.");
+                    return;
+                }
                 Scene sc = scenes.get(i);
                 final int currentIdx = i + 1;
                 final int totalScenes = scenes.size();
@@ -185,17 +218,13 @@ public class VideoBatchRenderCoordinator {
 
                     try {
                         File keyframe = comfyPipelineService.generateKeyframe(sc).join();
+                        if (cancellationRequested.get()) {
+                            consoleLogger.accept("🛑 Keyframe generation aborted by user.");
+                            return;
+                        }
                         if (keyframe != null && keyframe.exists()) {
-                            // Gentle LAB color transfer against Scene 1 palette
                             if (i > 0 && scenes.get(0).getSpeakerImagePath() != null) {
-                                File refKeyframe = new File(scenes.get(0).getSpeakerImagePath());
-                                if (refKeyframe.exists()) {
-                                    File harmonized = new File(outputDir, "harmonized_keyframe_" + sc.getSceneId() + ".png");
-                                    File matched = video4jEditorService.harmonizeKeyframeColorsLab(keyframe, refKeyframe, harmonized, 0.40);
-                                    if (matched != null && matched.exists()) {
-                                        keyframe = matched;
-                                    }
-                                }
+                                keyframe = harmonizeKeyframe(sc, scenes.get(0), keyframe, outputDir);
                             }
                             sc.setSpeakerImagePath(keyframe.getAbsolutePath());
                             String refinedPrompt = visionFeedbackService.refinePromptWithVisualFeedback(sc, keyframe);
@@ -208,6 +237,10 @@ public class VideoBatchRenderCoordinator {
                             });
                         }
                     } catch (Exception kfEx) {
+                        if (cancellationRequested.get()) {
+                            consoleLogger.accept("🛑 Keyframe generation aborted by user.");
+                            return;
+                        }
                         logger.warn("⚠️ [Pass 1] Keyframe generation for scene {} skipped: {}", sc.getSceneId(), kfEx.getMessage());
                     }
                 }
@@ -224,6 +257,10 @@ public class VideoBatchRenderCoordinator {
         // ==========================================
         consoleLogger.accept(twoPhase ? "🎬 [Pass 2/2] Motion Phase: Rendering video clips..." : "🎬 Rendering video clips...");
         for (int i = 0; i < scenes.size(); i++) {
+            if (cancellationRequested.get()) {
+                consoleLogger.accept("🛑 Video motion phase aborted by user.");
+                return;
+            }
             Scene scene = scenes.get(i);
             final int currentIdx = i + 1;
             final int totalScenes = scenes.size();
@@ -241,6 +278,10 @@ public class VideoBatchRenderCoordinator {
             boolean success = false;
 
             for (int attempt = 1; attempt <= maxRetries; attempt++) {
+                if (cancellationRequested.get()) {
+                    consoleLogger.accept("🛑 Abort requested: stopping scene " + scene.getSceneId() + " immediately (no retries).");
+                    return;
+                }
                 final int att = attempt;
                 int progressBase = twoPhase ? 50 : 0;
                 int progressScale = twoPhase ? 50 : 100;
@@ -249,15 +290,31 @@ public class VideoBatchRenderCoordinator {
 
                 try {
                     output = comfyPipelineService.generateSceneStrict(scene).join();
+                    if (cancellationRequested.get()) {
+                        consoleLogger.accept("🛑 Generation aborted for scene " + scene.getSceneId() + ". Retries suppressed.");
+                        return;
+                    }
                     if (output != null && output.exists() && output.length() > 1024) {
                         success = true;
                         break;
                     } else {
+                        if (cancellationRequested.get()) {
+                            consoleLogger.accept("🛑 Generation aborted for scene " + scene.getSceneId() + ". Retries suppressed.");
+                            return;
+                        }
                         Thread.sleep(2000);
                     }
                 } catch (Exception e) {
+                    if (cancellationRequested.get()) {
+                        consoleLogger.accept("🛑 Generation aborted for scene " + scene.getSceneId() + ". Retries suppressed.");
+                        return;
+                    }
                     Thread.sleep(2000);
                 }
+            }
+
+            if (cancellationRequested.get()) {
+                return;
             }
 
             if (!success) {
@@ -277,12 +334,6 @@ public class VideoBatchRenderCoordinator {
     /**
      * Re-attaches missing scene video files from output folders or regenerates them,
      * then stitches all timeline videos into a master render file.
-     *
-     * @param parent               parent component for dialogs
-     * @param scenes               list of scenes to stitch
-     * @param progressBar          progress bar
-     * @param buttonsDisabledSetter callback to enable/disable UI controls
-     * @param consoleLogger        console output callback
      */
     public void executeMasterRender(Component parent,
                                     List<Scene> scenes,
@@ -294,41 +345,25 @@ public class VideoBatchRenderCoordinator {
             return;
         }
 
+        cancellationRequested.set(false);
         buttonsDisabledSetter.accept(true);
         progressBar.setValue(50);
         progressBar.setVisible(true);
 
-        Thread.ofVirtual().start(() -> {
+        Thread worker = Thread.ofVirtual().start(() -> {
             try {
                 consoleLogger.accept("Checking scene videos...");
 
                 List<Scene> needsRegen = new ArrayList<>();
                 for (Scene scene : scenes) {
+                    if (cancellationRequested.get()) {
+                        consoleLogger.accept("🛑 Master render aborted by user.");
+                        return;
+                    }
                     File vf = scene.getVideoPath() == null ? null : new File(scene.getVideoPath());
                     if (vf == null || !vf.exists() || vf.length() < 1024) {
-                        File[] roots = new File[]{
-                                new File(System.getProperty("user.dir")),
-                                new File(new File("").getAbsolutePath()),
-                                new File(configService != null ? configService.getResolvedOutputDir() : "output"),
-                                new File(new File(configService != null ? configService.getResolvedOutputDir() : "output"), "video")
-                        };
-                        String[] patterns = new String[]{
-                                "scene_" + scene.getSceneId() + "_final.mp4",
-                                "scene_" + scene.getSceneId() + "_simulated.mp4",
-                                "videoarchitect_" + scene.getSceneId() + "_00001_.mp4",
-                                "videoarchitect_" + scene.getSceneId() + ".mp4"
-                        };
-                        File found = null;
-                        outer:
-                        for (File r : roots) {
-                            if (r == null || !r.isDirectory()) continue;
-                            for (String p : patterns) {
-                                File candidate = new File(r, p);
-                                if (candidate.exists() && candidate.length() >= 1024) { found = candidate; break outer; }
-                            }
-                        }
+                        File found = findExistingSceneVideo(scene);
                         if (found != null) {
-                            logger.info("[VideoArchitect] Re-attached scene {} video: {}", scene.getSceneId(), found.getAbsolutePath());
                             scene.setVideoPath(found.getAbsolutePath());
                         } else {
                             needsRegen.add(scene);
@@ -339,10 +374,18 @@ public class VideoBatchRenderCoordinator {
                 if (!needsRegen.isEmpty()) {
                     consoleLogger.accept("Regenerating " + needsRegen.size() + " missing scene(s)...");
                     for (int ri = 0; ri < needsRegen.size(); ri++) {
+                        if (cancellationRequested.get()) {
+                            consoleLogger.accept("🛑 Master render aborted by user.");
+                            return;
+                        }
                         Scene s = needsRegen.get(ri);
                         final int currRi = ri + 1;
                         consoleLogger.accept("Regenerating scene " + currRi + "/" + needsRegen.size() + ": " + s.getSceneId() + "...");
                         File regen = comfyPipelineService.generateSceneStrict(s).join();
+                        if (cancellationRequested.get()) {
+                            consoleLogger.accept("🛑 Master render aborted by user.");
+                            return;
+                        }
                         if (regen != null && regen.exists() && regen.length() > 1024) {
                             s.setVideoPath(regen.getAbsolutePath());
                         } else {
@@ -351,35 +394,69 @@ public class VideoBatchRenderCoordinator {
                     }
                 }
 
+                if (cancellationRequested.get()) {
+                    consoleLogger.accept("🛑 Master render aborted by user.");
+                    return;
+                }
+
                 consoleLogger.accept("Stitching video segments via FFmpeg...");
                 File exportFile = video4jEditorService.executeMasterRender(scenes);
 
                 SwingUtilities.invokeLater(() -> {
                     progressBar.setVisible(false);
                     buttonsDisabledSetter.accept(false);
-                    consoleLogger.accept("Stitching Complete! Saved as " + exportFile.getName());
-                    if (!de.tki.comfyuicompanion.util.PlatformUtils.isUnattended()) {
-                        JOptionPane.showMessageDialog(parent, "Master render completed successfully!\nSaved to: " + exportFile.getAbsolutePath(), "Master Render Complete", JOptionPane.INFORMATION_MESSAGE);
+                    if (cancellationRequested.get()) {
+                        consoleLogger.accept("🛑 Master render aborted by user.");
+                    } else {
+                        consoleLogger.accept("Stitching Complete! Saved as " + exportFile.getName());
+                        if (!de.tki.comfyuicompanion.util.PlatformUtils.isUnattended()) {
+                            JOptionPane.showMessageDialog(parent, "Master render completed successfully!\nSaved to: " + exportFile.getAbsolutePath(), "Master Render Complete", JOptionPane.INFORMATION_MESSAGE);
+                        }
                     }
                 });
             } catch (Exception ex) {
-                logger.error("Master render task failed", ex);
+                logger.warn("Master render ended: {}", ex.getMessage());
                 SwingUtilities.invokeLater(() -> {
                     progressBar.setVisible(false);
                     buttonsDisabledSetter.accept(false);
-                    consoleLogger.accept("Render Failed: " + ex.getMessage());
-                    if (!de.tki.comfyuicompanion.util.PlatformUtils.isUnattended()) {
-                        JOptionPane.showMessageDialog(parent, "Master render failed:\n" + ex.getMessage(), "Render Error", JOptionPane.ERROR_MESSAGE);
+                    if (cancellationRequested.get()) {
+                        consoleLogger.accept("🛑 Master render aborted by user.");
+                    } else {
+                        consoleLogger.accept("Render Failed: " + ex.getMessage());
+                        if (!de.tki.comfyuicompanion.util.PlatformUtils.isUnattended()) {
+                            JOptionPane.showMessageDialog(parent, "Master render failed:\n" + ex.getMessage(), "Render Error", JOptionPane.ERROR_MESSAGE);
+                        }
                     }
                 });
+            } finally {
+                activeWorkerThread = null;
             }
         });
+        this.activeWorkerThread = worker;
+    }
+
+    private File findExistingSceneVideo(Scene scene) {
+        String baseOut = configService != null ? configService.getResolvedOutputDir() : "output";
+        for (String dir : List.of(".", baseOut, baseOut + "/video")) {
+            for (String p : List.of("scene_" + scene.getSceneId() + "_final.mp4", "scene_" + scene.getSceneId() + "_simulated.mp4", "videoarchitect_" + scene.getSceneId() + ".mp4", "videoarchitect_" + scene.getSceneId() + "_00001_.mp4")) {
+                File candidate = new File(dir, p);
+                if (candidate.exists() && candidate.length() >= 1024) return candidate;
+            }
+        }
+        return null;
+    }
+
+    private File harmonizeKeyframe(Scene current, Scene first, File keyframe, File outputDir) {
+        if (first == null || first.getSpeakerImagePath() == null) return keyframe;
+        File refKeyframe = new File(first.getSpeakerImagePath());
+        if (!refKeyframe.exists()) return keyframe;
+        File harmonized = new File(outputDir, "harmonized_keyframe_" + current.getSceneId() + ".png");
+        File matched = video4jEditorService.harmonizeKeyframeColorsLab(keyframe, refKeyframe, harmonized, 0.40);
+        return (matched != null && matched.exists()) ? matched : keyframe;
     }
 
     /**
      * Ensures ComfyUI server is running and healthy, starting it if necessary.
-     *
-     * @throws Exception if ComfyUI fails to reach a healthy state within timeout
      */
     public void ensureComfyUiHealthy() throws Exception {
         ensureComfyUiHealthy(null);
@@ -392,31 +469,23 @@ public class VideoBatchRenderCoordinator {
      * @throws Exception if ComfyUI fails to reach a healthy state within timeout
      */
     public void ensureComfyUiHealthy(Consumer<String> statusLogger) throws Exception {
-        if (lifecycleService != null && !lifecycleService.isHealthy()) {
-            if (statusLogger != null) {
-                statusLogger.accept("⏳ ComfyUI server is offline. Starting ComfyUI server automatically...");
-            }
-            lifecycleService.start();
-            int maxWait = 90;
-            boolean healthy = false;
-            for (int w = 0; w < maxWait; w++) {
-                if (lifecycleService.isHealthy()) {
-                    healthy = true;
-                    if (statusLogger != null) {
-                        statusLogger.accept("✅ ComfyUI server is online and ready!");
-                    }
-                    break;
-                }
-                if (statusLogger != null && (w % 5 == 0 || w == 1)) {
-                    statusLogger.accept("⏳ Waiting for ComfyUI to boot and report healthy (" + w + "s/" + maxWait + "s)...");
-                }
-                Thread.sleep(1000);
-            }
-            if (!healthy) {
-                throw new Exception("ComfyUI server could not be started or did not become healthy within " + maxWait + " seconds.");
-            }
-        } else if (statusLogger != null) {
-            statusLogger.accept("✅ ComfyUI server is online and healthy.");
+        if (lifecycleService == null || lifecycleService.isHealthy()) {
+            if (statusLogger != null) statusLogger.accept("✅ ComfyUI server is online and healthy.");
+            return;
         }
+        if (statusLogger != null) statusLogger.accept("⏳ ComfyUI server is offline. Starting ComfyUI server automatically...");
+        lifecycleService.start();
+        int maxWait = 90;
+        for (int w = 0; w < maxWait; w++) {
+            if (lifecycleService.isHealthy()) {
+                if (statusLogger != null) statusLogger.accept("✅ ComfyUI server is online and ready!");
+                return;
+            }
+            if (statusLogger != null && (w % 5 == 0 || w == 1)) {
+                statusLogger.accept("⏳ Waiting for ComfyUI to boot (" + w + "s/" + maxWait + "s)...");
+            }
+            Thread.sleep(1000);
+        }
+        throw new Exception("ComfyUI server could not be started within " + maxWait + " seconds.");
     }
 }

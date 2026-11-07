@@ -256,6 +256,41 @@ public class ComfyApiClient {
     }
 
     /**
+     * Sends an execution interrupt request to the running ComfyUI server.
+     *
+     * @return true if the interrupt request was successfully accepted by ComfyUI, false otherwise
+     */
+    public boolean interrupt() {
+        return interrupt(configService != null ? configService.getComfyUIUrl() : "http://127.0.0.1:8188");
+    }
+
+    /**
+     * Sends an execution interrupt request to the specified ComfyUI server URL.
+     *
+     * @param serverUrl the base URL of the ComfyUI server
+     * @return true if the interrupt request was successfully accepted by ComfyUI, false otherwise
+     */
+    public boolean interrupt(String serverUrl) {
+        if (serverUrl == null || serverUrl.isBlank()) {
+            return false;
+        }
+        try {
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(serverUrl + "/interrupt"))
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.noBody())
+                    .timeout(Duration.ofSeconds(4))
+                    .build();
+            HttpResponse<String> resp = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            logger.info("🛑 [ComfyApiClient] Sent /interrupt to ComfyUI (HTTP {})", resp.statusCode());
+            return resp.statusCode() >= 200 && resp.statusCode() < 300;
+        } catch (Exception e) {
+            logger.warn("Failed to send /interrupt to ComfyUI at {}: {}", serverUrl, e.getMessage());
+            return false;
+        }
+    }
+
+    /**
      * Extracts missing custom node class types from a ComfyUI error response payload.
      *
      * @param responseBody JSON error response from ComfyUI /prompt

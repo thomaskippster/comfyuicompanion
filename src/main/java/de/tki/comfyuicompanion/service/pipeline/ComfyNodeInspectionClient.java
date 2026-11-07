@@ -97,6 +97,18 @@ public class ComfyNodeInspectionClient {
      * @return {@code true} if present in object info
      */
     public boolean isNodeClassAvailable(String serverUrl, String nodeClass) {
+        if (nodeClass == null || nodeClass.isBlank()) return false;
+        return fetchAvailableNodeClasses(serverUrl).contains(nodeClass);
+    }
+
+    /**
+     * Retrieves the set of all registered node class types available on the ComfyUI server.
+     *
+     * @param serverUrl base ComfyUI URL
+     * @return set of available node class type names
+     */
+    public java.util.Set<String> fetchAvailableNodeClasses(String serverUrl) {
+        java.util.Set<String> classNames = new java.util.HashSet<>();
         try {
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(serverUrl + "/object_info"))
@@ -105,12 +117,12 @@ public class ComfyNodeInspectionClient {
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() == 200) {
                 JSONObject info = new JSONObject(response.body());
-                return info.has(nodeClass);
+                classNames.addAll(info.keySet());
             }
         } catch (Exception e) {
-            logger.error("⚠️ [NodeInspection] Failed to check node class availability: {}", e.getMessage());
+            logger.error("⚠️ [NodeInspection] Failed to fetch available node classes: {}", e.getMessage());
         }
-        return false;
+        return classNames;
     }
 
     /**

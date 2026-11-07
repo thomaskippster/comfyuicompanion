@@ -150,11 +150,13 @@ public class Wan22FastWan5BStrategy implements IVideoModelStrategy {
                 }
 
                 if (blueprint != null) {
-                    boolean requiresWanWrapper = containsNodeClass(blueprint, "WanVideoModelLoader");
-                    boolean wrapperAvailable = !requiresWanWrapper || inspectionClient.isNodeClassAvailable(serverUrl, "WanVideoModelLoader");
+                    java.util.Set<String> availableNodeClasses = (inspectionClient != null)
+                            ? inspectionClient.fetchAvailableNodeClasses(serverUrl)
+                            : java.util.Collections.emptySet();
+                    boolean allNodesOk = blueprintInjector.areAllNodesAvailable(blueprint, availableNodeClasses);
 
-                    if (wrapperAvailable) {
-                        log.info("📄 [Wan22FastWan5BStrategy] Successfully loaded FastWan 5B blueprint from workflows/vault.");
+                    if (allNodesOk) {
+                        log.info("📄 [Wan22FastWan5BStrategy] Successfully validated and loaded FastWan 5B blueprint from workflows/vault.");
                         blueprintInjector.injectPrompt(blueprint, scene.getPrompt());
                         blueprintInjector.injectParamsIntoBlueprint(blueprint, seed, filenamePrefix, scene);
                         if (effectiveImage != null && !effectiveImage.isBlank()) {
@@ -162,7 +164,7 @@ public class Wan22FastWan5BStrategy implements IVideoModelStrategy {
                         }
                         return blueprint;
                     } else {
-                        log.info("ℹ️ [Wan22FastWan5BStrategy] Blueprint requires 'WanVideoModelLoader' (not installed). Using native ComfyUI core pipeline.");
+                        log.info("ℹ️ [Wan22FastWan5BStrategy] Blueprint requires custom nodes not installed on ComfyUI server. Bypassing blueprint and using native core pipeline.");
                     }
                 }
             } catch (Exception e) {
@@ -174,16 +176,5 @@ public class Wan22FastWan5BStrategy implements IVideoModelStrategy {
         return fastWanWorkflowBuilder.generateFastWanWorkflowJson(
                 serverUrl, scene, effectiveImage, seed, filenamePrefix,
                 availableUnets, availableCheckpoints, availableClips, availableVaes);
-    }
-
-    private boolean containsNodeClass(JSONObject workflowJson, String targetClass) {
-        JSONObject promptObj = workflowJson.has("prompt") ? workflowJson.getJSONObject("prompt") : workflowJson;
-        for (String key : promptObj.keySet()) {
-            JSONObject node = promptObj.optJSONObject(key);
-            if (node != null && targetClass.equals(node.optString("class_type", ""))) {
-                return true;
-            }
-        }
-        return false;
     }
 }

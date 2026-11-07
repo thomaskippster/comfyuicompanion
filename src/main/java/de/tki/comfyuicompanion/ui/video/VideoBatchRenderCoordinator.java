@@ -153,7 +153,7 @@ public class VideoBatchRenderCoordinator {
                                            Consumer<String> consoleLogger,
                                            Consumer<Scene> previewUpdater) throws Exception {
         consoleLogger.accept("Checking ComfyUI server status...");
-        ensureComfyUiHealthy();
+        ensureComfyUiHealthy(consoleLogger);
 
         String serverUrl = configService != null ? configService.getComfyUIUrl() : "http://127.0.0.1:8188";
         boolean twoPhase = configService != null && configService.isTwoPhaseRenderingEnabled();
@@ -382,20 +382,41 @@ public class VideoBatchRenderCoordinator {
      * @throws Exception if ComfyUI fails to reach a healthy state within timeout
      */
     public void ensureComfyUiHealthy() throws Exception {
+        ensureComfyUiHealthy(null);
+    }
+
+    /**
+     * Ensures ComfyUI server is running and healthy, starting it if necessary and logging progress.
+     *
+     * @param statusLogger optional logger callback for UI/console updates
+     * @throws Exception if ComfyUI fails to reach a healthy state within timeout
+     */
+    public void ensureComfyUiHealthy(Consumer<String> statusLogger) throws Exception {
         if (lifecycleService != null && !lifecycleService.isHealthy()) {
+            if (statusLogger != null) {
+                statusLogger.accept("⏳ ComfyUI server is offline. Starting ComfyUI server automatically...");
+            }
             lifecycleService.start();
             int maxWait = 90;
             boolean healthy = false;
             for (int w = 0; w < maxWait; w++) {
                 if (lifecycleService.isHealthy()) {
                     healthy = true;
+                    if (statusLogger != null) {
+                        statusLogger.accept("✅ ComfyUI server is online and ready!");
+                    }
                     break;
+                }
+                if (statusLogger != null && (w % 5 == 0 || w == 1)) {
+                    statusLogger.accept("⏳ Waiting for ComfyUI to boot and report healthy (" + w + "s/" + maxWait + "s)...");
                 }
                 Thread.sleep(1000);
             }
             if (!healthy) {
-                throw new Exception("ComfyUI server could not be started or is not healthy.");
+                throw new Exception("ComfyUI server could not be started or did not become healthy within " + maxWait + " seconds.");
             }
+        } else if (statusLogger != null) {
+            statusLogger.accept("✅ ComfyUI server is online and healthy.");
         }
     }
 }

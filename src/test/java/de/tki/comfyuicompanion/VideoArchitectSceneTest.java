@@ -335,4 +335,25 @@ public class VideoArchitectSceneTest {
                 scene -> {}
         ));
     }
+
+    @Test
+    public void testEnsureComfyUiHealthyStartsLifecycleWhenOffline() throws Exception {
+        ConfigService mockConfig = Mockito.mock(ConfigService.class);
+        ComfyPipelineService mockPipeline = Mockito.mock(ComfyPipelineService.class);
+        Video4jEditorService mockEditor = Mockito.mock(Video4jEditorService.class);
+        IComfyLifecycleService mockLifecycle = Mockito.mock(IComfyLifecycleService.class);
+
+        Mockito.when(mockLifecycle.isHealthy()).thenReturn(false, true);
+
+        de.tki.comfyuicompanion.ui.video.VideoBatchRenderCoordinator coordinator = new de.tki.comfyuicompanion.ui.video.VideoBatchRenderCoordinator(
+                mockConfig, mockPipeline, mockEditor, mockLifecycle
+        );
+
+        java.util.List<String> messages = new java.util.ArrayList<>();
+        coordinator.ensureComfyUiHealthy(messages::add);
+
+        Mockito.verify(mockLifecycle).start();
+        assertTrue(messages.stream().anyMatch(m -> m.contains("Starting ComfyUI server automatically")));
+        assertTrue(messages.stream().anyMatch(m -> m.contains("online and ready")));
+    }
 }

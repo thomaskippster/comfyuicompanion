@@ -123,11 +123,33 @@ public class PromptLabImageDropHandler {
 
         Optional<ExtractedPngWorkflow> optMeta = ComfyPngMetadataReader.readMetadata(file);
         if (optMeta.isEmpty()) {
+            de.tki.comfyuicompanion.service.PngMetadataReaderService reader = new de.tki.comfyuicompanion.service.PngMetadataReaderService();
+            de.tki.comfyuicompanion.domain.ComfyGenerationMetadata meta = reader.extractMetadata(file);
+            if (meta != null && meta.hasParameters()) {
+                optMeta = Optional.of(new ExtractedPngWorkflow(
+                        meta.positivePrompt(),
+                        meta.negativePrompt(),
+                        meta.modelName(),
+                        meta.seed(),
+                        meta.steps(),
+                        meta.cfg(),
+                        1.0,
+                        meta.width(),
+                        meta.height(),
+                        1,
+                        meta.sampler(),
+                        meta.scheduler(),
+                        meta.rawPromptJson(),
+                        meta.rawWorkflowJson()
+                ));
+            }
+        }
+        if (optMeta.isEmpty()) {
             if (showDialog) {
                 SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(
                         view,
-                        "No embedded ComfyUI workflow/prompt metadata was found in:\n" + file.getName(),
-                        "No ComfyUI PNG Metadata Found",
+                        "No embedded ComfyUI or generation metadata was found in:\n" + file.getName(),
+                        "No Generation Metadata Found",
                         JOptionPane.INFORMATION_MESSAGE
                 ));
             }

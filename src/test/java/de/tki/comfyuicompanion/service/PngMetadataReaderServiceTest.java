@@ -119,6 +119,59 @@ class PngMetadataReaderServiceTest {
     }
 
     @Test
+    void testExtractMetadataFromComfyUiWorkflowUiGraph(@TempDir Path tempDir) throws IOException {
+        JSONObject workflowObj = new JSONObject();
+        JSONArray nodes = new JSONArray();
+
+        JSONObject clipNode = new JSONObject();
+        clipNode.put("type", "CLIPTextEncode");
+        clipNode.put("title", "CLIP Text Encode (Prompt)");
+        clipNode.put("widgets_values", new JSONArray().put("epic cinematic portrait of a knight"));
+        nodes.put(clipNode);
+
+        JSONObject ksamplerNode = new JSONObject();
+        ksamplerNode.put("type", "KSampler");
+        ksamplerNode.put("widgets_values", new JSONArray()
+                .put(123456789L)
+                .put("randomize")
+                .put(25)
+                .put(7.0)
+                .put("euler_ancestral")
+                .put("karras")
+                .put(1.0));
+        nodes.put(ksamplerNode);
+
+        JSONObject modelNode = new JSONObject();
+        modelNode.put("type", "CheckpointLoaderSimple");
+        modelNode.put("widgets_values", new JSONArray().put("sd_xl_base_1.0.safetensors"));
+        nodes.put(modelNode);
+
+        JSONObject latentNode = new JSONObject();
+        latentNode.put("type", "EmptyLatentImage");
+        latentNode.put("widgets_values", new JSONArray().put(832).put(1216).put(1));
+        nodes.put(latentNode);
+
+        workflowObj.put("nodes", nodes);
+
+        File testPng = tempDir.resolve("ui_workflow_sample.png").toFile();
+        writeTestPng(testPng, Map.of("workflow", workflowObj.toString()));
+
+        ComfyGenerationMetadata meta = readerService.extractMetadata(testPng);
+
+        assertNotNull(meta);
+        assertTrue(meta.hasParameters());
+        assertEquals("epic cinematic portrait of a knight", meta.positivePrompt());
+        assertEquals("sd_xl_base_1.0.safetensors", meta.modelName());
+        assertEquals(123456789L, meta.seed());
+        assertEquals(25, meta.steps());
+        assertEquals(7.0, meta.cfg(), 0.001);
+        assertEquals("euler_ancestral", meta.sampler());
+        assertEquals("karras", meta.scheduler());
+        assertEquals(832, meta.width());
+        assertEquals(1216, meta.height());
+    }
+
+    @Test
     void testNonPngAndMissingFilesHandledSafely(@TempDir Path tempDir) throws IOException {
         File txtFile = tempDir.resolve("not_an_image.txt").toFile();
         try (FileOutputStream fos = new FileOutputStream(txtFile)) {

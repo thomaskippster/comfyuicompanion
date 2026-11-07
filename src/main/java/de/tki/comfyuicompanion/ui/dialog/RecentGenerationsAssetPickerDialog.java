@@ -108,7 +108,7 @@ public class RecentGenerationsAssetPickerDialog extends JDialog {
         add(headerCard, BorderLayout.NORTH);
 
         // Center Grid
-        gridPanel = new JPanel(new DialogWrapLayout(FlowLayout.LEFT, 10, 10));
+        gridPanel = new ScrollableGridPanel(new DialogWrapLayout(FlowLayout.LEFT, 10, 10));
         gridPanel.setOpaque(false);
 
         JScrollPane scrollPane = new JScrollPane(gridPanel);
@@ -319,6 +319,15 @@ public class RecentGenerationsAssetPickerDialog extends JDialog {
         return text.substring(0, max - 3) + "...";
     }
 
+    private static class ScrollableGridPanel extends JPanel implements javax.swing.Scrollable {
+        public ScrollableGridPanel(LayoutManager layout) { super(layout); }
+        @Override public Dimension getPreferredScrollableViewportSize() { return getPreferredSize(); }
+        @Override public int getScrollableUnitIncrement(java.awt.Rectangle r, int o, int d) { return 24; }
+        @Override public int getScrollableBlockIncrement(java.awt.Rectangle r, int o, int d) { return 72; }
+        @Override public boolean getScrollableTracksViewportWidth() { return true; }
+        @Override public boolean getScrollableTracksViewportHeight() { return false; }
+    }
+
     private static class DialogWrapLayout extends FlowLayout {
         public DialogWrapLayout(int align, int hgap, int vgap) {
             super(align, hgap, vgap);
@@ -328,15 +337,20 @@ public class RecentGenerationsAssetPickerDialog extends JDialog {
         public Dimension preferredLayoutSize(java.awt.Container target) {
             synchronized (target.getTreeLock()) {
                 int targetWidth = target.getSize().width;
-                if (targetWidth == 0) targetWidth = 720;
+                if (targetWidth <= 0 && target.getParent() != null) {
+                    targetWidth = target.getParent().getWidth();
+                }
+                if (targetWidth <= 0) targetWidth = 720;
                 Insets insets = target.getInsets();
-                int maxWidth = targetWidth - (insets.left + insets.right + getHgap() * 2);
+                int hInsets = insets != null ? insets.left + insets.right : 0;
+                int vInsets = insets != null ? insets.top + insets.bottom : 0;
+                int maxWidth = Math.max(1, targetWidth - (hInsets + getHgap() * 2));
 
                 int x = 0, y = 0, height = 0;
                 for (Component c : target.getComponents()) {
                     if (c.isVisible()) {
                         Dimension d = c.getPreferredSize();
-                        if (x + d.width > maxWidth) {
+                        if (x + d.width > maxWidth && x > 0) {
                             x = 0;
                             y += height + getVgap();
                             height = 0;
@@ -345,7 +359,7 @@ public class RecentGenerationsAssetPickerDialog extends JDialog {
                         height = Math.max(height, d.height);
                     }
                 }
-                return new Dimension(targetWidth, y + height + insets.top + insets.bottom + getVgap() * 2);
+                return new Dimension(targetWidth, y + height + vInsets + getVgap() * 2);
             }
         }
     }

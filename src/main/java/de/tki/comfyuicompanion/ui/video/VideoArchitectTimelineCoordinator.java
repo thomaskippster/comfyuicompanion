@@ -125,7 +125,7 @@ public class VideoArchitectTimelineCoordinator {
         new OpenCvEnhancementDialog(parent, scene, video4jEditorService, () -> {
             timelineListView.repaint();
             if (onUpdated != null) onUpdated.run();
-        }, loggerFn);
+        }, loggerFn).setVisible(true);
     }
 
     /**
@@ -163,7 +163,7 @@ public class VideoArchitectTimelineCoordinator {
                         loggerFn.accept("Updated Scene: " + sc.getSceneId());
                     }
                     if (onUpdated != null) onUpdated.run();
-                });
+                }).setVisible(true);
     }
 
     /**

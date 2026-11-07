@@ -38,7 +38,7 @@ public class GenerationMetadataDialog extends JDialog {
             JLabel thumbLabel = new JLabel();
             thumbLabel.setPreferredSize(new Dimension(80, 80));
             thumbLabel.setBorder(BorderFactory.createLineBorder(Color.GRAY, 1));
-            CompletableFutureLoadThumb(imageFile, thumbLabel);
+            loadThumbnailAsync(imageFile, thumbLabel);
             headerPanel.add(thumbLabel, BorderLayout.WEST);
         }
 
@@ -180,7 +180,7 @@ public class GenerationMetadataDialog extends JDialog {
         return p;
     }
 
-    private void CompletableFutureLoadThumb(File f, JLabel target) {
+    private void loadThumbnailAsync(File f, JLabel target) {
         java.util.concurrent.CompletableFuture.runAsync(() -> {
             try {
                 ImageIcon icon = new ImageIcon(f.getAbsolutePath());

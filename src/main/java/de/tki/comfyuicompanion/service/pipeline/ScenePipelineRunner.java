@@ -193,7 +193,7 @@ public class ScenePipelineRunner {
                     logger.info("🚀 [ScenePipelineRunner] Submitted job. Prompt ID: {}", promptId);
                     outputRef = jobPollingService.pollHistoryForOutput(serverUrl, promptId);
                 } catch (Exception ex) {
-                    if (isWanAttempt) {
+                    if (isWanAttempt && !strictMode) {
                         logger.warn("⚠️ [ScenePipelineRunner] Video model execution failed ({}); falling back to image diffusion model synthesis...", ex.getMessage());
                         JSONObject fallbackWorkflow = workflowBuilder.generateSceneImageWorkflow(
                                 serverUrl, scene, speakerImage, seed, filenamePrefix,

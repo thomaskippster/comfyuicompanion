@@ -30,17 +30,24 @@ public class FastWanWorkflowBuilder {
 
     private final ComfyNodeInspectionClient inspectionClient;
     private final IVideoVramOptimizer vramOptimizer;
+    private final de.tki.comfyuicompanion.service.IFileSystemLinkService fileSystemLinkService;
 
     public FastWanWorkflowBuilder() {
-        this(null, null);
+        this(null, null, null);
+    }
+
+    public FastWanWorkflowBuilder(ComfyNodeInspectionClient inspectionClient, IVideoVramOptimizer vramOptimizer) {
+        this(inspectionClient, vramOptimizer, null);
     }
 
     @Autowired
     public FastWanWorkflowBuilder(
             @Autowired(required = false) ComfyNodeInspectionClient inspectionClient,
-            @Autowired(required = false) IVideoVramOptimizer vramOptimizer) {
+            @Autowired(required = false) IVideoVramOptimizer vramOptimizer,
+            @Autowired(required = false) de.tki.comfyuicompanion.service.IFileSystemLinkService fileSystemLinkService) {
         this.inspectionClient = inspectionClient != null ? inspectionClient : new ComfyNodeInspectionClient();
         this.vramOptimizer = vramOptimizer != null ? vramOptimizer : new VideoVramOptimizer();
+        this.fileSystemLinkService = fileSystemLinkService != null ? fileSystemLinkService : new de.tki.comfyuicompanion.service.impl.FileSystemLinkService();
     }
 
     /**
@@ -204,8 +211,10 @@ public class FastWanWorkflowBuilder {
     }
 
     /**
-     * Ensures an NTFS hardlink or junction exists between checkpoints and diffusion_models
-     * so that the model can be loaded by UNETLoader without duplicating 10 GB of storage.
+     * Ensures a filesystem link exists between checkpoints and diffusion_models
+     * using IFileSystemLinkService so that the model can be loaded by UNETLoader without duplicating 10 GB.
+     *
+     * @param comfyPath the active ComfyUI directory
      */
     public void ensureDiffusionModelLinked(String comfyPath) {
         if (comfyPath == null || comfyPath.isBlank()) return;
@@ -213,12 +222,11 @@ public class FastWanWorkflowBuilder {
         Path diffPath = Path.of(comfyPath, "models", "diffusion_models", DEFAULT_FASTWAN_MODEL);
 
         if (Files.exists(ckptPath) && !Files.exists(diffPath)) {
-            try {
-                Files.createDirectories(diffPath.getParent());
-                Files.createLink(diffPath, ckptPath);
-                log.info("🔗 [FastWanWorkflowBuilder] Created hardlink for {} in diffusion_models folder.", DEFAULT_FASTWAN_MODEL);
-            } catch (Exception e) {
-                log.warn("Could not create hardlink for FastWan model: {}", e.getMessage());
+            var result = fileSystemLinkService.createFileLink(diffPath, ckptPath);
+            if (result.success()) {
+                log.info("🔗 [FastWanWorkflowBuilder] Established {} link for FastWan 5B model in diffusion_models folder.", result.linkType());
+            } else {
+                log.warn("⚠️ [FastWanWorkflowBuilder] Could not link FastWan model via {}: {}", result.linkType(), result.message());
             }
         }
     }

@@ -92,6 +92,22 @@ public class Wan22FastWan5BStrategy implements IVideoModelStrategy {
     }
 
     @Override
+    public de.tki.comfyuicompanion.domain.VideoPresetConfig getDefaultPreset(boolean isLowVram) {
+        return new de.tki.comfyuicompanion.domain.VideoPresetConfig(
+                DISPLAY_NAME,
+                832, 480,
+                6, 1.0, 127,
+                ID,
+                "Detected Preset: FastWan 2.2 5B (832x480 | 6 Steps, 16GB VRAM Fast)"
+        );
+    }
+
+    @Override
+    public boolean isVramIntensive() {
+        return false; // Fits completely in 16 GB VRAM with 5-7 GB footprint
+    }
+
+    @Override
     public JSONObject buildWorkflow(String serverUrl,
                                     Scene scene,
                                     String speakerImage,
@@ -109,16 +125,21 @@ public class Wan22FastWan5BStrategy implements IVideoModelStrategy {
             effectiveImage = scene.getSpeakerImagePath();
         }
 
-        // 1. Attempt blueprint loading if available
+        // 1. Attempt generic blueprint discovery from user workflows or Vault
         if (blueprintInjector != null) {
             String comfyPath = configService != null ? configService.getComfyUIPath() : null;
-            String blueprintName = (effectiveImage != null && !effectiveImage.isBlank())
-                    ? "WAN 2.2 FASTWAN 5B I2V.png"
-                    : "WAN 2.2 FASTWAN 5B T2V.png";
+            String directionKeyword = (effectiveImage != null && !effectiveImage.isBlank()) ? "i2v" : "t2v";
 
-            JSONObject blueprint = blueprintInjector.loadBlueprintWorkflow(blueprintName, comfyPath);
+            JSONObject blueprint = blueprintInjector.findBlueprintByKeywords(comfyPath, "fastwan", "5b", directionKeyword);
+            if (blueprint == null) {
+                String blueprintName = (effectiveImage != null && !effectiveImage.isBlank())
+                        ? "WAN 2.2 FASTWAN 5B I2V.png"
+                        : "WAN 2.2 FASTWAN 5B T2V.png";
+                blueprint = blueprintInjector.loadBlueprintWorkflow(blueprintName, comfyPath);
+            }
+
             if (blueprint != null) {
-                log.info("📄 [Wan22FastWan5BStrategy] Using loaded blueprint: {}", blueprintName);
+                log.info("📄 [Wan22FastWan5BStrategy] Successfully loaded FastWan 5B blueprint from workflows/vault.");
                 blueprintInjector.injectPrompt(blueprint, scene.getPrompt());
                 blueprintInjector.injectParamsIntoBlueprint(blueprint, seed, filenamePrefix, scene);
                 if (effectiveImage != null && !effectiveImage.isBlank()) {

@@ -56,6 +56,21 @@ public class ImageDiffusionFallbackStrategy implements IVideoModelStrategy {
     }
 
     @Override
+    public de.tki.comfyuicompanion.domain.VideoPresetConfig getDefaultPreset(boolean isLowVram) {
+        int w = isLowVram ? 1024 : 1280;
+        int h = isLowVram ? 576 : 720;
+        return new de.tki.comfyuicompanion.domain.VideoPresetConfig(
+                DISPLAY_NAME, w, h, 22, 1.0, 127, ID,
+                "Detected Preset: Flux Widescreen (" + w + "x" + h + " | FluxGuidance 3.5)"
+        );
+    }
+
+    @Override
+    public boolean isVramIntensive() {
+        return false;
+    }
+
+    @Override
     public JSONObject buildWorkflow(String serverUrl,
                                     Scene scene,
                                     String speakerImage,

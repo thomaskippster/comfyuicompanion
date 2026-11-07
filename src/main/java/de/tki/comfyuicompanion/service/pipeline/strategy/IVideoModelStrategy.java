@@ -71,4 +71,24 @@ public interface IVideoModelStrategy {
                              List<String> availableCheckpoints,
                              List<String> availableClips,
                              List<String> availableVaes) throws Exception;
+
+    /**
+     * Returns the recommended generation preset configuration for this strategy.
+     * Encapsulates model-specific optimal parameters (resolution, sampling steps, CFG scale)
+     * eliminating growing if-else / switch cascades in UI coordinators.
+     *
+     * @param isLowVram true if the host system has constrained VRAM (< 12 GB)
+     * @return immutable preset configuration record
+     */
+    de.tki.comfyuicompanion.domain.VideoPresetConfig getDefaultPreset(boolean isLowVram);
+
+    /**
+     * Indicates whether this model requires heavy VRAM (> 12 GB),
+     * warranting an automated memory advisory warning on lower-tier hardware.
+     *
+     * @return true if memory intensive (e.g. 14B parameter models)
+     */
+    default boolean isVramIntensive() {
+        return false;
+    }
 }

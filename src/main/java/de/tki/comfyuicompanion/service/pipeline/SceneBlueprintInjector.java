@@ -236,17 +236,7 @@ public class SceneBlueprintInjector {
      * @return parsed JSONObject or null
      */
     public JSONObject loadBlueprintWorkflow(String filename, String comfyPath) {
-        List<File> candidateDirs = new ArrayList<>();
-        if (comfyPath != null && !comfyPath.trim().isEmpty()) {
-            candidateDirs.add(new File(comfyPath, "companion_blueprints"));
-            candidateDirs.add(new File(comfyPath, "resources/ComfyUI/companion_blueprints"));
-            candidateDirs.add(new File(comfyPath, "user/default/workflows/Wan2.2"));
-            candidateDirs.add(new File(comfyPath, "user/default/workflows/FastWan 2.2 5B"));
-            candidateDirs.add(new File(comfyPath, "user/default/workflows"));
-            candidateDirs.add(new File(comfyPath, "models/workflows"));
-        }
-        candidateDirs.add(new File("companion_blueprints"));
-        candidateDirs.add(new File(System.getProperty("user.dir"), "companion_blueprints"));
+        List<File> candidateDirs = buildCandidateDirs(comfyPath);
 
         for (File blueprintsDir : candidateDirs) {
             if (blueprintsDir == null || !blueprintsDir.exists() || !blueprintsDir.isDirectory()) {
@@ -259,6 +249,55 @@ public class SceneBlueprintInjector {
             }
         }
         return null;
+    }
+
+    /**
+     * Generic search discovering workflow blueprints matching keywords across candidate directories.
+     *
+     * @param comfyPath ComfyUI root directory
+     * @param keywords keywords that must all be present in the filename (case-insensitive)
+     * @return parsed blueprint JSON or null
+     */
+    public JSONObject findBlueprintByKeywords(String comfyPath, String... keywords) {
+        if (keywords == null || keywords.length == 0) return null;
+        List<File> candidateDirs = buildCandidateDirs(comfyPath);
+
+        for (File dir : candidateDirs) {
+            if (dir == null || !dir.exists() || !dir.isDirectory()) continue;
+            File[] files = dir.listFiles((d, name) -> {
+                String low = name.toLowerCase();
+                if (!low.endsWith(".json") && !low.endsWith(".png")) return false;
+                for (String kw : keywords) {
+                    if (kw != null && !low.contains(kw.toLowerCase())) return false;
+                }
+                return true;
+            });
+            if (files != null && files.length > 0) {
+                for (File f : files) {
+                    JSONObject parsed = parseBlueprintFile(f);
+                    if (parsed != null) {
+                        logger.info("🔍 [SceneBlueprintInjector] Discovered matching workflow: {}", f.getAbsolutePath());
+                        return parsed;
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    private List<File> buildCandidateDirs(String comfyPath) {
+        List<File> candidateDirs = new ArrayList<>();
+        if (comfyPath != null && !comfyPath.trim().isEmpty()) {
+            candidateDirs.add(new File(comfyPath, "companion_blueprints"));
+            candidateDirs.add(new File(comfyPath, "resources/ComfyUI/companion_blueprints"));
+            candidateDirs.add(new File(comfyPath, "user/default/workflows/Wan2.2"));
+            candidateDirs.add(new File(comfyPath, "user/default/workflows/FastWan 2.2 5B"));
+            candidateDirs.add(new File(comfyPath, "user/default/workflows"));
+            candidateDirs.add(new File(comfyPath, "models/workflows"));
+        }
+        candidateDirs.add(new File("companion_blueprints"));
+        candidateDirs.add(new File(System.getProperty("user.dir"), "companion_blueprints"));
+        return candidateDirs;
     }
 
     /**

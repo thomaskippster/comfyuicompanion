@@ -18,9 +18,17 @@ import java.util.function.Consumer;
 public class VideoArchitectPresetCoordinator {
 
     private final IHardwareProfileService hardwareProfileService;
+    private final de.tki.comfyuicompanion.service.pipeline.strategy.VideoModelStrategyRegistry strategyRegistry;
 
     public VideoArchitectPresetCoordinator(IHardwareProfileService hardwareProfileService) {
+        this(hardwareProfileService, null);
+    }
+
+    public VideoArchitectPresetCoordinator(
+            IHardwareProfileService hardwareProfileService,
+            de.tki.comfyuicompanion.service.pipeline.strategy.VideoModelStrategyRegistry strategyRegistry) {
         this.hardwareProfileService = hardwareProfileService;
+        this.strategyRegistry = strategyRegistry;
     }
 
     /**
@@ -98,6 +106,7 @@ public class VideoArchitectPresetCoordinator {
 
     /**
      * Updates model presets and spinner default values based on selected video model.
+     * Polymorphically queries the corresponding strategy from the registry.
      *
      * @param selected           the selected model string
      * @param videoPresetLabel   the label displaying preset info
@@ -114,73 +123,38 @@ public class VideoArchitectPresetCoordinator {
                                  JSpinner videoStepsSpinner,
                                  JSpinner videoCfgSpinner,
                                  Consumer<String> loggerFn) {
-        boolean isLowVram = false;
-        if (hardwareProfileService != null) {
-            HardwareProfile profile = hardwareProfileService.getHardwareProfile();
-            isLowVram = profile != null && profile.isWeakSystem();
-        }
+        boolean isLowVram = hardwareProfileService != null
+                && hardwareProfileService.getHardwareProfile() != null
+                && hardwareProfileService.getHardwareProfile().isWeakSystem();
 
-        if (selected.contains("FastWan") || selected.contains("5B")) {
-            int w = 832;
-            int h = 480;
-            if (videoPresetLabel != null) videoPresetLabel.setText("Detected Preset: FastWan 2.2 5B (" + w + "x" + h + " | 6 Steps, 16GB VRAM Fast)");
-            if (videoWidthSpinner != null) videoWidthSpinner.setValue(w);
-            if (videoHeightSpinner != null) videoHeightSpinner.setValue(h);
-            if (videoStepsSpinner != null) videoStepsSpinner.setValue(6);
-            if (videoCfgSpinner != null) videoCfgSpinner.setValue(1.0);
-        } else if (selected.contains("LTX-Video")) {
-            int w = isLowVram ? 1024 : 1280;
-            int h = isLowVram ? 576 : 720;
-            if (videoPresetLabel != null) videoPresetLabel.setText("Detected Preset: LTX-Video High-Speed (" + w + "x" + h + " | 24 fps)");
-            if (videoWidthSpinner != null) videoWidthSpinner.setValue(w);
-            if (videoHeightSpinner != null) videoHeightSpinner.setValue(h);
-            if (videoStepsSpinner != null) videoStepsSpinner.setValue(30);
-            if (videoCfgSpinner != null) videoCfgSpinner.setValue(3.0);
-        } else if (selected.contains("Flux")) {
-            int w = isLowVram ? 1024 : 1280;
-            int h = isLowVram ? 576 : 720;
-            if (videoPresetLabel != null) videoPresetLabel.setText("Detected Preset: Flux Widescreen (" + w + "x" + h + " | FluxGuidance 3.5)");
-            if (videoWidthSpinner != null) videoWidthSpinner.setValue(w);
-            if (videoHeightSpinner != null) videoHeightSpinner.setValue(h);
-            if (videoStepsSpinner != null) videoStepsSpinner.setValue(22);
-            if (videoCfgSpinner != null) videoCfgSpinner.setValue(1.0);
-        } else if (selected.contains("SDXL") || selected.contains("Pony") || selected.contains("Illustrious")) {
-            if (videoPresetLabel != null) videoPresetLabel.setText("Detected Preset: SDXL / Pony Widescreen (1024x576 | DPMPP_2M Karras)");
-            if (videoWidthSpinner != null) videoWidthSpinner.setValue(1024);
-            if (videoHeightSpinner != null) videoHeightSpinner.setValue(576);
-            if (videoStepsSpinner != null) videoStepsSpinner.setValue(28);
-            if (videoCfgSpinner != null) videoCfgSpinner.setValue(6.5);
-        } else if (selected.contains("SD 1.5")) {
-            if (videoPresetLabel != null) videoPresetLabel.setText("Detected Preset: SD 1.5 Upscale (768x432 -> 1280x720)");
-            if (videoWidthSpinner != null) videoWidthSpinner.setValue(768);
-            if (videoHeightSpinner != null) videoHeightSpinner.setValue(432);
-            if (videoStepsSpinner != null) videoStepsSpinner.setValue(28);
-            if (videoCfgSpinner != null) videoCfgSpinner.setValue(6.5);
-        } else if (selected.contains("Hunyuan")) {
-            int w = isLowVram ? 1024 : 1280;
-            int h = isLowVram ? 576 : 720;
-            if (videoPresetLabel != null) videoPresetLabel.setText("Detected Preset: Hunyuan Video 1.5 (" + w + "x" + h + " | 24 fps)");
-            if (videoWidthSpinner != null) videoWidthSpinner.setValue(w);
-            if (videoHeightSpinner != null) videoHeightSpinner.setValue(h);
-            if (videoStepsSpinner != null) videoStepsSpinner.setValue(20);
-            if (videoCfgSpinner != null) videoCfgSpinner.setValue(6.0);
+        var strategyOpt = strategyRegistry != null
+                ? strategyRegistry.findById(selected)
+                : java.util.Optional.<de.tki.comfyuicompanion.service.pipeline.strategy.IVideoModelStrategy>empty();
+
+        VideoPresetConfig preset;
+        boolean vramIntensive;
+
+        if (strategyOpt.isPresent()) {
+            var strategy = strategyOpt.get();
+            preset = strategy.getDefaultPreset(isLowVram);
+            vramIntensive = strategy.isVramIntensive();
         } else {
-            // Wan 2.2 / Default
             int w = isLowVram ? 1024 : 1280;
             int h = isLowVram ? 576 : 720;
-            if (videoPresetLabel != null) videoPresetLabel.setText("Detected Preset: Wan 2.2 Cinematic Video (" + w + "x" + h + " | 16 fps)");
-            if (videoWidthSpinner != null) videoWidthSpinner.setValue(w);
-            if (videoHeightSpinner != null) videoHeightSpinner.setValue(h);
-            if (videoStepsSpinner != null) videoStepsSpinner.setValue(20);
-            if (videoCfgSpinner != null) videoCfgSpinner.setValue(3.0);
+            preset = new VideoPresetConfig(selected, w, h, 20, 3.0, 127, "default", "Detected Preset: " + selected + " (" + w + "x" + h + ")");
+            vramIntensive = false;
         }
 
-        if (hardwareProfileService != null) {
+        if (videoPresetLabel != null) videoPresetLabel.setText(preset.statusDescription());
+        if (videoWidthSpinner != null) videoWidthSpinner.setValue(preset.defaultWidth());
+        if (videoHeightSpinner != null) videoHeightSpinner.setValue(preset.defaultHeight());
+        if (videoStepsSpinner != null) videoStepsSpinner.setValue(preset.defaultSteps());
+        if (videoCfgSpinner != null) videoCfgSpinner.setValue(preset.defaultCfg());
+
+        if (isLowVram && vramIntensive && loggerFn != null && hardwareProfileService != null) {
             HardwareProfile profile = hardwareProfileService.getHardwareProfile();
-            if (profile != null && profile.isWeakSystem() && !selected.contains("FastWan") && !selected.contains("5B") && (selected.contains("Wan") || selected.contains("Hunyuan"))) {
-                if (loggerFn != null) {
-                    loggerFn.accept("⚠️ Notice: " + selected + " is very VRAM-intensive (14B). On your system (" + profile.formattedVram() + " VRAM), LTX-Video is recommended.");
-                }
+            if (profile != null) {
+                loggerFn.accept("⚠️ Notice: " + selected + " is very VRAM-intensive. On your system (" + profile.formattedVram() + " VRAM), FastWan 5B or LTX-Video is recommended.");
             }
         }
 

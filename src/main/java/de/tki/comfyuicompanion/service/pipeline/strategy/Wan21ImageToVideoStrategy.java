@@ -66,6 +66,19 @@ public class Wan21ImageToVideoStrategy implements IVideoModelStrategy {
     }
 
     @Override
+    public de.tki.comfyuicompanion.domain.VideoPresetConfig getDefaultPreset(boolean isLowVram) {
+        return new de.tki.comfyuicompanion.domain.VideoPresetConfig(
+                DISPLAY_NAME, 720, 1280, 20, 3.5, 127, ID,
+                "Detected Preset: Wan 2.1 Vertical Reels/TikTok (720x1280 | 20 Steps)"
+        );
+    }
+
+    @Override
+    public boolean isVramIntensive() {
+        return true; // 14B parameter model
+    }
+
+    @Override
     public JSONObject buildWorkflow(String serverUrl,
                                     Scene scene,
                                     String speakerImage,

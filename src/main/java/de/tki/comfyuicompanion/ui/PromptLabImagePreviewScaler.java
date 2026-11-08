@@ -42,8 +42,10 @@ public final class PromptLabImagePreviewScaler {
                 && Math.abs(existing.getIconWidth() - tw) <= 2 && Math.abs(existing.getIconHeight() - th) <= 2) {
             return;
         }
-        Image scaled = img.getScaledInstance(tw, th, Image.SCALE_SMOOTH);
-        label.setIcon(new ImageIcon(scaled));
-        label.setText("");
+        java.awt.image.BufferedImage scaled = de.tki.comfyuicompanion.util.FastImageScaler.scale(img, tw, th, true);
+        if (scaled != null) {
+            label.setIcon(new ImageIcon(scaled));
+            label.setText("");
+        }
     }
 }

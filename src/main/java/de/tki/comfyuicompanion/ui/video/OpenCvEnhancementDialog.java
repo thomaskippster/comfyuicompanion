@@ -97,27 +97,39 @@ public class OpenCvEnhancementDialog extends JDialog {
         controlsCard.add(brightnessRow);
         controlsCard.add(Box.createVerticalStrut(12));
 
+        java.util.concurrent.atomic.AtomicLong previewSeq = new java.util.concurrent.atomic.AtomicLong(0);
+
         Runnable updatePreview = () -> {
             double alpha = contrastSlider.getValue() / 100.0;
             double beta = brightnessSlider.getValue();
             contrastValLbl.setText(String.format(java.util.Locale.US, "Contrast: %.2fx", alpha));
             brightnessValLbl.setText(String.format(java.util.Locale.US, "Brightness: %+d", (int) beta));
 
+            long currentReq = previewSeq.incrementAndGet();
+
             Thread.ofVirtual().start(() -> {
                 try {
                     BufferedImage img = video4jEditorService != null
                             ? video4jEditorService.applyBasicEnhancementAwt(scene, alpha, beta)
                             : null;
+                    if (previewSeq.get() != currentReq) {
+                        return;
+                    }
                     SwingUtilities.invokeLater(() -> {
+                        if (previewSeq.get() != currentReq) {
+                            return;
+                        }
                         if (img != null) {
                             int targetW = Math.max(320, previewLabel.getWidth() - 20);
                             int targetH = Math.max(240, previewLabel.getHeight() - 20);
                             double scale = Math.min((double) targetW / img.getWidth(), (double) targetH / img.getHeight());
                             int sw = Math.max(1, (int) (img.getWidth() * scale));
                             int sh = Math.max(1, (int) (img.getHeight() * scale));
-                            Image scaled = img.getScaledInstance(sw, sh, Image.SCALE_SMOOTH);
-                            previewLabel.setIcon(new ImageIcon(scaled));
-                            previewLabel.setText("");
+                            BufferedImage scaled = de.tki.comfyuicompanion.util.FastImageScaler.scale(img, sw, sh, true);
+                            if (scaled != null) {
+                                previewLabel.setIcon(new ImageIcon(scaled));
+                                previewLabel.setText("");
+                            }
                         } else {
                             previewLabel.setIcon(null);
                             previewLabel.setText("No video or image available yet for scene " + scene.getSceneId());

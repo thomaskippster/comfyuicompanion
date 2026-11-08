@@ -133,6 +133,10 @@ public class PromptLabModelResolver {
                     inputs.put("clip_name1", "clip_l.safetensors");
                     inputs.put("clip_name2", resolvedClip);
                     inputs.put("type", resolvedClipType);
+                } else if ("TripleCLIPLoader".equals(classType)) {
+                    inputs.put("clip_name1", "clip_l.safetensors");
+                    inputs.put("clip_name2", "clip_g.safetensors");
+                    inputs.put("clip_name3", resolvedClip);
                 } else if ("VAELoader".equals(classType)) {
                     inputs.put("vae_name", resolvedVae);
                 }

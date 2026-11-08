@@ -73,10 +73,18 @@ public class PromptLabWorkflowResolver {
             if (jsonContent == null) {
                 List<File> searchDirs = new ArrayList<>();
                 if (configService != null) {
-                    searchDirs.add(configService.getUserWorkflowsDir());
+                    File userWf = configService.getUserWorkflowsDir();
+                    searchDirs.add(userWf);
+                    if (userWf != null) {
+                        File vaultDir = new File(userWf, "vault");
+                        if (vaultDir.exists()) {
+                            searchDirs.add(vaultDir);
+                        }
+                    }
                     searchDirs.add(configService.getShippedWorkflowsDir());
                 } else {
                     searchDirs.add(new File("user_workflows"));
+                    searchDirs.add(new File("user_workflows/vault"));
                     searchDirs.add(new File("workflows"));
                 }
 

@@ -390,7 +390,7 @@ public class PromptLabModelInputSanitizer {
             options = promptLabController.getComfyUnetModels();
         } else if (inputKey.equals("ckpt_name")) {
             options = promptLabController.getComfyCheckpoints();
-        } else if (inputKey.equals("clip_name") || inputKey.equals("clip_name1") || inputKey.equals("clip_name2")) {
+        } else if (inputKey.equals("clip_name") || inputKey.equals("clip_name1") || inputKey.equals("clip_name2") || inputKey.equals("clip_name3")) {
             options = promptLabController.getComfyClips();
         } else if (inputKey.equals("vae_name")) {
             options = promptLabController.getComfyVaes();

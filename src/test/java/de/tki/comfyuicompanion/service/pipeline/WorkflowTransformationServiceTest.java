@@ -167,4 +167,35 @@ class WorkflowTransformationServiceTest {
         assertEquals("comfy kitchen attention",
                 prompt.getJSONObject("10044").getJSONObject("inputs").optString("attention"));
     }
+
+    @Test
+    void shouldConvertTripleCLIPLoaderWidgetValuesToApiInputs() {
+        String uiJson = """
+                {
+                  "nodes": [
+                    {
+                      "id": 43,
+                      "type": "TripleCLIPLoader",
+                      "inputs": [],
+                      "widgets_values": [
+                        "clip_l.safetensors",
+                        "clip_g.safetensors",
+                        "t5xxl_fp16.safetensors"
+                      ]
+                    }
+                  ],
+                  "links": []
+                }
+                """;
+        JSONObject uiWorkflow = new JSONObject(uiJson);
+        WorkflowTransformationService service = new WorkflowTransformationService(null);
+        JSONObject apiPayload = service.convertUiToApi(uiWorkflow);
+
+        JSONObject prompt = apiPayload.getJSONObject("prompt");
+        assertTrue(prompt.has("43"));
+        JSONObject inputs = prompt.getJSONObject("43").getJSONObject("inputs");
+        assertEquals("clip_l.safetensors", inputs.getString("clip_name1"));
+        assertEquals("clip_g.safetensors", inputs.getString("clip_name2"));
+        assertEquals("t5xxl_fp16.safetensors", inputs.getString("clip_name3"));
+    }
 }

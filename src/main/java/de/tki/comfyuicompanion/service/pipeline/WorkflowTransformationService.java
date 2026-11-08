@@ -60,6 +60,7 @@ public class WorkflowTransformationService {
         FALLBACK_WIDGET_MAP.put("LTXVLatentUpsampler", List.of());
         FALLBACK_WIDGET_MAP.put("CLIPLoader", List.of("clip_name", "type", "device"));
         FALLBACK_WIDGET_MAP.put("DualCLIPLoader", List.of("clip_name1", "clip_name2", "type", "device"));
+        FALLBACK_WIDGET_MAP.put("TripleCLIPLoader", List.of("clip_name1", "clip_name2", "clip_name3"));
         FALLBACK_WIDGET_MAP.put("VAELoader", List.of("vae_name"));
         FALLBACK_WIDGET_MAP.put("UNETLoader", List.of("unet_name", "weight_dtype"));
         FALLBACK_WIDGET_MAP.put("ModelSamplingSD3", List.of("shift"));

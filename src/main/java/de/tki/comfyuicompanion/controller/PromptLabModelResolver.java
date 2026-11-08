@@ -6,11 +6,16 @@ import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Resolves models, CLIPs, and VAEs for Prompt Lab and injects model paths into templates.
+ * Resolves models, CLIPs, and VAEs for Prompt Lab and injects model paths into templates
+ * using generic input key and slot inspection.
  */
 public class PromptLabModelResolver {
 
@@ -53,7 +58,8 @@ public class PromptLabModelResolver {
     public Set<String> getComfyUnetWeightDtypes() { return comfyUnetWeightDtypes; }
 
     /**
-     * Updates the internal sets of available models by parsing the ComfyUI object info.
+     * Updates the internal sets of available models by parsing the ComfyUI {@code /object_info} registry
+     * generically across all registered loader nodes.
      *
      * @param info the JSON object containing node information from ComfyUI
      */
@@ -72,45 +78,67 @@ public class PromptLabModelResolver {
         extractOptions(info, "CLIPLoader", "clip_name", comfyClips);
         extractOptions(info, "CLIPLoader", "type", comfyClipTypes);
         extractOptions(info, "VAELoader", "vae_name", comfyVaes);
+
+        // Generically harvest model combo options from any custom or multi-slot loader nodes in /object_info
+        for (String nodeName : info.keySet()) {
+            JSONObject nodeInfo = info.optJSONObject(nodeName);
+            if (nodeInfo == null) continue;
+            JSONObject input = nodeInfo.optJSONObject("input");
+            if (input == null) continue;
+            JSONObject required = input.optJSONObject("required");
+            if (required == null) continue;
+            for (String propName : required.keySet()) {
+                String lowerProp = propName.toLowerCase(Locale.ROOT);
+                if (lowerProp.startsWith("ckpt_name")) {
+                    extractOptions(info, nodeName, propName, comfyCheckpoints);
+                } else if (lowerProp.startsWith("unet_name")) {
+                    extractOptions(info, nodeName, propName, comfyUnetModels);
+                } else if (lowerProp.startsWith("clip_name")) {
+                    extractOptions(info, nodeName, propName, comfyClips);
+                } else if (lowerProp.startsWith("vae_name")) {
+                    extractOptions(info, nodeName, propName, comfyVaes);
+                }
+            }
+        }
     }
 
     private void extractOptions(JSONObject info, String nodeName, String propName, Set<String> target) {
         if (!info.has(nodeName)) return;
-        JSONObject nodeInfo = info.getJSONObject(nodeName);
-        if (!nodeInfo.has("input")) return;
-        JSONObject input = nodeInfo.getJSONObject("input");
-        if (!input.has("required")) return;
-        JSONObject required = input.getJSONObject("required");
-        if (!required.has(propName)) return;
+        JSONObject nodeInfo = info.optJSONObject(nodeName);
+        if (nodeInfo == null || !nodeInfo.has("input")) return;
+        JSONObject input = nodeInfo.optJSONObject("input");
+        if (input == null || !input.has("required")) return;
+        JSONObject required = input.optJSONObject("required");
+        if (required == null || !required.has(propName)) return;
         Object val = required.get(propName);
         if (val instanceof JSONArray outerArray && outerArray.length() > 0) {
             if (outerArray.get(0) instanceof JSONArray options) {
                 for (int i = 0; i < options.length(); i++) {
-                    target.add(options.getString(i));
+                    String opt = options.optString(i, null);
+                    if (opt != null && !opt.isBlank()) {
+                        target.add(opt);
+                    }
                 }
             }
         }
     }
 
     /**
-     * Injects the selected model parameters (checkpoint, unet, clip, vae) into the workflow template JSON.
+     * Injects the selected model parameters (checkpoint, unet, clip, vae) into the workflow template JSON
+     * using generic input-slot discovery rather than hardcoded loader class cascades.
      *
      * @param templateJson the raw workflow template JSON
      * @param modelName    the selected model name to inject
      * @return the updated workflow template JSON string
      */
     public String injectModelsIntoTemplate(String templateJson, String modelName) {
-        if (templateJson == null || templateJson.isBlank() || modelName == null || modelName.isBlank()) {
-            return templateJson;
-        }
+        if (templateJson == null || modelName == null || modelName.isEmpty()) return templateJson;
         try {
             JSONObject rootObj = new JSONObject(templateJson);
             JSONObject promptObj = rootObj.has("prompt") ? rootObj.getJSONObject("prompt") : rootObj;
 
-            String unetName = findExactUnetName(modelName);
-            if (unetName.isEmpty()) unetName = modelName;
             String ckptName = findExactCheckpointName(modelName);
-            if (ckptName.isEmpty()) ckptName = modelName;
+            String unetName = findExactUnetName(modelName);
             String resolvedClip = resolveClipForModel(modelName);
             String resolvedVae = resolveVaeForModel(modelName);
             String resolvedClipType = resolveClipType(resolvedClip, modelName);
@@ -122,23 +150,29 @@ public class PromptLabModelResolver {
                 JSONObject inputs = node.optJSONObject("inputs");
                 if (inputs == null) continue;
 
-                if ("CheckpointLoaderSimple".equals(classType)) {
+                // 1. Generic Checkpoint / UNET / VAE injection by input key or standard loader class
+                if ("CheckpointLoaderSimple".equals(classType) || inputs.has("ckpt_name")) {
                     inputs.put("ckpt_name", ckptName);
-                } else if ("UNETLoader".equals(classType) || "UNetLoader".equals(classType)) {
+                }
+                if ("UNETLoader".equals(classType) || "UNetLoader".equals(classType) || inputs.has("unet_name")) {
                     inputs.put("unet_name", unetName);
-                } else if ("CLIPLoader".equals(classType)) {
-                    inputs.put("clip_name", resolvedClip);
-                    inputs.put("type", resolvedClipType);
-                } else if ("DualCLIPLoader".equals(classType)) {
-                    inputs.put("clip_name1", findExactClipName("clip_l.safetensors"));
-                    inputs.put("clip_name2", resolvedClip);
-                    inputs.put("type", resolvedClipType);
-                } else if ("TripleCLIPLoader".equals(classType)) {
-                    inputs.put("clip_name1", findExactClipName("clip_l.safetensors"));
-                    inputs.put("clip_name2", findExactClipName("clip_g.safetensors"));
-                    inputs.put("clip_name3", resolvedClip);
-                } else if ("VAELoader".equals(classType)) {
+                }
+                if ("VAELoader".equals(classType) || inputs.has("vae_name")) {
                     inputs.put("vae_name", resolvedVae);
+                }
+
+                // 2. Generic slot-aware CLIP injection for single, dual, triple, or N-slot CLIP loaders
+                List<String> clipInputKeys = resolveClipInputKeys(classType, inputs);
+                if (!clipInputKeys.isEmpty()) {
+                    int totalSlots = clipInputKeys.size();
+                    for (int slotIdx = 0; slotIdx < totalSlots; slotIdx++) {
+                        String slotKey = clipInputKeys.get(slotIdx);
+                        String slotClip = clipVaeResolver.resolveClipForSlot(modelName, slotIdx, totalSlots, comfyClips);
+                        inputs.put(slotKey, findExactClipName(slotClip));
+                    }
+                    if ("CLIPLoader".equals(classType) || "DualCLIPLoader".equals(classType) || inputs.has("type")) {
+                        inputs.put("type", resolvedClipType);
+                    }
                 }
             }
             return rootObj.toString(2);
@@ -146,6 +180,26 @@ public class PromptLabModelResolver {
             logger.warn("Failed to inject model parameters into template: {}", e.getMessage());
             return templateJson;
         }
+    }
+
+    private List<String> resolveClipInputKeys(String classType, JSONObject inputs) {
+        List<String> keys = new ArrayList<>();
+        for (String k : inputs.keySet()) {
+            if (k.toLowerCase(Locale.ROOT).startsWith("clip_name")) {
+                keys.add(k);
+            }
+        }
+        if (!keys.isEmpty()) {
+            Collections.sort(keys);
+            return keys;
+        }
+        return switch (classType) {
+            case "CLIPLoader" -> List.of("clip_name");
+            case "DualCLIPLoader" -> List.of("clip_name1", "clip_name2");
+            case "TripleCLIPLoader" -> List.of("clip_name1", "clip_name2", "clip_name3");
+            case "QuadrupleCLIPLoader" -> List.of("clip_name1", "clip_name2", "clip_name3", "clip_name4");
+            default -> List.of();
+        };
     }
 
     /**
@@ -189,6 +243,22 @@ public class PromptLabModelResolver {
     }
 
     /**
+     * Finds the exact CLIP model name matching the given target CLIP filename.
+     *
+     * @param targetClip the target CLIP model filename
+     * @return the matched exact CLIP model name from ComfyUI, or the target filename if not found
+     */
+    public String findExactClipName(String targetClip) {
+        if (targetClip == null) return "";
+        for (String clip : comfyClips) {
+            if (modelsMatch(targetClip, clip)) {
+                return clip;
+            }
+        }
+        return targetClip;
+    }
+
+    /**
      * Resolves the appropriate CLIP type string based on the given clip model name and selected model.
      *
      * @param clipModel     the clip model name
@@ -228,22 +298,6 @@ public class PromptLabModelResolver {
      */
     public String resolveVaeForModel(String modelName) {
         return clipVaeResolver.resolveVaeForModel(modelName, comfyVaes);
-    }
-
-    /**
-     * Determines whether the given model name refers to a diffusion model.
-     *
-     * @param modelName name or path of the model
-     * @return true if it is a diffusion model
-     */
-    public String findExactClipName(String targetClip) {
-        if (targetClip == null) return "";
-        for (String clip : comfyClips) {
-            if (modelsMatch(targetClip, clip)) {
-                return clip;
-            }
-        }
-        return targetClip;
     }
 
     /**

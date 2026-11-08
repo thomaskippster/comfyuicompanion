@@ -350,12 +350,12 @@ public class PipCommandRunner {
                 }
             }
 
-            progressCallback.accept("🚀 Installing pygit2 for Git support in embedded Python...");
-            int pygit2Exit = runPipCommand(pythonExe, comfyDir, progressCallback, "install", "pygit2", "--no-warn-script-location");
+            progressCallback.accept("🚀 Installing pygit2 and onnx for Git & model runtime support in embedded Python...");
+            int pygit2Exit = runPipCommand(pythonExe, comfyDir, progressCallback, "install", "pygit2", "onnx", "--no-warn-script-location");
             if (pygit2Exit == 0) {
-                progressCallback.accept("✅ pygit2 successfully installed.");
+                progressCallback.accept("✅ pygit2 and onnx successfully installed.");
             } else {
-                progressCallback.accept("⚠️ pip finished with code " + pygit2Exit + " on pygit2.");
+                progressCallback.accept("⚠️ pip finished with code " + pygit2Exit + " on pygit2/onnx.");
             }
 
             Path videoHelperReq = comfyDir.resolve("custom_nodes").resolve("ComfyUI-Video-Helper-Suite").resolve("requirements.txt");
@@ -366,6 +366,17 @@ public class PipCommandRunner {
                     progressCallback.accept("✅ custom_nodes/ComfyUI-Video-Helper-Suite dependencies successfully installed.");
                 } else {
                     progressCallback.accept("⚠️ pip finished with code " + exitCode + " on custom_nodes/ComfyUI-Video-Helper-Suite/requirements.txt.");
+                }
+            }
+
+            Path wanVideoReq = comfyDir.resolve("custom_nodes").resolve("ComfyUI-WanVideoWrapper").resolve("requirements.txt");
+            if (Files.exists(wanVideoReq)) {
+                progressCallback.accept("🚀 Installing custom_nodes/ComfyUI-WanVideoWrapper dependencies...");
+                int exitCode = runPipCommand(pythonExe, wanVideoReq.getParent(), progressCallback, "install", "-r", "requirements.txt", "--no-warn-script-location");
+                if (exitCode == 0) {
+                    progressCallback.accept("✅ custom_nodes/ComfyUI-WanVideoWrapper dependencies successfully installed.");
+                } else {
+                    progressCallback.accept("⚠️ pip finished with code " + exitCode + " on custom_nodes/ComfyUI-WanVideoWrapper/requirements.txt.");
                 }
             }
 
@@ -382,6 +393,9 @@ public class PipCommandRunner {
                 }
                 if (Files.exists(videoHelperReq)) {
                     runWslPipCommand(videoHelperReq.getParent(), progressCallback, "install", "-r", "requirements.txt", "--break-system-packages");
+                }
+                if (Files.exists(wanVideoReq)) {
+                    runWslPipCommand(wanVideoReq.getParent(), progressCallback, "install", "-r", "requirements.txt", "--break-system-packages");
                 }
             }
         } catch (Exception e) {

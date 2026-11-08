@@ -110,7 +110,16 @@ public class PromptLabModelDiscovery {
                     itemsToAdd.add(e.name);
                 }
             }
-        } else if (configService != null) {
+            if (itemsToAdd.isEmpty()) {
+                for (BlueprintGalleryTab.BlueprintEntry e : blueprintGalleryTab.getAvailableBlueprints()) {
+                    if (e.status != null && e.status.missingCount == 0 && isSupportedPromptLabBlueprint(e)
+                            && e.name != null && !e.name.isBlank() && !itemsToAdd.contains(e.name)) {
+                        itemsToAdd.add(e.name);
+                    }
+                }
+            }
+        }
+        if (itemsToAdd.isEmpty() && configService != null) {
             String modelsPath = configService.getModelsPath();
             if (modelsPath != null && !modelsPath.isEmpty()) {
                 File checkpointsDir = new File(modelsPath, "checkpoints");

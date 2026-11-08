@@ -327,9 +327,11 @@ public class VideoArchitectWorkspacePanel extends CardPanel {
         int nw = (int) (iw * scale);
         int nh = (int) (ih * scale);
 
-        Image scaled = img.getScaledInstance(nw, nh, Image.SCALE_SMOOTH);
-        videoPreviewLabel.setIcon(new ImageIcon(scaled));
-        videoPreviewLabel.setText("");
+        java.awt.image.BufferedImage scaled = de.tki.comfyuicompanion.util.FastImageScaler.scale(img, nw, nh, true);
+        if (scaled != null) {
+            videoPreviewLabel.setIcon(new ImageIcon(scaled));
+            videoPreviewLabel.setText("");
+        }
     }
 
     /**

@@ -402,25 +402,9 @@ public class OutputGalleryPanel extends JPanel {
         } else {
             JLabel imageLabel = new JLabel("Loading...", SvgIconFactory.get(AppIcon.REFRESH, 16), SwingConstants.CENTER);
             tile.add(imageLabel, BorderLayout.CENTER);
-            
-            java.util.concurrent.CompletableFuture.runAsync(() -> {
-                try {
-                    if (java.nio.file.Files.exists(file) && java.nio.file.Files.size(file) > 0) {
-                        byte[] bytes = java.nio.file.Files.readAllBytes(file);
-                        ImageIcon rawIcon = new ImageIcon(bytes);
-                        Image rawImage = rawIcon.getImage();
-                        if (rawImage != null) {
-                            Image scaledImage = rawImage.getScaledInstance(120, 120, Image.SCALE_FAST);
-                            ImageIcon icon = new ImageIcon(scaledImage);
-                            SwingUtilities.invokeLater(() -> {
-                                imageLabel.setText("");
-                                imageLabel.setIcon(icon);
-                            });
-                        }
-                    }
-                } catch (Exception ignored) {
-                    logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
-                }
+            de.tki.comfyuicompanion.util.ThumbnailCache.loadAsync(file.toFile(), 120, 120, icon -> {
+                imageLabel.setText("");
+                imageLabel.setIcon(icon);
             });
             
             JLabel nameLabel = new JLabel(name, SwingConstants.CENTER);

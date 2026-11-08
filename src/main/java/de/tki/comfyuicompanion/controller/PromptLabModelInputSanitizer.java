@@ -285,7 +285,7 @@ public class PromptLabModelInputSanitizer {
             for (String ik : inp.keySet()) {
                 Object val = inp.opt(ik);
                 if (val instanceof String s && !s.isBlank()) {
-                    boolean isModelLoaderKey = MODEL_INPUT_KEYS.contains(ik);
+                    boolean isModelLoaderKey = MODEL_INPUT_KEYS.contains(ik) || ik.startsWith("clip_name") || ik.startsWith("ckpt_name") || ik.startsWith("unet_name") || ik.startsWith("vae_name") || ik.startsWith("lora_name");
                     boolean isModelFile = s.endsWith(".safetensors") || s.endsWith(".ckpt")
                             || s.endsWith(".pt") || s.endsWith(".pth") || s.endsWith(".gguf")
                             || s.endsWith(".bin") || s.endsWith(".onnx") || s.endsWith(".sft");
@@ -386,13 +386,13 @@ public class PromptLabModelInputSanitizer {
         if (targetValue == null || targetValue.isBlank() || promptLabController == null) return null;
         Set<String> options = null;
 
-        if (inputKey.equals("unet_name")) {
+        if (inputKey.startsWith("unet_name")) {
             options = promptLabController.getComfyUnetModels();
-        } else if (inputKey.equals("ckpt_name")) {
+        } else if (inputKey.startsWith("ckpt_name")) {
             options = promptLabController.getComfyCheckpoints();
-        } else if (inputKey.equals("clip_name") || inputKey.equals("clip_name1") || inputKey.equals("clip_name2") || inputKey.equals("clip_name3")) {
+        } else if (inputKey.startsWith("clip_name")) {
             options = promptLabController.getComfyClips();
-        } else if (inputKey.equals("vae_name")) {
+        } else if (inputKey.startsWith("vae_name")) {
             options = promptLabController.getComfyVaes();
         } else if (inputKey.equals("type") && classType.contains("CLIPLoader")) {
             options = promptLabController.getComfyClipTypes();

@@ -184,7 +184,6 @@ public class WorkflowModelExtractor {
             if (resolvedUrl != null && (existing.getUrl() == null || existing.getUrl().isBlank())) {
                 existing.setUrl(resolvedUrl);
             }
-            // If previous type was generic fallback, improve with more authoritative folder
             if ("checkpoints".equals(existing.getType()) && !"checkpoints".equals(folder)) {
                 existing.setType(folder);
                 if (localModelScanner != null) {
@@ -199,99 +198,25 @@ public class WorkflowModelExtractor {
     }
 
     /**
-     * Estimates a realistic model size string based on known architecture and filename conventions
-     * when physical disk size or remote HTTP Content-Length is not yet available.
+     * Estimates a realistic model size string based on declarative rules in {@link ModelFallbackCatalog}.
      *
      * @param filename model filename
      * @return estimated formatted size (e.g., "2.5 GB") or null if uncategorized
      */
     public static String estimateKnownModelSize(String filename) {
-        if (filename == null || filename.isBlank()) return null;
-        String fn = filename.toLowerCase(Locale.ROOT);
-        if (fn.endsWith(".json")) return "14.2 KB";
-        if (fn.contains("vae") || fn.startsWith("ae.")) return fn.contains("wan") ? "254 MB" : "335 MB";
-        if (fn.contains("clip_l")) return "246 MB";
-        if (fn.contains("qwen3.5_9b") || fn.contains("qwen3vl_8b")) return "8.8 GB";
-        if (fn.contains("qwen3vl_4b") || fn.contains("qwen_3_4b") || fn.contains("qwen_3.5_4b")) return "4.8 GB";
-        if (fn.contains("umt5")) return fn.contains("fp8") ? "6.27 GB" : "10.6 GB";
-        if (fn.contains("t5xxl")) return (fn.contains("fp16") || fn.contains("bf16")) ? "9.5 GB" : "4.8 GB";
-        if (fn.contains("depth_anything")) return fn.contains("vitl") ? "1.34 GB" : (fn.contains("vitb") ? "375 MB" : "670 MB");
-        if (fn.contains("controlnet") || fn.contains("t2i_adapter")) return (fn.contains("5b") || fn.contains("wan")) ? "2.5 GB" : "1.4 GB";
-        if (fn.contains("14b")) return (fn.contains("fp8") || fn.contains("int8")) ? "14.3 GB" : "28.6 GB";
-        if (fn.contains("5b")) return (fn.contains("fp8") || fn.contains("int8")) ? "5.0 GB" : "10.0 GB";
-        if (fn.contains("1.3b")) return "2.7 GB";
-        if (fn.contains("upscale") || fn.contains("esrgan") || fn.contains("swinir") || fn.contains("4x")) return "67 MB";
-        if (fn.contains("lora") || fn.contains("lycoris") || fn.contains("locon")) return "220 MB";
-        if (fn.contains("int8") || fn.contains("nvfp4") || fn.contains("fp8")) return "6.8 GB";
-        if (fn.contains("bf16") || fn.contains("fp16")) return "11.9 GB";
-        if (fn.endsWith(".pth") || fn.endsWith(".pt") || fn.endsWith(".onnx")) return "400 MB";
-        if (fn.endsWith(".safetensors") || fn.endsWith(".ckpt") || fn.endsWith(".gguf") || fn.endsWith(".sft")) return "2.4 GB";
-        return null;
+        return ModelFallbackCatalog.estimateSize(filename);
     }
 
     /**
      * Resolves an authoritative Hugging Face download URL for well-known ComfyUI base models,
-     * preprocessors, and text encoders when the workflow JSON does not embed an explicit URL.
+     * preprocessors, and text encoders via {@link ModelFallbackCatalog}.
      *
      * @param filename model filename
      * @param folder   target model folder
      * @return resolved remote URL or null if unknown
      */
     public static String resolveFallbackDownloadUrl(String filename, String folder) {
-        if (filename == null || filename.isBlank()) return null;
-        String fn = filename.toLowerCase(Locale.ROOT);
-        if (fn.equals("depth_anything_vitl14.pth")) {
-            return "https://huggingface.co/spaces/LiheYoung/Depth-Anything/resolve/main/checkpoints/depth_anything_vitl14.pth";
-        }
-        if (fn.equals("wan2.2-ti2v-5b-controlnet-depth-v1.safetensors") || fn.contains("controlnet-depth-v1")) {
-            return "https://huggingface.co/TheDenk/wan2.2-ti2v-5b-controlnet-depth-v1/resolve/main/diffusion_pytorch_model.safetensors";
-        }
-        if (fn.contains("fastwanfullattn") || fn.equals("wan2_2-ti2v-5b-fastwanfullattn_bf16.safetensors")) {
-            return "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/FastWan/Wan2_2-TI2V-5B-FastWanFullAttn_bf16.safetensors";
-        }
-        if (fn.equals("umt5-xxl-enc-bf16.safetensors") || fn.equals("umt5_xxl_fp16.safetensors")) {
-            return "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/umt5-xxl-enc-bf16.safetensors";
-        }
-        if (fn.equals("wan2_2-ti2v-5b_fp16.safetensors")) {
-            return "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Wan2_2-TI2V-5B_fp16.safetensors";
-        }
-        if (fn.equals("wan2_2_vae_bf16.safetensors") || fn.equals("wan_2.1_vae.safetensors")) {
-            return "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/vae/wan_2.1_vae.safetensors";
-        }
-        if (fn.equals("ae.safetensors")) {
-            return "https://huggingface.co/receptektas/black-forest-labs-ae_safetensors/resolve/main/ae.safetensors";
-        }
-        if (fn.equals("clip_l.safetensors")) {
-            return "https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/clip_l.safetensors";
-        }
-        if (fn.equals("clip_g.safetensors")) {
-            return "https://huggingface.co/Comfy-Org/stable-diffusion-3.5-fp8/resolve/main/text_encoders/clip_g.safetensors";
-        }
-        if (fn.equals("t5xxl_fp16.safetensors")) {
-            return "https://huggingface.co/Comfy-Org/stable-diffusion-3.5-fp8/resolve/main/text_encoders/t5xxl_fp16.safetensors";
-        }
-        if (fn.startsWith("t5xxl_fp8")) {
-            return "https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/t5xxl_fp8_e4m3fn.safetensors";
-        }
-        if (fn.contains("sd3.5_large") || fn.contains("sd35_large")) {
-            return "https://huggingface.co/Comfy-Org/stable-diffusion-3.5-fp8/resolve/main/sd3.5_large_fp8_scaled.safetensors";
-        }
-        if (fn.contains("sd3.5_medium") || fn.contains("sd35_medium")) {
-            return "https://huggingface.co/Comfy-Org/stable-diffusion-3.5-fp8/resolve/main/sd3.5_medium_incl_clips_t5xxlfp8scaled.safetensors";
-        }
-        if (fn.contains("hunyuan_video_720")) {
-            return "https://huggingface.co/Kijai/HunyuanVideo_comfy/resolve/main/hunyuan_video_720_cfgdistill_bf16.safetensors";
-        }
-        if (fn.contains("wan2.1_t2v_1.3b") || fn.contains("wan21_t2v_1.3b")) {
-            return "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/diffusion_models/wan2.1_t2v_1.3B_bf16.safetensors";
-        }
-        if (fn.contains("wan2.1_t2v_14b") || fn.contains("wan21_t2v_14b")) {
-            return "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/diffusion_models/wan2.1_t2v_14B_bf16.safetensors";
-        }
-        if (fn.contains("umt5_xxl_fp8")) {
-            return "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/text_encoders/umt5_xxl_fp8_e4m3fn.safetensors";
-        }
-        return null;
+        return ModelFallbackCatalog.resolveUrl(filename);
     }
 
     private String extractSimpleFilename(String pathOrUrl) {
@@ -352,8 +277,7 @@ public class WorkflowModelExtractor {
         if (nt.contains("controlnet") || nt.contains("t2i_adapter")) {
             return "controlnet";
         }
-        if (nt.contains("cliploader") || nt.contains("dualcliploader") || nt.contains("triplecliploader")
-                || nt.contains("text_encoder") || nt.contains("t5loader")) {
+        if (nt.contains("cliploader") || nt.contains("text_encoder") || nt.contains("t5loader")) {
             return "clip";
         }
         if (nt.contains("unetloader") || nt.contains("diffusionloader") || nt.contains("unet")) {

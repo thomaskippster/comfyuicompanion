@@ -11,12 +11,14 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.function.Consumer;
+import java.util.stream.Stream;
 
 /**
  * Component managing execution of Python pip commands, CUDA detection for PyTorch,
- * and requirements installation across native and WSL environments.
+ * and generic requirements installation across native and WSL environments.
  */
 @Component
 public class PipCommandRunner {
@@ -36,10 +38,10 @@ public class PipCommandRunner {
     /**
      * Executes a pip command with the given arguments using the specified Python binary.
      *
-     * @param pythonExe path to python executable
-     * @param workingDir working directory
+     * @param pythonExe        path to python executable
+     * @param workingDir       working directory
      * @param progressCallback progress output sink
-     * @param args command arguments
+     * @param args             command arguments
      * @return process exit code
      */
     public int runPipCommand(Path pythonExe, Path workingDir, Consumer<String> progressCallback, String... args) {
@@ -86,9 +88,9 @@ public class PipCommandRunner {
     /**
      * Runs a pip command inside WSL.
      *
-     * @param workingDir working directory
+     * @param workingDir       working directory
      * @param progressCallback progress sink
-     * @param args command arguments
+     * @param args             command arguments
      * @return exit code
      */
     public int runWslPipCommand(Path workingDir, Consumer<String> progressCallback, String... args) {
@@ -128,7 +130,7 @@ public class PipCommandRunner {
      * Runs an arbitrary command inside WSL.
      *
      * @param progressCallback progress sink
-     * @param args arguments
+     * @param args             arguments
      * @return exit code
      */
     public int runWslCommand(Consumer<String> progressCallback, String... args) {
@@ -161,8 +163,8 @@ public class PipCommandRunner {
     /**
      * Detects NVIDIA GPU compute capability and installs matching CUDA PyTorch wheels on Windows.
      *
-     * @param pythonExe path to python executable
-     * @param comfyDir path to comfyui root directory
+     * @param pythonExe        path to python executable
+     * @param comfyDir         path to comfyui root directory
      * @param progressCallback progress sink
      */
     public void installPyTorchCudaIfAvailable(Path pythonExe, Path comfyDir, Consumer<String> progressCallback) {
@@ -187,8 +189,8 @@ public class PipCommandRunner {
                                 maxComputeCap = cap;
                             }
                         } catch (NumberFormatException ignored) {
-            logger.trace("Invalid numeric format: {}", ignored.getMessage());
-        }
+                            logger.trace("Invalid numeric format: {}", ignored.getMessage());
+                        }
                     }
                 }
             }
@@ -237,7 +239,7 @@ public class PipCommandRunner {
     /**
      * Fixes WSL system packages and python dependencies.
      *
-     * @param comfyDir ComfyUI directory
+     * @param comfyDir         ComfyUI directory
      * @param progressCallback progress sink
      */
     public void fixWslDependencies(Path comfyDir, Consumer<String> progressCallback) {
@@ -281,34 +283,16 @@ public class PipCommandRunner {
             runWslPipCommand(comfyDir, progressCallback, "install", "-r", "manager_requirements.txt", "--break-system-packages");
         }
 
-        Path kokoroTtsDir = comfyDir.resolve("custom_nodes").resolve("ComfyUI-KokoroTTS");
-        Path kokoroReqFile = kokoroTtsDir.resolve("requirements.txt");
-        if (Files.exists(kokoroTtsDir)) {
-            progressCallback.accept("🚀 Installing ComfyUI-KokoroTTS dependencies in WSL...\n");
-            if (Files.exists(kokoroReqFile)) {
-                runWslPipCommand(kokoroTtsDir, progressCallback, "install", "-r", "requirements.txt", "--break-system-packages");
-            } else {
-                runWslPipCommand(kokoroTtsDir, progressCallback, "install", "kokoro-onnx", "soundfile", "--break-system-packages");
-            }
-        }
-
-        Path videoHelperSuiteDir = comfyDir.resolve("custom_nodes").resolve("ComfyUI-Video-Helper-Suite");
-        Path videoHelperReq = videoHelperSuiteDir.resolve("requirements.txt");
-        if (Files.exists(videoHelperSuiteDir)) {
-            progressCallback.accept("🚀 Installing ComfyUI-Video-Helper-Suite dependencies in WSL...\n");
-            if (Files.exists(videoHelperReq)) {
-                runWslPipCommand(videoHelperSuiteDir, progressCallback, "install", "-r", "requirements.txt", "--break-system-packages");
-            }
-        }
+        installAllCustomNodeRequirements(null, comfyDir, true, progressCallback);
 
         progressCallback.accept("✅ WSL dependencies fix completed!\n");
     }
 
     /**
-     * Installs ComfyUI requirements, CUDA PyTorch packages, and node dependencies.
+     * Installs ComfyUI requirements, CUDA PyTorch packages, and all custom node dependencies generically.
      *
-     * @param pythonExe Python binary path
-     * @param comfyDir ComfyUI root directory
+     * @param pythonExe        Python binary path
+     * @param comfyDir         ComfyUI root directory
      * @param progressCallback progress sink
      */
     public void installRequirements(Path pythonExe, Path comfyDir, Consumer<String> progressCallback) {
@@ -339,17 +323,6 @@ public class PipCommandRunner {
                 }
             }
 
-            Path customManagerReq = comfyDir.resolve("custom_nodes").resolve("ComfyUI-Manager").resolve("requirements.txt");
-            if (Files.exists(customManagerReq)) {
-                progressCallback.accept("🚀 Installing custom_nodes/ComfyUI-Manager dependencies (pip install -r ...)...");
-                int exitCode = runPipCommand(pythonExe, customManagerReq.getParent(), progressCallback, "install", "-r", "requirements.txt", "--no-warn-script-location");
-                if (exitCode == 0) {
-                    progressCallback.accept("✅ custom_nodes/ComfyUI-Manager dependencies successfully installed.");
-                } else {
-                    progressCallback.accept("⚠️ pip finished with code " + exitCode + " on custom_nodes/ComfyUI-Manager/requirements.txt.");
-                }
-            }
-
             progressCallback.accept("🚀 Installing pygit2 and onnx for Git & model runtime support in embedded Python...");
             int pygit2Exit = runPipCommand(pythonExe, comfyDir, progressCallback, "install", "pygit2", "onnx", "--no-warn-script-location");
             if (pygit2Exit == 0) {
@@ -358,27 +331,7 @@ public class PipCommandRunner {
                 progressCallback.accept("⚠️ pip finished with code " + pygit2Exit + " on pygit2/onnx.");
             }
 
-            Path videoHelperReq = comfyDir.resolve("custom_nodes").resolve("ComfyUI-Video-Helper-Suite").resolve("requirements.txt");
-            if (Files.exists(videoHelperReq)) {
-                progressCallback.accept("🚀 Installing custom_nodes/ComfyUI-Video-Helper-Suite dependencies...");
-                int exitCode = runPipCommand(pythonExe, videoHelperReq.getParent(), progressCallback, "install", "-r", "requirements.txt", "--no-warn-script-location");
-                if (exitCode == 0) {
-                    progressCallback.accept("✅ custom_nodes/ComfyUI-Video-Helper-Suite dependencies successfully installed.");
-                } else {
-                    progressCallback.accept("⚠️ pip finished with code " + exitCode + " on custom_nodes/ComfyUI-Video-Helper-Suite/requirements.txt.");
-                }
-            }
-
-            Path wanVideoReq = comfyDir.resolve("custom_nodes").resolve("ComfyUI-WanVideoWrapper").resolve("requirements.txt");
-            if (Files.exists(wanVideoReq)) {
-                progressCallback.accept("🚀 Installing custom_nodes/ComfyUI-WanVideoWrapper dependencies...");
-                int exitCode = runPipCommand(pythonExe, wanVideoReq.getParent(), progressCallback, "install", "-r", "requirements.txt", "--no-warn-script-location");
-                if (exitCode == 0) {
-                    progressCallback.accept("✅ custom_nodes/ComfyUI-WanVideoWrapper dependencies successfully installed.");
-                } else {
-                    progressCallback.accept("⚠️ pip finished with code " + exitCode + " on custom_nodes/ComfyUI-WanVideoWrapper/requirements.txt.");
-                }
-            }
+            installAllCustomNodeRequirements(pythonExe, comfyDir, false, progressCallback);
 
             if (isWslAvailable()) {
                 progressCallback.accept("🚀 WSL support detected on system. Setting up WSL Python environment...");
@@ -388,18 +341,52 @@ public class PipCommandRunner {
                 if (Files.exists(managerReq)) {
                     runWslPipCommand(comfyDir, progressCallback, "install", "-r", "manager_requirements.txt", "--break-system-packages");
                 }
-                if (Files.exists(customManagerReq)) {
-                    runWslPipCommand(customManagerReq.getParent(), progressCallback, "install", "-r", "requirements.txt", "--break-system-packages");
-                }
-                if (Files.exists(videoHelperReq)) {
-                    runWslPipCommand(videoHelperReq.getParent(), progressCallback, "install", "-r", "requirements.txt", "--break-system-packages");
-                }
-                if (Files.exists(wanVideoReq)) {
-                    runWslPipCommand(wanVideoReq.getParent(), progressCallback, "install", "-r", "requirements.txt", "--break-system-packages");
-                }
+                installAllCustomNodeRequirements(pythonExe, comfyDir, true, progressCallback);
             }
         } catch (Exception e) {
             throw new RuntimeException("Error installing dependencies: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Dynamically scans {@code custom_nodes/} using NIO.2 and installs {@code requirements.txt}
+     * for every installed custom node extension without hardcoding node directory names.
+     *
+     * @param pythonExe        Python binary path (ignored when {@code wslMode} is true)
+     * @param comfyDir         ComfyUI root directory
+     * @param wslMode          true to execute pip inside WSL, false for native/embedded Python
+     * @param progressCallback progress sink
+     */
+    public void installAllCustomNodeRequirements(Path pythonExe, Path comfyDir, boolean wslMode, Consumer<String> progressCallback) {
+        if (comfyDir == null) return;
+        Path customNodesDir = comfyDir.resolve("custom_nodes");
+        if (!Files.isDirectory(customNodesDir)) return;
+
+        try (Stream<Path> entries = Files.list(customNodesDir)) {
+            List<Path> nodeDirs = entries
+                    .filter(Files::isDirectory)
+                    .sorted(Comparator.comparing(p -> p.getFileName().toString()))
+                    .toList();
+
+            for (Path nodeDir : nodeDirs) {
+                String nodeName = nodeDir.getFileName().toString();
+                Path reqFile = nodeDir.resolve("requirements.txt");
+                if (Files.isRegularFile(reqFile)) {
+                    progressCallback.accept("🚀 Installing custom_nodes/" + nodeName + " dependencies...");
+                    int exitCode = wslMode
+                            ? runWslPipCommand(nodeDir, progressCallback, "install", "-r", "requirements.txt", "--break-system-packages")
+                            : runPipCommand(pythonExe, nodeDir, progressCallback, "install", "-r", "requirements.txt", "--no-warn-script-location");
+                    if (exitCode == 0) {
+                        progressCallback.accept("✅ custom_nodes/" + nodeName + " dependencies successfully installed.");
+                    } else {
+                        progressCallback.accept("⚠️ pip finished with code " + exitCode + " on custom_nodes/" + nodeName + "/requirements.txt.");
+                    }
+                } else if (wslMode && "ComfyUI-KokoroTTS".equalsIgnoreCase(nodeName)) {
+                    runWslPipCommand(nodeDir, progressCallback, "install", "kokoro-onnx", "soundfile", "--break-system-packages");
+                }
+            }
+        } catch (Exception e) {
+            logger.warn("Failed to scan custom_nodes for requirements.txt: {}", e.getMessage());
         }
     }
 }

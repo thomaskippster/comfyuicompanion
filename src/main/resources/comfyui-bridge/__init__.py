@@ -33,6 +33,8 @@ except Exception:
     pass
 # -------------------------------------------------------------------------------------------
 
+import os
+import json
 import server
 import folder_paths
 import asyncio
@@ -52,6 +54,32 @@ def _route_registered(method, path):
         if route.method == method and route.path == path:
             return True
     return False
+
+
+def _load_manager_model_registry():
+    """Loads ComfyUI-Manager's model-list.json if available in site-packages or custom_nodes."""
+    candidates = []
+    try:
+        import comfyui_manager
+        pkg_dir = os.path.dirname(os.path.abspath(comfyui_manager.__file__))
+        candidates.append(os.path.join(pkg_dir, "model-list.json"))
+    except Exception:
+        pass
+    try:
+        base_path = getattr(folder_paths, "base_path", "")
+        if base_path:
+            candidates.append(os.path.join(base_path, "custom_nodes", "ComfyUI-Manager", "model-list.json"))
+    except Exception:
+        pass
+    for path in candidates:
+        if os.path.isfile(path):
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    return data.get("models", [])
+            except Exception:
+                pass
+    return []
 
 
 prompt_instance = getattr(server.PromptServer, "instance", None)
@@ -193,6 +221,65 @@ if prompt_instance is not None and not _route_registered("POST", "/cmfc/inspect-
         })
 elif prompt_instance is not None:
     print("[CMFC] Route /cmfc/inspect-workflow already registered, skipping.")
+
+
+if prompt_instance is not None and not _route_registered("POST", "/cmfc/resolve-models"):
+    @prompt_instance.routes.post("/cmfc/resolve-models")
+    async def resolve_models(request):
+        """
+        Generic model resolution service querying ComfyUI's internal folder_paths and ComfyUI-Manager's
+        model-list.json directly inside Python to resolve installed paths, target folders, and download URLs.
+        """
+        try:
+            data = await request.json() if request.has_body else {}
+        except Exception:
+            return web.json_response({"status": "error", "message": "Invalid JSON body"}, status=400)
+
+        requested_models = data.get("models", [])
+        folder_map = getattr(folder_paths, "folder_names_and_paths", {})
+        manager_models = _load_manager_model_registry()
+        manager_by_filename = {
+            str(m.get("filename", "")).lower(): m for m in manager_models if isinstance(m, dict) and m.get("filename")
+        }
+
+        resolved = []
+        for item in requested_models:
+            fname = item.get("filename", "") if isinstance(item, dict) else str(item)
+            base_name = os.path.basename(fname.replace("\\", "/"))
+            base_lower = base_name.lower()
+
+            found_folder = None
+            found_rel_path = None
+            for folder_key in folder_map.keys():
+                try:
+                    files = folder_paths.get_filename_list(folder_key)
+                    for rel_file in files:
+                        rel_norm = rel_file.replace("\\", "/")
+                        if rel_norm.lower() == fname.replace("\\", "/").lower() or os.path.basename(rel_norm).lower() == base_lower:
+                            found_folder = folder_key
+                            found_rel_path = rel_file
+                            break
+                    if found_rel_path:
+                        break
+                except Exception:
+                    continue
+
+            mgr_entry = manager_by_filename.get(base_lower, {})
+            resolved.append({
+                "filename": base_name,
+                "installed": found_rel_path is not None,
+                "folder": found_folder or mgr_entry.get("save_path") or mgr_entry.get("type"),
+                "relative_path": found_rel_path,
+                "url": mgr_entry.get("url"),
+                "size": mgr_entry.get("size"),
+            })
+
+        return web.json_response({
+            "status": "ok",
+            "models": resolved,
+        })
+elif prompt_instance is not None:
+    print("[CMFC] Route /cmfc/resolve-models already registered, skipping.")
 
 
 WEB_DIRECTORY = "web"

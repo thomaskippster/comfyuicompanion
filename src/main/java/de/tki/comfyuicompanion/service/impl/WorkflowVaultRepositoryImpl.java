@@ -223,7 +223,7 @@ public class WorkflowVaultRepositoryImpl implements IWorkflowVaultRepository {
                 String fallbackUrl = de.tki.comfyuicompanion.service.workflow.WorkflowModelExtractor.resolveFallbackDownloadUrl(name, type);
                 if (fallbackUrl != null) m.setUrl(fallbackUrl);
             }
-            String stemKey = (isHf && ("checkpoints".equalsIgnoreCase(type) || "unet".equalsIgnoreCase(type))) ? type.toLowerCase(Locale.ROOT) : LocalModelScanner.normalizeQuantizationStem(name);
+            String stemKey = (isHf && ("checkpoints".equalsIgnoreCase(type) || "unet".equalsIgnoreCase(type) || "diffusion_models".equalsIgnoreCase(type))) ? type.toLowerCase(Locale.ROOT) : LocalModelScanner.normalizeQuantizationStem(name);
             ModelInfo existing = dedupByStem.get(stemKey);
             if (existing == null || prefersCandidate(name, (existing.getFilename() != null ? existing.getFilename() : existing.getName()))) {
                 dedupByStem.put(stemKey, m);

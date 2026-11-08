@@ -130,12 +130,12 @@ public class PromptLabModelResolver {
                     inputs.put("clip_name", resolvedClip);
                     inputs.put("type", resolvedClipType);
                 } else if ("DualCLIPLoader".equals(classType)) {
-                    inputs.put("clip_name1", "clip_l.safetensors");
+                    inputs.put("clip_name1", findExactClipName("clip_l.safetensors"));
                     inputs.put("clip_name2", resolvedClip);
                     inputs.put("type", resolvedClipType);
                 } else if ("TripleCLIPLoader".equals(classType)) {
-                    inputs.put("clip_name1", "clip_l.safetensors");
-                    inputs.put("clip_name2", "clip_g.safetensors");
+                    inputs.put("clip_name1", findExactClipName("clip_l.safetensors"));
+                    inputs.put("clip_name2", findExactClipName("clip_g.safetensors"));
                     inputs.put("clip_name3", resolvedClip);
                 } else if ("VAELoader".equals(classType)) {
                     inputs.put("vae_name", resolvedVae);
@@ -228,6 +228,22 @@ public class PromptLabModelResolver {
      */
     public String resolveVaeForModel(String modelName) {
         return clipVaeResolver.resolveVaeForModel(modelName, comfyVaes);
+    }
+
+    /**
+     * Determines whether the given model name refers to a diffusion model.
+     *
+     * @param modelName name or path of the model
+     * @return true if it is a diffusion model
+     */
+    public String findExactClipName(String targetClip) {
+        if (targetClip == null) return "";
+        for (String clip : comfyClips) {
+            if (modelsMatch(targetClip, clip)) {
+                return clip;
+            }
+        }
+        return targetClip;
     }
 
     /**

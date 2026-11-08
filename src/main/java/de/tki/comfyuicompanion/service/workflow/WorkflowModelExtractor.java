@@ -265,19 +265,19 @@ public class WorkflowModelExtractor {
             return "https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/clip_l.safetensors";
         }
         if (fn.equals("clip_g.safetensors")) {
-            return "https://huggingface.co/Comfy-Org/stable-diffusion-3.5/resolve/main/text_encoders/clip_g.safetensors";
+            return "https://huggingface.co/Comfy-Org/stable-diffusion-3.5-fp8/resolve/main/text_encoders/clip_g.safetensors";
         }
         if (fn.equals("t5xxl_fp16.safetensors")) {
-            return "https://huggingface.co/Comfy-Org/stable-diffusion-3.5/resolve/main/text_encoders/t5xxl_fp16.safetensors";
+            return "https://huggingface.co/Comfy-Org/stable-diffusion-3.5-fp8/resolve/main/text_encoders/t5xxl_fp16.safetensors";
         }
         if (fn.startsWith("t5xxl_fp8")) {
             return "https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/t5xxl_fp8_e4m3fn.safetensors";
         }
         if (fn.contains("sd3.5_large") || fn.contains("sd35_large")) {
-            return "https://huggingface.co/Comfy-Org/stable-diffusion-3.5/resolve/main/sd3.5_large_fp8_scaled.safetensors";
+            return "https://huggingface.co/Comfy-Org/stable-diffusion-3.5-fp8/resolve/main/sd3.5_large_fp8_scaled.safetensors";
         }
         if (fn.contains("sd3.5_medium") || fn.contains("sd35_medium")) {
-            return "https://huggingface.co/Comfy-Org/stable-diffusion-3.5/resolve/main/sd3.5_medium_incl_clips_t5xxlfp8scaled.safetensors";
+            return "https://huggingface.co/Comfy-Org/stable-diffusion-3.5-fp8/resolve/main/sd3.5_medium_incl_clips_t5xxlfp8scaled.safetensors";
         }
         if (fn.contains("hunyuan_video_720")) {
             return "https://huggingface.co/Kijai/HunyuanVideo_comfy/resolve/main/hunyuan_video_720_cfgdistill_bf16.safetensors";

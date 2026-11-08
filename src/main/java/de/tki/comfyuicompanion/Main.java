@@ -396,8 +396,8 @@ public class Main extends JFrame {
             if (blueprintGalleryTab != null) blueprintGalleryTab.refreshAllData(true);
             refreshPromptLabModels();
         }, () -> {
-            if (uiComponents != null && uiComponents.mainTabs != null && blueprintGalleryTab != null) {
-                uiComponents.mainTabs.setSelectedComponent(blueprintGalleryTab);
+            if (uiComponents != null && uiComponents.mainTabs != null && uiComponents.blueprintGalleryWrapper != null) {
+                uiComponents.mainTabs.setSelectedComponent(uiComponents.blueprintGalleryWrapper);
             }
         });
     }

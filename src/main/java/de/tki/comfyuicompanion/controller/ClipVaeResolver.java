@@ -182,7 +182,14 @@ public class ClipVaeResolver {
         } else if (lower.contains("sd3") || lower.contains("stable_diffusion_3")) {
             for (String clip : comfyClips) {
                 String cLower = clip.toLowerCase();
-                if (cLower.contains("t5xxl") || cLower.contains("t5-xxl") || cLower.contains("clip_g") || cLower.contains("sd3")) {
+                if (cLower.contains("t5xxl") || cLower.contains("t5-xxl") || cLower.contains("t5_xxl")
+                        || cLower.contains("t5_fp8") || cLower.contains("t5_fp16")) {
+                    return clip;
+                }
+            }
+            for (String clip : comfyClips) {
+                String cLower = clip.toLowerCase();
+                if (cLower.contains("clip_g") || cLower.contains("sd3")) {
                     return clip;
                 }
             }

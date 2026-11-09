@@ -1,6 +1,11 @@
 # Build artifacts
 *.gguf
 models/llm/
+models/
+.gradle/
+*.cmfd
+*.part
+*.tmp
 target/
 dist/
 *.jar
@@ -26,9 +31,12 @@ Thumbs.db
 # --- Project Specific ---
 # Sensitive API keys and secrets
 app_settings.json
+local_settings.json
 settings.vault
 *.vault
 gemini.bat
+gemini_admin.bat
+antigravity_admin.bat
 boot.key
 *.key
 *.pem
@@ -36,6 +44,7 @@ boot.key
 *.jks
 secrets*
 .env
+.env.*
 opencode.json
 
 # User Model List (internal DB) & Local Caches

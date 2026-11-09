@@ -288,7 +288,7 @@ public class ConfigService implements IConfigService {
         savePersistentSettings();
     }
 
-    public synchronized boolean isPromptLabEnabled() { return persistentSettings.optBoolean("enable_prompt_lab", false); }
+    public synchronized boolean isPromptLabEnabled() { return persistentSettings.optBoolean("enable_prompt_lab", true); }
     public synchronized void setPromptLabEnabled(boolean enabled) {
         persistentSettings.put("enable_prompt_lab", enabled);
         savePersistentSettings();
@@ -300,7 +300,7 @@ public class ConfigService implements IConfigService {
         savePersistentSettings();
     }
 
-    public synchronized boolean isBlueprintGalleryEnabled() { return persistentSettings.optBoolean("enable_blueprint_gallery", false); }
+    public synchronized boolean isBlueprintGalleryEnabled() { return persistentSettings.optBoolean("enable_blueprint_gallery", true); }
     public synchronized void setBlueprintGalleryEnabled(boolean enabled) {
         persistentSettings.put("enable_blueprint_gallery", enabled);
         savePersistentSettings();

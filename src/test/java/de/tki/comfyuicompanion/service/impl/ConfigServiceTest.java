@@ -39,6 +39,9 @@ class ConfigServiceTest {
         assertThat(configService.getComfyUIPath()).isNotNull();
         assertThat(configService.getMaxParallelDownloads()).isEqualTo(3);
         assertThat(configService.isHideComfyUI()).isTrue();
+        assertThat(configService.isBlueprintGalleryEnabled()).isTrue();
+        assertThat(configService.isPromptLabEnabled()).isTrue();
+        assertThat(configService.isVideoArchitectEnabled()).isFalse();
         assertThat(configService.isCivitaiGalleryEnabled()).isFalse();
     }
 

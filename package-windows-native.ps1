@@ -163,8 +163,9 @@ if ($hasWix) {
     Write-Host "[5/5] WiX not found in PATH; skipping EXE/MSI installer build (App-Image and Portable ZIP created)." -ForegroundColor Yellow
 }
 
-# Generate SHA-256 Checksums for dist files
-Get-ChildItem -Path "dist" -Include "*.exe", "*.msi", "*.zip" | ForEach-Object {
+# Clean old checksums and generate SHA-256 Checksums for current dist files
+Get-ChildItem -Path "dist\*" -Include "*.sha256" -ErrorAction SilentlyContinue | Remove-Item -Force
+Get-ChildItem -Path "dist\*" -Include "*.exe", "*.msi", "*.zip" | ForEach-Object {
     $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower()
     "$hash  $($_.Name)" | Set-Content "$($_.FullName).sha256"
 }
@@ -281,7 +282,7 @@ if ($DeploySourceForge) {
     $batch = @(
         "-mkdir /home/frs/project/$SourceForgeProject/v$appVersion"
     )
-    Get-ChildItem -Path "dist" -Include "*.exe", "*.msi", "*.zip", "*.sha256" | ForEach-Object {
+    Get-ChildItem -Path "dist\*" -Include "*$appVersion*.exe", "*$appVersion*.msi", "*Portable.zip", "*$appVersion*.sha256", "*Portable.zip.sha256" | ForEach-Object {
         $cleanPath = $_.FullName -replace '\\', '/'
         $batch += "put `"$cleanPath`" /home/frs/project/$SourceForgeProject/v$appVersion/"
     }

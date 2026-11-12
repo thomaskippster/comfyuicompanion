@@ -1,0 +1,26 @@
+﻿# yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.6.0.schema.json
+
+PackageIdentifier: Tki.ComfyUICompanion
+PackageVersion: 2.1.0
+PackageLocale: en-US
+Publisher: TKI
+PublisherUrl: https://github.com/thomaskippster
+PublisherSupportUrl: https://github.com/thomaskippster/comfyuicompanion/issues
+PackageName: ComfyUI Companion
+PackageUrl: https://github.com/thomaskippster/comfyuicompanion
+License: MIT
+LicenseUrl: https://github.com/thomaskippster/comfyuicompanion/blob/main/LICENSE
+Copyright: Copyright (c) 2026 TKI
+ShortDescription: Enterprise desktop companion and workflow orchestrator for ComfyUI.
+Description: ComfyUI Companion is a standalone desktop application and enterprise companion for ComfyUI, providing direct Civitai/HuggingFace model discovery, workflow adaptation, hardware VRAM verification, and automated prompt lab orchestration.
+Moniker: comfyuicompanion
+Tags:
+  - comfyui
+  - ai
+  - stable-diffusion
+  - generative-ai
+  - workflow
+  - lora
+  - image-generation
+ManifestType: defaultLocale
+ManifestVersion: 1.6.0

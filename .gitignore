@@ -78,6 +78,7 @@ workflows/*.webp
 env/
 *.bat
 !build_and_run.bat
+!update.bat
 !tools/package_windows.bat
 *.zip
 config.json

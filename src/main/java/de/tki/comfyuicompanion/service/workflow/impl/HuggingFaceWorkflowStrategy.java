@@ -37,7 +37,7 @@ import java.util.concurrent.CompletableFuture;
 public class HuggingFaceWorkflowStrategy implements IWorkflowSourceStrategy {
 
     private static final Logger log = LoggerFactory.getLogger(HuggingFaceWorkflowStrategy.class);
-    private final HttpClient httpClient = HttpClient.newBuilder()
+    private static final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
             .followRedirects(HttpClient.Redirect.NORMAL)
             .build();

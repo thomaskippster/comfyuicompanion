@@ -131,6 +131,7 @@ public final class UnifiedWorkflowCardBuilder {
 
 
     private static final Map<String, Image> THUMBNAIL_CACHE = new ConcurrentHashMap<>();
+    private static final java.util.concurrent.Semaphore THUMBNAIL_SEMAPHORE = new java.util.concurrent.Semaphore(6);
 
 
 
@@ -394,27 +395,31 @@ public final class UnifiedWorkflowCardBuilder {
 
 
         Thread.ofVirtual().name("unified-card-thumb").start(() -> {
-
+            boolean acquired = false;
             try {
-
-                BufferedImage bImg = WorkflowImageLoader.loadOrFetchCached(pathOrUrl, Duration.ofSeconds(10));
-
-                if (bImg != null) {
-
-                    Image scaled = scaleToFit(bImg, CARD_WIDTH - 14, THUMBNAIL_HEIGHT);
-
-                    THUMBNAIL_CACHE.put(pathOrUrl, scaled);
-
-                    SwingUtilities.invokeLater(() -> targetLabel.setIcon(new ImageIcon(scaled)));
-
+                THUMBNAIL_SEMAPHORE.acquire();
+                acquired = true;
+                Image alreadyCached = THUMBNAIL_CACHE.get(pathOrUrl);
+                if (alreadyCached != null) {
+                    SwingUtilities.invokeLater(() -> targetLabel.setIcon(new ImageIcon(alreadyCached)));
+                    return;
                 }
-
+                BufferedImage bImg = WorkflowImageLoader.loadOrFetchCached(pathOrUrl, Duration.ofSeconds(10));
+                if (bImg != null) {
+                    Image scaled = scaleToFit(bImg, CARD_WIDTH - 14, THUMBNAIL_HEIGHT);
+                    bImg.flush();
+                    THUMBNAIL_CACHE.put(pathOrUrl, scaled);
+                    SwingUtilities.invokeLater(() -> targetLabel.setIcon(new ImageIcon(scaled)));
+                }
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
             } catch (Exception ex) {
-
                 log.debug("Failed loading thumbnail for {}: {}", pathOrUrl, ex.getMessage());
-
+            } finally {
+                if (acquired) {
+                    THUMBNAIL_SEMAPHORE.release();
+                }
             }
-
         });
 
     }

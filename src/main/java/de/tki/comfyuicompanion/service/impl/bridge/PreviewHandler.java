@@ -21,6 +21,9 @@ import java.util.Optional;
  */
 public class PreviewHandler implements HttpHandler {
     private static final Logger logger = LoggerFactory.getLogger(PreviewHandler.class);
+    private static final HttpClient SHARED_CLIENT = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(5))
+            .build();
 
     private final BridgeHttpSupport http;
     private final ProxyUrlValidator urlValidator;
@@ -76,9 +79,7 @@ public class PreviewHandler implements HttpHandler {
                 return;
             }
 
-            HttpClient client = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(5))
-                .build();
+            HttpClient client = SHARED_CLIENT;
 
             HttpResponse<InputStream> response = client.send(
                 buildRequest(remoteUrl), HttpResponse.BodyHandlers.ofInputStream());

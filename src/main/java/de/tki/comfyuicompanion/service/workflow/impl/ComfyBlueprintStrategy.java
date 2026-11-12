@@ -32,7 +32,7 @@ import java.util.concurrent.CompletableFuture;
 public class ComfyBlueprintStrategy implements IWorkflowSourceStrategy {
 
     private static final Logger log = LoggerFactory.getLogger(ComfyBlueprintStrategy.class);
-    private final HttpClient httpClient = HttpClient.newBuilder()
+    private static final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
             .followRedirects(HttpClient.Redirect.NORMAL)
             .build();

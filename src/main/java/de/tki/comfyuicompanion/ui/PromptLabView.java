@@ -449,6 +449,9 @@ public class PromptLabView extends JPanel {
     public JTextField getPromptImageFileField() { return promptImageFileField; }
     public File getSelectedInputImage() { return selectedInputImage; }
     public void setSelectedInputImage(File selectedInputImage) { this.selectedInputImage = selectedInputImage; }
+    public JComboBox<de.tki.comfyuicompanion.domain.image.ImageResolutionPreset> getPromptResolutionPresetCombo() {
+        return parametersPanel.getResolutionPresetCombo();
+    }
     public JSpinner getPromptWidthSpinner() { return parametersPanel.getWidthSpinner(); }
     public JSpinner getPromptHeightSpinner() { return parametersPanel.getHeightSpinner(); }
     public JSpinner getPromptBatchSizeSpinner() { return parametersPanel.getBatchSizeSpinner(); }

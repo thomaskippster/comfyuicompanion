@@ -1,5 +1,8 @@
 package de.tki.comfyuicompanion.ui;
 
+import de.tki.comfyuicompanion.domain.image.ImageResolutionPreset;
+import de.tki.comfyuicompanion.domain.image.ImageResolutionRegistry;
+
 import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.JComboBox;
@@ -17,6 +20,7 @@ import java.awt.GridLayout;
  */
 public class PromptLabParametersPanel extends JPanel {
 
+    private final JComboBox<ImageResolutionPreset> promptResolutionCombo;
     private final JSpinner promptWidthSpinner;
     private final JSpinner promptHeightSpinner;
     private final JSpinner promptBatchSizeSpinner;
@@ -25,6 +29,7 @@ public class PromptLabParametersPanel extends JPanel {
     private final JSpinner promptDenoiseSpinner;
     private final JComboBox<String> promptSamplerCombo;
     private final JComboBox<String> promptSchedulerCombo;
+    private boolean isUpdatingDimensions = false;
 
     /**
      * Constructs a new PromptLabParametersPanel and initializes parameter controls.
@@ -40,6 +45,24 @@ public class PromptLabParametersPanel extends JPanel {
         lblDimensions.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
         add(lblDimensions);
         add(Box.createVerticalStrut(5));
+
+        JPanel presetPanel = new JPanel(new BorderLayout(0, 2));
+        presetPanel.setOpaque(false);
+        presetPanel.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        presetPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 45));
+
+        JLabel lblPreset = new JLabel("Resolution & Aspect Ratio");
+        lblPreset.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        presetPanel.add(lblPreset, BorderLayout.NORTH);
+
+        promptResolutionCombo = new JComboBox<>(ImageResolutionRegistry.getInstance().getAllPresets().toArray(new ImageResolutionPreset[0]));
+        promptResolutionCombo.setFont(new Font("SansSerif", Font.PLAIN, 12));
+        promptResolutionCombo.setSelectedItem(ImageResolutionPreset.SQUARE_1024);
+        promptResolutionCombo.setToolTipText("Select recommended resolution or choose Custom to manually adjust dimensions.");
+        presetPanel.add(promptResolutionCombo, BorderLayout.CENTER);
+
+        add(presetPanel);
+        add(Box.createVerticalStrut(6));
 
         JPanel sizeRow = new JPanel(new GridLayout(1, 3, 8, 0));
         sizeRow.setOpaque(false);
@@ -78,6 +101,38 @@ public class PromptLabParametersPanel extends JPanel {
         sizeRow.add(batchPanel);
         add(sizeRow);
         add(Box.createVerticalStrut(15));
+
+        // Bi-directional synchronization between preset dropdown and dimension spinners
+        promptResolutionCombo.addActionListener(e -> {
+            if (isUpdatingDimensions) return;
+            ImageResolutionPreset selected = (ImageResolutionPreset) promptResolutionCombo.getSelectedItem();
+            if (selected != null && selected.width() > 0 && selected.height() > 0) {
+                isUpdatingDimensions = true;
+                try {
+                    promptWidthSpinner.setValue(selected.width());
+                    promptHeightSpinner.setValue(selected.height());
+                } finally {
+                    isUpdatingDimensions = false;
+                }
+            }
+        });
+
+        javax.swing.event.ChangeListener dimensionListener = e -> {
+            if (isUpdatingDimensions) return;
+            int w = ((Number) promptWidthSpinner.getValue()).intValue();
+            int h = ((Number) promptHeightSpinner.getValue()).intValue();
+            ImageResolutionPreset matching = ImageResolutionRegistry.getInstance().findMatching(w, h);
+            if (promptResolutionCombo.getSelectedItem() != matching) {
+                isUpdatingDimensions = true;
+                try {
+                    promptResolutionCombo.setSelectedItem(matching);
+                } finally {
+                    isUpdatingDimensions = false;
+                }
+            }
+        };
+        promptWidthSpinner.addChangeListener(dimensionListener);
+        promptHeightSpinner.addChangeListener(dimensionListener);
 
         // Sampler Parameters
         JLabel lblSampler = new JLabel("Generation & Sampling Parameters");
@@ -163,6 +218,7 @@ public class PromptLabParametersPanel extends JPanel {
      */
     public void attachChangeListener(Runnable onUpdate) {
         if (onUpdate == null) return;
+        promptResolutionCombo.addActionListener(e -> onUpdate.run());
         promptWidthSpinner.addChangeListener(e -> onUpdate.run());
         promptHeightSpinner.addChangeListener(e -> onUpdate.run());
         promptBatchSizeSpinner.addChangeListener(e -> onUpdate.run());
@@ -173,6 +229,7 @@ public class PromptLabParametersPanel extends JPanel {
         promptSchedulerCombo.addActionListener(e -> onUpdate.run());
     }
 
+    public JComboBox<ImageResolutionPreset> getResolutionPresetCombo() { return promptResolutionCombo; }
     public JSpinner getWidthSpinner() { return promptWidthSpinner; }
     public JSpinner getHeightSpinner() { return promptHeightSpinner; }
     public JSpinner getBatchSizeSpinner() { return promptBatchSizeSpinner; }

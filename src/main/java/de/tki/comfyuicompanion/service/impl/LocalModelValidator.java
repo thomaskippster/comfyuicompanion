@@ -40,6 +40,8 @@ public class LocalModelValidator implements ILocalModelValidator {
     private final Set<String> localModelNames = ConcurrentHashMap.newKeySet();
     private final Set<String> activeLocalModelNames = ConcurrentHashMap.newKeySet();
     private final Set<String> archivedModelNames = ConcurrentHashMap.newKeySet();
+    private final Object scanLock = new Object();
+    private volatile long completedScanGeneration = 0L;
 
     private final Semaphore downloadSemaphore = new Semaphore(2);
     private final ExecutorService downloadExecutor = Executors.newFixedThreadPool(
@@ -98,6 +100,20 @@ public class LocalModelValidator implements ILocalModelValidator {
 
     @Override
     public void scanLocalModels() {
+        long genBeforeWait = completedScanGeneration;
+        synchronized (scanLock) {
+            if (completedScanGeneration > genBeforeWait) {
+                return;
+            }
+            try {
+                performScanLocalModelsInternal();
+            } finally {
+                completedScanGeneration++;
+            }
+        }
+    }
+
+    private void performScanLocalModelsInternal() {
         Set<String> tempNames = ConcurrentHashMap.newKeySet();
         Set<String> tempActive = ConcurrentHashMap.newKeySet();
         Set<String> tempArchived = ConcurrentHashMap.newKeySet();
@@ -127,22 +143,33 @@ public class LocalModelValidator implements ILocalModelValidator {
             }
         }
 
-        // Scan Archive Directory and add archived models
+        // Scan Archive Directory and add archived models using zero-overhead walkFileTree
         String archivePathStr = configService != null ? configService.getArchivePath() : null;
         if (archivePathStr != null && !archivePathStr.trim().isEmpty()) {
             try {
                 Path archiveRoot = Paths.get(archivePathStr).toAbsolutePath().normalize();
                 if (Files.exists(archiveRoot) && Files.isDirectory(archiveRoot)) {
-                    try (Stream<Path> walk = Files.walk(archiveRoot)) {
-                        walk.filter(Files::isRegularFile)
-                            .filter(p -> {
-                                String n = p.getFileName().toString().toLowerCase(Locale.ROOT);
-                                return n.endsWith(".safetensors") || n.endsWith(".sft") || n.endsWith(".ckpt") ||
-                                       n.endsWith(".pth") || n.endsWith(".pt") || n.endsWith(".bin") || n.endsWith(".onnx");
-                            })
-                            .forEach(p -> {
-                                String name = p.getFileName().toString();
-                                String lowerName = name.toLowerCase(Locale.ROOT).trim();
+                    Files.walkFileTree(archiveRoot, new java.nio.file.SimpleFileVisitor<>() {
+                        @Override
+                        public java.nio.file.FileVisitResult preVisitDirectory(Path dir, java.nio.file.attribute.BasicFileAttributes attrs) {
+                            if (!dir.equals(archiveRoot) && dir.getFileName() != null) {
+                                String dn = dir.getFileName().toString().toLowerCase(Locale.ROOT);
+                                if (dn.equals(".venv") || dn.equals("venv") || dn.equals(".git") || dn.equals("node_modules")) {
+                                    return java.nio.file.FileVisitResult.SKIP_SUBTREE;
+                                }
+                            }
+                            return java.nio.file.FileVisitResult.CONTINUE;
+                        }
+
+                        @Override
+                        public java.nio.file.FileVisitResult visitFile(Path p, java.nio.file.attribute.BasicFileAttributes attrs) {
+                            if (!attrs.isRegularFile()) {
+                                return java.nio.file.FileVisitResult.CONTINUE;
+                            }
+                            String name = p.getFileName().toString();
+                            String lowerName = name.toLowerCase(Locale.ROOT).trim();
+                            if (lowerName.endsWith(".safetensors") || lowerName.endsWith(".sft") || lowerName.endsWith(".ckpt") ||
+                                lowerName.endsWith(".pth") || lowerName.endsWith(".pt") || lowerName.endsWith(".bin") || lowerName.endsWith(".onnx")) {
                                 String base = baseName(lowerName);
                                 String quantStem = LocalModelScanner.normalizeQuantizationStem(lowerName);
                                 tempNames.add(lowerName);
@@ -153,8 +180,15 @@ public class LocalModelValidator implements ILocalModelValidator {
                                     tempNames.add(quantStem);
                                     tempArchived.add(quantStem);
                                 }
-                            });
-                    }
+                            }
+                            return java.nio.file.FileVisitResult.CONTINUE;
+                        }
+
+                        @Override
+                        public java.nio.file.FileVisitResult visitFileFailed(Path file, java.io.IOException exc) {
+                            return java.nio.file.FileVisitResult.CONTINUE;
+                        }
+                    });
                 }
             } catch (Exception e) {
                 logger.error("[LocalModelValidator] Error scanning archive: {}", e.getMessage());

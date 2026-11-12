@@ -13,7 +13,7 @@ module.exports = {
     }
     let results = [
       { icon: "fa-solid fa-play", text: "Start", href: "start.json" },
-      { icon: "fa-solid fa-rotate", text: "Update", href: "update.json" },
+      { icon: "fa-solid fa-rotate", text: "Update", href: "update.js" },
       { icon: "fa-solid fa-trash-can", text: "Reset", href: "reset.js", confirm: "Are you sure you want to reset the installation? This will reset the repository to origin/main and delete the local environment and build files." }
     ]
     if (installed) {

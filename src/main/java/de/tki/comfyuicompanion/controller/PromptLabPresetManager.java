@@ -157,6 +157,15 @@ public class PromptLabPresetManager {
             view.getPromptHeightSpinner().setValue(512);
             view.getPromptStepsSpinner().setValue(8);
             view.getPromptCfgSpinner().setValue(1.5);
+        } else if (comboLower.contains("sd3") || comboLower.contains("sd 3") || comboLower.contains("sd-3")
+                || comboLower.contains("sd3.5") || comboLower.contains("sd 3.5") || comboLower.contains("stable diffusion 3")) {
+            view.getPromptPresetLabel().setText("Detected Preset: Stable Diffusion 3.5 (1344x768 / euler / simple)");
+            view.getPromptWidthSpinner().setValue(1344);
+            view.getPromptHeightSpinner().setValue(768);
+            view.getPromptStepsSpinner().setValue(30);
+            view.getPromptCfgSpinner().setValue(4.5);
+            selectOrAddComboItem(view.getPromptSamplerCombo(), "euler");
+            selectOrAddComboItem(view.getPromptSchedulerCombo(), "simple");
         } else if (comboLower.contains("sd1") || comboLower.contains("sd 1") || comboLower.contains("v1-5") || comboLower.contains("v1.5") || comboLower.contains("sd-1-5")) {
             view.getPromptPresetLabel().setText("Detected Preset: Stable Diffusion 1.5 (SD 1.5)");
             view.getPromptWidthSpinner().setValue(512);
@@ -186,11 +195,13 @@ public class PromptLabPresetManager {
                     view.getPromptCfgSpinner().setValue(6.0);
                 }
                 case ARCH_SD3 -> {
-                    view.getPromptPresetLabel().setText("Detected Preset: Stable Diffusion 3 / 3.5 (1024x1024)");
-                    view.getPromptWidthSpinner().setValue(1024);
-                    view.getPromptHeightSpinner().setValue(1024);
-                    view.getPromptStepsSpinner().setValue(28);
+                    view.getPromptPresetLabel().setText("Detected Preset: Stable Diffusion 3.5 (1344x768 / euler / simple)");
+                    view.getPromptWidthSpinner().setValue(1344);
+                    view.getPromptHeightSpinner().setValue(768);
+                    view.getPromptStepsSpinner().setValue(30);
                     view.getPromptCfgSpinner().setValue(4.5);
+                    selectOrAddComboItem(view.getPromptSamplerCombo(), "euler");
+                    selectOrAddComboItem(view.getPromptSchedulerCombo(), "simple");
                 }
                 case ARCH_WAN -> {
                     view.getPromptPresetLabel().setText("Detected Preset: Wan 2.1 / 2.2 (1024x1024)");
@@ -265,6 +276,22 @@ public class PromptLabPresetManager {
         }
         if (p.scheduler() != null && !p.scheduler().isBlank() && view.getPromptSchedulerCombo() != null) {
             selectOrAddComboItem(view.getPromptSchedulerCombo(), p.scheduler());
+        }
+
+        // Sanitize SD3 / SD3.5 incompatible sampler combinations & oversized dimensions
+        String lowerJson = jsonStr.toLowerCase();
+        boolean isSd3Workflow = lowerJson.contains("sd3") || lowerJson.contains("emptysd3latentimage");
+        if (isSd3Workflow) {
+            if ("dpmpp_2m".equalsIgnoreCase(p.sampler()) || "dpmpp_sde".equalsIgnoreCase(p.sampler())) {
+                selectOrAddComboItem(view.getPromptSamplerCombo(), "euler");
+            }
+            if ("sgm_uniform".equalsIgnoreCase(p.scheduler())) {
+                selectOrAddComboItem(view.getPromptSchedulerCombo(), "simple");
+            }
+            if (p.width() != null && p.height() != null && (p.width() * p.height() > 1_500_000)) {
+                view.getPromptWidthSpinner().setValue(1344);
+                view.getPromptHeightSpinner().setValue(768);
+            }
         }
     }
 

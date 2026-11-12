@@ -3,28 +3,11 @@
     {
       "method": "shell.run",
       "params": {
+        "conda": "env",
         "message": [
-          "git fetch origin",
-          "git checkout -B main origin/main",
-          "git reset --hard origin/main"
+          "{{platform === 'win32' ? 'update.bat' : 'bash update.sh'}}"
         ],
-        "title": "Updating Source Code"
-      }
-    },
-    {
-      "method": "shell.run",
-      "params": {
-        "conda": "env",
-        "message": "conda install -y -c conda-forge \"openjdk>=21\" maven",
-        "title": "Ensuring OpenJDK 21 & Maven"
-      }
-    },
-    {
-      "method": "shell.run",
-      "params": {
-        "conda": "env",
-        "message": "mvn clean package -DskipTests",
-        "title": "Rebuilding Application"
+        "title": "Updating Companion for ComfyUI"
       }
     },
     {

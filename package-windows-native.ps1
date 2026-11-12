@@ -1,4 +1,4 @@
-# ==============================================================================
+﻿# ==============================================================================
 # Standalone Native App Bundler (Zero Java Runtime Required)
 # Uses OpenJDK 21+ jpackage to produce an independent Windows desktop application
 # Supports packaging native App-Image, EXE Installer, and Portable ZIP
@@ -38,7 +38,7 @@ if (-not (Test-Path $targetJar)) {
 }
 
 # Determine project version dynamically from pom.xml
-$appVersion = "2.0.2"
+$appVersion = "2.1.0"
 try {
     [xml]$pomXml = Get-Content "pom.xml"
     if ($pomXml.project.version) {

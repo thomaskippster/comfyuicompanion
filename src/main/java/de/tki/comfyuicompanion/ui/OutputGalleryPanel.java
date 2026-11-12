@@ -2,91 +2,47 @@ package de.tki.comfyuicompanion.ui;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.json.JSONObject;
-import org.json.JSONArray;
 
+import de.tki.comfyuicompanion.service.SafePathValidator;
 import de.tki.comfyuicompanion.service.impl.ConfigService;
 import de.tki.comfyuicompanion.ui.icons.AppIcon;
 import de.tki.comfyuicompanion.ui.icons.SvgIconFactory;
-import javax.swing.*;
-import java.awt.*;
+import de.tki.comfyuicompanion.util.ThumbnailCache;
+
+import javax.swing.BorderFactory;
+import javax.swing.JButton;
+import javax.swing.JCheckBox;
+import javax.swing.JLabel;
+import javax.swing.JOptionPane;
+import javax.swing.JPanel;
+import javax.swing.JScrollPane;
+import javax.swing.ScrollPaneConstants;
+import javax.swing.SwingConstants;
+import javax.swing.SwingUtilities;
+import javax.swing.UIManager;
+import java.awt.BorderLayout;
+import java.awt.Color;
+import java.awt.Component;
+import java.awt.Cursor;
+import java.awt.Desktop;
+import java.awt.Dimension;
+import java.awt.FlowLayout;
+import java.awt.Font;
+import java.awt.Graphics;
+import java.awt.Window;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
 import java.util.ArrayList;
-import java.util.Set;
-import java.util.HashSet;
-import java.util.Map;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-
-/**
- * WrapLayout allows components to be placed in a container and wrapped 
- * to the next line when they don't fit.
- */
-class WrapLayout extends FlowLayout {
-    private static final Logger logger = LoggerFactory.getLogger(WrapLayout.class);
-    public WrapLayout(int align, int hgap, int vgap) { super(align, hgap, vgap); }
-
-    @Override
-    public Dimension preferredLayoutSize(Container target) {
-        synchronized (target.getTreeLock()) {
-            int targetWidth = target.getSize().width;
-            if (targetWidth == 0) targetWidth = Integer.MAX_VALUE;
-            
-            Insets insets = target.getInsets();
-            int maxWidth = targetWidth - (insets.left + insets.right + getHgap() * 2);
-
-            int x = 0, y = 0, height = 0;
-            for (Component c : target.getComponents()) {
-                if (c.isVisible()) {
-                    Dimension d = c.getPreferredSize();
-                    if (x + d.width > maxWidth) {
-                        x = 0; y += height + getVgap(); height = 0;
-                    }
-                    x += d.width + getHgap();
-                    height = Math.max(height, d.height);
-                }
-            }
-            return new Dimension(targetWidth, y + height + insets.top + insets.bottom + getVgap() * 2);
-        }
-    }
-}
-
-class ScrollablePanel extends JPanel implements Scrollable {
-    public ScrollablePanel(LayoutManager layout) {
-        super(layout);
-    }
-
-    @Override
-    public Dimension getPreferredScrollableViewportSize() {
-        return getPreferredSize();
-    }
-
-    @Override
-    public int getScrollableUnitIncrement(Rectangle visibleRect, int orientation, int direction) {
-        return 20;
-    }
-
-    @Override
-    public int getScrollableBlockIncrement(Rectangle visibleRect, int orientation, int direction) {
-        return 60;
-    }
-
-    @Override
-    public boolean getScrollableTracksViewportWidth() {
-        return true;
-    }
-
-    @Override
-    public boolean getScrollableTracksViewportHeight() {
-        return false;
-    }
-}
 
 /**
  * Panel for displaying output gallery.
@@ -459,113 +415,11 @@ public class OutputGalleryPanel extends JPanel {
     }
 
     private void showTileContextMenu(Component invoker, Path file, int x, int y) {
-        JPopupMenu menu = new JPopupMenu();
-        File f = file.toFile();
-        String name = file.getFileName().toString().toLowerCase();
-        boolean isPng = name.endsWith(".png");
-        boolean isImage = isPng || name.endsWith(".jpg") || name.endsWith(".jpeg") || name.endsWith(".webp");
-
-        if (isPng) {
-            JMenuItem metaItem = new JMenuItem("Inspect Generation Metadata...", SvgIconFactory.get(AppIcon.QUICK_CHECK, 14));
-            metaItem.setFont(new Font("SansSerif", Font.BOLD, 12));
-            metaItem.addActionListener(e -> {
-                Window owner = SwingUtilities.getWindowAncestor(this);
-                if (assetBridgeCoordinator != null) {
-                    assetBridgeCoordinator.showMetadataDialog(owner, f);
-                } else {
-                    var meta = new de.tki.comfyuicompanion.service.PngMetadataReaderService().extractMetadata(f);
-                    new de.tki.comfyuicompanion.ui.dialog.GenerationMetadataDialog(owner, f, meta, null).setVisible(true);
-                }
-            });
-            menu.add(metaItem);
-            menu.addSeparator();
-        }
-
-        if (isImage) {
-            JMenu imageLabMenu = new JMenu("Send to Image Lab");
-            imageLabMenu.setIcon(SvgIconFactory.get(AppIcon.IMAGE_LAB, 14));
-
-            JMenuItem remixItem = new JMenuItem("Apply Prompt & Sampling Parameters", SvgIconFactory.get(AppIcon.LAUNCH, 12));
-            remixItem.addActionListener(e -> {
-                if (assetBridgeCoordinator != null) {
-                    assetBridgeCoordinator.sendToImageLab(f, true);
-                }
-            });
-            imageLabMenu.add(remixItem);
-
-            JMenuItem previewItem = new JMenuItem("Load as Canvas Preview", SvgIconFactory.get(AppIcon.GALLERY, 12));
-            previewItem.addActionListener(e -> {
-                if (assetBridgeCoordinator != null) {
-                    assetBridgeCoordinator.sendToImageLab(f, false);
-                }
-            });
-            imageLabMenu.add(previewItem);
-            menu.add(imageLabMenu);
-
-            JMenu videoMenu = new JMenu("Send to Video Architect");
-            videoMenu.setIcon(SvgIconFactory.get(AppIcon.VIDEO_ARCHITECT, 14));
-
-            JMenuItem speakerItem = new JMenuItem("Set as Start / Speaker Image", SvgIconFactory.get(AppIcon.LAUNCH, 12));
-            speakerItem.addActionListener(e -> {
-                if (assetBridgeCoordinator != null) {
-                    assetBridgeCoordinator.sendToVideoArchitectAsSpeaker(f);
-                }
-            });
-            videoMenu.add(speakerItem);
-
-            JMenuItem newSceneItem = new JMenuItem("Add as New Video Scene", SvgIconFactory.get(AppIcon.ADD, 12));
-            newSceneItem.addActionListener(e -> {
-                if (assetBridgeCoordinator != null) {
-                    assetBridgeCoordinator.sendToVideoArchitectAsNewScene(f, null);
-                }
-            });
-            videoMenu.add(newSceneItem);
-
-            JMenuItem keyframeItem = new JMenuItem("Assign to Selected Scene", SvgIconFactory.get(AppIcon.EDIT, 12));
-            keyframeItem.addActionListener(e -> {
-                if (assetBridgeCoordinator != null) {
-                    assetBridgeCoordinator.assignKeyframeToSelectedScene(f);
-                }
-            });
-            videoMenu.add(keyframeItem);
-
-            menu.add(videoMenu);
-            menu.addSeparator();
-        }
-
-        JMenuItem copyPathItem = new JMenuItem("Copy File Path", SvgIconFactory.get(AppIcon.FILE_TEXT, 14));
-        copyPathItem.addActionListener(e -> {
-            Toolkit.getDefaultToolkit().getSystemClipboard().setContents(
-                    new java.awt.datatransfer.StringSelection(file.toAbsolutePath().toString()), null);
-        });
-        menu.add(copyPathItem);
-
-        JMenuItem openFolderItem = new JMenuItem("Open in File Explorer", SvgIconFactory.get(AppIcon.FOLDER, 14));
-        openFolderItem.addActionListener(e -> {
-            try {
-                if (Desktop.isDesktopSupported()) {
-                    File parent = f.getParentFile();
-                    if (parent != null && parent.exists()) {
-                        Desktop.getDesktop().open(parent);
-                    }
-                }
-            } catch (Exception ex) {
-                logger.warn("Failed to open file explorer: {}", ex.getMessage());
-            }
-        });
-        menu.add(openFolderItem);
-
-        menu.addSeparator();
-
-        JMenuItem deleteItem = new JMenuItem("Delete File", SvgIconFactory.get(AppIcon.DELETE, 14));
-        deleteItem.addActionListener(e -> {
+        new GalleryContextMenuBuilder(this, assetBridgeCoordinator, target -> {
             selectedFiles.clear();
-            selectedFiles.add(file);
+            selectedFiles.add(target);
             deleteSelectedFiles();
-        });
-        menu.add(deleteItem);
-
-        menu.show(invoker, x, y);
+        }).showPopupMenu(invoker, file, x, y);
     }
 
     private void showMediaViewer(Path file) {

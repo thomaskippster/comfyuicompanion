@@ -36,6 +36,9 @@ import java.util.function.Function;
 @Service
 public class BlueprintScanService {
     private static final Logger logger = LoggerFactory.getLogger(BlueprintScanService.class);
+    private static final HttpClient SHARED_HTTP_CLIENT = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(2))
+            .build();
     private final ObjectMapper mapper = new ObjectMapper();
 
     /**
@@ -124,7 +127,7 @@ public class BlueprintScanService {
 
         if (serverOnline && comfyUrl != null && !comfyUrl.isEmpty()) {
             try {
-                sharedDownloadClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build();
+                sharedDownloadClient = SHARED_HTTP_CLIENT;
                 HttpRequest request = HttpRequest.newBuilder().uri(URI.create(comfyUrl + "/templates/index.json")).timeout(Duration.ofSeconds(3)).GET().build();
                 HttpResponse<String> response = sharedDownloadClient.send(request, HttpResponse.BodyHandlers.ofString(java.nio.charset.StandardCharsets.UTF_8));
                 if (response.statusCode() == 200) {
@@ -344,9 +347,7 @@ public class BlueprintScanService {
             return false;
         }
         try {
-            HttpClient probeClient = HttpClient.newBuilder()
-                    .connectTimeout(Duration.ofMillis(800))
-                    .build();
+            HttpClient probeClient = SHARED_HTTP_CLIENT;
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(comfyUrl + "/system_stats"))
                     .timeout(Duration.ofMillis(1200))

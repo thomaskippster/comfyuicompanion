@@ -205,25 +205,39 @@ public class PromptLabBlueprintCoordinator {
 
         if (nameLower.contains("z-image") || nameLower.contains("turbo") || nameLower.contains("schnell")
                 || nameLower.contains("lightning") || nameLower.contains("hyper")) {
-            setDimensionAndSamplingValues(view, 1024, 1024, 8, 1.0);
+            setDimensionAndSamplingValues(view, 1024, 1024, 8, 1.0, "euler", "simple");
+        } else if (nameLower.contains("sd3") || nameLower.contains("sd 3") || nameLower.contains("sd-3")
+                || nameLower.contains("sd3.5") || nameLower.contains("sd 3.5") || catLower.contains("sd3")) {
+            setDimensionAndSamplingValues(view, 1344, 768, 30, 4.5, "euler", "simple");
         } else if (nameLower.contains("flux") || catLower.contains("flux")) {
-            setDimensionAndSamplingValues(view, 1024, 1024, 20, 1.0);
+            setDimensionAndSamplingValues(view, 1024, 1024, 20, 1.0, "euler", "simple");
         } else if (nameLower.contains("sdxl") || catLower.contains("sdxl")) {
-            setDimensionAndSamplingValues(view, 1024, 1024, 25, 7.0);
+            setDimensionAndSamplingValues(view, 1024, 1024, 25, 7.0, "dpmpp_2m", "karras");
         } else if (nameLower.contains("wan") || nameLower.contains("video") || catLower.contains("video")) {
-            setDimensionAndSamplingValues(view, 832, 480, 20, 6.0);
+            setDimensionAndSamplingValues(view, 832, 480, 20, 6.0, "euler", "simple");
         } else {
-            setDimensionAndSamplingValues(view, 1024, 1024, 20, 7.0);
+            setDimensionAndSamplingValues(view, 1024, 1024, 20, 7.0, null, null);
         }
 
         updateImageInputVisibility(view, entry);
     }
 
     private void setDimensionAndSamplingValues(PromptLabView view, int width, int height, int steps, double cfg) {
+        setDimensionAndSamplingValues(view, width, height, steps, cfg, null, null);
+    }
+
+    private void setDimensionAndSamplingValues(PromptLabView view, int width, int height, int steps, double cfg,
+                                               String sampler, String scheduler) {
         if (view.getPromptWidthSpinner() != null) view.getPromptWidthSpinner().setValue(width);
         if (view.getPromptHeightSpinner() != null) view.getPromptHeightSpinner().setValue(height);
         if (view.getPromptStepsSpinner() != null) view.getPromptStepsSpinner().setValue(steps);
         if (view.getPromptCfgSpinner() != null) view.getPromptCfgSpinner().setValue(cfg);
+        if (sampler != null && view.getPromptSamplerCombo() != null) {
+            view.getPromptSamplerCombo().setSelectedItem(sampler);
+        }
+        if (scheduler != null && view.getPromptSchedulerCombo() != null) {
+            view.getPromptSchedulerCombo().setSelectedItem(scheduler);
+        }
     }
 
     private void updateImageInputVisibility(PromptLabView view, BlueprintGalleryTab.BlueprintEntry entry) {

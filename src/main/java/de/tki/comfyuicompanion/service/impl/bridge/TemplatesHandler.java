@@ -20,6 +20,9 @@ import java.util.function.Supplier;
  * preview-enriched representation.
  */
 public class TemplatesHandler implements HttpHandler {
+    private static final HttpClient SHARED_CLIENT = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(5))
+            .build();
     private final BridgeHttpSupport http;
     private final TemplateCatalogMapper catalogMapper;
     private final Supplier<String> defaultBaseUrlSupplier;
@@ -55,9 +58,7 @@ public class TemplatesHandler implements HttpHandler {
                 baseUrl = ConfigConstants.DEFAULT_COMFYUI_URL;
             }
 
-            HttpClient client = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(5))
-                .build();
+            HttpClient client = SHARED_CLIENT;
 
             HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(baseUrl + "/templates/index.json"))

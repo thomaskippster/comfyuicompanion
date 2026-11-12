@@ -7,28 +7,27 @@ import de.tki.comfyuicompanion.domain.ModelInfo;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import java.io.File;
 import java.io.IOException;
+import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.HashMap;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
+import java.util.Set;
 
 /**
- * Service for scanning local directories for ComfyUI models.
+ * Service for scanning local directories for ComfyUI models using zero-overhead file tree traversal.
  */
 @Service
-/**
- * Represents the local model scanner class.
- */
 public class LocalModelScanner {
-    private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(LocalModelScanner.class);
+    private static final Logger logger = LoggerFactory.getLogger(LocalModelScanner.class);
 
     private final ConfigService configService;
     private final PathResolver pathResolver;
@@ -42,60 +41,132 @@ public class LocalModelScanner {
 
     /**
      * Scans all configured models directories (standard and extra) for supported model files.
+     *
+     * @return list of discovered local model metadata entries
      */
     public List<ModelInfo> scanLocalModels() {
         List<ModelInfo> foundModels = new ArrayList<>();
-        java.util.Set<String> seenPaths = new java.util.HashSet<>();
-        modelCache.clear();
-        
+        Set<String> seenPaths = new HashSet<>();
+        Set<Path> scannedDirs = new HashSet<>();
+        Map<String, Path> newCache = new java.util.concurrent.ConcurrentHashMap<>();
+        Path resolvedArchivePath = resolveArchiveRootPath();
+
         // 1. Scan Standard Models Path
-        String modelsPathStr = configService.getModelsPath();
+        Path primaryModelsRoot = null;
+        String modelsPathStr = configService != null ? configService.getModelsPath() : null;
         if (modelsPathStr != null && !modelsPathStr.isEmpty()) {
-            scanDirectory(Paths.get(modelsPathStr), foundModels, seenPaths, null);
+            Path root = Paths.get(modelsPathStr);
+            if (Files.exists(root) && Files.isDirectory(root)) {
+                primaryModelsRoot = root.toAbsolutePath().normalize();
+                scannedDirs.add(primaryModelsRoot);
+                scanDirectory(primaryModelsRoot, foundModels, seenPaths, newCache, resolvedArchivePath, null);
+            }
         }
 
-        // 2. Scan Extra Model Paths (from extra_model_paths.yaml)
-        Map<String, List<Path>> extraPaths = pathResolver.getAllExtraModelPaths();
+        // 2. Scan Extra Model Paths (from extra_model_paths.yaml), skipping already scanned directories
+        Map<String, List<Path>> extraPaths = pathResolver != null ? pathResolver.getAllExtraModelPaths() : Map.of();
         for (Map.Entry<String, List<Path>> entry : extraPaths.entrySet()) {
             String type = entry.getKey();
             for (Path extraPath : entry.getValue()) {
-                if (Files.exists(extraPath) && Files.isDirectory(extraPath)) {
-                    scanDirectory(extraPath, foundModels, seenPaths, type);
+                if (extraPath == null || !Files.exists(extraPath) || !Files.isDirectory(extraPath)) {
+                    continue;
                 }
+                Path absExtra = extraPath.toAbsolutePath().normalize();
+                if (!scannedDirs.add(absExtra)) {
+                    continue;
+                }
+                if (primaryModelsRoot != null && absExtra.getParent() != null
+                        && absExtra.getParent().equals(primaryModelsRoot)) {
+                    continue;
+                }
+                scanDirectory(absExtra, foundModels, seenPaths, newCache, resolvedArchivePath, type);
             }
         }
 
+        modelCache.clear();
+        modelCache.putAll(newCache);
         return foundModels;
     }
 
-    private void scanDirectory(Path rootPath, List<ModelInfo> foundModels, java.util.Set<String> seenPaths, String forcedType) {
-        Path absRoot = rootPath.toAbsolutePath().normalize();
-        try (Stream<Path> walk = Files.walk(absRoot)) {
-            List<Path> files = walk
-                    .filter(Files::isRegularFile)
-                    .filter(this::isSupportedModelFile)
-                    .filter(p -> !isIgnored(p, absRoot))
-                    .collect(Collectors.toList());
+    private Path resolveArchiveRootPath() {
+        try {
+            String archivePathStr = configService != null ? configService.getArchivePath() : null;
+            if (archivePathStr != null && !archivePathStr.isEmpty()) {
+                return Paths.get(archivePathStr).toAbsolutePath().normalize();
+            }
+        } catch (Exception ignored) {
+            logger.debug("Ignored non-fatal exception resolving archive path: {}", ignored.getMessage());
+        }
+        return null;
+    }
 
-            for (Path file : files) {
-                String absPath = file.toAbsolutePath().normalize().toString().toLowerCase();
+    private record DiscoveredFile(Path path, long sizeBytes) {}
+
+    private void scanDirectory(Path absRoot,
+                               List<ModelInfo> foundModels,
+                               Set<String> seenPaths,
+                               Map<String, Path> targetCache,
+                               Path resolvedArchivePath,
+                               String forcedType) {
+        if (!Files.exists(absRoot) || !Files.isDirectory(absRoot)) {
+            return;
+        }
+        String rootName = absRoot.getFileName() != null ? absRoot.getFileName().toString().toLowerCase(Locale.ROOT) : "";
+        boolean rootIsArchive = rootName.contains("archive") || rootName.contains("archived");
+
+        List<DiscoveredFile> modelFiles = new ArrayList<>();
+        Set<Path> imageFiles = new HashSet<>();
+
+        try {
+            Files.walkFileTree(absRoot, new SimpleFileVisitor<>() {
+                @Override
+                public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
+                    if (!dir.equals(absRoot) && isDirectoryIgnored(dir, rootIsArchive, resolvedArchivePath)) {
+                        return FileVisitResult.SKIP_SUBTREE;
+                    }
+                    return FileVisitResult.CONTINUE;
+                }
+
+                @Override
+                public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
+                    if (!attrs.isRegularFile()) {
+                        return FileVisitResult.CONTINUE;
+                    }
+                    String fileName = file.getFileName().toString().toLowerCase(Locale.ROOT);
+                    if (isSupportedModelFileName(fileName)) {
+                        modelFiles.add(new DiscoveredFile(file, attrs.size()));
+                    } else if (fileName.endsWith(".png") || fileName.endsWith(".jpg") || fileName.endsWith(".jpeg")) {
+                        imageFiles.add(file);
+                    }
+                    return FileVisitResult.CONTINUE;
+                }
+
+                @Override
+                public FileVisitResult visitFileFailed(Path file, IOException exc) {
+                    return FileVisitResult.CONTINUE;
+                }
+            });
+
+            for (DiscoveredFile discovered : modelFiles) {
+                Path file = discovered.path();
+                String absPath = file.toString().toLowerCase(Locale.ROOT);
                 if (seenPaths.add(absPath)) {
-                    String fnLower = file.getFileName().toString().toLowerCase(java.util.Locale.ROOT);
-                    modelCache.put(fnLower, file);
+                    String fnLower = file.getFileName().toString().toLowerCase(Locale.ROOT);
+                    targetCache.put(fnLower, file);
                     int dotIdx = fnLower.lastIndexOf('.');
                     if (dotIdx > 0) {
                         String baseNoExt = fnLower.substring(0, dotIdx);
-                        modelCache.putIfAbsent(baseNoExt, file);
+                        targetCache.putIfAbsent(baseNoExt, file);
                         String quantStem = normalizeQuantizationStem(baseNoExt);
                         if (!quantStem.isEmpty()) {
-                            modelCache.putIfAbsent(quantStem, file);
+                            targetCache.putIfAbsent(quantStem, file);
                         }
                     }
-                    foundModels.add(createModelInfo(file, absRoot, forcedType));
+                    foundModels.add(createModelInfo(file, absRoot, forcedType, discovered.sizeBytes(), imageFiles));
                 }
             }
         } catch (IOException e) {
-            logger.error("Error scanning directory " + absRoot + ": " + e.getMessage());
+            logger.error("Error scanning directory {}: {}", absRoot, e.getMessage());
         }
     }
 
@@ -226,82 +297,90 @@ public class LocalModelScanner {
 
     private Optional<Path> searchInDirectory(Path root, String filename, long preferredSize) {
         if (root == null || !Files.exists(root)) return Optional.empty();
+        Path absRoot = root.toAbsolutePath().normalize();
+        String rootName = absRoot.getFileName() != null ? absRoot.getFileName().toString().toLowerCase(Locale.ROOT) : "";
+        boolean rootIsArchive = rootName.contains("archive") || rootName.contains("archived");
+        Path resolvedArchivePath = resolveArchiveRootPath();
         String targetStem = normalizeQuantizationStem(filename);
-        try (Stream<Path> walk = Files.walk(root)) {
-            List<Path> allFiles = walk.filter(Files::isRegularFile)
-                    .filter(p -> !isIgnored(p, root))
-                    .collect(Collectors.toList());
 
-            List<Path> matches = allFiles.stream()
-                    .filter(p -> p.getFileName().toString().equalsIgnoreCase(filename))
-                    .collect(Collectors.toList());
+        List<DiscoveredFile> exactMatches = new ArrayList<>();
+        List<DiscoveredFile> stemMatches = new ArrayList<>();
 
-            if (matches.isEmpty() && targetStem.length() >= 4) {
-                matches = allFiles.stream()
-                        .filter(this::isSupportedModelFile)
-                        .filter(p -> normalizeQuantizationStem(p.getFileName().toString()).equals(targetStem))
-                        .collect(Collectors.toList());
-            }
+        try {
+            Files.walkFileTree(absRoot, new SimpleFileVisitor<>() {
+                @Override
+                public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
+                    if (!dir.equals(absRoot) && isDirectoryIgnored(dir, rootIsArchive, resolvedArchivePath)) {
+                        return FileVisitResult.SKIP_SUBTREE;
+                    }
+                    return FileVisitResult.CONTINUE;
+                }
 
+                @Override
+                public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
+                    if (!attrs.isRegularFile()) {
+                        return FileVisitResult.CONTINUE;
+                    }
+                    String fn = file.getFileName().toString();
+                    if (fn.equalsIgnoreCase(filename)) {
+                        exactMatches.add(new DiscoveredFile(file, attrs.size()));
+                        if (preferredSize > 0 && attrs.size() == preferredSize) {
+                            return FileVisitResult.TERMINATE;
+                        }
+                    } else if (targetStem.length() >= 4 && isSupportedModelFileName(fn.toLowerCase(Locale.ROOT))) {
+                        if (normalizeQuantizationStem(fn).equals(targetStem)) {
+                            stemMatches.add(new DiscoveredFile(file, attrs.size()));
+                        }
+                    }
+                    return FileVisitResult.CONTINUE;
+                }
+
+                @Override
+                public FileVisitResult visitFileFailed(Path file, IOException exc) {
+                    return FileVisitResult.CONTINUE;
+                }
+            });
+
+            List<DiscoveredFile> matches = !exactMatches.isEmpty() ? exactMatches : stemMatches;
             if (matches.isEmpty()) return Optional.empty();
 
             if (preferredSize > 0) {
-                for (Path p : matches) {
-                    try {
-                        if (Files.size(p) == preferredSize) return Optional.of(p);
-                    } catch (IOException ignored) {
-                        logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
-                    }
+                for (DiscoveredFile df : matches) {
+                    if (df.sizeBytes() == preferredSize) return Optional.of(df.path());
                 }
             }
-            return Optional.of(matches.get(0));
+            return Optional.of(matches.get(0).path());
         } catch (IOException e) {
             return Optional.empty();
         }
     }
 
-    private boolean isSupportedModelFile(Path path) {
-        String name = path.getFileName().toString().toLowerCase();
-        return name.endsWith(".safetensors") || name.endsWith(".sft") || name.endsWith(".ckpt") || 
-               name.endsWith(".pth") || name.endsWith(".pt") || name.endsWith(".bin") || name.endsWith(".onnx");
+    private boolean isSupportedModelFileName(String lowerName) {
+        return lowerName.endsWith(".safetensors") || lowerName.endsWith(".sft") || lowerName.endsWith(".ckpt") ||
+               lowerName.endsWith(".pth") || lowerName.endsWith(".pt") || lowerName.endsWith(".bin") || lowerName.endsWith(".onnx");
     }
 
-    private boolean isIgnored(Path path, Path rootPath) {
-        // 1. If we are already searching inside an archive folder (e.g. E:\Archive), 
-        // we should not filter out anything based on the "archive" name.
-        String rootName = rootPath.getFileName() != null ? rootPath.getFileName().toString().toLowerCase() : "";
-        if (rootName.contains("archive") || rootName.contains("archived")) {
+    private boolean isDirectoryIgnored(Path dir, boolean rootIsArchive, Path resolvedArchivePath) {
+        if (rootIsArchive) {
             return false;
         }
-
-        // 2. Also check if the path is inside the specifically configured archive directory
-        try {
-            String archivePathStr = configService.getArchivePath();
-            if (archivePathStr != null && !archivePathStr.isEmpty()) {
-                Path archivePath = Paths.get(archivePathStr).toAbsolutePath().normalize();
-                Path targetPath = path.toAbsolutePath().normalize();
-                if (targetPath.startsWith(archivePath)) {
-                    return true;
-                }
-            }
-        } catch (Exception ignored) {
-            logger.debug("Ignored non-fatal exception: {}", ignored.getMessage());
+        if (resolvedArchivePath != null && dir.startsWith(resolvedArchivePath)) {
+            return true;
         }
-
-        // 3. Fallback: ignore any subfolder named "archive" or ".venv"
-        for (int i = 0; i < path.getNameCount(); i++) {
-            String part = path.getName(i).toString().toLowerCase();
-            if (part.equals("archive") || part.equals("archived") || part.equals(".venv") || part.equals("venv")) {
-                return true;
-            }
+        Path fileName = dir.getFileName();
+        if (fileName == null) {
+            return false;
         }
-        return false;
+        String part = fileName.toString().toLowerCase(Locale.ROOT);
+        return part.equals("archive") || part.equals("archived")
+                || part.equals(".venv") || part.equals("venv")
+                || part.equals(".git") || part.equals("node_modules") || part.equals("__pycache__");
     }
 
-    private ModelInfo createModelInfo(Path file, Path rootPath, String forcedType) {
+    private ModelInfo createModelInfo(Path file, Path rootPath, String forcedType, long sizeBytes, Set<Path> imageFiles) {
         String fileName = file.getFileName().toString();
         Path relativePath = rootPath.relativize(file);
-        
+
         // Derive type from the first folder after root
         String type = (forcedType != null) ? forcedType : "unknown";
         if (forcedType == null && relativePath.getNameCount() > 1) {
@@ -309,33 +388,31 @@ public class LocalModelScanner {
         }
 
         ModelInfo info = new ModelInfo(type, fileName, "LOCAL");
-        
+
         // Set save_path to the relative parent path
         if (relativePath.getParent() != null) {
             info.setSave_path(relativePath.getParent().toString().replace("\\", "/"));
         }
-        
+
         info.setFilename(fileName);
-        
-        // Find sibling preview images
+
+        // Find sibling preview images using in-memory discovered image set
         String nameWithoutExt = fileName.contains(".") ? fileName.substring(0, fileName.lastIndexOf('.')) : fileName;
         String[] previewExts = {".png", ".jpg", ".jpeg", ".preview.png"};
-        for (String ext : previewExts) {
-            Path preview = file.getParent().resolve(nameWithoutExt + ext);
-            if (Files.exists(preview) && Files.isRegularFile(preview)) {
-                info.setPreviewPath(preview.toAbsolutePath().toString());
-                break;
+        Path parent = file.getParent();
+        if (parent != null && !imageFiles.isEmpty()) {
+            for (String ext : previewExts) {
+                Path preview = parent.resolve(nameWithoutExt + ext);
+                if (imageFiles.contains(preview)) {
+                    info.setPreviewPath(preview.toAbsolutePath().toString());
+                    break;
+                }
             }
         }
-        
-        // Calculate size in MB
-        try {
-            long bytes = Files.size(file);
-            double mb = bytes / (1024.0 * 1024.0);
-            info.setSize(String.format("%.2f MB", mb));
-        } catch (IOException e) {
-            info.setSize("Unknown");
-        }
+
+        double mb = sizeBytes / (1024.0 * 1024.0);
+        info.setSize(String.format("%.2f MB", mb));
+        info.setByteSize(sizeBytes);
 
         return info;
     }

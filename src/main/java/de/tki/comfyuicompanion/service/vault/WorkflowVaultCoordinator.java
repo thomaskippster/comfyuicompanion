@@ -36,6 +36,8 @@ public class WorkflowVaultCoordinator {
     private final List<BlueprintEntry> cachedVaultEntries = new CopyOnWriteArrayList<>();
     private final Map<String, BlueprintStatus> statusCache = new java.util.concurrent.ConcurrentHashMap<>();
     private final List<Runnable> vaultChangeListeners = new CopyOnWriteArrayList<>();
+    private final java.util.concurrent.atomic.AtomicBoolean refreshInProgress = new java.util.concurrent.atomic.AtomicBoolean(false);
+    private volatile boolean initialized = false;
 
     @Autowired
     public WorkflowVaultCoordinator(
@@ -65,16 +67,22 @@ public class WorkflowVaultCoordinator {
      * @return updated list of vault entries
      */
     public synchronized List<BlueprintEntry> refreshVaultEntries() {
-        if (localModelValidator != null) {
-            localModelValidator.scanLocalModels();
-        }
-        List<BlueprintEntry> loaded = vaultRepository != null ? vaultRepository.loadAllVaultEntries() : Collections.emptyList();
-        cachedVaultEntries.clear();
-        cachedVaultEntries.addAll(loaded);
+        refreshInProgress.set(true);
+        try {
+            if (localModelValidator != null) {
+                localModelValidator.scanLocalModels();
+            }
+            List<BlueprintEntry> loaded = vaultRepository != null ? vaultRepository.loadAllVaultEntries() : Collections.emptyList();
+            cachedVaultEntries.clear();
+            cachedVaultEntries.addAll(loaded);
 
-        statusCache.clear();
-        for (BlueprintEntry e : loaded) {
-            computeStatus(e);
+            statusCache.clear();
+            for (BlueprintEntry e : loaded) {
+                computeStatus(e);
+            }
+            initialized = true;
+        } finally {
+            refreshInProgress.set(false);
         }
         for (Runnable r : vaultChangeListeners) {
             try {
@@ -88,11 +96,18 @@ public class WorkflowVaultCoordinator {
 
     /**
      * Returns currently cached vault entries, loading from repository if uninitialized.
+     * Avoids blocking the Swing Event Dispatch Thread if an asynchronous refresh is needed.
      *
      * @return list of vault entries
      */
     public List<BlueprintEntry> getCachedVaultEntries() {
-        if (cachedVaultEntries.isEmpty()) {
+        if (!initialized && !refreshInProgress.get()) {
+            if (javax.swing.SwingUtilities.isEventDispatchThread()) {
+                if (refreshInProgress.compareAndSet(false, true)) {
+                    Thread.ofVirtual().name("VaultInitialLoad").start(this::refreshVaultEntries);
+                }
+                return new ArrayList<>(cachedVaultEntries);
+            }
             return refreshVaultEntries();
         }
         return new ArrayList<>(cachedVaultEntries);
@@ -160,22 +175,30 @@ public class WorkflowVaultCoordinator {
             return true;
         }
 
+        String[] candidates = buildModelCandidates(name, filename);
+
+        if (localModelValidator != null) {
+            for (String cand : candidates) {
+                if (cand.isEmpty()) continue;
+                if (localModelValidator.isModelActive(cand) || localModelValidator.findLocalModelPath(cand).isPresent()) {
+                    return true;
+                }
+            }
+        }
+
         if (localModelScanner != null) {
             return localModelScanner.isModelFilePresent(info);
         }
 
-        String[] candidates = buildModelCandidates(name, filename);
-
         if (localModelValidator != null && localModelValidator.getLocalModelBaseNames() != null
-                && localModelValidator.getLocalModelBaseNames().isEmpty()) {
+                && localModelValidator.getLocalModelBaseNames().isEmpty()
+                && !javax.swing.SwingUtilities.isEventDispatchThread()) {
             localModelValidator.scanLocalModels();
-        }
-
-        for (String cand : candidates) {
-            if (cand.isEmpty()) continue;
-            String lower = cand.toLowerCase(java.util.Locale.ROOT);
-            if (localModelValidator != null && (localModelValidator.isModelActive(cand) || localModelValidator.findLocalModelPath(cand).isPresent())) {
-                return true;
+            for (String cand : candidates) {
+                if (cand.isEmpty()) continue;
+                if (localModelValidator.isModelActive(cand) || localModelValidator.findLocalModelPath(cand).isPresent()) {
+                    return true;
+                }
             }
         }
         return false;

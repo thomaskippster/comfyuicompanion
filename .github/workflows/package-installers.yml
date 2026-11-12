@@ -107,7 +107,7 @@ jobs:
       - name: Generate Checksums
         shell: pwsh
         run: |
-          Get-ChildItem -Path "dist" -Include "*.exe", "*.msi", "*.zip" | ForEach-Object {
+          Get-ChildItem -Path "dist\*" -Include "*.exe", "*.msi", "*.zip" | ForEach-Object {
             $h = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower()
             "$h  $($_.Name)" | Set-Content "$($_.FullName).sha256"
           }
@@ -160,7 +160,7 @@ jobs:
           $batch = @(
             "-mkdir /home/frs/project/$sfProject/$tag"
           )
-          Get-ChildItem -Path "dist" -Include "*.exe", "*.msi", "*.zip", "*.sha256" | ForEach-Object {
+          Get-ChildItem -Path "dist\*" -Include "*.exe", "*.msi", "*.zip", "*.sha256" | ForEach-Object {
             $batch += "put `"$($_.FullName -replace '\\', '/')`" /home/frs/project/$sfProject/$tag/"
           }
           $batch += "quit"

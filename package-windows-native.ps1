@@ -281,7 +281,7 @@ if ($DeploySourceForge) {
     $batch = @(
         "-mkdir /home/frs/project/$SourceForgeProject/v$appVersion"
     )
-    Get-ChildItem -Path "dist" -Include "*.exe", "*.zip", "*.sha256" | ForEach-Object {
+    Get-ChildItem -Path "dist" -Include "*.exe", "*.msi", "*.zip", "*.sha256" | ForEach-Object {
         $cleanPath = $_.FullName -replace '\\', '/'
         $batch += "put `"$cleanPath`" /home/frs/project/$SourceForgeProject/v$appVersion/"
     }

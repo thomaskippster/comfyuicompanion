@@ -96,12 +96,20 @@ public class VideoPreviewDialog extends JDialog {
                     toFront();
                     requestFocus();
                 });
-            } catch (Exception ex) {
+            } catch (Throwable ex) {
                 logger.error("Failed to initialize video preview scene for file: {}", videoFile.getName(), ex);
                 Label error = new Label("Could not open video preview: " + ex.getMessage());
                 error.getStyleClass().add("label-title");
                 error.setTextFill(Color.RED);
-                BorderPane errRoot = new BorderPane(error);
+
+                javafx.scene.control.Button btnExt = new javafx.scene.control.Button("↗ Open in System Media Player");
+                btnExt.getStyleClass().addAll("button", "primary-button");
+                btnExt.setOnAction(e -> VideoPlayerUtils.openInSystemPlayer(videoFile));
+
+                javafx.scene.layout.VBox errBox = new javafx.scene.layout.VBox(16, error, btnExt);
+                errBox.setAlignment(javafx.geometry.Pos.CENTER);
+
+                BorderPane errRoot = new BorderPane(errBox);
                 errRoot.getStyleClass().add("root");
                 errRoot.setPadding(new Insets(20));
                 Scene errScene = new Scene(errRoot);

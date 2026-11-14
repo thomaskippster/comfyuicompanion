@@ -62,6 +62,27 @@ public class GalleryContextMenuBuilder {
         String name = file.getFileName().toString().toLowerCase();
         boolean isPng = name.endsWith(".png");
         boolean isImage = isPng || name.endsWith(".jpg") || name.endsWith(".jpeg") || name.endsWith(".webp");
+        boolean isVideo = name.endsWith(".mp4") || name.endsWith(".webm") || name.endsWith(".mov") || name.endsWith(".mkv");
+
+        if (isVideo) {
+            JMenuItem playItem = new JMenuItem("Play Video (Internal Preview)", SvgIconFactory.get(AppIcon.VIDEO_ARCHITECT, 14));
+            playItem.setFont(new Font("SansSerif", Font.BOLD, 12));
+            playItem.addActionListener(e -> {
+                Window owner = SwingUtilities.getWindowAncestor(parentComponent);
+                try {
+                    VideoPreviewDialog previewDialog = new VideoPreviewDialog(owner, file.getFileName().toString(), f, ThemeManager.isDarkMode());
+                    previewDialog.setVisible(true);
+                } catch (Throwable t) {
+                    VideoPlayerUtils.openInSystemPlayer(f);
+                }
+            });
+            menu.add(playItem);
+
+            JMenuItem openExtItem = new JMenuItem("Open in System Media Player", SvgIconFactory.get(AppIcon.PLAY, 14));
+            openExtItem.addActionListener(e -> VideoPlayerUtils.openInSystemPlayer(f));
+            menu.add(openExtItem);
+            menu.addSeparator();
+        }
 
         if (isPng) {
             JMenuItem metaItem = new JMenuItem("Inspect Generation Metadata...", SvgIconFactory.get(AppIcon.QUICK_CHECK, 14));

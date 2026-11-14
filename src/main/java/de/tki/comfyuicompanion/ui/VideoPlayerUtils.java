@@ -371,4 +371,25 @@ public final class VideoPlayerUtils {
     public static String resolvePauseButtonTooltip(MediaPlayer.Status status) {
         return (status == MediaPlayer.Status.PLAYING) ? "Pause playback (Space)" : "Pause";
     }
+
+    /**
+     * Opens a video media file using the platform's default desktop media player (e.g. VLC, Windows Media Player).
+     *
+     * @param file the video file to open
+     * @return true if the system player was successfully launched, false otherwise
+     */
+    public static boolean openInSystemPlayer(java.io.File file) {
+        if (file == null || !file.exists()) {
+            return false;
+        }
+        try {
+            if (java.awt.Desktop.isDesktopSupported() && java.awt.Desktop.getDesktop().isSupported(java.awt.Desktop.Action.OPEN)) {
+                java.awt.Desktop.getDesktop().open(file);
+                return true;
+            }
+        } catch (Exception ex) {
+            org.slf4j.LoggerFactory.getLogger(VideoPlayerUtils.class).warn("Failed to open file in system player: {}", ex.getMessage());
+        }
+        return false;
+    }
 }

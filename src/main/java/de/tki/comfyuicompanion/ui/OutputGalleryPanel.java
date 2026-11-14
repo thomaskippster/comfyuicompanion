@@ -350,43 +350,25 @@ public class OutputGalleryPanel extends JPanel {
         
         checkboxMap.put(file, selectCheck);
         
-        if (name.toLowerCase().endsWith(".mp4")) {
-            JLabel videoLabel = new JLabel("<html><center>" + name + "</center></html>", SvgIconFactory.get(AppIcon.VIDEO_ARCHITECT, 32), SwingConstants.CENTER);
-            videoLabel.setVerticalTextPosition(SwingConstants.BOTTOM);
-            videoLabel.setHorizontalTextPosition(SwingConstants.CENTER);
-            tile.add(videoLabel, BorderLayout.CENTER);
-        } else {
-            JLabel imageLabel = new JLabel("Loading...", SvgIconFactory.get(AppIcon.REFRESH, 16), SwingConstants.CENTER);
-            tile.add(imageLabel, BorderLayout.CENTER);
-            de.tki.comfyuicompanion.util.ThumbnailCache.loadAsync(file.toFile(), 120, 120, icon -> {
-                imageLabel.setText("");
-                imageLabel.setIcon(icon);
-            });
-            
-            JLabel nameLabel = new JLabel(name, SwingConstants.CENTER);
-            nameLabel.setFont(new Font("SansSerif", Font.PLAIN, 10));
-            tile.add(nameLabel, BorderLayout.SOUTH);
-        }
-        
-        tile.addMouseListener(new MouseAdapter() {
+        MouseAdapter mouseHandler = new MouseAdapter() {
             @Override
             public void mousePressed(MouseEvent e) {
                 if (e.isPopupTrigger()) {
-                    showTileContextMenu(tile, file, e.getX(), e.getY());
+                    showTileContextMenu((Component) e.getSource(), file, e.getX(), e.getY());
                 }
             }
 
             @Override
             public void mouseReleased(MouseEvent e) {
                 if (e.isPopupTrigger()) {
-                    showTileContextMenu(tile, file, e.getX(), e.getY());
+                    showTileContextMenu((Component) e.getSource(), file, e.getX(), e.getY());
                 }
             }
 
             @Override
             public void mouseClicked(MouseEvent e) {
                 if (SwingUtilities.isRightMouseButton(e) || e.isPopupTrigger()) {
-                    showTileContextMenu(tile, file, e.getX(), e.getY());
+                    showTileContextMenu((Component) e.getSource(), file, e.getX(), e.getY());
                 } else if (SwingUtilities.isLeftMouseButton(e)) {
                     if (e.getClickCount() == 2) {
                         showMediaViewer(file);
@@ -404,7 +386,33 @@ public class OutputGalleryPanel extends JPanel {
                     }
                 }
             }
-        });
+        };
+
+        tile.addMouseListener(mouseHandler);
+
+        if (name.toLowerCase().endsWith(".mp4")) {
+            JLabel videoLabel = new JLabel("<html><center>" + name + "</center></html>", SvgIconFactory.get(AppIcon.VIDEO_ARCHITECT, 32), SwingConstants.CENTER);
+            videoLabel.setVerticalTextPosition(SwingConstants.BOTTOM);
+            videoLabel.setHorizontalTextPosition(SwingConstants.CENTER);
+            videoLabel.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+            videoLabel.addMouseListener(mouseHandler);
+            tile.add(videoLabel, BorderLayout.CENTER);
+        } else {
+            JLabel imageLabel = new JLabel("Loading...", SvgIconFactory.get(AppIcon.REFRESH, 16), SwingConstants.CENTER);
+            imageLabel.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+            imageLabel.addMouseListener(mouseHandler);
+            tile.add(imageLabel, BorderLayout.CENTER);
+            de.tki.comfyuicompanion.util.ThumbnailCache.loadAsync(file.toFile(), 120, 120, icon -> {
+                imageLabel.setText("");
+                imageLabel.setIcon(icon);
+            });
+            
+            JLabel nameLabel = new JLabel(name, SwingConstants.CENTER);
+            nameLabel.setFont(new Font("SansSerif", Font.PLAIN, 10));
+            nameLabel.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+            nameLabel.addMouseListener(mouseHandler);
+            tile.add(nameLabel, BorderLayout.SOUTH);
+        }
         
         updateTileBorder(tile, file);
         return tile;
@@ -426,14 +434,16 @@ public class OutputGalleryPanel extends JPanel {
         String name = file.getFileName().toString().toLowerCase();
         Window owner = SwingUtilities.getWindowAncestor(this);
 
-        if (name.endsWith(".mp4")) {
+        if (name.endsWith(".mp4") || name.endsWith(".webm") || name.endsWith(".mov")) {
             try {
                 VideoPreviewDialog previewDialog = new VideoPreviewDialog(owner, file.getFileName().toString(), file.toFile(),
                         configService != null ? configService.isDarkMode() : ThemeManager.isDarkMode());
                 previewDialog.setVisible(true);
                 return;
             } catch (Throwable t) {
-                logger.debug("Internal VideoPreviewDialog unavailable, falling back to desktop player: {}", t.getMessage());
+                logger.warn("Internal VideoPreviewDialog unavailable, falling back to desktop player: {}", t.getMessage());
+                VideoPlayerUtils.openInSystemPlayer(file.toFile());
+                return;
             }
         } else if (name.endsWith(".png") || name.endsWith(".jpg") || name.endsWith(".jpeg") || name.endsWith(".webp")) {
             if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.OPEN)) {
@@ -450,16 +460,10 @@ public class OutputGalleryPanel extends JPanel {
             }
         }
 
-        try {
-            if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.OPEN)) {
-                Desktop.getDesktop().open(file.toFile());
-            } else {
-                JOptionPane.showMessageDialog(this,
-                        "Opening external viewer is not supported on this system.\nFile: " + file.toAbsolutePath(),
-                        "Notice", JOptionPane.INFORMATION_MESSAGE);
-            }
-        } catch (java.io.IOException | RuntimeException ex) {
-            JOptionPane.showMessageDialog(this, "Failed to open file in external viewer: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+        if (!VideoPlayerUtils.openInSystemPlayer(file.toFile())) {
+            JOptionPane.showMessageDialog(this,
+                    "Failed to open file in external viewer.\nFile: " + file.toAbsolutePath(),
+                    "Notice", JOptionPane.INFORMATION_MESSAGE);
         }
     }
 

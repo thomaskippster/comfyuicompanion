@@ -270,12 +270,12 @@ public class VideoPreviewSceneCoordinator {
                     updateDurationLabel.run();
                 }
             } else if (newStatus == MediaPlayer.Status.HALTED) {
-                titleLabel.setText("\u26A0\uFE0F Unsupported media codec or format");
+                titleLabel.setText("\u26A0\uFE0F Unsupported media codec or format (Click '\u2197 External')");
             }
         });
         mediaPlayer.setOnError(() -> {
             String err = mediaPlayer.getError() != null ? mediaPlayer.getError().getMessage() : "Unknown media error";
-            titleLabel.setText("\u26A0\uFE0F Error: " + err);
+            titleLabel.setText("\u26A0\uFE0F " + err + " (Click '\u2197 External')");
         });
 
         Button btnRewind = new Button("\u23EA");
@@ -331,6 +331,12 @@ public class VideoPreviewSceneCoordinator {
         Separator separatorVolume = createMediaSeparator();
         Separator separatorClose = createMediaSeparator();
 
+        // External system player button
+        Button btnExternal = new Button("↗ External");
+        btnExternal.getStyleClass().addAll("button", "icon-button");
+        btnExternal.setTooltip(new Tooltip("Open in default system media player (VLC / Windows Media Player)"));
+        btnExternal.setOnAction(e -> VideoPlayerUtils.openInSystemPlayer(videoFile));
+
         // Fullscreen button
         Button btnFullscreen = new Button(VideoPlayerUtils.resolveFullscreenGlyph(false));
         btnFullscreen.getStyleClass().addAll("button", "icon-button", "fullscreen-button");
@@ -347,7 +353,7 @@ public class VideoPreviewSceneCoordinator {
 
         HBox controls = new HBox(5, btnPlay, btnPause, btnStop, separatorTransport,
                 btnRewind, btnForward, separatorPlayback,
-                btnLoop, speedCombo, spacer, volumeBox, separatorVolume, btnFullscreen, separatorClose, btnClose);
+                btnLoop, speedCombo, spacer, volumeBox, separatorVolume, btnExternal, btnFullscreen, separatorClose, btnClose);
         controls.setAlignment(Pos.CENTER_LEFT);
 
         VBox bottomContainer = new VBox(8, timeline, controls);

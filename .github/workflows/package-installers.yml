@@ -157,18 +157,32 @@ jobs:
           [System.IO.File]::WriteAllText($keyFile, ($env:SF_KEY -replace "`r", "") + "`n")
           icacls $keyFile /inheritance:r /grant:r "$($env:USERNAME):(R)" | Out-Null
 
+          $uploadFiles = @(Get-ChildItem -Path "dist\*" -Include "*.exe", "*.msi", "*.zip", "*.sha256" |
+            Sort-Object { if ($_.Extension -eq '.exe') { 1 } else { 0 } }, Name)
+          if (-not ($uploadFiles | Where-Object { $_.Extension -eq '.exe' })) {
+            Remove-Item -Force $keyFile -ErrorAction SilentlyContinue
+            throw "No .exe installer found in dist/ to upload to SourceForge."
+          }
+
           $batch = @(
             "-mkdir /home/frs/project/$sfProject/$tag"
           )
-          Get-ChildItem -Path "dist\*" -Include "*.exe", "*.msi", "*.zip", "*.sha256" | ForEach-Object {
-            $batch += "put `"$($_.FullName -replace '\\', '/')`" /home/frs/project/$sfProject/$tag/"
+          foreach ($file in $uploadFiles) {
+            Write-Host "Queueing for SourceForge upload: $($file.Name) ($($file.Length) bytes)"
+            $batch += "put `"$($file.FullName -replace '\\', '/')`" /home/frs/project/$sfProject/$tag/"
           }
           $batch += "quit"
           $batchFile = "$env:TEMP\sftp_batch.txt"
           $batch | Out-File -FilePath $batchFile -Encoding ascii
 
-          sftp -i $keyFile -o StrictHostKeyChecking=no -b $batchFile "$sfUser@frs.sourceforge.net"
-          Remove-Item -Force $keyFile, $batchFile
+          try {
+            sftp -i $keyFile -o StrictHostKeyChecking=no -b $batchFile "$sfUser@frs.sourceforge.net"
+            if ($LASTEXITCODE -ne 0) {
+              throw "SourceForge SFTP upload failed with exit code $LASTEXITCODE"
+            }
+          } finally {
+            Remove-Item -Force $keyFile, $batchFile -ErrorAction SilentlyContinue
+          }
 
       - name: Publish to Windows Package Manager (WinGet)
         if: startsWith(github.ref, 'refs/tags/v')

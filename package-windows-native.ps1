@@ -6,6 +6,7 @@
 
 param (
     [switch]$DeploySourceForge,
+    [switch]$SkipMavenBuild,
     [string]$SourceForgeUser = "thomaskifree",
     [string]$SourceForgeProject = "companion-for-comfyui"
 )
@@ -26,15 +27,19 @@ foreach ($cand in $wixCandidates) {
     }
 }
 
-Write-Host "[1/5] Verifying ComfyUI Companion Fat JAR..." -ForegroundColor Cyan
+Write-Host "[1/5] Preparing ComfyUI Companion Fat JAR..." -ForegroundColor Cyan
 $targetJar = "target/comfyuicompanion.jar"
-if (-not (Test-Path $targetJar)) {
-    Write-Host "Target JAR not found. Building with Maven..." -ForegroundColor Cyan
+if (-not $SkipMavenBuild -or -not (Test-Path $targetJar)) {
+    Write-Host "Building shaded Fat JAR cleanly with Maven..." -ForegroundColor Cyan
     mvn -f "pom.xml" clean package -DskipTests
     if ($LASTEXITCODE -ne 0) {
         Write-Error "Maven build failed."
         exit 1
     }
+}
+if (-not (Test-Path $targetJar)) {
+    Write-Error "Expected Fat JAR not found at $targetJar"
+    exit 1
 }
 
 # Determine project version dynamically from pom.xml
@@ -140,7 +145,8 @@ if ($hasWix) {
       --win-shortcut
 
     if ($LASTEXITCODE -ne 0) {
-        Write-Warning "jpackage exe installer build failed."
+        Write-Error "jpackage exe installer build failed."
+        exit 1
     }
 
     jpackage `
@@ -157,9 +163,14 @@ if ($hasWix) {
       --win-shortcut
 
     if ($LASTEXITCODE -ne 0) {
-        Write-Warning "jpackage msi installer build failed."
+        Write-Error "jpackage msi installer build failed."
+        exit 1
     }
 } else {
+    if ($DeploySourceForge) {
+        Write-Error "WiX Toolset 3.11 is required to build the Windows EXE installer for SourceForge deployment."
+        exit 1
+    }
     Write-Host "[5/5] WiX not found in PATH; skipping EXE/MSI installer build (App-Image and Portable ZIP created)." -ForegroundColor Yellow
 }
 
@@ -272,25 +283,44 @@ Get-ChildItem -Path "dist" -Include "*.exe", "*.msi", "*.zip", "*.sha256" -Recur
 
 # Optional deployment to SourceForge
 if ($DeploySourceForge) {
-    Write-Host "🚀 Deploying artifacts to SourceForge ($SourceForgeProject/v$appVersion)..." -ForegroundColor Cyan
+    Write-Host "[DEPLOY] Deploying artifacts to SourceForge ($SourceForgeProject/v$appVersion)..." -ForegroundColor Cyan
     $keyFile = "$HOME\.ssh\sf_deploy_key"
     if (-not (Test-Path $keyFile)) {
         Write-Error "SourceForge SSH deploy key not found at: $keyFile"
+        exit 1
+    }
+    if (-not (Test-Path $exeFile)) {
+        Write-Error "Expected Windows EXE installer not found at: $exeFile"
+        exit 1
+    }
+
+    $deployFiles = @(Get-ChildItem -Path "dist\*" -Include "*$appVersion*.exe", "*$appVersion*.msi", "*Portable.zip", "*$appVersion*.sha256", "*Portable.zip.sha256" |
+        Sort-Object { if ($_.Extension -eq '.exe') { 1 } else { 0 } }, Name)
+    if ($deployFiles.Count -eq 0) {
+        Write-Error "No release artifacts found in dist/ for version $appVersion."
         exit 1
     }
 
     $batch = @(
         "-mkdir /home/frs/project/$SourceForgeProject/v$appVersion"
     )
-    Get-ChildItem -Path "dist\*" -Include "*$appVersion*.exe", "*$appVersion*.msi", "*Portable.zip", "*$appVersion*.sha256", "*Portable.zip.sha256" | ForEach-Object {
-        $cleanPath = $_.FullName -replace '\\', '/'
+    foreach ($file in $deployFiles) {
+        $cleanPath = $file.FullName -replace '\\', '/'
+        Write-Host "Queueing $($file.Name) ($($file.Length) bytes)..." -ForegroundColor Cyan
         $batch += "put `"$cleanPath`" /home/frs/project/$SourceForgeProject/v$appVersion/"
     }
     $batch += "quit"
     
     $batchFile = "$env:TEMP\sftp_batch_upload.txt"
     $batch | Out-File -FilePath $batchFile -Encoding ascii
-    sftp -i "$keyFile" -o StrictHostKeyChecking=no -b "$batchFile" "$SourceForgeUser@frs.sourceforge.net"
-    Remove-Item -Force $batchFile
+    try {
+        sftp -i "$keyFile" -o StrictHostKeyChecking=no -b "$batchFile" "$SourceForgeUser@frs.sourceforge.net"
+        if ($LASTEXITCODE -ne 0) {
+            Write-Error "SourceForge SFTP upload failed with exit code $LASTEXITCODE."
+            exit 1
+        }
+    } finally {
+        Remove-Item -Force $batchFile -ErrorAction SilentlyContinue
+    }
     Write-Host "[SUCCESS] Artifacts successfully uploaded to SourceForge!" -ForegroundColor Green
 }
